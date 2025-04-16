@@ -1,37 +1,38 @@
 // models/Chat.js
 import pool from "../config/datebase.js";
+
 const initChatDB = async () => {
   const client = await pool.connect();
   try {
     await client.query(`
       -- Chat Rooms Table
-      CREATE TABLE IF NOT EXISTS chat_rooms (
-        id SERIAL PRIMARY KEY,
-        room_name VARCHAR(255) NOT NULL,
-        room_description TEXT,
-        created_on TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        is_group BOOLEAN DEFAULT FALSE,
-        created_by INTEGER REFERENCES users(id)
+      CREATE TABLE IF NOT EXISTS chatrooms (
+        "roomId" SERIAL PRIMARY KEY,
+        "roomName" VARCHAR(255) NOT NULL,
+        "roomDescription" TEXT,
+        "createdOn" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        "isGroup" BOOLEAN DEFAULT FALSE,
+        "createdBy" VARCHAR(50) REFERENCES "users"("userId")
       );
 
       -- Chat Room Users Table (manages room membership and permissions)
-      CREATE TABLE IF NOT EXISTS chat_room_users (
-        id SERIAL PRIMARY KEY,
-        room_id INTEGER REFERENCES chat_rooms(id),
-        user_id INTEGER REFERENCES users(id),
-        is_admin BOOLEAN DEFAULT FALSE,
-        can_send_message BOOLEAN DEFAULT TRUE,
-        joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE(room_id, user_id)
+      CREATE TABLE IF NOT EXISTS chatroomusers (
+        "id" SERIAL PRIMARY KEY,
+        "roomId" INTEGER REFERENCES chatrooms("roomId"),
+        "userId" VARCHAR(50) REFERENCES users("userId"),
+        "isAdmin" BOOLEAN DEFAULT FALSE,
+        "canSendMessage" BOOLEAN DEFAULT TRUE,
+        "joinedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE("roomId", "userId")
       );
 
       -- Chat Messages Table
-      CREATE TABLE IF NOT EXISTS chat_messages (
-        id SERIAL PRIMARY KEY,
-        room_id INTEGER REFERENCES chat_rooms(id),
-        sender_id INTEGER REFERENCES users(id),
-        message_text TEXT NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      CREATE TABLE IF NOT EXISTS chatmessages (
+        "id" SERIAL PRIMARY KEY,
+        "roomId" INTEGER REFERENCES chatrooms("roomId"),
+        "senderId" VARCHAR(50) REFERENCES users("userId"),
+        "messageText" TEXT NOT NULL,
+        "createdAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
 

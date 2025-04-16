@@ -32,104 +32,81 @@ export interface StatCardProps {
 
 // User-related Types
 export interface User {
-  id: number;
-  mobile_number: string;
-  specific_id: string;
-  full_name: string;
+  userId: string;
+  mobileNumber: string;
+  isAdmin: boolean;
+  fullName?: string;
   xetra?: string;
   mandal?: string;
   role?: string;
-  total_sabha?: number;
-  present_count?: number;
-  absent_count?: number;
-  isAdmin?: boolean;
-  is_approved?: boolean;
-  recent_attendance?: Attendance[];
+  totalSabha?: number;
+  presentCount?: number;
+  absentCount?: number;
+  isApproved?: boolean;
 }
 
 // Chat-related Types
 export interface Message {
-    id: number;
-    room_id: number;
-    sender_id: number;
-    sender_name: string;
-    content: string;
-    created_at: string;
-    read_by: string[];
+  id: number;
+  roomId: number;
+  senderId: string;
+  senderName?: string;
+  messageText: string;
+  createdAt: string;
 }
 
-// export interface ChatRoom {
-//     id: number;
-//     name: string;
-//     description: string | null;
-//     is_group: boolean;
-//     created_at: string;
-//     display_name: string;
-//     unread_count: number;
-//     last_message: string | null;
-//     last_activity: string | null;
-// }
+export interface ChatRoom {
+  id?: number;
+  roomId?: number;
+  roomName: string;
+  roomDescription?: string;
+  createdOn?: string;
+  isGroup?: boolean;
+  createdBy?: string;
+}
 
 export interface ChatUser {
-    id: number;
-    full_name: string;
-    mobile_number: string;
-    mandal: string;
-    xetra: string;
+  userId: string;
+  fullName?: string;
+  mobileNumber?: string;
 }
 
-// Attendance-related Types
-export interface AttendanceRecord {
-    id: number;
-    user_id: number;
-    date: string;
-    status: 'present' | 'absent' | 'leave';
-    remarks?: string;
-}
-export interface Attendance {
-  date: string;
-  time_slot: string;
-  status: 'present' | 'absent' | 'late';
-  late_minutes?: number;
+export interface ChatRoomUser {
+  id: number;
+  roomId: number;
+  userId: string;
+  isAdmin: boolean;
+  canSendMessage: boolean;
+  joinedAt: string;
 }
 
 // Announcement-related Types
 export interface Announcement {
-    id: number;
-    title: string;
-    body: string;
-    created_at: string;
-    likes: number;
-    dislikes: number;
+  id: number;
+  title: string;
+  body: string;
+  authorId: string;
+  authorName?: string;
+  createdAt: string;
+  likes: number;
+  dislikes: number;
 }
 
 // Admin-related Types
 export interface PendingUser {
-    id: number;
-    mobile_number: string;
-    specific_id: string;
+  userId: string;
+  mobileNumber: string;
+  fullName?: string;
 }
 
 // Authentication-related Types
 export interface LoginResponse {
-    success: boolean;
-    token: string;
-    user: User;
-    isAdmin: boolean;
+  success: boolean;
+  token: string;
+  userId: string;
+  isAdmin: boolean;
 }
-export interface ChatRoom {
-    id?: number;
-    room_name: string;
-    room_description?: string;
-    created_on?: string;
-    is_group?: boolean;
-  }
-  
-  export interface ChatUser {
-    id: number;
-    full_name: string;
-    mobile_number: string;
-  }
+
 // Utility Types
 export type Nullable<T> = T | null;
 export type Optional<T> = T | undefined;

@@ -8,28 +8,25 @@ import { register } from '@/api/auth';
 
 export default function SignupForm() {
   const [mobileNumber, setMobileNumber] = useState('');
-  const [specificId, setSpecificId] = useState('');
+  const [userId, setUserId] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [touched, setTouched] = useState({ mobile: false, id: false });
 
   const handleSignup = async () => {
     setTouched({ mobile: true, id: true });
 
-    if (!mobileNumber || !specificId) {
+    if (!mobileNumber || !userId) {
       Alert.alert('Error', 'Please fill in all fields');
       return;
     }
 
     try {
       setIsLoading(true);
-      await register(mobileNumber, specificId);
-      Alert.alert(
-        'Success',
-        'Registration request sent. Please wait for admin approval.',
-        [{ text: 'OK', onPress: () => router.replace('/') }]
-      );
+      await register(mobileNumber, userId);
+      // Navigation is handled in the register function
     } catch (error) {
-      Alert.alert('Error', 'Registration failed');
+      console.error("Signup form error:", error);
+      // Error handling is done in the register function
     } finally {
       setIsLoading(false);
     }
@@ -69,12 +66,12 @@ export default function SignupForm() {
           />
 
           <CustomInput
-            label="Specific ID"
-            placeholder="Enter your specific ID"
-            value={specificId}
-            onChangeText={setSpecificId}
+            label="User ID"
+            placeholder="Enter your user ID"
+            value={userId}
+            onChangeText={setUserId}
             leftIcon={<Ionicons name="card-outline" size={20} color="#6B7280" />}
-            error={!specificId && touched.id ? "Specific ID is required" : ""}
+            error={!userId && touched.id ? "User ID is required" : ""}
             touched={touched.id}
             onBlur={() => setTouched(prev => ({ ...prev, id: true }))}
           />

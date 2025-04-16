@@ -14,11 +14,11 @@ export const fetchUserProfile = async () => {
       throw new Error('No authentication token');
     }
 
-    if (!storedUser || !storedUser.id) {
-      throw new Error('No user ID found');
+    if (!storedUser || !storedUser.userId) {
+      throw new Error('No user userId found');
     }
 
-    const response = await axios.get(`${API_URL}/api/users/${storedUser.id}/profile`, {
+    const response = await axios.get(`${API_URL}/api/users/${storedUser.userId}/profile`, {
       headers: {
         Authorization: `Bearer ${token}`
       }

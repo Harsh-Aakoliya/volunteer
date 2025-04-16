@@ -1,74 +1,117 @@
 // app/chat/create-room-metadata.tsx
 import React, { useState } from 'react';
-import { View, Text } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { createChatRoom } from '@/api/chat';
 import CustomInput from '@/components/ui/CustomInput';
 import CustomButton from '@/components/ui/CustomButton';
+import { Ionicons } from '@expo/vector-icons';
 
 export default function CreateRoomMetadata() {
   const { selectedUserIds } = useLocalSearchParams();
   const [roomName, setRoomName] = useState('');
   const [roomDescription, setRoomDescription] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [touched, setTouched] = useState({ name: false });
 
-  const handleCreateRoom = async () => {
-    if (!roomName.trim()) return;
+// app/chat/create-room-metadata.tsx - Updated handleCreateRoom function
+const handleCreateRoom = async () => {
+  if (!roomName.trim()) {
+    setTouched({ name: true });
+    return;
+  }
 
-    try {
-      setIsLoading(true);
-      const userIds = (selectedUserIds as string)
-        .split(',')
-        .map(id => parseInt(id, 10));
-
-      const newRoom = await createChatRoom(
-        {
-          room_name: roomName,
-          room_description: roomDescription || undefined,
-          is_group: true
-        }, 
-        userIds
-      );
-
-      // Navigate to chat rooms or specific chat room
-      router.replace('/chat');
-    } catch (error) {
-      console.error('Error creating room:', error);
-      // Handle error (show toast, etc.)
-    } finally {
+  try {
+    setIsLoading(true);
+    
+    // Parse the user IDs from the URL params
+    const userIdArray = (selectedUserIds as string).split(',').filter(id => id.trim() !== '');
+    
+    if (userIdArray.length === 0) {
+      alert('No users selected. Please go back and select users.');
       setIsLoading(false);
+      return;
     }
-  };
+
+    console.log("Creating room with users:", userIdArray);
+
+    const newRoom = await createChatRoom(
+      {
+        roomName: roomName,
+        roomDescription: roomDescription || undefined,
+        isGroup: true
+      }, 
+      userIdArray
+    );
+
+    // Navigate to chat rooms
+    router.replace('/chat');
+  } catch (error) {
+    console.error('Error creating room:', error);
+    alert('Failed to create chat room. Please try again.');
+  } finally {
+    setIsLoading(false);
+  }
+};
 
   return (
-    <View className="flex-1 bg-gray-50 p-4">
-      <Text className="text-2xl font-bold mb-4">Create Chat Room</Text>
-      
-      <CustomInput
-        label="Room Name"
-        value={roomName}
-        onChangeText={setRoomName}
-        placeholder="Enter room name"
-        containerClassName="mb-4"
-      />
+    <ScrollView className="flex-1 bg-gray-50">
+      <View className="p-4">
+        <View className="bg-white rounded-lg p-4 shadow-sm mb-4">
+          <Text className="text-lg font-bold mb-1">Room Details</Text>
+          <Text className="text-gray-500 mb-4">
+            Provide a name and optional description for your chat room.
+          </Text>
 
-      <CustomInput
-        label="Room Description (Optional)"
-        value={roomDescription}
-        onChangeText={setRoomDescription}
-        placeholder="Enter room description"
-        containerClassName="mb-4"
-        multiline
-      />
+          <CustomInput
+            label="Room Name"
+            value={roomName}
+            onChangeText={setRoomName}
+            placeholder="Enter room name"
+            containerClassName="mb-4"
+            leftIcon={<Ionicons name="chatbubbles-outline" size={20} color="#6B7280" />}
+            error={!roomName.trim() && touched.name ? "Room name is required" : ""}
+            touched={touched.name}
+            onBlur={() => setTouched({ name: true })}
+          />
 
-      <CustomButton
-        title="Create Room"
-        onPress={handleCreateRoom}
-        disabled={!roomName.trim() || isLoading}
-        loading={isLoading}
-        bgVariant="primary"
-        className="mt-4"
-      />
-    </View>
+          <CustomInput
+            label="Room Description (Optional)"
+            value={roomDescription}
+            onChangeText={setRoomDescription}
+            placeholder="Enter room description"
+            containerClassName="mb-4"
+            leftIcon={<Ionicons name="information-circle-outline" size={20} color="#6B7280" />}
+            multiline
+            numberOfLines={3}
+          />
+        </View>
+
+        <View className="bg-white rounded-lg p-4 shadow-sm mb-4">
+          <Text className="text-lg font-bold mb-1">Selected Users</Text>
+          <Text className="text-gray-500 mb-2">
+            {(selectedUserIds as string).split(',').length} users will be added to this room
+          </Text>
+        </View>
+
+        <CustomButton
+          title="Create Room"
+          onPress={handleCreateRoom}
+          disabled={!roomName.trim() || isLoading}
+          loading={isLoading}
+          bgVariant="primary"
+          className="mt-4"
+          IconRight={() => <Ionicons name="checkmark-circle" size={20} color="white" />}
+        />
+
+        <TouchableOpacity 
+          className="mt-4 p-2 flex-row justify-center items-center"
+          onPress={() => router.back()}
+        >
+          <Ionicons name="arrow-back" size={18} color="#6B7280" />
+          <Text className="text-gray-500 ml-1">Back to user selection</Text>
+        </TouchableOpacity>
+      </View>
+    </ScrollView>
   );
 }

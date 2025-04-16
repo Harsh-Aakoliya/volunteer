@@ -1,3 +1,4 @@
+// initDB.js
 import pool from "../config/datebase.js";
 
 //state
@@ -8,48 +9,35 @@ import pool from "../config/datebase.js";
 //leave list
 //joining date
 
-
 const initDB = async () => {
   const client = await pool.connect();
   try {
     await client.query(`
-      CREATE TABLE IF NOT EXISTS users (
-        id SERIAL PRIMARY KEY,
-        mobile_number VARCHAR(15) UNIQUE NOT NULL,
-        isAdmin BOOLEAN DEFAULT FALSE,
-        specific_id VARCHAR(50) NOT NULL,
-        full_name VARCHAR(100),
-        xetra VARCHAR(100),
-        mandal VARCHAR(100),
-        role VARCHAR(50),
-        password VARCHAR(100),
-        is_approved BOOLEAN DEFAULT FALSE,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        total_sabha INTEGER DEFAULT 0,
-        present_count INTEGER DEFAULT 0,
-        absent_count INTEGER DEFAULT 0
+      CREATE TABLE IF NOT EXISTS "users" (
+        "userId" VARCHAR(50) PRIMARY KEY,
+        "mobileNumber" VARCHAR(15) UNIQUE NOT NULL,
+        "isAdmin" BOOLEAN DEFAULT FALSE,
+        "fullName" VARCHAR(100),
+        "xetra" VARCHAR(100),
+        "mandal" VARCHAR(100),
+        "role" VARCHAR(50),
+        "password" VARCHAR(100),
+        "isApproved" BOOLEAN DEFAULT FALSE,
+        "createdAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        "totalSabha" INTEGER DEFAULT 0,
+        "presentCount" INTEGER DEFAULT 0,
+        "absentCount" INTEGER DEFAULT 0
       );
 
-      CREATE TABLE IF NOT EXISTS attendance (
-        id SERIAL PRIMARY KEY,
-        user_id INTEGER REFERENCES users(id),
-        date DATE NOT NULL,
-        time_slot VARCHAR(50),
-        status VARCHAR(20),
-        late_minutes INTEGER,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      CREATE TABLE IF NOT EXISTS "announcements" (
+        "id" SERIAL PRIMARY KEY,
+        "title" VARCHAR(255) NOT NULL,
+        "body" TEXT NOT NULL,
+        "authorId" VARCHAR(50) REFERENCES "users"("userId"),
+        "createdAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        "likes" INT DEFAULT 0,
+        "dislikes" INT DEFAULT 0
       );
-
-      CREATE TABLE IF NOT EXISTS announcements (
-        id SERIAL PRIMARY KEY,
-        title VARCHAR(255) NOT NULL,
-        body TEXT NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        likes INT DEFAULT 0,
-        dislikes INT DEFAULT 0
-      );
-      
-
     `);
   } finally {
     client.release();

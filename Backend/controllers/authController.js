@@ -1,81 +1,113 @@
-// const pool = require('../config/database');
-// const jwt = require('jsonwebtoken');
-// const bcrypt = require('bcryptjs');
-// const twilioClient = require('../config/twilio');
+// controllers/authController.js
 import pool from "../config/datebase.js";
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
-// import twilioClient from '../config/twilio.js';
 
 const register = async (req, res) => {
-  const { mobileNumber, specificId } = req.body;
+  const { mobileNumber, userId } = req.body;
   
   try {
+    // Check if user already exists
+    const existingUser = await pool.query(
+      'SELECT * FROM "users" WHERE "mobileNumber" = $1',
+      [mobileNumber]
+    );
+    
+    if (existingUser.rows.length > 0) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'User with this mobile number already exists' 
+      });
+    }
+    
     const result = await pool.query(
-      'INSERT INTO users (mobile_number, specific_id) VALUES ($1, $2) RETURNING *',
-      [mobileNumber, specificId]
+      'INSERT INTO "users" ("mobileNumber", "userId") VALUES ($1, $2) RETURNING *',
+      [mobileNumber, userId]
     );  
     res.json({ success: true, message: 'Registration request sent to admin' });
   } catch (error) {
-    console.log("Not possible");
-    console.log(error.message);
+    console.log("Registration error:", error.message);
     res.status(400).json({ success: false, message: error.message });
   }
 };
 
-// controllers/authController.js
 const login = async (req, res) => {
   const { mobileNumber, password } = req.body;
-  // console.log("at backend", mobileNumber, password);
-
-  // // Check admin credentials
-  // if (mobileNumber === process.env.ADMIN_MOBILE && 
-  //     password === process.env.ADMIN_PASSWORD) {
-  //   console.log("yes its admin");
-  //   const token = jwt.sign(
-  //     { isAdmin: true },
-  //     process.env.JWT_SECRET,
-  //     { expiresIn: '24h' }
-  //   );
-  //   return res.json({
-  //     success: true,
-  //     isAdmin: true,
-  //     token,
-  //     userId: null // Admin doesn't need a userId
-  //   });
-  // }
   
   try {
+    // First check if user exists
+    const userExists = await pool.query(
+      'SELECT * FROM "users" WHERE "mobileNumber" = $1',
+      [mobileNumber]
+    );
+    
+    if (userExists.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found. Please register first.'
+      });
+    }
+    
+    // Check if user is approved
+    if (!userExists.rows[0].isApproved) {
+      return res.status(401).json({
+        success: false,
+        message: 'Your account is not approved yet. Please wait for admin approval.'
+      });
+    }
+    
+    // Check password
     const result = await pool.query(
-      'SELECT * FROM users WHERE mobile_number = $1 AND password = $2 AND is_approved = TRUE',
+      'SELECT * FROM "users" WHERE "mobileNumber" = $1 AND "password" = $2',
       [mobileNumber, password]
     );
-    // console.log("result", result.rows);
     
     if (result.rows.length > 0) {
-      const userId = result.rows[0].specific_id;
-      // console.log("userId at backend",userId);
-      // console.log("Is it admin",result.rows[0].isadmin );
+      const userId = result.rows[0].userId;
       const token = jwt.sign(
-        { userId: userId, isAdmin: result.rows[0].isadmin },
+        { userId: userId, isAdmin: result.rows[0].isAdmin },
         process.env.JWT_SECRET,
         { expiresIn: '24h' }
       );
       res.json({ 
         success: true, 
-        isAdmin: result.rows[0].isadmin , 
+        isAdmin: result.rows[0].isAdmin, 
         token,
-        userId: userId // Include userId in response
+        userId: userId
       });
     } else {
       res.status(401).json({
         success: false,
-        message: 'Invalid credentials or user not approved'
+        message: 'Invalid credentials'
       });
     }
   } catch (error) {
+    console.error("Login error:", error.message);
     res.status(400).json({ success: false, message: error.message });
   }
 };
 
-export default { register, login };
+const checkUser = async (req, res) => {
+  const { mobileNumber } = req.body;
+  
+  try {
+    const result = await pool.query(
+      'SELECT * FROM "users" WHERE "mobileNumber" = $1',
+      [mobileNumber]
+    );
+    
+    if (result.rows.length > 0) {
+      res.json({ 
+        exists: true, 
+        isApproved: result.rows[0].isApproved 
+      });
+    } else {
+      res.json({ exists: false });
+    }
+  } catch (error) {
+    console.error("Check user error:", error.message);
+    res.status(400).json({ success: false, message: error.message });
+  }
+};
+
+export default { register, login, checkUser };

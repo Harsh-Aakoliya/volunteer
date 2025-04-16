@@ -4,17 +4,16 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
-import pool from './config/datebase.js';
 import authController from './controllers/authController.js';
 import userController from './controllers/userController.js';
-import chatController from './controllers/chatController.js';
 import initDB from './models/User.js';
 import initChatDB from './models/Chat.js';
 import os from 'os';
 import errorHandling from './middlewares/errorHandler.js';
 import { createAnnouncement, getAnnouncements, updateLikes, deleteAnnouncement } from './controllers/announcementController.js';
+// import chatController from "./controllers/chatController.js"
+//chat related controller
 import chatRoutes from './routes/chatRoutes.js';
-
 dotenv.config();
 const PORT = process.env.PORT || 3000;
 
@@ -39,12 +38,13 @@ initChatDB();
 // Auth routes
 app.post('/api/register', authController.register);
 app.post('/api/login', authController.login);
+app.post('/api/check-user', authController.checkUser);
 
 // User profile routes
 app.get('/api/pending-users', userController.getPendingUsers);
 app.post('/api/approve-user', userController.approveUser);
 app.get('/api/users/:userId/profile', userController.getUserProfile);
-app.get('/api/users/:userId/attendance', userController.getUserAttendance);
+// app.get('/api/users/:userId/attendance', userController.getUserAttendance);
 app.put('/api/users/:userId/profile', userController.updateUserProfile);
 
 // Announcement routes
@@ -53,8 +53,7 @@ app.get('/api/announcements', getAnnouncements);
 app.post('/api/announcements/likes', updateLikes);
 app.delete("/api/announcement/:id", deleteAnnouncement);
 
-
-//chat routes
+// Chat routes
 app.use('/api/chat', chatRoutes);
 
 app.listen(PORT, '0.0.0.0', () => {

@@ -1,33 +1,49 @@
 // api/chat.ts
-import axios from 'axios';
-import { API_URL } from '@/constants/api';
-import { AuthStorage } from '@/utils/authStorage';
-import { ChatRoom, ChatUser } from '@/types/type';
+import axios from "axios";
+import { API_URL } from "../constants/api";
+import { AuthStorage } from "@/utils/authStorage";
+import { ChatRoom, ChatUser } from "@/types/type";
 
-export const fetchChatUsers = async () => {
+// Fetch all users for chat room creation
+export const fetchChatUsers = async (): Promise<ChatUser[]> => {
   try {
     const token = await AuthStorage.getToken();
-    console.log("Token is ",token);
     const response = await axios.get(`${API_URL}/api/chat/users`, {
       headers: {
         Authorization: `Bearer ${token}`
       }
     });
-    return response.data;
+    
+    // Map the response to match our frontend types
+    return response.data.map((user: any) => ({
+      userId: user.userId,
+      fullName: user.fullName,
+      mobileNumber: user.mobileNumber
+    }));
   } catch (error) {
-    console.error('Error fetching chat users:', error);
+    console.error("Error fetching chat users:", error);
     throw error;
   }
 };
 
-export const createChatRoom = async (roomData: ChatRoom, selectedUserIds: number[]) => {
+// Create a new chat room
+export const createChatRoom = async (
+  roomData: { 
+    roomName: string; 
+    roomDescription?: string; 
+    isGroup: boolean 
+  }, 
+  userIds: string[]
+): Promise<ChatRoom> => {
   try {
-    console.log("roomData",roomData,selectedUserIds);
     const token = await AuthStorage.getToken();
-    const response = await axios.post(`${API_URL}/api/chat/rooms`, 
-      { 
-        ...roomData, 
-        user_ids: selectedUserIds 
+    const response = await axios.post(
+      `${API_URL}/api/chat/rooms`, 
+      {
+        roomName: roomData.roomName,
+        roomDescription: roomData.roomDescription,
+        isGroup: roomData.isGroup,
+        userIds
       },
       {
         headers: {
@@ -35,14 +51,21 @@ export const createChatRoom = async (roomData: ChatRoom, selectedUserIds: number
         }
       }
     );
-    return response.data;
+    
+    return {
+      id: response.data.id,
+      roomName: response.data.roomName,
+      roomDescription: response.data.roomDescription,
+      isGroup: response.data.isGroup
+    };
   } catch (error) {
-    console.error('Error creating chat room:', error);
+    console.error("Error creating chat room:", error);
     throw error;
   }
 };
 
-export const fetchChatRooms = async () => {
+// Fetch all chat rooms for the current user
+export const fetchChatRooms = async (): Promise<ChatRoom[]> => {
   try {
     const token = await AuthStorage.getToken();
     const response = await axios.get(`${API_URL}/api/chat/rooms`, {
@@ -50,9 +73,16 @@ export const fetchChatRooms = async () => {
         Authorization: `Bearer ${token}`
       }
     });
-    return response.data;
+    
+    // Map the response to match our frontend types
+    return response.data.map((room: any) => ({
+      id: room.id,
+      roomName: room.roomName,
+      roomDescription: room.roomDescription,
+      isGroup: room.isGroup
+    }));
   } catch (error) {
-    console.error('Error fetching chat rooms:', error);
+    console.error("Error fetching chat rooms:", error);
     throw error;
   }
 };

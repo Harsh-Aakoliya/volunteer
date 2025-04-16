@@ -1,23 +1,18 @@
-// controllers/chatController.js
+// Chat Controller
 import pool from "../config/datebase.js";
 
 const chatController = {
-  // Fetch all users for chat room creation
   async getChatUsers(req, res) {
     try {
-      // console.log("request got ",req);
-      // Get the authenticated user's ID from the token
       const authenticatedUserId = req.user.userId;
 
-      // Fetch all approved users except the authenticated user
       const result = await pool.query(
-        `SELECT id, full_name, mobile_number 
-         FROM users 
-         WHERE is_approved = TRUE AND id != $1 
-         ORDER BY full_name`,
+        `SELECT "userId", "fullName", "mobileNumber" 
+         FROM "users" 
+         WHERE "isApproved" = TRUE AND "userId" != $1 
+         ORDER BY "fullName"`,
         [authenticatedUserId]
       );
-      // console.log("approved users are ",result.rows);
 
       res.json(result.rows);
     } catch (error) {
@@ -26,74 +21,119 @@ const chatController = {
     }
   },
 
-  // Create a new chat room
-  async createChatRoom(req, res) {
-    const client = await pool.connect();
+// Chat Controller - Updated createChatRoom function
+async createChatRoom(req, res) {
+  const client = await pool.connect();
 
-    try {
-      // Start a transaction
-      await client.query('BEGIN');
+  try {
+    await client.query('BEGIN');
 
-      // Get data from request
-      const { room_name, room_description, is_group, user_ids } = req.body;
-      const createdBy = req.user.id;
+    const { roomName, roomDescription, isGroup, userIds } = req.body;
+    const createdBy = req.user.userId;
 
-      // Insert new chat room
-      const roomResult = await client.query(
-        `INSERT INTO chat_rooms 
-         (room_name, room_description, is_group, created_by) 
-         VALUES ($1, $2, $3, $4) 
-         RETURNING id`,
-        [room_name, room_description || null, is_group || false, createdBy]
-      );
+    console.log("Creating room with:", {
+      roomName,
+      roomDescription,
+      isGroup,
+      userIds,
+      createdBy
+    });
 
-      const roomId = roomResult.rows[0].id;
+    // Validate that createdBy exists
+    if (!createdBy) {
+      throw new Error("Creator ID is missing");
+    }
 
-      // Add users to the room
-      const userInsertPromises = user_ids.map(userId => 
+    // Validate userIds array
+    if (!userIds || !Array.isArray(userIds) || userIds.length === 0) {
+      throw new Error("No valid user IDs provided");
+    }
+
+    // Filter out any empty or invalid userIds
+    const validUserIds = userIds.filter(id => id && typeof id === 'string' && id.trim() !== '');
+
+    if (validUserIds.length === 0) {
+      throw new Error("No valid user IDs provided after filtering");
+    }
+
+    // Check if all userIds exist in the users table
+    const userCheckResult = await client.query(
+      `SELECT "userId" FROM "users" WHERE "userId" = ANY($1)`,
+      [validUserIds]
+    );
+
+    const foundUserIds = userCheckResult.rows.map(row => row.userId);
+    const missingUserIds = validUserIds.filter(id => !foundUserIds.includes(id));
+
+    if (missingUserIds.length > 0) {
+      throw new Error(`Some user IDs do not exist: ${missingUserIds.join(', ')}`);
+    }
+
+    // Insert the chat room
+    const roomResult = await client.query(
+      `INSERT INTO chatrooms 
+       ("roomName", "roomDescription", "isGroup", "createdBy") 
+       VALUES ($1, $2, $3, $4) 
+       RETURNING "roomId"`,
+      [roomName, roomDescription || null, isGroup || false, createdBy]
+    );
+
+    const roomId = roomResult.rows[0].roomId;
+
+    // Add users to the room
+    const userInsertPromises = validUserIds.map(userId => 
+      client.query(
+        `INSERT INTO chatroomusers 
+         ("roomId", "userId", "isAdmin", "canSendMessage") 
+         VALUES ($1, $2, $3, $4)`,
+        [roomId, userId, userId === createdBy, true]
+      )
+    );
+
+    // Make sure creator is also added to the room if not already in the list
+    if (!validUserIds.includes(createdBy)) {
+      userInsertPromises.push(
         client.query(
-          `INSERT INTO chat_room_users 
-           (room_id, user_id, is_admin, can_send_message) 
+          `INSERT INTO chatroomusers 
+           ("roomId", "userId", "isAdmin", "canSendMessage") 
            VALUES ($1, $2, $3, $4)`,
-          [roomId, userId, userId === createdBy, true]
+          [roomId, createdBy, true, true]
         )
       );
-
-      // Also add the creator to the room
-      await Promise.all(userInsertPromises);
-
-      // Commit the transaction
-      await client.query('COMMIT');
-
-      res.status(201).json({ 
-        id: roomId, 
-        room_name, 
-        room_description, 
-        is_group 
-      });
-    } catch (error) {
-      // Rollback the transaction in case of error
-      await client.query('ROLLBACK');
-      console.error('Error creating chat room:', error);
-      res.status(500).json({ message: "Server error", error: error.message });
-    } finally {
-      client.release();
     }
-  },
 
-  // Fetch chat rooms for a user
+    await Promise.all(userInsertPromises);
+    await client.query('COMMIT');
+
+    res.status(201).json({ 
+      id: roomId, 
+      roomName, 
+      roomDescription, 
+      isGroup 
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error creating chat room:', error);
+    res.status(500).json({ 
+      message: "Failed to create chat room", 
+      error: error.message 
+    });
+  } finally {
+    client.release();
+  }
+},
+
   async getChatRooms(req, res) {
     try {
-      console.log("request got ",req.user);
+      console.log("request got ", req.user);
       const userId = req.user.userId;
 
-      // Fetch rooms where the user is a member
       const result = await pool.query(
-        `SELECT cr.id, cr.room_name, cr.room_description, cr.is_group
-         FROM chat_rooms cr
-         JOIN chat_room_users cru ON cr.id = cru.room_id
-         WHERE cru.user_id = $1
-         ORDER BY cr.created_on DESC`,
+        `SELECT cr."roomId" as id, cr."roomName", cr."roomDescription", cr."isGroup"
+         FROM chatrooms cr
+         JOIN chatroomusers cru ON cr."roomId" = cru."roomId"
+         WHERE cru."userId" = $1
+         ORDER BY cr."createdOn" DESC`,
         [userId]
       );
 

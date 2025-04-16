@@ -5,37 +5,44 @@ import {
   Text, 
   FlatList, 
   TouchableOpacity, 
-  ActivityIndicator 
+  ActivityIndicator,
+  TextInput
 } from 'react-native';
 import { router } from 'expo-router';
 import { fetchChatUsers } from '@/api/chat';
 import { ChatUser } from '@/types/type';
 import Checkbox from 'expo-checkbox';
 import CustomButton from '@/components/ui/CustomButton';
+import { Ionicons } from '@expo/vector-icons';
 import { AuthStorage } from '@/utils/authStorage';
 
 export default function CreateRoomUserSelection() {
   const [users, setUsers] = useState<ChatUser[]>([]);
+  const [filteredUsers, setFilteredUsers] = useState<ChatUser[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [selectedUsers, setSelectedUsers] = useState<Set<number>>(new Set());
-  const [currentUser,setCurrentUser]=useState<any>(null);
-  useEffect(()=>{
-    const featchCurrentLoggedUser = async ()=>{
-        try {
-            const curretnUserData=await AuthStorage.getUser();
-            console.log("Current user is ",curretnUserData)
-            setCurrentUser(curretnUserData);
-        } catch (error) {
-            console.log("You are not logged in ");
-        }
-    }
-    featchCurrentLoggedUser();
-  },[]);
+  const [selectedUsers, setSelectedUsers] = useState<Set<string>>(new Set());
+  const [searchQuery, setSearchQuery] = useState('');
+  const [currentUser, setCurrentUser] = useState<any>(null);
+console.log("all users",users);
+  useEffect(() => {
+    const fetchCurrentLoggedUser = async () => {
+      try {
+        const currentUserData = await AuthStorage.getUser();
+        console.log("Current user is:", currentUserData);
+        setCurrentUser(currentUserData);
+      } catch (error) {
+        console.log("Error fetching current user:", error);
+      }
+    };
+    fetchCurrentLoggedUser();
+  }, []);
+
   useEffect(() => {
     const loadChatUsers = async () => {
       try {
         const fetchedUsers = await fetchChatUsers();
         setUsers(fetchedUsers);
+        setFilteredUsers(fetchedUsers);
       } catch (error) {
         console.error('Error loading chat users:', error);
       } finally {
@@ -46,7 +53,19 @@ export default function CreateRoomUserSelection() {
     loadChatUsers();
   }, []);
 
-  const toggleUserSelection = (userId: number) => {
+  useEffect(() => {
+    if (searchQuery.trim() === '') {
+      setFilteredUsers(users);
+    } else {
+      const filtered = users.filter(user => 
+        (user.fullName?.toLowerCase().includes(searchQuery.toLowerCase()) || false) ||
+        (user.mobileNumber?.includes(searchQuery) || false)
+      );
+      setFilteredUsers(filtered);
+    }
+  }, [searchQuery, users]);
+
+  const toggleUserSelection = (userId: string) => {
     setSelectedUsers(prev => {
       const newSelected = new Set(prev);
       if (newSelected.has(userId)) {
@@ -58,35 +77,59 @@ export default function CreateRoomUserSelection() {
     });
   };
 
-  const renderUserItem = ({ item }: { item: ChatUser }) => (
-    <TouchableOpacity 
-      className="flex-row items-center p-4 bg-white border-b border-gray-200"
-      onPress={() => toggleUserSelection(item.id)}
-    >
-      <Checkbox
-        value={selectedUsers.has(item.id)}
-        onValueChange={() => toggleUserSelection(item.id)}
-        className="mr-4"
-      />
-      <View>
-        <Text className="text-lg font-bold">{item.full_name}</Text>
-        <Text className="text-gray-500">{item.mobile_number}</Text>
-      </View>
-    </TouchableOpacity>
-  );
-
-  const handleNextStep = () => {
-    selectedUsers.add(currentUser.specific_id);
-    if (selectedUsers.size > 0) {
-      router.push({
-        pathname: '/chat/create-room-metadata',
-        params: { 
-          selectedUserIds: Array.from(selectedUsers).join(',') 
-        }
-      });
-    }
+  const renderUserItem = ({ item }: { item: ChatUser }) => {
+    // Get the first letter of the name or use a default
+    const firstLetter = item.fullName ? item.fullName.charAt(0).toUpperCase() : '?';
+    const displayName = item.fullName || 'Unknown User';
+    
+    return (
+      <TouchableOpacity 
+        className="flex-row items-center p-4 bg-white border-b border-gray-200"
+        onPress={() => toggleUserSelection(item.userId)}
+      >
+        <Checkbox
+          value={selectedUsers.has(item.userId)}
+          onValueChange={() => toggleUserSelection(item.userId)}
+          className="mr-4"
+          color={selectedUsers.has(item.userId) ? '#0284c7' : undefined}
+        />
+        <View className="flex-row items-center flex-1">
+          <View className="w-10 h-10 bg-blue-100 rounded-full justify-center items-center mr-3">
+            <Text className="text-blue-500 font-bold">
+              {firstLetter}
+            </Text>
+          </View>
+          <View>
+            <Text className="text-lg font-bold">{displayName}</Text>
+            <Text className="text-gray-500">{item.mobileNumber || 'No phone number'}</Text>
+          </View>
+        </View>
+      </TouchableOpacity>
+    );
   };
 
+// app/chat/create-room.tsx - Updated handleNextStep function
+const handleNextStep = () => {
+  if (selectedUsers.size === 0) {
+    alert("Please select at least one user");
+    return;
+  }
+  
+  // Convert the Set to an array of valid user IDs
+  const selectedUserArray = Array.from(selectedUsers).filter(id => id && id.trim() !== '');
+  
+  if (selectedUserArray.length === 0) {
+    alert("No valid users selected");
+    return;
+  }
+  
+  router.push({
+    pathname: '/chat/create-room-metadata',
+    params: { 
+      selectedUserIds: selectedUserArray.join(',') 
+    }
+  });
+};
   if (isLoading) {
     return (
       <View className="flex-1 justify-center items-center">
@@ -97,23 +140,46 @@ export default function CreateRoomUserSelection() {
 
   return (
     <View className="flex-1 bg-gray-50">
+      <View className="p-4 bg-white border-b border-gray-200">
+        <View className="flex-row items-center bg-gray-100 rounded-lg px-3 py-2">
+          <Ionicons name="search" size={20} color="#6b7280" />
+          <TextInput
+            className="flex-1 ml-2 text-base"
+            placeholder="Search users..."
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity onPress={() => setSearchQuery('')}>
+              <Ionicons name="close-circle" size={20} color="#6b7280" />
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
+
       <FlatList
-        data={users}
-        keyExtractor={(item) => item.id.toString()}
+        data={filteredUsers}
+        keyExtractor={(item) => item.userId}
         renderItem={renderUserItem}
         ListEmptyComponent={
-          <View className="flex-1 justify-center items-center p-4">
-            <Text className="text-gray-500">No users available</Text>
+          <View className="flex-1 justify-center items-center p-4 mt-10">
+            <Ionicons name="people-outline" size={60} color="#d1d5db" />
+            <Text className="text-gray-500 mt-4 text-center">
+              {searchQuery.length > 0 
+                ? "No users match your search" 
+                : "No users available"}
+            </Text>
           </View>
         }
       />
 
-      <View className="p-4">
+      <View className="p-4 bg-white border-t border-gray-200">
         <CustomButton
           title={`Next (${selectedUsers.size} selected)`}
           onPress={handleNextStep}
           disabled={selectedUsers.size === 0}
           bgVariant="primary"
+          IconRight={() => <Ionicons name="arrow-forward" size={20} color="white" />}
         />
       </View>
     </View>
