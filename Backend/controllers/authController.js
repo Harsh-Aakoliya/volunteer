@@ -2,87 +2,83 @@
 import pool from "../config/datebase.js";
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
+import { UserDefinedMessageInstance } from "twilio/lib/rest/api/v2010/account/call/userDefinedMessage.js";
+import { useId } from "react";
 
 const register = async (req, res) => {
   const { mobileNumber, userId } = req.body;
-  
+  console.log("register ",mobileNumber,userId);
+  //first checking if user is already exists or not
   try {
-    // Check if user already exists
-    const existingUser = await pool.query(
-      'SELECT * FROM "users" WHERE "mobileNumber" = $1',
-      [mobileNumber]
+    const result = await pool.query(
+      `SELECT * FROM users WHERE "mobileNumber" = $1 OR "userId" = $2`,
+      [mobileNumber, userId]
     );
-    
-    if (existingUser.rows.length > 0) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'User with this mobile number already exists' 
+    console.log("response",result.rows);
+    if (result.rows.length > 0) {
+      const DB_mobileNumber = result.rows[0].mobileNumber;
+      const DB_userId = result.rows[0].userId;
+      if (DB_mobileNumber === mobileNumber)
+        res.json({ success: false, message: "Mobile number already registed" });
+      if (DB_userId === userId)
+        res.json({ success: false, message: "User id already registed" });
+
+      res.json({ success: false, message: "Not able to capture" }); //this case will not arise
+    } else {
+      const result = await pool.query(
+        `INSERT INTO "users" ("mobileNumber", "userId") VALUES ($1, $2) RETURNING *`,
+        [mobileNumber, userId]
+      );
+      console.log("inserted successfully");
+      res.json({
+        success: true,
+        message: "Registration request sent to admin",
       });
     }
-    
-    const result = await pool.query(
-      'INSERT INTO "users" ("mobileNumber", "userId") VALUES ($1, $2) RETURNING *',
-      [mobileNumber, userId]
-    );  
-    res.json({ success: true, message: 'Registration request sent to admin' });
   } catch (error) {
-    console.log("Registration error:", error.message);
     res.status(400).json({ success: false, message: error.message });
   }
 };
 
+// controllers/authController.js
 const login = async (req, res) => {
   const { mobileNumber, password } = req.body;
-  
+  console.log(mobileNumber,password);
   try {
-    // First check if user exists
-    const userExists = await pool.query(
-      'SELECT * FROM "users" WHERE "mobileNumber" = $1',
-      [mobileNumber]
-    );
-    
-    if (userExists.rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found. Please register first.'
-      });
-    }
-    
-    // Check if user is approved
-    if (!userExists.rows[0].isApproved) {
-      return res.status(401).json({
-        success: false,
-        message: 'Your account is not approved yet. Please wait for admin approval.'
-      });
-    }
-    
-    // Check password
     const result = await pool.query(
-      'SELECT * FROM "users" WHERE "mobileNumber" = $1 AND "password" = $2',
+      `SELECT * FROM users WHERE "mobileNumber" = $1 AND "password" = $2`,
       [mobileNumber, password]
     );
-    
+    console.log("results ",result.rows);
+
     if (result.rows.length > 0) {
       const userId = result.rows[0].userId;
+      const isApproved = result.rows[0].isApproved;
+      if (!isApproved) {
+        res.json({
+          success: false,
+          message: "User is not approved, wait for Admin approval",
+        });
+      }
       const token = jwt.sign(
         { userId: userId, isAdmin: result.rows[0].isAdmin },
         process.env.JWT_SECRET,
-        { expiresIn: '24h' }
+        { expiresIn: "24h" }
       );
-      res.json({ 
-        success: true, 
-        isAdmin: result.rows[0].isAdmin, 
-        token,
-        userId: userId
+      res.json({
+        success: true,
+        isAdmin: result.rows[0].isadmin,
+        token: token,
+        userId: userId,
       });
     } else {
-      res.status(401).json({
+      res.json({
         success: false,
-        message: 'Invalid credentials'
+        message: "Invalid credentials User not found",
       });
     }
   } catch (error) {
-    console.error("Login error:", error.message);
+    console.log("here we got error in catch of login in backend");
     res.status(400).json({ success: false, message: error.message });
   }
 };

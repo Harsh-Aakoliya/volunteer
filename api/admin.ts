@@ -26,8 +26,14 @@ export const fetchAnnouncements = async () => {
   return response.data;
 };
 
-export const createAnnouncement = async (title:any, body:any) => {
-  const response = await axios.post(`${API_URL}/api/announcements`, { title, body });
+export const createAnnouncement = async (title:any, body:any,authorId:any) => {
+  const response = await axios.post(`${API_URL}/api/announcements`, { title, body,authorId });
+  return response.data;
+};
+
+// Add this to your api/admin.js file
+export const updateAnnouncement = async (id:any, title:any, body:any) => {
+  const response = await axios.put(`${API_URL}/api/announcements/${id}`, { title, body });
   return response.data;
 };
 

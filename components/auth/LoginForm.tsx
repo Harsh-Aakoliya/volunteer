@@ -1,34 +1,50 @@
-import React, { useState } from 'react';
-import { View, Text, Alert, Image, SafeAreaView, KeyboardAvoidingView, Platform, Pressable } from 'react-native';
-import { router } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
-import CustomButton from '../ui/CustomButton';
-import CustomInput from '../ui/CustomInput';
-import { login } from '@/api/auth';
-import { ScrollView } from 'react-native';
+import React, { useState } from "react";
+import {
+  View,
+  Text,
+  Alert,
+  Image,
+  SafeAreaView,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+} from "react-native";
+import { router } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
+import CustomButton from "../ui/CustomButton";
+import CustomInput from "../ui/CustomInput";
+import { login } from "@/api/auth";
+import { ScrollView } from "react-native";
+import { Redirect } from 'expo-router';
+
 
 export default function LoginForm() {
-  const [mobileNumber, setMobileNumber] = useState('');
-  const [password, setPassword] = useState('');
+  const [mobileNumber, setMobileNumber] = useState("");
+  const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [touched, setTouched] = useState({ mobile: false, password: false });
 
+  //chekcing for changes
   const handleLogin = async () => {
     setTouched({ mobile: true, password: true });
 
     if (!mobileNumber || !password) {
-      Alert.alert('Error', 'Please fill in all fields');
+      Alert.alert("Error", "Please fill in all fields");
       return;
     }
 
     try {
       setIsLoading(true);
-      await login(mobileNumber, password);
-      // No need to navigate here as it's handled in the login function
+      const response = await login(mobileNumber, password);
+      console.log("response got after login at frontend",response);
+      if (response.success)  return <Redirect href="/announcement" />;
+      else {
+        Alert.alert(response.message);
+        router.replace("/signup");
+      }
     } catch (error) {
-      console.error("Login form error:", error);
-      // Error handling is done in the login function
+      Alert.alert("Error", "Invalid credentials");
     } finally {
       setIsLoading(false);
     }
@@ -39,11 +55,11 @@ export default function LoginForm() {
       <View className="flex-1">
         <View className="relative w-full h-[280px]">
           {/* <Image 
-            source={require('../../assets/images/icon.png')}
-            className="w-full h-[280px]"
-            resizeMode="cover"
-            style={{height:100,width:100}}
-          /> */}
+          source={require('../../assets/images/icon.png')}
+          className="w-full h-[280px]"
+          resizeMode="cover"
+          style={{height:100,width:100}}
+        /> */}
           <View className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-white">
             <Text className="text-3xl text-gray-800 font-JakartaBold">
               Welcome Back
@@ -61,10 +77,12 @@ export default function LoginForm() {
             value={mobileNumber}
             onChangeText={setMobileNumber}
             keyboardType="phone-pad"
-            leftIcon={<Ionicons name="call-outline" size={20} color="#6B7280" />}
+            leftIcon={
+              <Ionicons name="call-outline" size={20} color="#6B7280" />
+            }
             error={!mobileNumber ? "Mobile number is required" : ""}
             touched={touched.mobile}
-            onBlur={() => setTouched(prev => ({ ...prev, mobile: true }))}
+            onBlur={() => setTouched((prev) => ({ ...prev, mobile: true }))}
           />
 
           <CustomInput
@@ -73,19 +91,21 @@ export default function LoginForm() {
             value={password}
             onChangeText={setPassword}
             secureTextEntry={!showPassword}
-            leftIcon={<Ionicons name="lock-closed-outline" size={20} color="#6B7280" />}
+            leftIcon={
+              <Ionicons name="lock-closed-outline" size={20} color="#6B7280" />
+            }
             rightIcon={
               <Pressable onPress={() => setShowPassword(!showPassword)}>
-                <Ionicons 
-                  name={showPassword ? "eye-outline" : "eye-off-outline"} 
-                  size={20} 
+                <Ionicons
+                  name={showPassword ? "eye-outline" : "eye-off-outline"}
+                  size={20}
                   color="#6B7280"
                 />
               </Pressable>
             }
             error={!password ? "Password is required" : ""}
             touched={touched.password}
-            onBlur={() => setTouched(prev => ({ ...prev, password: true }))}
+            onBlur={() => setTouched((prev) => ({ ...prev, password: true }))}
           />
 
           <View className="pt-4">
@@ -93,16 +113,18 @@ export default function LoginForm() {
               title="Sign In"
               onPress={handleLogin}
               loading={isLoading}
-              IconRight={() => <Ionicons name="arrow-forward" size={20} color="white" />}
+              IconRight={() => (
+                <Ionicons name="arrow-forward" size={20} color="white" />
+              )}
             />
 
             <View className="flex-row justify-center items-center mt-6">
               <Text className="text-gray-600 font-JakartaMedium">
-                Don't have an account?{' '}
+                Don't have an account?{" "}
               </Text>
-              <Text 
+              <Text
                 className="text-[#0286ff] font-JakartaSemiBold"
-                onPress={() => router.push('/signup')}
+                onPress={() => router.push("/signup")}
               >
                 Sign Up
               </Text>
@@ -112,4 +134,4 @@ export default function LoginForm() {
       </View>
     </ScrollView>
   );
-} 
+}

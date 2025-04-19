@@ -1,14 +1,14 @@
-import React, { useState } from 'react';
-import { View, Text, Alert, Image, ScrollView, Pressable } from 'react-native';
-import { router } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
-import CustomInput from '../ui/CustomInput';
-import CustomButton from '../ui/CustomButton';
-import { register } from '@/api/auth';
+import React, { useState } from "react";
+import { View, Text, Alert, Image, ScrollView, Pressable } from "react-native";
+import { router } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
+import CustomInput from "../ui/CustomInput";
+import CustomButton from "../ui/CustomButton";
+import { register } from "@/api/auth";
 
 export default function SignupForm() {
-  const [mobileNumber, setMobileNumber] = useState('');
-  const [userId, setUserId] = useState('');
+  const [mobileNumber, setMobileNumber] = useState("");
+  const [userId, setuserId] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [touched, setTouched] = useState({ mobile: false, id: false });
 
@@ -16,17 +16,26 @@ export default function SignupForm() {
     setTouched({ mobile: true, id: true });
 
     if (!mobileNumber || !userId) {
-      Alert.alert('Error', 'Please fill in all fields');
+      Alert.alert("Error", "Please fill in all fields");
       return;
     }
 
     try {
       setIsLoading(true);
-      await register(mobileNumber, userId);
-      // Navigation is handled in the register function
+      const data = await register(mobileNumber, userId);
+      if (data.success) {
+        Alert.alert(
+          "Success",
+          "Registration request sent. Please wait for admin approval.",
+          [{ text: "OK", onPress: () => router.replace("/") }]
+        );
+      } else {
+        Alert.alert("Failure", data.message, [
+          { text: "OK", onPress: () => router.replace("/") },
+        ]);
+      }
     } catch (error) {
-      console.error("Signup form error:", error);
-      // Error handling is done in the register function
+      Alert.alert("Error", "Registration failed");
     } finally {
       setIsLoading(false);
     }
@@ -59,21 +68,27 @@ export default function SignupForm() {
             value={mobileNumber}
             onChangeText={setMobileNumber}
             keyboardType="phone-pad"
-            leftIcon={<Ionicons name="call-outline" size={20} color="#6B7280" />}
-            error={!mobileNumber && touched.mobile ? "Mobile number is required" : ""}
+            leftIcon={
+              <Ionicons name="call-outline" size={20} color="#6B7280" />
+            }
+            error={
+              !mobileNumber && touched.mobile ? "Mobile number is required" : ""
+            }
             touched={touched.mobile}
-            onBlur={() => setTouched(prev => ({ ...prev, mobile: true }))}
+            onBlur={() => setTouched((prev) => ({ ...prev, mobile: true }))}
           />
 
           <CustomInput
-            label="User ID"
-            placeholder="Enter your user ID"
+            label="Specific ID"
+            placeholder="Enter your specific ID"
             value={userId}
-            onChangeText={setUserId}
-            leftIcon={<Ionicons name="card-outline" size={20} color="#6B7280" />}
-            error={!userId && touched.id ? "User ID is required" : ""}
+            onChangeText={setuserId}
+            leftIcon={
+              <Ionicons name="card-outline" size={20} color="#6B7280" />
+            }
+            error={!userId && touched.id ? "Specific ID is required" : ""}
             touched={touched.id}
-            onBlur={() => setTouched(prev => ({ ...prev, id: true }))}
+            onBlur={() => setTouched((prev) => ({ ...prev, id: true }))}
           />
 
           <View className="pt-8">
@@ -81,16 +96,18 @@ export default function SignupForm() {
               title="Create Account"
               onPress={handleSignup}
               loading={isLoading}
-              IconRight={() => <Ionicons name="arrow-forward" size={20} color="white" />}
+              IconRight={() => (
+                <Ionicons name="arrow-forward" size={20} color="white" />
+              )}
             />
 
             <View className="flex-row justify-center items-center mt-6">
               <Text className="text-gray-600 font-JakartaMedium">
-                Already have an account?{' '}
+                Already have an account?{" "}
               </Text>
-              <Text 
+              <Text
                 className="text-[#0286ff] font-JakartaSemiBold"
-                onPress={() => router.back()}
+                onPress={() => router.replace("/login")}
               >
                 Sign In
               </Text>

@@ -18,7 +18,7 @@ import { fetchUserProfile, logout } from '@/api/user';
 export default function Profile() {
   const [user, setUser] = useState<User | null>(null);
   const [userProfile, setUserProfile] = useState<any>(null);
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [isAdmin, setIsAdmin] = useState<any>(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const scrollY = new Animated.Value(0);
@@ -28,30 +28,11 @@ export default function Profile() {
   useEffect(() => {
     const loadProfileData = async () => {
       try {
-        // Get user from storage
-        let userData = await AuthStorage.getUser();
-        console.log('Loaded user data:', userData);
-        
-        if (!userData) {
-          // Attempt to fetch profile if no user data
-          const profileData = await fetchUserProfile();
-          if (profileData) {
-            await AuthStorage.storeUser(profileData);
-            userData = profileData;
-          } else {
-            throw new Error('No user data found');
-          }
-        }
-
-        setUser(userData);
-
-        // Check admin status
-        const adminStatus = await AuthStorage.getAdminStatus();
-        setIsAdmin(adminStatus);
-
-        // Fetch user profile
         const profileData = await fetchUserProfile();
         setUserProfile(profileData);
+        setIsAdmin(profileData.isAdmin);
+        console.log("profile data",profileData);
+        console.log("is admin in profile",isAdmin);
       } catch (error) {
         console.error('Error loading profile data:', error);
         setError(error instanceof Error ? error.message : 'An unknown error occurred');
@@ -136,7 +117,7 @@ export default function Profile() {
           {isAdmin && (
             <CustomButton
               title="Dashboard"
-              onPress={() => router.push('/dashboard')}
+              onPress={() => router.push("/(admin)/dashboard")}
               bgVariant="outline"
               textVariant="primary"
               className="bg-white/20 backdrop-blur-lg"

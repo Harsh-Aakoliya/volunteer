@@ -71,6 +71,7 @@ interface Announcement {
   id: number;
   title: string;
   body: string;
+  authorId:string;
   created_at: string;
   likes: number;
   dislikes: number;
@@ -106,8 +107,9 @@ const Announcements = () => {
   // Check admin status on component mount
   useEffect(() => {
     const checkAdminStatus = async () => {
-      const adminStatus = await AuthStorage.getAdminStatus();
-      setIsAdmin(adminStatus);
+      const userData = await AuthStorage.getUser();
+
+      setIsAdmin(userData?.isAdmin || false);
     };
 
     checkAdminStatus();
@@ -341,7 +343,58 @@ const Announcements = () => {
                 </TouchableOpacity>
               </View>
             </View>
+            {/* Admin Actions */}
+            {isAdmin && selectedAnnouncement && (
+              <View className="flex-row justify-end items-center px-4 py-2 border-t border-gray-200">
+                <TouchableOpacity
+                  onPress={async () => {
+                    // Check if current user is the author
+                    const userData = await AuthStorage.getUser();
+                    if (userData?.userId === selectedAnnouncement.authorId) {
+                      toggleModal();
+                      router.push({
+                        pathname: "../create-announcement",
+                        params: { 
+                          announcementId: selectedAnnouncement.id,
+                          title: selectedAnnouncement.title,
+                          body: selectedAnnouncement.body
+                        }
+                      });
+                    } else {
+                      alert("You can only edit your own announcements");
+                    }
+                  }}
+                  className="bg-blue-500 py-2 px-4 rounded-lg mr-2"
+                >
+                  <Text className="text-white">Edit</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={async () => {
+                    // Check if current user is the author
+                    const userData = await AuthStorage.getUser();
+                    if (userData?.userId === selectedAnnouncement.authorId) {
+                      try {
+                        await deleteAnnouncement(selectedAnnouncement.id);
+                        toggleModal();
+                        loadAnnouncements(); // Refresh the list
+                      } catch (error) {
+                        console.error("Error deleting announcement:", error);
+                        alert("Failed to delete announcement");
+                      }
+                    } else {
+                      alert("You can only delete your own announcements");
+                    }
+                  }}
+                  className="bg-red-500 py-2 px-4 rounded-lg"
+                >
+                  <Text className="text-white">Delete</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
           </SafeAreaView>
+
         )}
       </Modal>
     </View>

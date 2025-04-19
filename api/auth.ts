@@ -50,8 +50,7 @@ export const login = async (mobileNumber: string, password: string) => {
       router.replace("/announcement");
       return response.data;
     } else {
-      alert(response.data.message || "Login failed");
-      return null;
+      return response.data;
     }
   } catch (error: any) {
     console.error("Login error", error);
@@ -89,41 +88,13 @@ export const login = async (mobileNumber: string, password: string) => {
 
 export const register = async (mobileNumber: string, userId: string) => {
   try {
-    // First check if user already exists
-    const checkResponse = await axios.post(`${API_URL}/api/check-user`, {
-      mobileNumber,
-    });
-    
-    if (checkResponse.data.exists) {
-      if (checkResponse.data.isApproved) {
-        alert("You are already registered. Please login.");
-        router.replace("/");
-        return null;
-      } else {
-        alert("Your registration is pending. Please wait for admin approval.");
-        router.replace("/");
-        return null;
-      }
-    }
-    
-    // If user doesn't exist, proceed with registration
+
     const response = await axios.post(`${API_URL}/api/register`, {
       mobileNumber,
       userId,
     });
-    
-    alert("Registration request sent to admin. Please wait for approval.");
-    router.replace("/");
     return response.data;
   } catch (error: any) {
     console.error("Registration error", error);
-    
-    if (error.response && error.response.data && error.response.data.message) {
-      alert(error.response.data.message);
-    } else {
-      alert("Failed to sign up. Please try again later.");
-    }
-    
-    return null;
   }
 };

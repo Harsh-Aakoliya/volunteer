@@ -44,12 +44,15 @@ export const AuthStorage = {
 
   // Store admin status
   async storeAdminStatus(isAdmin: boolean) {
+    console.log("storing admin status");
     await AsyncStorage.setItem('isAdmin', String(isAdmin));
+    console.log("stored status", await AsyncStorage.getItem('isAdmin')); // Confirm it was saved
   },
 
   // Get admin status
   async getAdminStatus(): Promise<boolean> {
     const adminStatus = await AsyncStorage.getItem('isAdmin');
+    console.log("in getadminstatus",adminStatus)
     return adminStatus === 'true';
   },
 

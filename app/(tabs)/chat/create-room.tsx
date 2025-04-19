@@ -40,7 +40,7 @@ console.log("all users",users);
   useEffect(() => {
     const loadChatUsers = async () => {
       try {
-        const fetchedUsers = await fetchChatUsers();
+        const fetchedUsers = await fetchChatUsers();//{userId, fullName, mobileNumber}
         setUsers(fetchedUsers);
         setFilteredUsers(fetchedUsers);
       } catch (error) {
@@ -79,9 +79,9 @@ console.log("all users",users);
 
   const renderUserItem = ({ item }: { item: ChatUser }) => {
     // Get the first letter of the name or use a default
+    console.log("here in renderuseritemp",item);
     const firstLetter = item.fullName ? item.fullName.charAt(0).toUpperCase() : '?';
     const displayName = item.fullName || 'Unknown User';
-    
     return (
       <TouchableOpacity 
         className="flex-row items-center p-4 bg-white border-b border-gray-200"
@@ -117,7 +117,7 @@ const handleNextStep = () => {
   
   // Convert the Set to an array of valid user IDs
   const selectedUserArray = Array.from(selectedUsers).filter(id => id && id.trim() !== '');
-  
+  selectedUserArray.push(currentUser.userId);
   if (selectedUserArray.length === 0) {
     alert("No valid users selected");
     return;

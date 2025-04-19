@@ -6,6 +6,8 @@ import WebView from 'react-native-webview';
 import { TextInput, FlatList, Alert } from 'react-native';
 import { fetchAnnouncements, createAnnouncement, updateLikes } from '@/api/admin';
 import { router } from 'expo-router';
+import { AuthStorage } from '@/utils/authStorage';
+import { updateAnnouncement } from '@/api/admin';
 
 interface Announcement {
   id: number;
@@ -15,7 +17,12 @@ interface Announcement {
   likes: number;
   dislikes: number;
 }
-
+// Update the interface
+interface RichTextEditorProps {
+  initialTitle?: string;
+  initialContent?: string;
+  announcementId?: number;
+}
 // Create a forwarded ref component for RichEditor
 const ForwardedRichEditor = forwardRef<RichEditor, any>((props, ref) => (
   <RichEditor {...props} ref={ref} />
@@ -36,31 +43,58 @@ const StyledWebView = cssInterop(WebView, {
   className: 'style'
 });
 
-const RichTextEditor = () => {
-  // Properly type the ref
+// Update the component definition
+const RichTextEditor: React.FC<RichTextEditorProps> = ({ 
+  initialTitle = '', 
+  initialContent = '',
+  announcementId
+}) => {
+   // Update state initialization to use props
   const richText = useRef<RichEditor>(null);
-  // State to store the current HTML content
-  const [content, setContent] = useState<string>('');
-  const [title, setTitle] = useState<string>('');
-  // const [body, setBody] = useState<string>('');
+  const [content, setContent] = useState<string>(initialContent);
+  const [title, setTitle] = useState<string>(initialTitle);
+
+// Add this useEffect to update state if props change
+  useEffect(() => {
+    setTitle(initialTitle);
+    setContent(initialContent);
+    
+    // Update the editor content if the ref is available
+    if (richText.current && initialContent) {
+      richText.current.setContentHTML(initialContent);
+    }
+  }, [initialTitle, initialContent]);
+
+  // Update the handleCreateAnnouncement function
   const handleCreateAnnouncement = async () => {
     if (!title.trim() || !content.trim()) {
       Alert.alert('Error', 'Title and Body cannot be empty.');
       return;
     }
+    
     try {
-      const newAnnouncement=await createAnnouncement(title, content);
-      console.log(";aljf",newAnnouncement)
+      let result;
+      
+      if (announcementId) {
+        // Update existing announcement
+        result = await updateAnnouncement(announcementId, title, content);
+        console.log("Updated announcement:", result);
+      } else {
+        // Create new announcement
+        result = await createAnnouncement(title, content, (await AuthStorage.getUser())?.userId);
+        console.log("Created announcement:", result);
+      }
+      
       setTitle('');
       setContent('');
-      console.log("after publishing",newAnnouncement);
-      router.push({
+      
+      router.replace({
         pathname: "/announcement",
-        params: { newAnnouncement: JSON.stringify(newAnnouncement) }
-    });
-    
+        params: { newAnnouncement: JSON.stringify(result) }
+      });
     } catch (error) {
-      console.error('Error creating announcement:', error);
+      console.error('Error saving announcement:', error);
+      Alert.alert('Error', 'Failed to save announcement. Please try again.');
     }
   };
 
@@ -291,15 +325,12 @@ const RichTextEditor = () => {
               <TouchableOpacity 
                 className="bg-green-600 py-2 px-4 rounded-lg"
                 onPress={() => {
-                  // Handle final save/publish logic here
                   console.log('Publishing announcement:', content);
                   toggleModal();
-                  // Add your save to server or state management logic here
-                  console.log("type of content",typeof(content));
                   handleCreateAnnouncement();
                 }}
               >
-                <Text className="text-white">Publish</Text>
+                <Text className="text-white">{announcementId ? 'Update' : 'Publish'}</Text>
               </TouchableOpacity>
             </View>
           </View>

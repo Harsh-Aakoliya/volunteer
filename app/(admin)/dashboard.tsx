@@ -10,9 +10,9 @@ import { Ionicons } from '@expo/vector-icons';
 
 // Define a type for pending users
 interface PendingUser {
-  id: number;
-  mobile_number: string;
-  specific_id: string;
+  fullName: number;
+  mobileNumber: string;
+  userId: string;
 }
 
 export default function AdminDashboard() {
@@ -24,9 +24,10 @@ export default function AdminDashboard() {
   // Check admin status on mount
   useEffect(() => {
     const checkAdminStatus = async () => {
-      const adminStatus = await AuthStorage.getAdminStatus();
+      const userData = await AuthStorage.getUser();
+      const adminStatus=userData?.isAdmin || false;
       setIsAdmin(adminStatus);
-
+      console.log("Admin status:", adminStatus);
       // Redirect if not admin
       if (!adminStatus) {
         router.replace("/");
@@ -63,7 +64,7 @@ export default function AdminDashboard() {
       console.log("Approving Users:", usersToApprove);
 
       await Promise.all(
-        usersToApprove.map((mobile_number) => approveUser(mobile_number))
+        usersToApprove.map((mobileNumber) => approveUser(mobileNumber))
       );
 
       setSelectedUsers(new Set());
@@ -73,13 +74,13 @@ export default function AdminDashboard() {
     }
   };
 
-  const toggleSelection = (mobile_number: string) => {
+  const toggleSelection = (mobileNumber: string) => {
     setSelectedUsers((prevSelected) => {
       const newSelected = new Set(prevSelected);
-      if (newSelected.has(mobile_number)) {
-        newSelected.delete(mobile_number);
+      if (newSelected.has(mobileNumber)) {
+        newSelected.delete(mobileNumber);
       } else {
-        newSelected.add(mobile_number);
+        newSelected.add(mobileNumber);
       }
       return newSelected;
     });
@@ -140,7 +141,7 @@ export default function AdminDashboard() {
       <FlatList
         className="px-4"
         data={pendingUsers}
-        keyExtractor={(item) => item.id.toString()}
+        // keyExtractor={(item) => item?.fullName.toString()}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
@@ -160,21 +161,21 @@ export default function AdminDashboard() {
           <View className="bg-white p-4 rounded-xl mb-3 shadow-sm border border-gray-100">
             <View className="flex-row items-center">
               <Checkbox
-                value={selectedUsers.has(item.mobile_number)}
-                onValueChange={() => toggleSelection(item.mobile_number)}
+                value={selectedUsers.has(item.mobileNumber)}
+                onValueChange={() => toggleSelection(item.mobileNumber)}
                 className="mr-4"
               />
               <View className="flex-1">
                 <View className="flex-row items-center mb-1">
                   <Ionicons name="call-outline" size={16} color="#6B7280" />
                   <Text className="text-gray-800 font-semibold ml-2">
-                    {item.mobile_number}
+                    {item.mobileNumber}
                   </Text>
                 </View>
                 <View className="flex-row items-center">
                   <Ionicons name="card-outline" size={16} color="#6B7280" />
                   <Text className="text-gray-600 ml-2">
-                    ID: {item.specific_id}
+                    ID: {item.userId}
                   </Text>
                 </View>
               </View>

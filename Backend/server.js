@@ -1,4 +1,4 @@
-// Update your server.js to include socket.io and chat routes
+// server.js
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
@@ -10,10 +10,9 @@ import initDB from './models/User.js';
 import initChatDB from './models/Chat.js';
 import os from 'os';
 import errorHandling from './middlewares/errorHandler.js';
-import { createAnnouncement, getAnnouncements, updateLikes, deleteAnnouncement } from './controllers/announcementController.js';
-// import chatController from "./controllers/chatController.js"
-//chat related controller
+import { createAnnouncement, getAnnouncements, updateLikes, deleteAnnouncement, updateAnnouncementController } from './controllers/announcementController.js';
 import chatRoutes from './routes/chatRoutes.js';
+
 dotenv.config();
 const PORT = process.env.PORT || 3000;
 
@@ -28,12 +27,181 @@ const io = new Server(httpServer, {
 
 app.use(express.json());  
 app.use(cors());
-
 app.use(errorHandling);
 
 // Initialize database
 initDB();
 initChatDB();
+
+// server.js - Updated socket implementation
+// Store online users by room
+const onlineUsersByRoom = {};
+
+// Socket.io connection handling
+io.on('connection', (socket) => {
+  console.log('New client connected:', socket.id);
+  let currentUser = null;
+  let currentRooms = [];
+
+  // Handle user joining a chat room
+  socket.on('joinRoom', async ({ roomId, userId, userName }) => {
+    try {
+      currentUser = { userId, userName };
+      
+      // Join the socket room
+      socket.join(`room-${roomId}`);
+      currentRooms.push(roomId);
+      
+      // Initialize room in onlineUsers if not exists
+      if (!onlineUsersByRoom[roomId]) {
+        onlineUsersByRoom[roomId] = new Set();
+      }
+      
+      // Add user to online users for this room
+      onlineUsersByRoom[roomId].add(userId);
+      
+      console.log(`User ${userName} (${userId}) joined room ${roomId}`);
+      console.log(`Room ${roomId} online users:`, Array.from(onlineUsersByRoom[roomId]));
+      
+      // Get all members for this room from the database
+      const pool = await import('./config/datebase.js').then(m => m.default);
+      const membersResult = await pool.query(
+        `SELECT u."userId", u."fullName", cru."isAdmin" 
+         FROM chatroomusers cru
+         JOIN "users" u ON cru."userId" = u."userId"
+         WHERE cru."roomId" = $1`,
+        [roomId]
+      );
+      
+      // Create members list with online status
+      const members = membersResult.rows.map(member => ({
+        ...member,
+        isOnline: onlineUsersByRoom[roomId].has(member.userId)
+      }));
+      
+      // Emit updated online users to all clients in the room
+      io.to(`room-${roomId}`).emit('onlineUsers', {
+        roomId,
+        onlineUsers: Array.from(onlineUsersByRoom[roomId]),
+        totalMembers: members.length
+      });
+      
+      // Emit the full members list with online status
+      io.to(`room-${roomId}`).emit('roomMembers', {
+        roomId,
+        members
+      });
+    } catch (error) {
+      console.error('Error in joinRoom event:', error);
+    }
+  });
+
+  // Handle user leaving a chat room
+  socket.on('leaveRoom', async ({ roomId, userId }) => {
+    if (roomId && userId) {
+      socket.leave(`room-${roomId}`);
+      
+      // Remove user from online users for this room
+      if (onlineUsersByRoom[roomId]) {
+        onlineUsersByRoom[roomId].delete(userId);
+        
+        // If room is empty, clean up
+        if (onlineUsersByRoom[roomId].size === 0) {
+          delete onlineUsersByRoom[roomId];
+        } else {
+          try {
+            // Get all members for this room from the database
+            const pool = await import('./config/datebase.js').then(m => m.default);
+            const membersResult = await pool.query(
+              `SELECT u."userId", u."fullName", cru."isAdmin" 
+               FROM chatroomusers cru
+               JOIN "users" u ON cru."userId" = u."userId"
+               WHERE cru."roomId" = $1`,
+              [roomId]
+            );
+            
+            // Create members list with online status
+            const members = membersResult.rows.map(member => ({
+              ...member,
+              isOnline: onlineUsersByRoom[roomId].has(member.userId)
+            }));
+            
+            // Emit updated online users to all clients in the room
+            io.to(`room-${roomId}`).emit('onlineUsers', {
+              roomId,
+              onlineUsers: Array.from(onlineUsersByRoom[roomId]),
+              totalMembers: members.length
+            });
+            
+            // Emit the full members list with online status
+            io.to(`room-${roomId}`).emit('roomMembers', {
+              roomId,
+              members
+            });
+          } catch (error) {
+            console.error('Error updating room members on leave:', error);
+          }
+        }
+      }
+      
+      // Remove from current rooms
+      currentRooms = currentRooms.filter(r => r !== roomId);
+      console.log(`User ${userId} left room ${roomId}`);
+    }
+  });
+
+  // Handle disconnection
+  socket.on('disconnect', async () => {
+    console.log('Client disconnected:', socket.id);
+    
+    // Clean up all rooms this user was in
+    if (currentUser) {
+      for (const roomId of currentRooms) {
+        if (onlineUsersByRoom[roomId]) {
+          onlineUsersByRoom[roomId].delete(currentUser.userId);
+          
+          // If room is empty, clean up
+          if (onlineUsersByRoom[roomId].size === 0) {
+            delete onlineUsersByRoom[roomId];
+          } else {
+            try {
+              // Get all members for this room from the database
+              const pool = await import('./config/datebase.js').then(m => m.default);
+              const membersResult = await pool.query(
+                `SELECT u."userId", u."fullName", cru."isAdmin" 
+                 FROM chatroomusers cru
+                 JOIN "users" u ON cru."userId" = u."userId"
+                 WHERE cru."roomId" = $1`,
+                [roomId]
+              );
+              
+              // Create members list with online status
+              const members = membersResult.rows.map(member => ({
+                ...member,
+                isOnline: onlineUsersByRoom[roomId].has(member.userId)
+              }));
+              
+              // Emit updated online users to all clients in the room
+              io.to(`room-${roomId}`).emit('onlineUsers', {
+                roomId,
+                onlineUsers: Array.from(onlineUsersByRoom[roomId]),
+                totalMembers: members.length
+              });
+              
+              // Emit the full members list with online status
+              io.to(`room-${roomId}`).emit('roomMembers', {
+                roomId,
+                members
+              });
+            } catch (error) {
+              console.error('Error updating room members on disconnect:', error);
+            }
+          }
+        }
+      }
+    }
+  });
+});
 
 // Auth routes
 app.post('/api/register', authController.register);
@@ -44,7 +212,6 @@ app.post('/api/check-user', authController.checkUser);
 app.get('/api/pending-users', userController.getPendingUsers);
 app.post('/api/approve-user', userController.approveUser);
 app.get('/api/users/:userId/profile', userController.getUserProfile);
-// app.get('/api/users/:userId/attendance', userController.getUserAttendance);
 app.put('/api/users/:userId/profile', userController.updateUserProfile);
 
 // Announcement routes
@@ -52,11 +219,13 @@ app.post('/api/announcements', createAnnouncement);
 app.get('/api/announcements', getAnnouncements);
 app.post('/api/announcements/likes', updateLikes);
 app.delete("/api/announcement/:id", deleteAnnouncement);
+app.put('/api/announcements/:id', updateAnnouncementController);
 
 // Chat routes
 app.use('/api/chat', chatRoutes);
 
-app.listen(PORT, '0.0.0.0', () => {
+// Use httpServer instead of app to listen
+httpServer.listen(PORT, '0.0.0.0', () => {
   const addresses = Object.values(os.networkInterfaces())
     .flat()
     .filter(item => !item.internal && item.family === 'IPv4')

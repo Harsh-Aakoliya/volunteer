@@ -53,7 +53,7 @@ export const createChatRoom = async (
     );
     
     return {
-      id: response.data.id,
+      roomId: response.data.id,
       roomName: response.data.roomName,
       roomDescription: response.data.roomDescription,
       isGroup: response.data.isGroup
@@ -64,7 +64,7 @@ export const createChatRoom = async (
   }
 };
 
-// Fetch all chat rooms for the current user
+// api/chat.ts - Updated fetchChatRooms function
 export const fetchChatRooms = async (): Promise<ChatRoom[]> => {
   try {
     const token = await AuthStorage.getToken();
@@ -76,10 +76,12 @@ export const fetchChatRooms = async (): Promise<ChatRoom[]> => {
     
     // Map the response to match our frontend types
     return response.data.map((room: any) => ({
-      id: room.id,
+      roomId: room.id || room.roomId, // Use the id from the backend as roomId
       roomName: room.roomName,
       roomDescription: room.roomDescription,
-      isGroup: room.isGroup
+      isGroup: room.isGroup,
+      createdBy: room.createdBy,
+      createdOn: room.createdOn
     }));
   } catch (error) {
     console.error("Error fetching chat rooms:", error);

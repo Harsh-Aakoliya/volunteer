@@ -48,15 +48,13 @@ export interface User {
 // Chat-related Types
 export interface Message {
   id: number;
-  roomId: number;
+  roomId: number | string; // Accept either number or string
   senderId: string;
-  senderName?: string;
+  senderName: string;
   messageText: string;
   createdAt: string;
 }
-
 export interface ChatRoom {
-  id?: number;
   roomId?: number;
   roomName: string;
   roomDescription?: string;
@@ -69,6 +67,7 @@ export interface ChatUser {
   userId: string;
   fullName?: string;
   mobileNumber?: string;
+  isAdmin?: boolean;
 }
 
 export interface ChatRoomUser {

@@ -35,8 +35,7 @@ const Announcement = {
 
 export const createAnnouncement = async (req, res) => {
   try {
-    const { title, body } = req.body;
-    const authorId = req.user.userId; // Get authorId from authenticated user
+    const { title, body,authorId } = req.body;
     const announcement = await Announcement.create(title, body, authorId);
     res.status(201).json(announcement);
   } catch (error) {
@@ -74,5 +73,28 @@ export const deleteAnnouncement = async (req, res) => {
     res.status(200).json({ message: 'Deleted successfully' });
   } catch (error) {
     res.status(500).json({ error: 'Failed to delete announcement' });
+  }
+};
+
+// Add this to your controller
+export const updateAnnouncementController = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { title, body } = req.body;
+    
+    // Update the announcement
+    const result = await pool.query(
+      'UPDATE "announcements" SET "title" = $1, "body" = $2 WHERE "id" = $3 RETURNING *',
+      [title, body, id]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Announcement not found' });
+    }
+    
+    res.status(200).json(result.rows[0]);
+  } catch (error) {
+    console.error('Error updating announcement:', error);
+    res.status(500).json({ error: 'Failed to update announcement' });
   }
 };
