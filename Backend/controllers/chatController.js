@@ -740,6 +740,8 @@ async updateRoomSettings(req, res) {
 },
 // controllers/chatController.js - Update the sendMessage function
 
+// controllers/chatController.js - Update the sendMessage function
+
 async sendMessage(req, res) {
   try {
     const { roomId } = req.params;
@@ -775,14 +777,69 @@ async sendMessage(req, res) {
     
     // Get the io instance
     const io = req.app.get('io');
+    const lastMessageByRoom = req.app.get('lastMessageByRoom');
+    const unreadMessagesByUser = req.app.get('unreadMessagesByUser');
+    
+    // Update last message for this room
+    if (lastMessageByRoom) {
+      lastMessageByRoom[roomIdInt] = {
+        id: newMessage.id,
+        messageText: newMessage.messageText,
+        createdAt: newMessage.createdAt,
+        sender: {
+          userId: senderId,
+          userName: senderName
+        }
+      };
+    }
+    
+    // Get all members of the room
+    const membersResult = await pool.query(
+      `SELECT "userId" FROM chatroomusers WHERE "roomId" = $1`,
+      [roomIdInt]
+    );
+    
+    const memberIds = membersResult.rows.map(row => row.userId);
+    
+    // Increment unread count for all members except sender
+    if (unreadMessagesByUser) {
+      memberIds.forEach(memberId => {
+        if (memberId !== senderId) {
+          // Initialize if not exists
+          if (!unreadMessagesByUser[memberId]) {
+            unreadMessagesByUser[memberId] = {};
+          }
+          if (!unreadMessagesByUser[memberId][roomIdInt]) {
+            unreadMessagesByUser[memberId][roomIdInt] = 0;
+          }
+          
+          // Increment unread count
+          unreadMessagesByUser[memberId][roomIdInt]++;
+        }
+      });
+    }
     
     // Emit the message to all users in the room
     if (io) {
       io.to(`room-${roomIdInt}`).emit('newMessage', {
-        ...messageWithSender,
+        id: newMessage.id,
+        roomId: roomIdInt.toString(),
+        messageText: newMessage.messageText,
+        createdAt: newMessage.createdAt,
         sender: {
           userId: senderId,
           userName: senderName
+        }
+      });
+      
+      // Also broadcast roomUpdate to all members to update their room list
+      memberIds.forEach(memberId => {
+        if (memberId !== senderId && unreadMessagesByUser && unreadMessagesByUser[memberId]) {
+          io.emit('roomUpdate', {
+            roomId: roomIdInt.toString(),
+            lastMessage: lastMessageByRoom[roomIdInt],
+            unreadCount: unreadMessagesByUser[memberId][roomIdInt] || 0
+          });
         }
       });
     }

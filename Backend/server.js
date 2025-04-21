@@ -33,9 +33,15 @@ app.use(errorHandling);
 initDB();
 initChatDB();
 
-// server.js - Updated socket implementation
+  // server.js - Socket.io implementation section
 // Store online users by room
 const onlineUsersByRoom = {};
+
+// Store unread messages by user and room
+const unreadMessagesByUser = {};
+
+// Store last message by room
+const lastMessageByRoom = {};
 
 // Socket.io connection handling
 io.on('connection', (socket) => {
@@ -46,6 +52,11 @@ io.on('connection', (socket) => {
   // Handle user joining a chat room
   socket.on('joinRoom', async ({ roomId, userId, userName }) => {
     try {
+      if (!roomId || !userId) {
+        console.error('Invalid joinRoom parameters:', { roomId, userId, userName });
+        return;
+      }
+      
       currentUser = { userId, userName };
       
       // Join the socket room
@@ -63,6 +74,11 @@ io.on('connection', (socket) => {
       console.log(`User ${userName} (${userId}) joined room ${roomId}`);
       console.log(`Room ${roomId} online users:`, Array.from(onlineUsersByRoom[roomId]));
       
+      // Clear unread messages for this user in this room
+      if (unreadMessagesByUser[userId] && unreadMessagesByUser[userId][roomId]) {
+        unreadMessagesByUser[userId][roomId] = 0;
+      }
+      
       // Get all members for this room from the database
       const pool = await import('./config/datebase.js').then(m => m.default);
       const membersResult = await pool.query(
@@ -76,7 +92,7 @@ io.on('connection', (socket) => {
       // Create members list with online status
       const members = membersResult.rows.map(member => ({
         ...member,
-        isOnline: onlineUsersByRoom[roomId].has(member.userId)
+        isOnline: onlineUsersByRoom[roomId]?.has(member.userId) || false
       }));
       
       // Emit updated online users to all clients in the room
@@ -91,11 +107,19 @@ io.on('connection', (socket) => {
         roomId,
         members
       });
+      
+      // Send last message for this room if exists
+      if (lastMessageByRoom[roomId]) {
+        socket.emit('lastMessage', {
+          roomId,
+          message: lastMessageByRoom[roomId]
+        });
+      }
     } catch (error) {
       console.error('Error in joinRoom event:', error);
     }
   });
-
+  
   // Handle user leaving a chat room
   socket.on('leaveRoom', async ({ roomId, userId }) => {
     if (roomId && userId) {
@@ -123,7 +147,7 @@ io.on('connection', (socket) => {
             // Create members list with online status
             const members = membersResult.rows.map(member => ({
               ...member,
-              isOnline: onlineUsersByRoom[roomId].has(member.userId)
+              isOnline: onlineUsersByRoom[roomId]?.has(member.userId) || false
             }));
             
             // Emit updated online users to all clients in the room
@@ -138,6 +162,12 @@ io.on('connection', (socket) => {
               roomId,
               members
             });
+            
+            // Emit user offline event
+            io.to(`room-${roomId}`).emit('userOffline', {
+              roomId,
+              userId
+            });
           } catch (error) {
             console.error('Error updating room members on leave:', error);
           }
@@ -147,6 +177,91 @@ io.on('connection', (socket) => {
       // Remove from current rooms
       currentRooms = currentRooms.filter(r => r !== roomId);
       console.log(`User ${userId} left room ${roomId}`);
+    }
+  });
+
+  // Handle new message
+  socket.on('sendMessage', async ({ roomId, message, sender }) => {
+    try {
+      console.log(`New message in room ${roomId} from ${sender.userName}:`, message.messageText);
+      
+      // Store as last message for this room
+      lastMessageByRoom[roomId] = {
+        ...message,
+        sender
+      };
+      
+      // Get all members of the room
+      const pool = await import('./config/datebase.js').then(m => m.default);
+      const membersResult = await pool.query(
+        `SELECT "userId" FROM chatroomusers WHERE "roomId" = $1`,
+        [roomId]
+      );
+      
+      const memberIds = membersResult.rows.map(row => row.userId);
+      
+      // Increment unread count for all members except sender
+      memberIds.forEach(memberId => {
+        if (memberId !== sender.userId) {
+          // Initialize if not exists
+          if (!unreadMessagesByUser[memberId]) {
+            unreadMessagesByUser[memberId] = {};
+          }
+          if (!unreadMessagesByUser[memberId][roomId]) {
+            unreadMessagesByUser[memberId][roomId] = 0;
+          }
+          
+          // Increment unread count
+          unreadMessagesByUser[memberId][roomId]++;
+          
+          // Emit unread count update to the user if they're online
+          // Find all sockets for this user
+          const userSockets = Array.from(io.sockets.sockets.values())
+            .filter(s => s.data && s.data.userId === memberId);
+          
+          userSockets.forEach(userSocket => {
+            userSocket.emit('unreadMessages', {
+              roomId,
+              count: unreadMessagesByUser[memberId][roomId],
+              lastMessage: lastMessageByRoom[roomId]
+            });
+          });
+        }
+      });
+      
+      // Broadcast the message to all users in the room
+      io.to(`room-${roomId}`).emit('newMessage', {
+        ...message,
+        sender
+      });
+      
+      // Also broadcast roomUpdate to all members to update their room list
+      memberIds.forEach(memberId => {
+        // Find all sockets for this user
+        const userSockets = Array.from(io.sockets.sockets.values())
+          .filter(s => s.data && s.data.userId === memberId);
+        
+        userSockets.forEach(userSocket => {
+          userSocket.emit('roomUpdate', {
+            roomId,
+            lastMessage: lastMessageByRoom[roomId],
+            unreadCount: unreadMessagesByUser[memberId]?.[roomId] || 0
+          });
+        });
+      });
+    } catch (error) {
+      console.error('Error in sendMessage event:', error);
+    }
+  });
+
+  // Store user ID in socket data for later reference
+  socket.on('identify', ({ userId }) => {
+    if (userId) {
+      socket.data = { ...socket.data, userId };
+      console.log(`Socket ${socket.id} identified as user ${userId}`);
+      
+      // Emit user status change to all rooms this user is a member of
+      emitUserStatusChange(userId, true);
     }
   });
 
@@ -178,7 +293,7 @@ io.on('connection', (socket) => {
               // Create members list with online status
               const members = membersResult.rows.map(member => ({
                 ...member,
-                isOnline: onlineUsersByRoom[roomId].has(member.userId)
+                isOnline: onlineUsersByRoom[roomId]?.has(member.userId) || false
               }));
               
               // Emit updated online users to all clients in the room
@@ -193,15 +308,56 @@ io.on('connection', (socket) => {
                 roomId,
                 members
               });
+              
+              // Emit user offline event
+              io.to(`room-${roomId}`).emit('userOffline', {
+                roomId,
+                userId: currentUser.userId
+              });
             } catch (error) {
               console.error('Error updating room members on disconnect:', error);
             }
           }
         }
       }
+      
+      // Emit user status change to all rooms this user is a member of
+      emitUserStatusChange(currentUser.userId, false);
     }
   });
+  
+  // Helper function to emit user status change
+  const emitUserStatusChange = async (userId, isOnline) => {
+    try {
+      // Get all rooms this user is a member of
+      const pool = await import('./config/datebase.js').then(m => m.default);
+      const roomsResult = await pool.query(
+        `SELECT "roomId" FROM chatroomusers WHERE "userId" = $1`,
+        [userId]
+      );
+      
+      const roomIds = roomsResult.rows.map(row => row.roomId);
+      
+      // Emit user status change to all these rooms
+      roomIds.forEach(roomId => {
+        io.emit('user_status_change', {
+          userId,
+          isOnline
+        });
+      });
+    } catch (error) {
+      console.error('Error emitting user status change:', error);
+    }
+  };
 });
+
+// Make variables available to routes
+app.set('onlineUsersByRoom', onlineUsersByRoom);
+app.set('unreadMessagesByUser', unreadMessagesByUser);
+app.set('lastMessageByRoom', lastMessageByRoom);
+app.set('io', io); // Make io available to routes
+
+
 
 // Auth routes
 app.post('/api/register', authController.register);
