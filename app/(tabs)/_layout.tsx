@@ -2,11 +2,9 @@
 import React from 'react';
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { ChatProvider } from '@/context/ChatContext';
 
 export default function TabsLayout() {
   return (
-    <ChatProvider>
       <Tabs
         screenOptions={{
           tabBarActiveTintColor: '#0284c7',
@@ -48,6 +46,5 @@ export default function TabsLayout() {
           }}
         />
       </Tabs>
-    </ChatProvider>
   );
 }
