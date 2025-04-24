@@ -47,7 +47,7 @@ export interface User {
 
 // Chat-related Types
 export interface Message {
-  id: number;
+  id: number |string;
   roomId: number | string; // Accept either number or string
   senderId: string;
   senderName: string;

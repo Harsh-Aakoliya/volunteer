@@ -10,6 +10,7 @@ import {
   SafeAreaView,
   TouchableHighlight,
   ViewStyle,
+  RefreshControl,
 } from "react-native";
 import {
   fetchAnnouncements,
@@ -25,7 +26,6 @@ import { useCallback } from "react";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { getPreviewHTML } from "@/components/HtmlPreview";
 import { AuthStorage } from "@/utils/authStorage";
-
 // Custom Checkbox Component with TypeScript
 interface CustomCheckboxProps { 
   checked: boolean;
@@ -87,10 +87,11 @@ const Announcements = () => {
   const [selectedAnnouncement, setSelectedAnnouncement] = useState<Announcement | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
-  
+  const [isrefereshing,setIsrefereshing]=useState(false);
   // New state for selection
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [selectedAnnouncements, setSelectedAnnouncements] = useState<{[key: number]: boolean}>({});
+
 
   useEffect(() => {
     loadAnnouncements();
@@ -118,10 +119,16 @@ const Announcements = () => {
     try {
       const data: Announcement[] = await fetchAnnouncements();
       setAnnouncements(data);
+      setIsrefereshing(false);
     } catch (error) {
       console.error("Error fetching announcements:", error);
+      setIsrefereshing(false);
     }
   };
+  const onRefresh =useCallback(() => {
+      setIsrefereshing(true);
+      loadAnnouncements();
+  }, []);
 
   const handleLike = async (id: number, type: "like" | "dislike") => {
     try {
@@ -263,6 +270,13 @@ const Announcements = () => {
             </TouchableOpacity>
           </TouchableOpacity>
         )}
+        refreshControl={
+          <RefreshControl
+            refreshing={isrefereshing}
+            onRefresh={onRefresh}
+            colors={["#0284c7"]}
+          />
+        }
       />
 
       {/* Create Announcement Button (conditionally render for admin) */}
@@ -320,7 +334,7 @@ const Announcements = () => {
             </View>
 
             {/* Likes and Dislikes */}
-            <View className="flex-row justify-between items-center px-4 py-3 border-t border-gray-200">
+            {/* <View className="flex-row justify-between items-center px-4 py-3 border-t border-gray-200">
               <View className="flex-row">
                 <TouchableOpacity
                   onPress={() => handleLike(selectedAnnouncement.id, "like")}
@@ -342,7 +356,8 @@ const Announcements = () => {
                   </Text>
                 </TouchableOpacity>
               </View>
-            </View>
+            </View> */}
+
             {/* Admin Actions */}
             {isAdmin && selectedAnnouncement && (
               <View className="flex-row justify-end items-center px-4 py-2 border-t border-gray-200">
@@ -354,7 +369,7 @@ const Announcements = () => {
                       toggleModal();
                       router.push({
                         pathname: "../create-announcement",
-                        params: { 
+                        params: {  
                           announcementId: selectedAnnouncement.id,
                           title: selectedAnnouncement.title,
                           body: selectedAnnouncement.body
