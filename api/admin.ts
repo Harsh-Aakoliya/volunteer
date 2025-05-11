@@ -20,9 +20,9 @@ export const approveUser = async (mobileNumber: string) => {
 
 
 export const fetchAnnouncements = async () => {
-  console.log("trying to fetch announcements from frontend");
+  // console.log("trying to fetch announcements from frontend");
   const response = await axios.get(`${API_URL}/api/announcements`);
-  console.log("response from fetchAnnouncements",response.data);
+  // console.log("response from fetchAnnouncements",response.data);
   return response.data;
 };
 

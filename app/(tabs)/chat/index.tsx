@@ -116,7 +116,6 @@ export default function ChatRooms() {
           });
 
           // Listen for unread message updates
-          // Listen for unread message updates
           socketService.onUnreadMessages((data) => {
             console.log("Unread messages update received:", data);
             setChatRooms((prevRooms) => {

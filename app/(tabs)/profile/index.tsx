@@ -133,7 +133,7 @@ export default function Profile() {
               </Text>
             </View>
             <View>
-              <Text className="text-2xl font-bold text-gray-800">{userProfile?.full_name || 'User Name'}</Text>
+              <Text className="text-2xl font-bold text-gray-800">{userProfile?.fullName || 'User Name'}</Text>
               <Text className="text-gray-500 text-lg">{userProfile?.role || 'Role'}</Text>
             </View>
           </View>
@@ -141,11 +141,11 @@ export default function Profile() {
           <View className="flex-row mt-6 space-x-4">
             <View className="flex-1 bg-blue-50 p-3 rounded-xl flex-row items-center">
               <Ionicons name="call-outline" size={20} color="#0286ff" />
-              <Text className="text-blue-600 ml-2 font-medium">{userProfile?.mobile_number}</Text>
+              <Text className="text-blue-600 ml-2 font-medium">{userProfile?.mobileNumber}</Text>
             </View>
             <View className="flex-1 bg-blue-50 p-3 rounded-xl flex-row items-center">
               <Ionicons name="card-outline" size={20} color="#0286ff" />
-              <Text className="text-blue-600 ml-2 font-medium">{userProfile?.specific_id}</Text>
+              <Text className="text-blue-600 ml-2 font-medium">{userProfile?.userId}</Text>
             </View>
           </View>
         </View>

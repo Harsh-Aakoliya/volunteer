@@ -3,7 +3,7 @@ import pool from "../config/datebase.js";
 
 const Announcement = {
   create: async (title, body, authorId) => {
-    console.log("Body of announcement at backend", body);
+    // console.log("Body of announcement at backend", body);
     const result = await pool.query(
       'INSERT INTO "announcements" ("title", "body", "authorId") VALUES ($1, $2, $3) RETURNING *',
       [title, body, authorId]
@@ -19,7 +19,7 @@ const Announcement = {
         LEFT JOIN "users" u ON a."authorId" = u."userId"
         ORDER BY a."createdAt" DESC
       `);
-      console.log("Query result:", result.rows);
+      // console.log("Query result:", result.rows);
       return result.rows;
     } catch (error) {
       console.error("Database query failed:", error);
@@ -45,9 +45,9 @@ export const createAnnouncement = async (req, res) => {
 
 export const getAnnouncements = async (req, res) => {
   try {
-    console.log("at backend getAnnouncements");
+    // console.log("at backend getAnnouncements");
     const announcements = await Announcement.getAll();
-    console.log("all announcements", announcements);
+    // console.log("all announcements", announcements);
     res.status(200).json(announcements);
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch announcements' });
