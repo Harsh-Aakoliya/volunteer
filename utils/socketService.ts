@@ -1,6 +1,7 @@
 // utils/socketService.ts
 import { io, Socket } from "socket.io-client";
 import { API_URL } from "@/constants/api";
+import { MediaFile } from "@/types/type";
 
 // Remove the /api prefix if needed
 const SOCKET_URL = API_URL.replace("/api", "");
@@ -27,6 +28,7 @@ interface NewMessageEvent {
   roomId: string;
   messageText: string;
   createdAt: string;
+  mediaFiles?: MediaFile[];
   sender: {
     userId: string;
     userName: string;
@@ -41,18 +43,45 @@ interface UserOfflineEvent {
 interface UnreadMessagesEvent {
   roomId: string;
   count: number;
-  lastMessage: NewMessageEvent;
+  lastMessage: {
+    id: number;
+    messageText: string;
+    createdAt: string;
+    mediaFiles?: MediaFile[];
+    sender: {
+      userId: string;
+      userName: string;
+    };
+  };
 }
 
 interface RoomUpdateEvent {
   roomId: string;
-  lastMessage: NewMessageEvent;
+  lastMessage: {
+    id: number;
+    messageText: string;
+    createdAt: string;
+    mediaFiles?: MediaFile[];
+    sender: {
+      userId: string;
+      userName: string;
+    };
+  };
   unreadCount: number;
 }
 
 interface LastMessageEvent {
   roomId: string;
-  message: NewMessageEvent;
+  message: {
+    id: number;
+    messageText: string;
+    createdAt: string;
+    mediaFiles?: MediaFile[];
+    sender: {
+      userId: string;
+      userName: string;
+    };
+  };
 }
 
 class SocketService {
@@ -112,7 +141,6 @@ class SocketService {
   }
 
   // Send a message to a room
-  // Send a message to a room
   sendMessage(
     roomId: string,
     message: any,
@@ -126,6 +154,7 @@ class SocketService {
           id: message.id,
           messageText: message.messageText,
           createdAt: message.createdAt,
+          mediaFiles: message.mediaFiles,
         },
         sender,
       });

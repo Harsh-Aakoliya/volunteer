@@ -46,7 +46,7 @@ export default function App() {
   const handleButtonPress = async () => {
     try {
       // Send request to backend
-      const response = await axios.post('http://192.168.21.33:3000/trigger-notification', {
+      const response = await axios.post('http://172.22.64.1:3000/trigger-notification', {
         token: expoPushToken
       });
       

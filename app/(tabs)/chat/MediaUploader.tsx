@@ -14,7 +14,10 @@ import * as DocumentPicker from "expo-document-picker";
 import axios from "axios";
 import { Audio } from "expo-av";
 import { Video, ResizeMode } from "expo-av";
-
+import { API_URL } from "@/constants/api";
+import { TextInput } from "react-native";
+import { useLocalSearchParams, router } from "expo-router";
+import { AuthStorage } from "@/utils/authStorage";
 
 // Define types
 type MediaFile = {
@@ -22,6 +25,7 @@ type MediaFile = {
   name: string;
   url: string;
   mimeType: string;
+  caption: string;
 };
 
 type UploadingFile = {
@@ -30,9 +34,6 @@ type UploadingFile = {
   progress: number;
   mimeType: string;
 };
-
-// API base URL - change to your server's IP/domain
-const API_URL = "http://192.168.19.33:3000/api";
 
 // Format bytes to readable format
 const formatBytes = (bytes: number, decimals = 2) => {
@@ -48,12 +49,15 @@ const formatBytes = (bytes: number, decimals = 2) => {
 };
 
 export default function MediaUploadApp() {
+  const { roomId } = useLocalSearchParams();
   const [uploading, setUploading] = useState(false);
   const [mediaFiles, setMediaFiles] = useState<MediaFile[]>([]); // list of uploaded files
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedFile, setSelectedFile] = useState<MediaFile | null>(null);
   const [uploadingFiles, setUploadingFiles] = useState<UploadingFile[]>([]);
+  const [sending, setSending] = useState(false);
 
+  
   // Handle file selection and upload
   const handleSelectFiles = async () => {
     try {
@@ -93,7 +97,7 @@ export default function MediaUploadApp() {
       try {
         // Use axios with upload progress tracking
         const response = await axios.post(
-          `${API_URL}/upload`,
+          `${API_URL}/api/upload`,
           formData,
           {
             headers: {
@@ -115,7 +119,7 @@ export default function MediaUploadApp() {
             },
           }
         );
-
+        console.log("response got after upload",response.data);
         // Add the newly uploaded files to our media files list
         const newFiles = response.data.uploaded.map((file: any, idx: number) => ({
           ...file,
@@ -123,7 +127,7 @@ export default function MediaUploadApp() {
         }));
 
         setMediaFiles((prev) => [...prev, ...newFiles]);
-        console.log("response got after upload",response.data);
+        
         // Clear uploading files after successful upload
         setTimeout(() => {
           setUploadingFiles([]);
@@ -213,8 +217,57 @@ export default function MediaUploadApp() {
             visible={modalVisible}
             file={selectedFile}
             onClose={closePreview}
+            mediaFiles={mediaFiles}
+            setMediaFiles={setMediaFiles}
           />
         )}
+        
+        {/* sending media to chat  */}
+        <TouchableOpacity
+          className={`py-3 px-4 rounded-lg mt-5 ${mediaFiles.length === 0 || sending ? 'bg-gray-400' : 'bg-green-500'}`}
+          onPress={async () => {
+            if (mediaFiles.length === 0 || !roomId || sending) return;
+
+            try {
+              setSending(true);
+              const token = await AuthStorage.getToken();
+              
+              // Send each media file as a separate message
+              for (const file of mediaFiles) {
+                // Create message text with file link and caption
+                const messageText = `${file.url} ${file.caption ? `- ${file.caption}` : ''}`;
+                
+                // Send the message to the API
+                await axios.post(
+                  `${API_URL}/api/chat/rooms/${roomId}/messages`,
+                  { 
+                    messageText: messageText,
+                    mediaFiles: [] // Send this media file to the server
+                  },
+                  { headers: { Authorization: `Bearer ${token}` } }
+                );
+              }
+              
+              // Navigate back to the chat room
+              router.back();
+            } catch (error) {
+              console.error("Error sending media:", error);
+              Alert.alert("Error", "Failed to send media");
+            } finally {
+              setSending(false);
+            }
+          }}
+          disabled={mediaFiles.length === 0 || sending}
+        >
+          {sending ? (
+            <View className="flex-row justify-center items-center">
+              <ActivityIndicator size="small" color="white" className="mr-2" />
+              <Text className="text-white font-semibold text-center">Sending...</Text>
+            </View>
+          ) : (
+            <Text className="text-white font-semibold text-center">Send to Chat</Text>
+          )}
+        </TouchableOpacity>
       </View>
     </ScrollView>
   );
@@ -345,18 +398,25 @@ const AudioPlayer = ({ uri }: { uri: string }) => {
 const MediaPreviewModal = ({ 
   visible, 
   file, 
-  onClose 
+  onClose,
+  mediaFiles,
+  setMediaFiles
 }: { 
   visible: boolean; 
   file: MediaFile | null; 
   onClose: () => void;
+  mediaFiles: MediaFile[];
+  setMediaFiles: React.Dispatch<React.SetStateAction<MediaFile[]>>
 }) => {
   if (!file) return null;
 
   const isImage = file.mimeType.startsWith("image");
   const isAudio = file.mimeType.startsWith("audio");
   const isVideo = file.mimeType.startsWith("video");
-console.log(file);
+  
+  // Find the current caption value for this file
+  const currentCaption = mediaFiles.find(f => f.id === file.id)?.caption || '';
+
   return (
     <Modal
       visible={visible}
@@ -388,7 +448,15 @@ console.log(file);
             
             {isAudio && <AudioPlayer uri={file.url} />}
           </View>
-          
+          <TextInput
+            className="bg-gray-100 rounded-lg px-4 py-2 mb-4"
+            placeholder="Add caption to this media..."
+            onChangeText={(text) => setMediaFiles((prev: MediaFile[]) => 
+              prev.map((f: MediaFile) => f.id === file.id ? {...f, caption: text} : f)
+            )}
+            multiline={true}
+            value={currentCaption}
+          />
           <TouchableOpacity 
             onPress={onClose}
             className="bg-red-500 py-2 rounded-lg"

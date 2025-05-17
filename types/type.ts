@@ -45,15 +45,26 @@ export interface User {
   isApproved?: boolean;
 }
 
+// Media-related Types
+export interface MediaFile {
+  id: string;
+  name: string;
+  url: string;
+  mimeType: string;
+  message?: string; // Optional message for each media file
+}
+
 // Chat-related Types
 export interface Message {
-  id: number |string;
+  id: number | string;
   roomId: number | string; // Accept either number or string
   senderId: string;
   senderName: string;
   messageText: string;
   createdAt: string;
+  mediaFiles?: MediaFile[]; // Optional array of media files
 }
+
 export interface ChatRoom {
   roomId?: number;
   roomName: string;
@@ -65,9 +76,10 @@ export interface ChatRoom {
 
 export interface ChatUser {
   userId: string;
-  fullName?: string;
+  fullName?: string | null;
   mobileNumber?: string;
   isAdmin?: boolean;
+  isOnline?: boolean;
 }
 
 export interface ChatRoomUser {

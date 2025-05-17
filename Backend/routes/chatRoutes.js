@@ -5,26 +5,31 @@ import { authenticateToken } from '../middlewares/auth.js';
 
 const router = express.Router();
 
-// Existing routes
-router.get('/users', authenticateToken, chatController.getChatUsers);
-router.post('/rooms', authenticateToken, chatController.createChatRoom);
-router.get('/rooms', authenticateToken, chatController.getChatRooms);
-router.get('/rooms/:roomId', authenticateToken, chatController.getChatRoomDetails);
+// Apply authentication middleware to all routes
+router.use(authenticateToken);
 
-// New routes for room settings
-router.put('/rooms/:roomId', authenticateToken, chatController.updateChatRoom);
-router.post('/rooms/:roomId/members', authenticateToken, chatController.addRoomMembers);
-router.put('/rooms/:roomId/members/:memberId', authenticateToken, chatController.updateRoomMember);
-router.delete('/rooms/:roomId/members/:memberId', authenticateToken, chatController.removeRoomMember);
-router.delete('/rooms/:roomId', authenticateToken, chatController.deleteChatRoom);
-router.put('/rooms/:roomId/settings', authenticateToken, chatController.updateRoomSettings);
-// routes/chatRoutes.js - Add the new route
+// Chat users and rooms
+router.get('/users', chatController.getChatUsers);
+router.get('/rooms', chatController.getChatRooms);
+router.post('/rooms', chatController.createChatRoom);
 
-// Existing routes
-router.get('/rooms', authenticateToken, chatController.getChatRooms);
-router.get('/rooms/:roomId', authenticateToken, chatController.getChatRoomDetails);
-router.post('/rooms/:roomId/messages', authenticateToken, chatController.sendMessage);
+// Room details
+router.get('/rooms/:roomId', chatController.getChatRoomDetails);
+router.put('/rooms/:roomId', chatController.updateChatRoom);
+router.delete('/rooms/:roomId', chatController.deleteChatRoom);
 
-// New route for online users
-router.get('/rooms/:roomId/online-users', authenticateToken, chatController.getRoomOnlineUsers);
+// Room settings
+router.put('/rooms/:roomId/settings', chatController.updateRoomSettings);
+
+// Room members
+router.post('/rooms/:roomId/members', chatController.addRoomMembers);
+router.put('/rooms/:roomId/members/:memberId', chatController.updateRoomMember);
+router.delete('/rooms/:roomId/members/:memberId', chatController.removeRoomMember);
+
+// Room messages
+router.post('/rooms/:roomId/messages', chatController.sendMessage);
+
+// Room online users
+router.get('/rooms/:roomId/online-users', chatController.getRoomOnlineUsers);
+
 export default router;

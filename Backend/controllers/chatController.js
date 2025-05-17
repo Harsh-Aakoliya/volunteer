@@ -189,9 +189,9 @@ async getChatRoomDetails(req, res) {
       [roomIdInt]
     );
 
-    // Get recent messages
+    // Get recent messages with mediaFiles
     const messagesResult = await pool.query(
-      `SELECT m."id", m."messageText", m."createdAt", 
+      `SELECT m."id", m."messageText", m."mediaFiles", m."createdAt", 
               u."userId" as "senderId", u."fullName" as "senderName"
        FROM chatmessages m
        JOIN "users" u ON m."senderId" = u."userId"
@@ -200,6 +200,18 @@ async getChatRoomDetails(req, res) {
        LIMIT 20`,
       [roomIdInt]
     );
+    
+    // Parse mediaFiles for each message if it exists
+    for (const message of messagesResult.rows) {
+      if (message.mediaFiles) {
+        try {
+          message.mediaFiles = JSON.parse(message.mediaFiles);
+        } catch (err) {
+          console.error('Error parsing mediaFiles:', err);
+          message.mediaFiles = [];
+        }
+      }
+    }
 
     // Check if current user is admin
     const isAdminResult = await pool.query(
@@ -745,21 +757,87 @@ async updateRoomSettings(req, res) {
 async sendMessage(req, res) {
   try {
     const { roomId } = req.params;
-    const { messageText } = req.body;
+    const { messageText, mediaFiles } = req.body; // Also receive mediaFiles
     const senderId = req.user.userId;
     
     // Convert roomId to integer
     const roomIdInt = parseInt(roomId, 10);
     
-    // Insert the message
-    const result = await pool.query(
-      `INSERT INTO chatmessages ("roomId", "senderId", "messageText")
-       VALUES ($1, $2, $3)
-       RETURNING *`,
-      [roomIdInt, senderId, messageText]
-    );
-    
-    const newMessage = result.rows[0];
+    let newMessages = [];
+
+    // If we have mediaFiles with optional message property,
+    // each becomes a separate message
+    if (mediaFiles && mediaFiles.length > 0) {
+      // Begin transaction for multiple inserts
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+
+        // Process each media file as a separate message
+        for (const mediaFile of mediaFiles) {
+          // Use the message from the media file or empty string if not provided
+          const msgText = mediaFile.message || "";
+          // Remove the message property from mediaFile to avoid duplication
+          const { message, ...mediaFileWithoutMessage } = mediaFile;
+          
+          // Insert the message with a single media file
+          const result = await client.query(
+            `INSERT INTO chatmessages ("roomId", "senderId", "messageText", "mediaFiles")
+             VALUES ($1, $2, $3, $4)
+             RETURNING *`,
+            [
+              roomIdInt, 
+              senderId, 
+              msgText, 
+              JSON.stringify([mediaFileWithoutMessage])
+            ]
+          );
+
+          const newMessage = result.rows[0];
+          
+          // Parse mediaFiles
+          if (newMessage.mediaFiles) {
+            try {
+              newMessage.mediaFiles = JSON.parse(newMessage.mediaFiles);
+            } catch (err) {
+              console.error('Error parsing mediaFiles:', err);
+              newMessage.mediaFiles = [];
+            }
+          }
+          
+          newMessages.push(newMessage);
+        }
+
+        await client.query('COMMIT');
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      } finally {
+        client.release();
+      }
+    } else {
+      // Traditional single message without media files or with all media files in one message
+      const result = await pool.query(
+        `INSERT INTO chatmessages ("roomId", "senderId", "messageText", "mediaFiles")
+         VALUES ($1, $2, $3, $4)
+         RETURNING *`,
+        [roomIdInt, senderId, messageText, mediaFiles ? JSON.stringify(mediaFiles) : null]
+      );
+      
+      const newMessage = result.rows[0];
+      
+      // Parse mediaFiles if exists
+      if (newMessage.mediaFiles) {
+        try {
+          newMessage.mediaFiles = JSON.parse(newMessage.mediaFiles);
+        } catch (err) {
+          console.error('Error parsing mediaFiles:', err);
+          newMessage.mediaFiles = [];
+        }
+      }
+      
+      newMessages.push(newMessage);
+    }
     
     // Get sender information
     const senderResult = await pool.query(
@@ -769,23 +847,27 @@ async sendMessage(req, res) {
     
     const senderName = senderResult.rows[0]?.fullName || 'Unknown User';
     
-    // Prepare the response with sender name
-    const messageWithSender = {
-      ...newMessage,
+    // Add sender name to all messages
+    const messagesWithSender = newMessages.map(msg => ({
+      ...msg,
       senderName
-    };
+    }));
     
-    // Get the io instance
+    // Get the io instance and other app data
     const io = req.app.get('io');
     const lastMessageByRoom = req.app.get('lastMessageByRoom');
     const unreadMessagesByUser = req.app.get('unreadMessagesByUser');
     
+    // If multiple messages were created, use the last one as the last message for the room
+    const lastMessage = messagesWithSender[messagesWithSender.length - 1];
+    
     // Update last message for this room
     if (lastMessageByRoom) {
       lastMessageByRoom[roomIdInt] = {
-        id: newMessage.id,
-        messageText: newMessage.messageText,
-        createdAt: newMessage.createdAt,
+        id: lastMessage.id,
+        messageText: lastMessage.messageText,
+        createdAt: lastMessage.createdAt,
+        mediaFiles: lastMessage.mediaFiles,
         sender: {
           userId: senderId,
           userName: senderName
@@ -813,26 +895,30 @@ async sendMessage(req, res) {
             unreadMessagesByUser[memberId][roomIdInt] = 0;
           }
           
-          // Increment unread count
-          unreadMessagesByUser[memberId][roomIdInt]++;
+          // Increment unread count by the number of messages created
+          unreadMessagesByUser[memberId][roomIdInt] += messagesWithSender.length;
         }
       });
     }
     
-    // Emit the message to all users in the room
+    // Emit all messages to all users in the room
     if (io) {
-      io.to(`room-${roomIdInt}`).emit('newMessage', {
-        id: newMessage.id,
-        roomId: roomIdInt.toString(),
-        messageText: newMessage.messageText,
-        createdAt: newMessage.createdAt,
-        sender: {
-          userId: senderId,
-          userName: senderName
-        }
-      });
+      // Emit each message individually
+      for (const message of messagesWithSender) {
+        io.to(`room-${roomIdInt}`).emit('newMessage', {
+          id: message.id,
+          roomId: roomIdInt.toString(),
+          messageText: message.messageText,
+          mediaFiles: message.mediaFiles,
+          createdAt: message.createdAt,
+          sender: {
+            userId: senderId,
+            userName: senderName
+          }
+        });
+      }
       
-      // Also broadcast roomUpdate to all members to update their room list
+      // Broadcast roomUpdate to all members to update their room list
       memberIds.forEach(memberId => {
         if (memberId !== senderId && unreadMessagesByUser && unreadMessagesByUser[memberId]) {
           io.emit('roomUpdate', {
@@ -844,7 +930,9 @@ async sendMessage(req, res) {
       });
     }
     
-    res.status(201).json(messageWithSender);
+    // Return all created messages or just the last message
+    // Depending on the use case, you might want to return all or just the last one
+    res.status(201).json(messagesWithSender.length === 1 ? messagesWithSender[0] : messagesWithSender);
   } catch (error) {
     console.error('Error sending message:', error);
     res.status(500).json({ message: "Server error", error: error.message });

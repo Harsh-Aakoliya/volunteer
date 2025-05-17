@@ -7,7 +7,7 @@ import { router } from "expo-router";
 
 export const login = async (mobileNumber: string, password: string) => {
   try {
-    const response = await axios.post(`${API_URL}/api/login`, {
+    const response = await axios.post(`${API_URL}/api/auth/login`, {
       mobileNumber,
       password,
     });
@@ -89,7 +89,7 @@ export const login = async (mobileNumber: string, password: string) => {
 export const register = async (mobileNumber: string, userId: string) => {
   try {
 
-    const response = await axios.post(`${API_URL}/api/register`, {
+    const response = await axios.post(`${API_URL}/api/auth/register`, {
       mobileNumber,
       userId,
     });

@@ -3,7 +3,7 @@ import { API_URL } from '../constants/api';
 import Announcement from '@/app/create-announcement';
 
 export const getPendingUsers = async () => {
-  const response = await axios.get(`${API_URL}/api/pending-users`);
+  const response = await axios.get(`${API_URL}/api/users/pending-users`);
   console.log("at frontend getPendingUsers",response.data);
   return response.data;
 };
@@ -11,7 +11,7 @@ export const getPendingUsers = async () => {
 export const approveUser = async (mobileNumber: string) => {
   const password = Math.random().toString(36).slice(-8);
   console.log("password send to backend",password);
-  const response = await axios.post(`${API_URL}/api/approve-user`, {
+  const response = await axios.post(`${API_URL}/api/users/approve-user`, {
     mobileNumber,
     password,
   });

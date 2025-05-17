@@ -27,7 +27,7 @@ export const AuthStorage = {
   async getUser(): Promise<User | null> {
     try {
       const userDataString = await AsyncStorage.getItem('userData');
-      console.log('Stored user data string:', userDataString);
+      // console.log('Stored user data string:', userDataString);
       
       if (!userDataString) {
         console.log('No user data found in storage');

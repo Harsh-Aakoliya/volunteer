@@ -2,6 +2,7 @@
 import { useEffect } from 'react';
 import { useRouter } from 'expo-router';
 import { AuthStorage } from '@/utils/authStorage';
+import MediaUploadApp from '@/components/chat/MediaUploader';
 
 export default function Index() {
   const router = useRouter();
@@ -28,4 +29,5 @@ export default function Index() {
   }, []);
 
   return null; // This component doesn't render anything
+  return <MediaUploadApp/>
 }

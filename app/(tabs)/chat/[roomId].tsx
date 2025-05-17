@@ -15,7 +15,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, router, useNavigation } from "expo-router";
 import { AuthStorage } from "@/utils/authStorage";
-import { Message, ChatRoom, ChatUser } from "@/types/type";
+import { Message, ChatRoom, ChatUser, MediaFile } from "@/types/type";
 import axios from "axios";
 import { API_URL } from "@/constants/api";
 import { useFocusEffect } from "@react-navigation/native";
@@ -23,6 +23,9 @@ import socketService from "@/utils/socketService";
 import OnlineUsersIndicator from "@/components/chat/OnlineUsersIndicator";
 import MembersModal from "@/components/chat/MembersModal";
 import MessageStatus from "@/components/chat/MessageStatus";
+import ChatInputWithMedia from "@/components/chat/ChatInputWithMedia";
+import MessageMedia from "@/components/chat/MessageMedia";
+
 interface RoomDetails extends ChatRoom {
   members: ChatUser[];
   messages: Message[];
@@ -34,19 +37,25 @@ interface RoomMember extends ChatUser {
 
 export default function ChatRoomScreen() {
   const { roomId } = useLocalSearchParams();
-  const [roomDetails, setRoomDetails] = useState<RoomDetails | null>(null);
+  const [room, setRoom] = useState<RoomDetails | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [sending, setSending] = useState(false);
   const [messageText, setMessageText] = useState("");
   const [isAdmin, setIsAdmin] = useState(false);
   const [onlineUsers, setOnlineUsers] = useState<string[]>([]);
-  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [currentUser, setCurrentUser] = useState<{
+    userId: string;
+    fullName: string | null;
+  } | null>(null);
   const [showMembersModal, setShowMembersModal] = useState(false);
-  const [roomMembers, setRoomMembers] = useState<RoomMember[]>([]);
-  const [sending, setSending] = useState(false);
+  const [roomMembers, setRoomMembers] = useState<ChatUser[]>([]);
   const [appState, setAppState] = useState(AppState.currentState);
   const flatListRef = useRef<FlatList>(null);
   const navigation = useNavigation();
+
+  // Use a Set to track received message IDs to prevent duplicates
+  const receivedMessageIds = new Set<string | number>();
 
   // Handle app state changes (background/foreground)
   useEffect(() => {
@@ -107,7 +116,7 @@ export default function ChatRoomScreen() {
       socketService.onOnlineUsers(
         ({ roomId: updatedRoomId, onlineUsers: users }) => {
           if (updatedRoomId === roomId) {
-            console.log("Online users updated:", users);
+            // console.log("Online users updated:", users);
             setOnlineUsers(users);
           }
         }
@@ -116,14 +125,8 @@ export default function ChatRoomScreen() {
       // Listen for room members updates
       socketService.onRoomMembers(({ roomId: updatedRoomId, members }) => {
         if (updatedRoomId === roomId) {
-          console.log("Room members updated:", members);
-          setRoomMembers(
-            members.map((member) => ({
-              ...member,
-              fullName: member.fullName ?? undefined,
-              isOnline: !!member.isOnline,
-            }))
-          );
+          // console.log("Room members updated:", members);
+          setRoomMembers(members);
         }
       });
 
@@ -151,6 +154,7 @@ export default function ChatRoomScreen() {
               senderName: data.sender.userName,
               messageText: data.messageText,
               createdAt: data.createdAt,
+              mediaFiles: data.mediaFiles, // Add support for media files
             };
 
             setMessages((prev) => [...prev, newMessage]);
@@ -182,10 +186,10 @@ export default function ChatRoomScreen() {
   );
 
   useEffect(() => {
-    if (roomDetails) {
+    if (room) {
       // Set header options
       navigation.setOptions({
-        title: roomDetails.roomName,
+        title: room.roomName,
         headerRight: () =>
           isAdmin ? (
             <TouchableOpacity
@@ -200,10 +204,17 @@ export default function ChatRoomScreen() {
             >
               <Ionicons name="settings-outline" size={24} color="#0284c7" />
             </TouchableOpacity>
-          ) : null,
+          ) : (
+            <TouchableOpacity
+              onPress={() => setShowMembersModal(true)}
+              className="mr-2"
+            >
+              <Ionicons name="people" size={24} color="#0284c7" />
+            </TouchableOpacity>
+          ),
       });
     }
-  }, [roomDetails, isAdmin]);
+  }, [room, isAdmin, navigation]);
 
   const loadRoomDetails = async () => {
     try {
@@ -212,8 +223,13 @@ export default function ChatRoomScreen() {
       // Collapse
       // Get current user
       const userData = await AuthStorage.getUser();
-      setCurrentUser(userData);
-      console.log("userdata is", userData);
+      if (userData) {
+        setCurrentUser({
+          userId: userData.userId,
+          fullName: userData.fullName || null
+        });
+      }
+      // console.log("userdata is", userData);
 
       // Fetch room details
       const token = await AuthStorage.getToken();
@@ -221,7 +237,7 @@ export default function ChatRoomScreen() {
         headers: { Authorization: `Bearer ${token}` },
       });
 
-      setRoomDetails(response.data);
+      setRoom(response.data);
       setMessages(response.data.messages || []);
 
       // Check if current user is admin of this room
@@ -259,57 +275,97 @@ export default function ChatRoomScreen() {
     }
   };
 
-  const sendMessage = async () => {
-    if (!messageText.trim() || !roomId || !currentUser || sending) return;
+  const sendMessage = async (text: string, mediaFiles?: MediaFile[]) => {
+    if ((!text.trim() && (!mediaFiles || mediaFiles.length === 0)) || !roomId || !currentUser || sending) return;
 
-    // Collapse
-    // Declare trimmedMessage outside the try block so it's accessible in the catch block
-    const trimmedMessage = messageText.trim();
+    // Trimmed message text
+    const trimmedMessage = text.trim();
 
     try {
       setSending(true);
       setMessageText(""); // Clear input immediately for better UX
 
-      // Create optimistic message to show immediately
-      const optimisticMessage: Message = {
-        id: Date.now(), // Temporary ID
-        roomId: parseInt(roomId as string),
-        senderId: currentUser.userId,
-        senderName: currentUser.fullName || "You",
-        messageText: trimmedMessage,
-        createdAt: new Date().toISOString(),
-      };
+      // For the case of a single text message or text with media
+      if (trimmedMessage && (!mediaFiles || mediaFiles.length === 0)) {
+        // Create optimistic message to show immediately
+        const optimisticMessage: Message = {
+          id: `temp-${Date.now()}`, // Temporary ID
+          roomId: parseInt(roomId as string),
+          senderId: currentUser.userId,
+          senderName: currentUser.fullName || "You",
+          messageText: trimmedMessage,
+          createdAt: new Date().toISOString(),
+          mediaFiles: mediaFiles, // Include media files
+        };
 
-      // Add optimistic message to the list
-      setMessages((prev) => [...prev, optimisticMessage]);
+        // Add optimistic message to the list
+        setMessages((prev) => [...prev, optimisticMessage]);
 
-      // Scroll to the bottom
-      setTimeout(() => {
-        flatListRef.current?.scrollToEnd({ animated: true });
-      }, 100);
+        // Scroll to the bottom
+        setTimeout(() => {
+          flatListRef.current?.scrollToEnd({ animated: true });
+        }, 100);
+      } 
+      // For the case of multiple media files, each with its own message
+      else if (mediaFiles && mediaFiles.length > 1) {
+        // Create multiple optimistic messages, one for each media file
+        const optimisticMessages: Message[] = mediaFiles.map((file, index) => ({
+          id: `temp-${Date.now()}-${index}`, // Temporary ID with index to make them unique
+          roomId: parseInt(roomId as string),
+          senderId: currentUser.userId,
+          senderName: currentUser.fullName || "You",
+          messageText: file.message || '',
+          createdAt: new Date().toISOString(),
+          mediaFiles: [file], // Each message has one media file
+        }));
+
+        // Add optimistic messages to the list
+        setMessages((prev) => [...prev, ...optimisticMessages]);
+
+        // Scroll to the bottom
+        setTimeout(() => {
+          flatListRef.current?.scrollToEnd({ animated: true });
+        }, 100);
+      }
 
       // Send the message via API
       const token = await AuthStorage.getToken();
       const response = await axios.post(
         `${API_URL}/api/chat/rooms/${roomId}/messages`,
-        { messageText: trimmedMessage },
+        { 
+          messageText: trimmedMessage,
+          mediaFiles: mediaFiles // Send media files to the server
+        },
         { headers: { Authorization: `Bearer ${token}` } }
       );
 
-      // Replace optimistic message with the real one from the server
-      const newMessage = {
-        ...response.data,
+      // Handle the response which might be a single message or an array of messages
+      const newMessages = Array.isArray(response.data) 
+        ? response.data
+        : [response.data];
+
+      // Add sender name to all messages
+      const messagesWithSenderName = newMessages.map(msg => ({
+        ...msg,
         senderName: currentUser.fullName || "You",
-      };
+      }));
 
-      setMessages((prev) =>
-        prev.map((msg) => (msg.id === optimisticMessage.id ? newMessage : msg))
-      );
+      // Replace optimistic messages with real ones from the server
+      setMessages((prev) => {
+        // Filter out all temp messages
+        const filteredMessages = prev.filter(
+          msg => !(typeof msg.id === 'string' && msg.id.includes('temp'))
+        );
+        // Add the new messages from the server
+        return [...filteredMessages, ...messagesWithSenderName];
+      });
 
-      // Send the message via socket for real-time delivery
-      socketService.sendMessage(roomId as string, newMessage, {
-        userId: currentUser.userId,
-        userName: currentUser.fullName || "Anonymous",
+      // Send the messages via socket for real-time delivery
+      messagesWithSenderName.forEach(newMessage => {
+        socketService.sendMessage(roomId as string, newMessage, {
+          userId: currentUser.userId,
+          userName: currentUser.fullName || "Anonymous",
+        });
       });
     } catch (error) {
       console.error("Error sending message:", error);
@@ -319,13 +375,13 @@ export default function ChatRoomScreen() {
       setMessageText(trimmedMessage);
 
       // Remove the optimistic message
-      setMessages((prev) => prev.filter((msg) => typeof msg.id === "number"));
+      setMessages((prev) => prev.filter((msg) => typeof msg.id === "number" || (typeof msg.id === 'string' && !msg.id.includes('temp'))));
     } finally {
       setSending(false);
     }
   };
 
-  // Update the renderMessage function in [roomId].tsx
+  // Updated renderMessage function to support media files
   const renderMessage = ({ item }: { item: Message }) => {
     const isOwnMessage = item.senderId === currentUser?.userId;
 
@@ -336,7 +392,6 @@ export default function ChatRoomScreen() {
     if (typeof item.id === "number") {
       messageStatus = "delivered"; // For messages with real IDs from the server
     } else if (typeof item.id === "string") {
-      // Now TypeScript knows item.id can be a string
       if (item.id.toString().includes("temp")) {
         messageStatus = "sending"; // For optimistic messages
       }
@@ -353,10 +408,19 @@ export default function ChatRoomScreen() {
             {item.senderName || "Unknown"}
           </Text>
         )}
-        <Text className={isOwnMessage ? "text-white" : "text-black"}>
-          {item.messageText}
-        </Text>
-        <View className="flex-row justify-between items-center">
+        
+        {item.messageText && (
+          <Text className={isOwnMessage ? "text-white" : "text-black"}>
+            {item.messageText}
+          </Text>
+        )}
+        
+        {/* Render media files if present */}
+        {item.mediaFiles && item.mediaFiles.length > 0 && (
+          <MessageMedia mediaFiles={item.mediaFiles} />
+        )}
+        
+        <View className="flex-row justify-between items-center mt-1">
           <Text
             className={`text-xs ${
               isOwnMessage ? "text-blue-100" : "text-gray-500"
@@ -383,7 +447,7 @@ export default function ChatRoomScreen() {
     );
   }
 
-  if (!roomDetails) {
+  if (!room) {
     return (
       <View className="flex-1 justify-center items-center p-4">
         <Ionicons name="alert-circle-outline" size={60} color="#d1d5db" />
@@ -410,7 +474,7 @@ export default function ChatRoomScreen() {
         {/* Online users indicator - Now clickable */}
         <OnlineUsersIndicator
           onlineCount={onlineUsers.length}
-          totalCount={roomDetails.members.length}
+          totalCount={roomMembers.length}
           onPress={() => setShowMembersModal(true)}
         />
 
@@ -433,20 +497,44 @@ export default function ChatRoomScreen() {
           }
         />
 
-        {/* Message input */}
-        <View className="p-2 border-t border-gray-200 bg-white flex-row items-center">
+        {/* Input with Media Upload */}
+        <ChatInputWithMedia
+          onSendMessage={sendMessage}
+          sending={sending}
+        />
+
+        {/* Input Bar */}
+      <View className="p-2 border-t border-gray-200 bg-white">
+        <View className="flex-row items-center">
+          <TouchableOpacity
+            className="p-2"
+            onPress={() => router.push({
+              pathname: "/chat/MediaUploader",
+              params: { roomId }
+            })}
+          >
+            <Ionicons 
+              name="add-circle" 
+              size={24} 
+              // color={(isUploading || sending) ? "#9CA3AF" : "#3B82F6"} 
+            />
+          </TouchableOpacity>
+          
           <TextInput
             className="flex-1 bg-gray-100 rounded-full px-4 py-2 mr-2"
             placeholder="Type a message..."
             value={messageText}
             onChangeText={setMessageText}
-            multiline
+            multiline={true}
           />
+          
           <TouchableOpacity
             className={`rounded-full p-2 ${
-              messageText.trim() && !sending ? "bg-blue-500" : "bg-gray-300"
+              messageText.trim() && !sending
+                ? "bg-blue-500"
+                : "bg-gray-300"
             }`}
-            onPress={sendMessage}
+            onPress={() => sendMessage(messageText,[])}
             disabled={!messageText.trim() || sending}
           >
             {sending ? (
@@ -456,8 +544,12 @@ export default function ChatRoomScreen() {
             )}
           </TouchableOpacity>
         </View>
+      </View>
 
-        {/* Members Modal */}
+
+        
+
+        {/* Members Modal to show who are currently online in this room */}
         <MembersModal
           visible={showMembersModal}
           onClose={() => setShowMembersModal(false)}

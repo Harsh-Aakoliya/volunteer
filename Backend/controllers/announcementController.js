@@ -45,9 +45,9 @@ export const createAnnouncement = async (req, res) => {
 
 export const getAnnouncements = async (req, res) => {
   try {
-    // console.log("at backend getAnnouncements");
+    console.log("at backend getAnnouncements");
     const announcements = await Announcement.getAll();
-    // console.log("all announcements", announcements);
+    console.log("all announcements", announcements);
     res.status(200).json(announcements);
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch announcements' });
