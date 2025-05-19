@@ -6,6 +6,8 @@ import { createServer } from "http";
 import { Server } from "socket.io";
 import initDB from "./models/User.js";
 import initChatDB from "./models/Chat.js";
+import initPollDB from "./models/Poll.js";
+import initMediaDB from "./models/Media.js";
 import errorHandling from "./middlewares/errorHandler.js";
 import apiRoutes from "./routes/index.js";
 import setupSocketIO from "./socket.js";
@@ -30,7 +32,8 @@ app.use(errorHandling);
 // Initialize database
 initDB();
 initChatDB();
-
+initPollDB();
+initMediaDB();
 // Make io available to routes
 app.set('io', io);
 

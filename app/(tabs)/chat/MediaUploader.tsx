@@ -19,6 +19,14 @@ import { TextInput } from "react-native";
 import { useLocalSearchParams, router } from "expo-router";
 import { AuthStorage } from "@/utils/authStorage";
 
+
+type Media = {
+  id: string;
+  senderId: string;
+  roomId: string;
+  driveUrlObject: string;
+  messageId: string;
+}
 // Define types
 type MediaFile = {
   id: string;
@@ -26,6 +34,7 @@ type MediaFile = {
   url: string;
   mimeType: string;
   caption: string;
+  media: Media[];
 };
 
 type UploadingFile = {
@@ -49,7 +58,8 @@ const formatBytes = (bytes: number, decimals = 2) => {
 };
 
 export default function MediaUploadApp() {
-  const { roomId } = useLocalSearchParams();
+  const { roomId, userId } = useLocalSearchParams();
+  console.log("roomId",roomId);
   const [uploading, setUploading] = useState(false);
   const [mediaFiles, setMediaFiles] = useState<MediaFile[]>([]); // list of uploaded files
   const [modalVisible, setModalVisible] = useState(false);
@@ -93,6 +103,8 @@ export default function MediaUploadApp() {
           type: asset.mimeType ?? "application/octet-stream",
         } as any);
       });
+      formData.append("userId", userId as string);
+      formData.append("roomId", roomId as string);
 
       try {
         // Use axios with upload progress tracking
@@ -226,6 +238,9 @@ export default function MediaUploadApp() {
         <TouchableOpacity
           className={`py-3 px-4 rounded-lg mt-5 ${mediaFiles.length === 0 || sending ? 'bg-gray-400' : 'bg-green-500'}`}
           onPress={async () => {
+            console.log("mediaFile length",mediaFiles.length);
+            console.log("roomId",roomId);
+            console.log("sending",sending);
             if (mediaFiles.length === 0 || !roomId || sending) return;
 
             try {
@@ -234,9 +249,10 @@ export default function MediaUploadApp() {
               
               // Send each media file as a separate message
               for (const file of mediaFiles) {
+                console.log("sending file",file);
                 // Create message text with file link and caption
                 const messageText = `${file.url} ${file.caption ? `- ${file.caption}` : ''}`;
-                
+                console.log("messageText",messageText);
                 // Send the message to the API
                 await axios.post(
                   `${API_URL}/api/chat/rooms/${roomId}/messages`,
@@ -246,6 +262,10 @@ export default function MediaUploadApp() {
                   },
                   { headers: { Authorization: `Bearer ${token}` } }
                 );
+                setTimeout(() => {
+                  // router.back();
+                  console.log("message sent");
+                }, 3000);
               }
               
               // Navigate back to the chat room

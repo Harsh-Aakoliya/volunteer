@@ -1,5 +1,5 @@
 // User Controller
-import pool from "../config/datebase.js";
+import pool from "../config/database.js";
 
 const getPendingUsers = async (req, res) => {
   try {

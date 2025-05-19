@@ -1,5 +1,5 @@
 // controllers/authController.js
-import pool from "../config/datebase.js";
+import pool from "../config/database.js";
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import { UserDefinedMessageInstance } from "twilio/lib/rest/api/v2010/account/call/userDefinedMessage.js";

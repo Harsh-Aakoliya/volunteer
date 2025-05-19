@@ -54,7 +54,7 @@ const setupSocketIO = (io, app) => {
         }
 
         // Get all members for this room from the database
-        const pool = await import("./config/datebase.js").then((m) => m.default);
+        const pool = await import("./config/database.js").then((m) => m.default);
         const membersResult = await pool.query(
           `SELECT u."userId", u."fullName", cru."isAdmin" 
           FROM chatroomusers cru
@@ -109,7 +109,7 @@ const setupSocketIO = (io, app) => {
           } else {
             try {
               // Get all members for this room from the database
-              const pool = await import("./config/datebase.js").then(
+              const pool = await import("./config/database.js").then(
                 (m) => m.default
               );
               const membersResult = await pool.query(
@@ -170,7 +170,7 @@ const setupSocketIO = (io, app) => {
         };
 
         // Get all members of the room
-        const pool = await import("./config/datebase.js").then((m) => m.default);
+        const pool = await import("./config/database.js").then((m) => m.default);
         const membersResult = await pool.query(
           `SELECT "userId" FROM chatroomusers WHERE "roomId" = $1`,
           [roomId]
@@ -309,7 +309,7 @@ const setupSocketIO = (io, app) => {
             } else {
               try {
                 // Get all members for this room from the database
-                const pool = await import("./config/datebase.js").then(
+                const pool = await import("./config/database.js").then(
                   (m) => m.default
                 );
                 const membersResult = await pool.query(
@@ -364,7 +364,7 @@ const setupSocketIO = (io, app) => {
     const emitUserStatusChange = async (userId, isOnline) => {
       try {
         // Get all rooms this user is a member of
-        const pool = await import("./config/datebase.js").then((m) => m.default);
+        const pool = await import("./config/database.js").then((m) => m.default);
         const roomsResult = await pool.query(
           `SELECT "roomId" FROM chatroomusers WHERE "userId" = $1`,
           [userId]

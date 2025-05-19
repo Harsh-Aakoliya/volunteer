@@ -14,5 +14,5 @@
     ".expo/types/**/*.ts",
     "expo-env.d.ts",
     "nativewind-env.d.ts"
-, "app/(tabs)/announcement/index.tsx", "utils/authStorage.tsx"  ]
+, "app/(tabs)/announcement/index.tsx", "utils/authStorage.tsx", "components/Icons/MdPermMedia.jsx", "components/chat/DatePicker.jsx"  ]
 }

@@ -1,6 +1,6 @@
 // Chat Controller
 import { stringify } from "postcss";
-import pool from "../config/datebase.js";
+import pool from "../config/database.js";
 
 const chatController = {
 async getChatUsers(req, res) {
@@ -758,6 +758,8 @@ async sendMessage(req, res) {
   try {
     const { roomId } = req.params;
     const { messageText, mediaFiles } = req.body; // Also receive mediaFiles
+    console.log("Message text",messageText);
+    console.log("Media files",mediaFiles);
     const senderId = req.user.userId;
     
     // Convert roomId to integer
@@ -767,55 +769,55 @@ async sendMessage(req, res) {
 
     // If we have mediaFiles with optional message property,
     // each becomes a separate message
-    if (mediaFiles && mediaFiles.length > 0) {
-      // Begin transaction for multiple inserts
-      const client = await pool.connect();
-      try {
-        await client.query('BEGIN');
+    // if (mediaFiles && mediaFiles.length > 0) {
+    //   // Begin transaction for multiple inserts
+    //   const client = await pool.connect();
+    //   try {
+    //     await client.query('BEGIN');
 
-        // Process each media file as a separate message
-        for (const mediaFile of mediaFiles) {
-          // Use the message from the media file or empty string if not provided
-          const msgText = mediaFile.message || "";
-          // Remove the message property from mediaFile to avoid duplication
-          const { message, ...mediaFileWithoutMessage } = mediaFile;
+    //     // Process each media file as a separate message
+    //     for (const mediaFile of mediaFiles) {
+    //       // Use the message from the media file or empty string if not provided
+    //       const msgText = mediaFile.message || "";
+    //       // Remove the message property from mediaFile to avoid duplication
+    //       const { message, ...mediaFileWithoutMessage } = mediaFile;
           
-          // Insert the message with a single media file
-          const result = await client.query(
-            `INSERT INTO chatmessages ("roomId", "senderId", "messageText", "mediaFiles")
-             VALUES ($1, $2, $3, $4)
-             RETURNING *`,
-            [
-              roomIdInt, 
-              senderId, 
-              msgText, 
-              JSON.stringify([mediaFileWithoutMessage])
-            ]
-          );
+    //       // Insert the message with a single media file
+    //       const result = await client.query(
+    //         `INSERT INTO chatmessages ("roomId", "senderId", "messageText", "mediaFiles")
+    //          VALUES ($1, $2, $3, $4)
+    //          RETURNING *`,
+    //         [
+    //           roomIdInt, 
+    //           senderId, 
+    //           msgText, 
+    //           JSON.stringify([mediaFileWithoutMessage])
+    //         ]
+    //       );
 
-          const newMessage = result.rows[0];
+    //       const newMessage = result.rows[0];
           
-          // Parse mediaFiles
-          if (newMessage.mediaFiles) {
-            try {
-              newMessage.mediaFiles = JSON.parse(newMessage.mediaFiles);
-            } catch (err) {
-              console.error('Error parsing mediaFiles:', err);
-              newMessage.mediaFiles = [];
-            }
-          }
+    //       // Parse mediaFiles
+    //       if (newMessage.mediaFiles) {
+    //         try {
+    //           newMessage.mediaFiles = JSON.parse(newMessage.mediaFiles);
+    //         } catch (err) {
+    //           console.error('Error parsing mediaFiles:', err);
+    //           newMessage.mediaFiles = [];
+    //         }
+    //       }
           
-          newMessages.push(newMessage);
-        }
+    //       newMessages.push(newMessage);
+    //     }
 
-        await client.query('COMMIT');
-      } catch (error) {
-        await client.query('ROLLBACK');
-        throw error;
-      } finally {
-        client.release();
-      }
-    } else {
+    //     await client.query('COMMIT');
+    //   } catch (error) {
+    //     await client.query('ROLLBACK');
+    //     throw error;
+    //   } finally {
+    //     client.release();
+    //   }
+    // } else {
       // Traditional single message without media files or with all media files in one message
       const result = await pool.query(
         `INSERT INTO chatmessages ("roomId", "senderId", "messageText", "mediaFiles")
@@ -827,17 +829,17 @@ async sendMessage(req, res) {
       const newMessage = result.rows[0];
       
       // Parse mediaFiles if exists
-      if (newMessage.mediaFiles) {
-        try {
-          newMessage.mediaFiles = JSON.parse(newMessage.mediaFiles);
-        } catch (err) {
-          console.error('Error parsing mediaFiles:', err);
-          newMessage.mediaFiles = [];
-        }
-      }
+      // if (newMessage.mediaFiles) {
+      //   try {
+      //     newMessage.mediaFiles = JSON.parse(newMessage.mediaFiles);
+      //   } catch (err) {
+      //     console.error('Error parsing mediaFiles:', err);
+      //     newMessage.mediaFiles = [];
+      //   }
+      // }
       
       newMessages.push(newMessage);
-    }
+    // }
     
     // Get sender information
     const senderResult = await pool.query(
@@ -916,6 +918,9 @@ async sendMessage(req, res) {
             userName: senderName
           }
         });
+        setTimeout(() => {
+          console.log("message sent");
+        }, 3000);
       }
       
       // Broadcast roomUpdate to all members to update their room list
@@ -926,6 +931,9 @@ async sendMessage(req, res) {
             lastMessage: lastMessageByRoom[roomIdInt],
             unreadCount: unreadMessagesByUser[memberId][roomIdInt] || 0
           });
+          setTimeout(() => {
+            console.log("roomUpdate sent");
+          }, 3000);
         }
       });
     }

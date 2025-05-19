@@ -1,5 +1,5 @@
 // Announcement model and controller
-import pool from "../config/datebase.js";
+import pool from "../config/database.js";
 
 const Announcement = {
   create: async (title, body, authorId) => {
@@ -47,7 +47,7 @@ export const getAnnouncements = async (req, res) => {
   try {
     console.log("at backend getAnnouncements");
     const announcements = await Announcement.getAll();
-    console.log("all announcements", announcements);
+    // console.log("all announcements", announcements);
     res.status(200).json(announcements);
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch announcements' });

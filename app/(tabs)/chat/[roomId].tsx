@@ -23,7 +23,6 @@ import socketService from "@/utils/socketService";
 import OnlineUsersIndicator from "@/components/chat/OnlineUsersIndicator";
 import MembersModal from "@/components/chat/MembersModal";
 import MessageStatus from "@/components/chat/MessageStatus";
-import ChatInputWithMedia from "@/components/chat/ChatInputWithMedia";
 import MessageMedia from "@/components/chat/MessageMedia";
 
 interface RoomDetails extends ChatRoom {
@@ -275,7 +274,10 @@ export default function ChatRoomScreen() {
     }
   };
 
-  const sendMessage = async (text: string, mediaFiles?: MediaFile[]) => {
+  const sendMessage = async (
+    text: string, 
+    mediaFiles?: MediaFile[]
+  ) => {
     if ((!text.trim() && (!mediaFiles || mediaFiles.length === 0)) || !roomId || !currentUser || sending) return;
 
     // Trimmed message text
@@ -497,29 +499,24 @@ export default function ChatRoomScreen() {
           }
         />
 
-        {/* Input with Media Upload */}
-        <ChatInputWithMedia
-          onSendMessage={sendMessage}
-          sending={sending}
-        />
-
-        {/* Input Bar */}
+      {/* Optional Grid */}
       <View className="p-2 border-t border-gray-200 bg-white">
         <View className="flex-row items-center">
           <TouchableOpacity
             className="p-2"
             onPress={() => router.push({
-              pathname: "/chat/MediaUploader",
-              params: { roomId }
+              pathname: "/chat/Attechments-grid",
+              params: { roomId, userId: currentUser?.userId }
             })}
           >
             <Ionicons 
               name="add-circle" 
               size={24} 
               // color={(isUploading || sending) ? "#9CA3AF" : "#3B82F6"} 
-            />
+              />
           </TouchableOpacity>
           
+          {/* Input Bar */}
           <TextInput
             className="flex-1 bg-gray-100 rounded-full px-4 py-2 mr-2"
             placeholder="Type a message..."
@@ -545,10 +542,6 @@ export default function ChatRoomScreen() {
           </TouchableOpacity>
         </View>
       </View>
-
-
-        
-
         {/* Members Modal to show who are currently online in this room */}
         <MembersModal
           visible={showMembersModal}

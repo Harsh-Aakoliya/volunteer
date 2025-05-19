@@ -3,8 +3,9 @@ import { useEffect } from 'react';
 import { useRouter } from 'expo-router';
 import { AuthStorage } from '@/utils/authStorage';
 import MediaUploadApp from '@/components/chat/MediaUploader';
-
+import Poling from '@/app/(tabs)/chat/Polling';
 export default function Index() {
+  
   const router = useRouter();
 
   useEffect(() => {
@@ -28,6 +29,7 @@ export default function Index() {
     checkAuthStatus();
   }, []);
 
-  return null; // This component doesn't render anything
-  return <MediaUploadApp/>
+  // return null; // This component doesn't render anything
+  // return <MediaUploadApp/>
+  // return <Poling/>
 }

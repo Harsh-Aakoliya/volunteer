@@ -1,5 +1,5 @@
 // models/Chat.js
-import pool from "../config/datebase.js";
+import pool from "../config/database.js";
 
 const initChatDB = async () => {
   const client = await pool.connect();
@@ -31,9 +31,10 @@ const initChatDB = async () => {
         "id" SERIAL PRIMARY KEY,
         "roomId" INTEGER REFERENCES chatrooms("roomId"),
         "senderId" VARCHAR(50) REFERENCES users("userId"),
-        "messageText" TEXT NOT NULL,
-        "mediaFiles" JSON,
         "createdAt" TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+        "messageText" TEXT NOT NULL,
+        "pollId" INTEGER REFERENCES poll("id") DEFAULT NULL,
+        "mediaFiles" JSON,
         FOREIGN KEY ("roomId") REFERENCES chatrooms("roomId") ON DELETE CASCADE,
         FOREIGN KEY ("senderId") REFERENCES users("userId") ON DELETE CASCADE
       );

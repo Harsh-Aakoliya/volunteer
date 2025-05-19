@@ -1,5 +1,5 @@
 // initDB.js
-import pool from "../config/datebase.js";
+import pool from "../config/database.js";
 
 //state
 //city

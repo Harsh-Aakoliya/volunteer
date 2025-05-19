@@ -5,6 +5,7 @@ import userRoutes from './userRoutes.js';
 import announcementRoutes from './announcementRoutes.js';
 import uploadRoutes from './uploadRoutes.js';
 import { authenticateToken } from '../middlewares/auth.js';
+import pollRoutes from './pollRoutes.js';
 
 const router = express.Router();
 
@@ -22,4 +23,5 @@ router.use('/users', userRoutes);
 router.use('/announcements', announcementRoutes);
 router.use('/upload', uploadRoutes);
 
+router.use('/poll', pollRoutes);
 export default router; 
