@@ -61,8 +61,9 @@ export interface Message {
   senderId: string;
   senderName: string;
   messageText: string;
-  createdAt: string;
-  mediaFiles?: MediaFile[]; // Optional array of media files
+  createdAt: string;  
+  mediaFilesId?: number; // Optional array of media files
+  pollId?: number;
 }
 
 export interface ChatRoom {

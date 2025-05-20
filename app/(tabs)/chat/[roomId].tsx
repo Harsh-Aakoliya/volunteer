@@ -153,7 +153,8 @@ export default function ChatRoomScreen() {
               senderName: data.sender.userName,
               messageText: data.messageText,
               createdAt: data.createdAt,
-              mediaFiles: data.mediaFiles, // Add support for media files
+              mediaFilesId: data?.mediaFilesId, // Add support for media files
+              pollId: data?.pollId,
             };
 
             setMessages((prev) => [...prev, newMessage]);
@@ -276,9 +277,10 @@ export default function ChatRoomScreen() {
 
   const sendMessage = async (
     text: string, 
-    mediaFiles?: MediaFile[]
+    mediaFilesId?: number,
+    pollId?: number
   ) => {
-    if ((!text.trim() && (!mediaFiles || mediaFiles.length === 0)) || !roomId || !currentUser || sending) return;
+    if ((!text.trim() && (!mediaFilesId || !pollId)) || !roomId || !currentUser || sending) return;
 
     // Trimmed message text
     const trimmedMessage = text.trim();
@@ -288,7 +290,7 @@ export default function ChatRoomScreen() {
       setMessageText(""); // Clear input immediately for better UX
 
       // For the case of a single text message or text with media
-      if (trimmedMessage && (!mediaFiles || mediaFiles.length === 0)) {
+      if (trimmedMessage || mediaFilesId || pollId) {
         // Create optimistic message to show immediately
         const optimisticMessage: Message = {
           id: `temp-${Date.now()}`, // Temporary ID
@@ -297,7 +299,8 @@ export default function ChatRoomScreen() {
           senderName: currentUser.fullName || "You",
           messageText: trimmedMessage,
           createdAt: new Date().toISOString(),
-          mediaFiles: mediaFiles, // Include media files
+          mediaFilesId: mediaFilesId, // Include media files
+          pollId: pollId,
         };
 
         // Add optimistic message to the list
@@ -309,26 +312,26 @@ export default function ChatRoomScreen() {
         }, 100);
       } 
       // For the case of multiple media files, each with its own message
-      else if (mediaFiles && mediaFiles.length > 1) {
-        // Create multiple optimistic messages, one for each media file
-        const optimisticMessages: Message[] = mediaFiles.map((file, index) => ({
-          id: `temp-${Date.now()}-${index}`, // Temporary ID with index to make them unique
-          roomId: parseInt(roomId as string),
-          senderId: currentUser.userId,
-          senderName: currentUser.fullName || "You",
-          messageText: file.message || '',
-          createdAt: new Date().toISOString(),
-          mediaFiles: [file], // Each message has one media file
-        }));
+      // else if (mediaFilesId && mediaFilesId > 1) {
+      //   // Create multiple optimistic messages, one for each media file
+      //   const optimisticMessages: Message[] = mediaFilesId.map((file, index) => ({
+      //     id: `temp-${Date.now()}-${index}`, // Temporary ID with index to make them unique
+      //     roomId: parseInt(roomId as string),
+      //     senderId: currentUser.userId,
+      //     senderName: currentUser.fullName || "You",
+      //     messageText: file.message || '',
+      //     createdAt: new Date().toISOString(),
+      //     mediaFiles: [file], // Each message has one media file
+      //   }));
 
-        // Add optimistic messages to the list
-        setMessages((prev) => [...prev, ...optimisticMessages]);
+      //   // Add optimistic messages to the list
+      //   setMessages((prev) => [...prev, ...optimisticMessages]);
 
-        // Scroll to the bottom
-        setTimeout(() => {
-          flatListRef.current?.scrollToEnd({ animated: true });
-        }, 100);
-      }
+      //   // Scroll to the bottom
+      //   setTimeout(() => {
+      //     flatListRef.current?.scrollToEnd({ animated: true });
+      //   }, 100);
+      // }
 
       // Send the message via API
       const token = await AuthStorage.getToken();
@@ -336,7 +339,8 @@ export default function ChatRoomScreen() {
         `${API_URL}/api/chat/rooms/${roomId}/messages`,
         { 
           messageText: trimmedMessage,
-          mediaFiles: mediaFiles // Send media files to the server
+          mediaFilesId: mediaFilesId, // Send media files to the server
+          pollId: pollId,
         },
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -417,10 +421,10 @@ export default function ChatRoomScreen() {
           </Text>
         )}
         
-        {/* Render media files if present */}
+        {/* Render media files if present
         {item.mediaFiles && item.mediaFiles.length > 0 && (
           <MessageMedia mediaFiles={item.mediaFiles} />
-        )}
+        )} */}
         
         <View className="flex-row justify-between items-center mt-1">
           <Text
@@ -506,7 +510,10 @@ export default function ChatRoomScreen() {
             className="p-2"
             onPress={() => router.push({
               pathname: "/chat/Attechments-grid",
-              params: { roomId, userId: currentUser?.userId }
+              params: { 
+                roomId, 
+                userId: currentUser?.userId
+              }
             })}
           >
             <Ionicons 
@@ -531,7 +538,7 @@ export default function ChatRoomScreen() {
                 ? "bg-blue-500"
                 : "bg-gray-300"
             }`}
-            onPress={() => sendMessage(messageText,[])}
+            onPress={() => sendMessage(messageText)}
             disabled={!messageText.trim() || sending}
           >
             {sending ? (

@@ -166,19 +166,19 @@ const mediaController = {
         // ]
 
         // insert into media table
-        const media=[]
+        const mediaFilesIds=[]
         for (const result of uploadResults) {
           const temp = await client.query(
             `INSERT INTO media ("senderId", "roomId", "driveUrlObject", "messageId") VALUES ($1, $2, $3, $4) RETURNING *`,
             [userId, roomId, result, null]
           );
-          media.push(temp.rows[0]); // Add inserted row data to array
+          mediaFilesIds.push(temp.rows[0].id); // Add inserted row data to array
         }
 
-        console.log("media", media);
+        console.log("mediaFilesIds", mediaFilesIds);
 
         
-        res.json({ uploaded: uploadResults, media: media });
+        res.json({ uploaded: uploadResults, mediaFilesIds: mediaFilesIds });
     } catch (error) {
         console.error("Upload handler error:", error);
         res.status(500).json({ 

@@ -5,26 +5,44 @@ import {
   Button,
   FlatList,
   TouchableOpacity,
+  Alert,
+  Modal,
 } from "react-native";
 import { useState } from "react";
 import { useLocalSearchParams } from "expo-router";
 import Checkbox from "expo-checkbox";
+import { API_URL } from "../../../constants/api";
+import axios from "axios";
 type Options = {
   id: string;
   text: string;
 };
-import DateTimePicker from "../../../components/chat/DatePicker";
+// import DateTimePicker from "../../../components/chat/DatePicker";
 export default function Poling() {
   const { roomId, userId } = useLocalSearchParams();
-  console.log("roomId", roomId);
-  console.log("userId", userId);
+  // console.log("roomId", roomId);
+  // console.log("userId", userId);
   const [question, setQuestion] = useState("");
   const [optionText, setOptionText] = useState("");
   const [options, setOptions] = useState<Options[]>([]);
   const [multipleChoice, setMultipleChoice] = useState(false);
-  const [date, setDate] = useState(new Date());
-  console.log("multipleChoice", multipleChoice);
+  const [showModal, setShowModal] = useState(false);
+  const [endTime, setEndTime] = useState(new Date().toLocaleString());
+  // console.log("multipleChoice", multipleChoice);
+
+  async function sendPoll() {
+    const response = await axios.post(`${API_URL}/api/poll`, {
+      question: question,
+      options: options,
+      isMultipleChoiceAllowed: multipleChoice,
+      pollEndTime: endTime,
+      roomId: roomId,
+      createdBy: userId,
+    });
+    console.log("response", response.data.poll);
+  }
   return (
+    
     <View className="flex-1 p-2">
       <View className="flex-row items-center justify-between pt-2 pb-2">
         <TextInput
@@ -35,19 +53,48 @@ export default function Poling() {
             setQuestion(text);
           }}
         />
+        {showModal ? (
+            <Modal visible={showModal} transparent={true} animationType="slide">
+              <View className="flex-1 justify-center items-center bg-black bg-opacity-50">
+                <View className="bg-white p-4 rounded-md w-11/12">
+                  <Text className="text-lg font-bold mb-2">Poll Information</Text>
+                  <Text className="mb-1">Question: {question}</Text>
+                  <Text className="mb-1">
+                    Options: {options.map((option) => option.text).join(", ")}
+                  </Text>
+                  <Text className="mb-1">
+                    Multiple Choice: {multipleChoice ? "Yes" : "No"}
+                  </Text>
+                  <Text className="mb-4">End Time: {endTime}</Text>
+
+                  <TouchableOpacity
+                    className="bg-blue-500 p-2 rounded-md mb-2"
+                    onPress={() => {
+                      sendPoll();
+                      setOptionText("");
+                      setOptions([]);
+                      setQuestion("");
+                      setShowModal(false);
+                    }}
+                  >
+                    <Text className="text-white text-center">Confirm poll and send</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity onPress={() => setShowModal(false)}>
+                    <Text className="text-center text-red-500">Cancel</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </Modal>
+          ):null}
+
         <TouchableOpacity
           className={`w-1/4  rounded-md p-2 ${
             options.length === 0 ? "bg-gray-300" : "bg-blue-500"
           }`}
           disabled={options.length === 0}
           onPress={() => {
-            console.log(question, options);
-            console.log(options.map((option) => option.text));
-
-            setOptionText("");
-            setOptions([]);
-            setQuestion("");
-            console.log("sending poll");
+            setShowModal(true);
           }}
         >
           <Text>Create Poll</Text>
@@ -60,7 +107,18 @@ export default function Poling() {
         </View>
         <View>
           <Text>Set finish time</Text>
-          <DateTimePicker />
+          <View className="flex-row items-center gap-2">
+
+            <TextInput
+              className="border-2 border-gray-300 rounded-md p-2  h-12"
+              placeholder="Enter poll end time"
+              onChangeText={(endTime: string) => {
+                setEndTime(endTime);
+              }}
+              value={endTime}
+              />
+          <Text>DD/MM/YYYY HH/MM</Text>
+              </View>
         </View>
         <Text className="text-lg font-bold pl-2">Options</Text>
         {options.length === 0 ? (
@@ -132,3 +190,5 @@ export default function Poling() {
     </View>
   );
 }
+
+

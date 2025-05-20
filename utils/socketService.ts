@@ -28,11 +28,12 @@ interface NewMessageEvent {
   roomId: string;
   messageText: string;
   createdAt: string;
-  mediaFiles?: MediaFile[];
+  mediaFilesId?: number;
   sender: {
     userId: string;
     userName: string;
   };
+  pollId?: number;
 }
 
 interface UserOfflineEvent {
@@ -47,7 +48,8 @@ interface UnreadMessagesEvent {
     id: number;
     messageText: string;
     createdAt: string;
-    mediaFiles?: MediaFile[];
+    mediaFilesId?: number;
+    pollId?: number;
     sender: {
       userId: string;
       userName: string;
@@ -61,7 +63,8 @@ interface RoomUpdateEvent {
     id: number;
     messageText: string;
     createdAt: string;
-    mediaFiles?: MediaFile[];
+    mediaFilesId?: number;
+    pollId?: number;
     sender: {
       userId: string;
       userName: string;
@@ -76,7 +79,8 @@ interface LastMessageEvent {
     id: number;
     messageText: string;
     createdAt: string;
-    mediaFiles?: MediaFile[];
+    mediaFilesId?: number;
+    pollId?: number;
     sender: {
       userId: string;
       userName: string;
@@ -154,7 +158,8 @@ class SocketService {
           id: message.id,
           messageText: message.messageText,
           createdAt: message.createdAt,
-          mediaFiles: message.mediaFiles,
+          mediaFilesId: message.mediaFilesId,
+          pollId: message.pollId,
         },
         sender,
       });

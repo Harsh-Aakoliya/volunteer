@@ -183,7 +183,8 @@ const setupSocketIO = (io, app) => {
           id: message.id,
           roomId: roomId,
           messageText: message.messageText,
-          mediaFiles: message.mediaFiles, // Include media files
+          mediaFilesId: message.mediaFilesId,
+          pollId: message.pollId,
           createdAt: message.createdAt,
           sender: {
             userId: sender.userId,

@@ -32,9 +32,10 @@ const initChatDB = async () => {
         "roomId" INTEGER REFERENCES chatrooms("roomId"),
         "senderId" VARCHAR(50) REFERENCES users("userId"),
         "createdAt" TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+        "messageType" message_type NOT NULL DEFAULT 'text',
         "messageText" TEXT NOT NULL,
         "pollId" INTEGER REFERENCES poll("id") DEFAULT NULL,
-        "mediaFiles" JSON,
+        "mediaFilesId" INTEGER REFERENCES media("id") DEFAULT NULL,
         FOREIGN KEY ("roomId") REFERENCES chatrooms("roomId") ON DELETE CASCADE,
         FOREIGN KEY ("senderId") REFERENCES users("userId") ON DELETE CASCADE
       );

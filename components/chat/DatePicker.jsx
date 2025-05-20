@@ -15,15 +15,31 @@ const DateTimePicker = () => {
   
   // Store selected values
   const [selectedDate, setSelectedDate] = useState({
-    month: 'September',
-    day: 3,
-    year: 2021
-  });
+    month: 'May',
+      day: 20,
+      year: 2025
+    });
   
   const [selectedTime, setSelectedTime] = useState({
     hour: 17,
     minute: 9
   });
+  useEffect(() => {
+    const currentDate = new Date();
+    setSelectedDate({
+      month: months[currentDate.getMonth()],
+      day: currentDate.getDate(),
+      year: currentDate.getFullYear()
+    });
+    setSelectedTime({
+      hour: currentDate.getHours(),
+      minute: currentDate.getMinutes()
+    });
+  },[]);
+
+
+  console.log("selectedDate",selectedDate);
+  console.log("selectedTime",selectedTime);
 
   // References for ScrollViews
   const monthScrollRef = useRef(null);
@@ -81,7 +97,7 @@ const DateTimePicker = () => {
         // Scroll to the current selections
         const scrollToPosition = (ref, index) => {
           if (ref.current) {
-            ref.current.scrollTo({ y: index * ITEM_HEIGHT, animated: false });
+            ref.current.scrollTo({ y: index * ITEM_HEIGHT, animated: true });
           }
         };
         

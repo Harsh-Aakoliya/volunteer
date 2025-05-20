@@ -105,7 +105,6 @@ export default function MediaUploadApp() {
       });
       formData.append("userId", userId as string);
       formData.append("roomId", roomId as string);
-
       try {
         // Use axios with upload progress tracking
         const response = await axios.post(
@@ -131,7 +130,7 @@ export default function MediaUploadApp() {
             },
           }
         );
-        console.log("response got after upload",response.data);
+        console.log("response got after uploading files",response.data);
         // Add the newly uploaded files to our media files list
         const newFiles = response.data.uploaded.map((file: any, idx: number) => ({
           ...file,
@@ -139,7 +138,7 @@ export default function MediaUploadApp() {
         }));
 
         setMediaFiles((prev) => [...prev, ...newFiles]);
-        
+        console.log("mediaFiles after upload",mediaFiles);
         // Clear uploading files after successful upload
         setTimeout(() => {
           setUploadingFiles([]);
@@ -248,6 +247,7 @@ export default function MediaUploadApp() {
               const token = await AuthStorage.getToken();
               
               // Send each media file as a separate message
+
               for (const file of mediaFiles) {
                 console.log("sending file",file);
                 // Create message text with file link and caption

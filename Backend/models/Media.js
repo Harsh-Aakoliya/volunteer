@@ -9,6 +9,7 @@ const initMediaDB = async () => {
                 "roomId" INTEGER REFERENCES chatrooms("roomId"),
                 "senderId" VARCHAR(50) REFERENCES users("userId"),
                 "createdAt" TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                "caption" VARCHAR(255),
                 "messageId" INTEGER REFERENCES chatmessages("id"),
                 "driveUrlObject" JSONB
             );

@@ -11,8 +11,8 @@ const initPollDB = async () => {
                 "votes" JSONB,
                 "roomId" INTEGER REFERENCES chatrooms("roomId"),
                 "isActive" BOOLEAN DEFAULT TRUE,
-                "finishedAt" TIMESTAMP WITH TIME ZONE,
-                "multipleChoice" BOOLEAN DEFAULT FALSE,
+                "pollEndTime" TIMESTAMP WITH TIME ZONE,
+                "isMultipleChoiceAllowed" BOOLEAN DEFAULT FALSE,
                 "createdBy" VARCHAR(50) REFERENCES users("userId"),
                 "createdAt" TIMESTAMP WITH TIME ZONE DEFAULT NOW()
             );
