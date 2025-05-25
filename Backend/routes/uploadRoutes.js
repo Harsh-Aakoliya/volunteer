@@ -12,6 +12,6 @@ const upload = multer({
   limits: { fileSize: 50 * 1024 * 1024 } // 50 MB limit
 });
 // Route for file uploads
-router.post("/",upload.array("files"), mediaController.uploadMedia);
-
+router.post("/upload",upload.array("files"), mediaController.uploadMedia);
+router.get("/getmedia/:mediaId",mediaController.getMedia);
 export default router;

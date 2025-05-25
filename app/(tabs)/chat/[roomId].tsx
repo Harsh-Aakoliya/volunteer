@@ -11,6 +11,7 @@ import {
   Platform,
   SafeAreaView,
   AppState,
+  Touchable,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, router, useNavigation } from "expo-router";
@@ -24,6 +25,10 @@ import OnlineUsersIndicator from "@/components/chat/OnlineUsersIndicator";
 import MembersModal from "@/components/chat/MembersModal";
 import MessageStatus from "@/components/chat/MessageStatus";
 import MessageMedia from "@/components/chat/MessageMedia";
+import RenderPoll from "@/components/chat/Attechments/RenderPoll";
+// import RenderDriveFiles from './RenderDriveFiles'; // Adjust import path as needed
+import RenderDriveFiles from "@/components/chat/RenderDriveFiles";
+import RenderTable from "@/components/chat/Attechments/RenderTable";
 
 interface RoomDetails extends ChatRoom {
   members: ChatUser[];
@@ -33,6 +38,7 @@ interface RoomDetails extends ChatRoom {
 interface RoomMember extends ChatUser {
   isOnline?: boolean;
 }
+
 
 export default function ChatRoomScreen() {
   const { roomId } = useLocalSearchParams();
@@ -50,6 +56,13 @@ export default function ChatRoomScreen() {
   const [showMembersModal, setShowMembersModal] = useState(false);
   const [roomMembers, setRoomMembers] = useState<ChatUser[]>([]);
   const [appState, setAppState] = useState(AppState.currentState);
+
+  const [showPollModel, setShowPollModel]=useState(false);
+  const [pollId,setPollId]=useState<number |null>(null);
+
+  const [showTableModle,setShowTableModel] =useState(false);
+  const [tableId,setTableId]=useState<number | null>(null);
+
   const flatListRef = useRef<FlatList>(null);
   const navigation = useNavigation();
 
@@ -152,11 +165,13 @@ export default function ChatRoomScreen() {
               senderId: data.sender.userId,
               senderName: data.sender.userName,
               messageText: data.messageText,
+              messageType:data.messageType,
               createdAt: data.createdAt,
               mediaFilesId: data?.mediaFilesId, // Add support for media files
               pollId: data?.pollId,
+              tableId:data?.tableId
             };
-
+            console.log("new message is",newMessage);
             setMessages((prev) => [...prev, newMessage]);
 
             // Scroll to bottom when new message arrives
@@ -277,10 +292,12 @@ export default function ChatRoomScreen() {
 
   const sendMessage = async (
     text: string, 
+    messageType:string, 
     mediaFilesId?: number,
-    pollId?: number
+    pollId?: number,
+    tableId?:number
   ) => {
-    if ((!text.trim() && (!mediaFilesId || !pollId)) || !roomId || !currentUser || sending) return;
+    if ((!text.trim() && (!mediaFilesId || !pollId || !tableId)) || !roomId || !currentUser || sending) return;
 
     // Trimmed message text
     const trimmedMessage = text.trim();
@@ -290,17 +307,20 @@ export default function ChatRoomScreen() {
       setMessageText(""); // Clear input immediately for better UX
 
       // For the case of a single text message or text with media
-      if (trimmedMessage || mediaFilesId || pollId) {
+      // if (trimmedMessage || mediaFilesId || pollId) {
         // Create optimistic message to show immediately
+        console.log("here table id is",tableId)
         const optimisticMessage: Message = {
           id: `temp-${Date.now()}`, // Temporary ID
           roomId: parseInt(roomId as string),
           senderId: currentUser.userId,
           senderName: currentUser.fullName || "You",
           messageText: trimmedMessage,
+          messageType: messageType,
           createdAt: new Date().toISOString(),
           mediaFilesId: mediaFilesId, // Include media files
           pollId: pollId,
+          tableId:tableId
         };
 
         // Add optimistic message to the list
@@ -310,7 +330,7 @@ export default function ChatRoomScreen() {
         setTimeout(() => {
           flatListRef.current?.scrollToEnd({ animated: true });
         }, 100);
-      } 
+      // } 
       // For the case of multiple media files, each with its own message
       // else if (mediaFilesId && mediaFilesId > 1) {
       //   // Create multiple optimistic messages, one for each media file
@@ -341,6 +361,8 @@ export default function ChatRoomScreen() {
           messageText: trimmedMessage,
           mediaFilesId: mediaFilesId, // Send media files to the server
           pollId: pollId,
+          messageType: messageType,
+          tableId:tableId
         },
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -389,6 +411,7 @@ export default function ChatRoomScreen() {
 
   // Updated renderMessage function to support media files
   const renderMessage = ({ item }: { item: Message }) => {
+    // console.log("a;skdjfa;slk fa;sl dkfj;ad",item);
     const isOwnMessage = item.senderId === currentUser?.userId;
 
     // Determine message status
@@ -409,6 +432,7 @@ export default function ChatRoomScreen() {
           isOwnMessage ? "bg-blue-500 self-end" : "bg-gray-200 self-start"
         }`}
       >
+        <Text>{item.messageType}</Text>
         {!isOwnMessage && (
           <Text className="text-xs font-bold text-gray-600">
             {item.senderName || "Unknown"}
@@ -421,11 +445,67 @@ export default function ChatRoomScreen() {
           </Text>
         )}
         
-        {/* Render media files if present
-        {item.mediaFiles && item.mediaFiles.length > 0 && (
-          <MessageMedia mediaFiles={item.mediaFiles} />
-        )} */}
-        
+        {/* Render media files if present */}
+        {item.mediaFilesId ? (
+          <View>
+            <Text>{item.mediaFilesId}</Text>
+            {/* <RenderDriveFiles /> */}
+          </View>
+          
+        ):null}
+
+        {/* Render table if presend */}
+        {item.tableId ?(
+          <TouchableOpacity 
+          onPress={()=>{
+            if (typeof item.tableId === 'number') {
+              setTableId(item.tableId);
+              setShowTableModel(true);
+            }
+          }}>
+            <Text>Show table</Text>
+          </TouchableOpacity>
+        ):null}
+
+        {
+          showTableModle ? tableId !== null && currentUser?.userId && (
+            <RenderTable 
+              tableId={tableId}
+              visible={showTableModle}
+              setShowTable={setShowTableModel}
+            />
+          ):null
+        }
+
+
+        {/* Render poll if present */}
+        {
+          item.pollId ? (
+            <TouchableOpacity
+              onPress={() => {
+                if (typeof item.pollId === 'number') {
+                  setPollId(item.pollId);
+                  setShowPollModel(true);
+                }
+              }}
+            >
+              <Text>Vote Now</Text>
+            </TouchableOpacity>
+          ) : null
+        }
+
+        {
+          showPollModel ? pollId !== null && currentUser?.userId && (
+            <RenderPoll
+              pollid={pollId} 
+              setShowPollModel={setShowPollModel} 
+              currentUserId={currentUser?.userId}
+              totalMembers={roomMembers.length}
+              visible={showPollModel}
+            />
+          ):null
+        }
+
         <View className="flex-row justify-between items-center mt-1">
           <Text
             className={`text-xs ${
@@ -444,6 +524,10 @@ export default function ChatRoomScreen() {
       </View>
     );
   };
+
+
+
+  
 
   if (isLoading) {
     return (
@@ -538,7 +622,7 @@ export default function ChatRoomScreen() {
                 ? "bg-blue-500"
                 : "bg-gray-300"
             }`}
-            onPress={() => sendMessage(messageText)}
+            onPress={() => sendMessage(messageText,"text")}
             disabled={!messageText.trim() || sending}
           >
             {sending ? (

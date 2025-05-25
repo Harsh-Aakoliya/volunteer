@@ -164,21 +164,25 @@ const mediaController = {
         //     mimeType: 'video/mp4'
         //   }
         // ]
+        //add additional fields to uploadResults (caption) and as of now caption is ""
+        uploadResults.forEach(result => {
+          result.caption = "";
+        });
 
         // insert into media table
-        const mediaFilesIds=[]
-        for (const result of uploadResults) {
+        // const mediaFilesIds=[]
+        // for (const result of uploadResults) {
           const temp = await client.query(
-            `INSERT INTO media ("senderId", "roomId", "driveUrlObject", "messageId") VALUES ($1, $2, $3, $4) RETURNING *`,
-            [userId, roomId, result, null]
+            `INSERT INTO media ("senderId", "roomId", "driveUrlObject", "messageId") VALUES ($1, $2, $3::jsonb, $4) RETURNING *`,
+            [userId, roomId, JSON.stringify(uploadResults), null]
           );
-          mediaFilesIds.push(temp.rows[0].id); // Add inserted row data to array
-        }
+        //   mediaFilesIds.push(temp.rows[0].id); // Add inserted row data to array
+        // }
 
-        console.log("mediaFilesIds", mediaFilesIds);
+        // console.log("mediaFilesIds", mediaFilesIds);
 
-        
-        res.json({ uploaded: uploadResults, mediaFilesIds: mediaFilesIds });
+
+        res.json({ uploaded: uploadResults, mediaId: temp.rows[0].id });
     } catch (error) {
         console.error("Upload handler error:", error);
         res.status(500).json({ 
@@ -186,7 +190,21 @@ const mediaController = {
         error: error.message 
         });
     }
+  },
+
+  async getMedia (req,res){
+    const {mediaId}=req.params;
+    try {
+      const response= await client  .query(
+        `select * from media where "id" = $1`,
+        [mediaId]
+      )
+      res.status(200).json({files:response.rows[0]})
+    } catch (error) {
+      console.error("Error while featching media files:", error);
+      res.status(500).json({ error: "Error while featching media files" });
     }
+  }
 }
 
 export default mediaController;

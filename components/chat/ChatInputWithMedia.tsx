@@ -110,7 +110,7 @@ const ChatInputWithMedia: React.FC<ChatInputWithMediaProps> = ({
           
           // Upload the file
           const response = await axios.post(
-            `${API_URL}/api/upload`,
+            `${API_URL}/api/media/upload`,
             formData,
             {
               headers: {

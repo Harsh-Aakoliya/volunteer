@@ -6,7 +6,7 @@ import announcementRoutes from './announcementRoutes.js';
 import uploadRoutes from './uploadRoutes.js';
 import { authenticateToken } from '../middlewares/auth.js';
 import pollRoutes from './pollRoutes.js';
-
+import tableRoutes from "./tableRoutes.js";
 const router = express.Router();
 
 // Test route
@@ -21,7 +21,7 @@ router.use('/auth', authRoutes);
 router.use('/chat', chatRoutes);
 router.use('/users', userRoutes);
 router.use('/announcements', announcementRoutes);
-router.use('/upload', uploadRoutes);
-
+router.use('/media', uploadRoutes);
 router.use('/poll', pollRoutes);
+router.use('/table',tableRoutes);
 export default router; 

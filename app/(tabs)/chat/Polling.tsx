@@ -17,7 +17,10 @@ type Options = {
   id: string;
   text: string;
 };
-// import DateTimePicker from "../../../components/chat/DatePicker";
+import { router } from "expo-router";
+import DateTimePicker from "../../../components/chat/DatePicker";
+import { AuthStorage } from '@/utils/authStorage';
+
 export default function Poling() {
   const { roomId, userId } = useLocalSearchParams();
   // console.log("roomId", roomId);
@@ -27,23 +30,59 @@ export default function Poling() {
   const [options, setOptions] = useState<Options[]>([]);
   const [multipleChoice, setMultipleChoice] = useState(false);
   const [showModal, setShowModal] = useState(false);
-  const [endTime, setEndTime] = useState(new Date().toLocaleString());
+  const [endTime, setEndTime] = useState(null);
+  const [pollId,setpollId]=useState(null);
   // console.log("multipleChoice", multipleChoice);
-
-  async function sendPoll() {
-    const response = await axios.post(`${API_URL}/api/poll`, {
-      question: question,
-      options: options,
-      isMultipleChoiceAllowed: multipleChoice,
-      pollEndTime: endTime,
-      roomId: roomId,
-      createdBy: userId,
-    });
-    console.log("response", response.data.poll);
-  }
+  const sendPoll = async () => {
+    try {
+      const response = await axios.post(`${API_URL}/api/poll`, {
+        question: question,
+        options: options,
+        isMultipleChoiceAllowed: multipleChoice,
+        pollEndTime: endTime,
+        roomId: roomId,
+        createdBy: userId,
+      });
+      const createdPollId = response.data.poll.id;
+      console.log("Response after creating poll", response.data);
+      console.log("poll id is ",createdPollId);
+      return createdPollId;
+    } catch (error) {
+      console.error("Error creating poll:", error);
+      Alert.alert("Failed to create poll");
+      return null;
+    }
+  };
+  
+  const sendpollinmessage = async (pollId: number) => {
+    try {
+      const messageText = "";
+      const token = await AuthStorage.getToken();
+      console.log("token is ",token);
+      console.log("poll id here is",pollId);
+      const pollResponse = await axios.post(
+        `${API_URL}/api/chat/rooms/${roomId}/messages`,
+        {
+          messageText,
+          messageType: "poll",
+          pollId: pollId,
+        },
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+      console.log("Response after sending poll in message", pollResponse.data);
+      router.back();
+    } catch (error) {
+      console.error("Error sending poll in message:", error);
+      Alert.alert("Failed to send poll message");
+    }
+  };
+  
   return (
     
     <View className="flex-1 p-2">
+      <DateTimePicker/>
       <View className="flex-row items-center justify-between pt-2 pb-2">
         <TextInput
           placeholder="Enter your question"
@@ -69,17 +108,15 @@ export default function Poling() {
 
                   <TouchableOpacity
                     className="bg-blue-500 p-2 rounded-md mb-2"
-                    onPress={() => {
-                      sendPoll();
-                      setOptionText("");
-                      setOptions([]);
-                      setQuestion("");
-                      setShowModal(false);
+                    onPress={async () => {
+                      const createdPollId = await sendPoll();
+                      if (createdPollId) {
+                        await sendpollinmessage(createdPollId);
+                      }
                     }}
                   >
                     <Text className="text-white text-center">Confirm poll and send</Text>
                   </TouchableOpacity>
-
                   <TouchableOpacity onPress={() => setShowModal(false)}>
                     <Text className="text-center text-red-500">Cancel</Text>
                   </TouchableOpacity>
@@ -105,7 +142,7 @@ export default function Poling() {
           <Checkbox value={multipleChoice} onValueChange={setMultipleChoice} />
           <Text>Allow Multiple Choice</Text>
         </View>
-        <View>
+        {/* <View>
           <Text>Set finish time</Text>
           <View className="flex-row items-center gap-2">
 
@@ -119,7 +156,7 @@ export default function Poling() {
               />
           <Text>DD/MM/YYYY HH/MM</Text>
               </View>
-        </View>
+        </View> */}
         <Text className="text-lg font-bold pl-2">Options</Text>
         {options.length === 0 ? (
           <View className="flex-1 items-center justify-center">

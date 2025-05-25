@@ -91,16 +91,15 @@ const DateTimePicker = () => {
   };
 
   // Scroll to selected values when modal opens
+  const scrollToPosition = (ref, index) => {
+    if (ref.current) {
+      ref.current.scrollTo({ y: index * ITEM_HEIGHT, animated: true });
+    }
+  };
   useEffect(() => {
     if (modalVisible) {
       setTimeout(() => {
         // Scroll to the current selections
-        const scrollToPosition = (ref, index) => {
-          if (ref.current) {
-            ref.current.scrollTo({ y: index * ITEM_HEIGHT, animated: true });
-          }
-        };
-        
         if (modalType === 'date' || (modalType === 'datetime' && currentStep === 'date')) {
           scrollToPosition(monthScrollRef, months.indexOf(selectedDate.month));
           scrollToPosition(dayScrollRef, selectedDate.day - 1);
@@ -128,7 +127,7 @@ const DateTimePicker = () => {
   const handleScroll = (event, type, valueArray) => {
     const offsetY = event.nativeEvent.contentOffset.y;
     const index = Math.round(offsetY / ITEM_HEIGHT);
-    
+    console.log("index is",index);
     if (index >= 0 && index < valueArray.length) {
       // Update selected value based on scroll position
       const value = valueArray[index];
@@ -144,6 +143,16 @@ const DateTimePicker = () => {
       } else if (type === 'minute') {
         setSelectedTime(prev => ({ ...prev, minute: parseInt(value) }));
       }
+      // if (modalType === 'date' || (modalType === 'datetime' && currentStep === 'date')) {
+          scrollToPosition(monthScrollRef, months.indexOf(selectedDate.month));
+          scrollToPosition(dayScrollRef, selectedDate.day - 1);
+          scrollToPosition(yearScrollRef, years.indexOf(selectedDate.year));
+        // }
+        
+        // if (modalType === 'time' || (modalType === 'datetime' && currentStep === 'time')) {
+          scrollToPosition(hourScrollRef, selectedTime.hour);
+          scrollToPosition(minuteScrollRef, parseInt(selectedTime.minute));
+        // }
     }
   };
 
@@ -157,7 +166,8 @@ const DateTimePicker = () => {
 
   // Wheel picker item component
   const PickerItem = ({ value, isSelected }) => (
-    <View style={{ height: ITEM_HEIGHT, justifyContent: 'center', alignItems: 'center' }}>
+    
+     <View style={{ height: ITEM_HEIGHT, justifyContent: 'center', alignItems: 'center' }}>
       <Text className={`text-center ${isSelected ? 'text-black font-bold' : 'text-gray-400'}`}>
         {value}
       </Text>
@@ -172,7 +182,7 @@ const DateTimePicker = () => {
         showsVerticalScrollIndicator={false}
         snapToInterval={ITEM_HEIGHT}
         decelerationRate="fast"
-        onMomentumScrollEnd={(e) => onScroll(e, items)}
+        // onMomentumScrollEnd={(e) => onScroll(e, items)}
         contentContainerStyle={{ paddingVertical: ITEM_HEIGHT }}
         style={{ width: itemWidth }}
       >
@@ -200,7 +210,10 @@ const DateTimePicker = () => {
           items={months}
           selectedItem={selectedDate.month}
           scrollRef={monthScrollRef}
-          onScroll={(e, items) => handleScroll(e, 'month', items)}
+          onScroll={(e, items) => {
+            console.log(";alskjdf",items);
+            handleScroll(e, 'month', items)
+          }}
           itemWidth={width * 0.25}
         />
         

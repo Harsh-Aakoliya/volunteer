@@ -66,7 +66,7 @@ export default function MediaUploadApp() {
   const [selectedFile, setSelectedFile] = useState<MediaFile | null>(null);
   const [uploadingFiles, setUploadingFiles] = useState<UploadingFile[]>([]);
   const [sending, setSending] = useState(false);
-
+  const [mediaFilesId, setMediaFilesId] = useState<string>("");
   
   // Handle file selection and upload
   const handleSelectFiles = async () => {
@@ -108,7 +108,7 @@ export default function MediaUploadApp() {
       try {
         // Use axios with upload progress tracking
         const response = await axios.post(
-          `${API_URL}/api/upload`,
+          `${API_URL}/api/media/upload`,
           formData,
           {
             headers: {
@@ -130,13 +130,13 @@ export default function MediaUploadApp() {
             },
           }
         );
+        setMediaFilesId(response.data.mediaId);
         console.log("response got after uploading files",response.data);
         // Add the newly uploaded files to our media files list
         const newFiles = response.data.uploaded.map((file: any, idx: number) => ({
           ...file,
           mimeType: result.assets[idx].mimeType ?? "",
         }));
-
         setMediaFiles((prev) => [...prev, ...newFiles]);
         console.log("mediaFiles after upload",mediaFiles);
         // Clear uploading files after successful upload
@@ -246,29 +246,28 @@ export default function MediaUploadApp() {
               setSending(true);
               const token = await AuthStorage.getToken();
               
-              // Send each media file as a separate message
-
-              for (const file of mediaFiles) {
-                console.log("sending file",file);
-                // Create message text with file link and caption
-                const messageText = `${file.url} ${file.caption ? `- ${file.caption}` : ''}`;
-                console.log("messageText",messageText);
-                // Send the message to the API
-                await axios.post(
-                  `${API_URL}/api/chat/rooms/${roomId}/messages`,
-                  { 
-                    messageText: messageText,
-                    mediaFiles: [] // Send this media file to the server
-                  },
-                  { headers: { Authorization: `Bearer ${token}` } }
-                );
-                setTimeout(() => {
-                  // router.back();
-                  console.log("message sent");
-                }, 3000);
-              }
+              const mediaFilesPayload = mediaFiles.map(file => ({
+                id: file.id,
+                url: file.url,
+                caption: file.caption?file.caption:""
+              }));
+              console.log("mediaFilesPayload",mediaFilesPayload);
               
-              // Navigate back to the chat room
+              // Optional: Set messageText to empty or use a generic message
+              const messageText = ""; // or keep it blank if you don't need this
+
+              await axios.post(
+                `${API_URL}/api/chat/rooms/${roomId}/messages`,
+                { 
+                  messageText,
+                  mediaFiles: mediaFilesPayload, // <-- send this in request body
+                  messageType: "media",
+                  mediaFilesId:mediaFilesId
+                },
+                {
+                  headers: { Authorization: `Bearer ${token}` }
+                }
+              );
               router.back();
             } catch (error) {
               console.error("Error sending media:", error);

@@ -8,6 +8,7 @@ import initDB from "./models/User.js";
 import initChatDB from "./models/Chat.js";
 import initPollDB from "./models/Poll.js";
 import initMediaDB from "./models/Media.js";
+import initTableDB from "./models/Table.js"; 
 import errorHandling from "./middlewares/errorHandler.js";
 import apiRoutes from "./routes/index.js";
 import setupSocketIO from "./socket.js";
@@ -34,6 +35,8 @@ initDB();
 initChatDB();
 initPollDB();
 initMediaDB();
+initTableDB();
+
 // Make io available to routes
 app.set('io', io);
 

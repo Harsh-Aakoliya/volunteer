@@ -1,6 +1,6 @@
 import { View, Text, TouchableOpacity } from "react-native";
 import SVGComponent from "../../../components/Icons/MdPermMedia";
-import { useRouter } from "expo-router";
+import { usePathname, useRouter } from "expo-router";
 import { useLocalSearchParams } from "expo-router";
 export default function OptionalGrid() {
     const router = useRouter();
@@ -32,12 +32,17 @@ export default function OptionalGrid() {
             <Text>Document</Text>
         </View>
         <View className="w-1/3 items-center justify-center">
-            <SVGComponent color="black" height={60} width={60} />
-            <Text>Table</Text>
+          <TouchableOpacity onPress={() => router.push({
+              pathname: "/chat/table",
+              params: { roomId, userId }
+          })}>
+              <SVGComponent color="black" height={60} width={60} />
+              <Text>Table</Text>
+          </TouchableOpacity>
         </View>
         <View className="w-1/3 items-center justify-center">
             <SVGComponent color="black" height={60} width={60} />
-            <Text>Temp</Text>
+            <Text>Contact</Text>
         </View>
         <View className="w-1/3 items-center justify-center">
             <SVGComponent color="black" height={60} width={60} />

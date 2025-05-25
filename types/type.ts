@@ -62,8 +62,10 @@ export interface Message {
   senderName: string;
   messageText: string;
   createdAt: string;  
+  messageType:string;
   mediaFilesId?: number; // Optional array of media files
   pollId?: number;
+  tableId?:number
 }
 
 export interface ChatRoom {

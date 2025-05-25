@@ -157,7 +157,7 @@ const setupSocketIO = (io, app) => {
     });
 
     // Handle new message
-    socket.on("sendMessage", async ({ roomId, message, sender }) => {
+    socket.on("sendMessage", async ({ roomId, message, sender,mediaFilesId,pollId,tableId }) => {
       try {
         console.log(
           `New message in room ${roomId} from ${sender.userName}`
@@ -183,14 +183,16 @@ const setupSocketIO = (io, app) => {
           id: message.id,
           roomId: roomId,
           messageText: message.messageText,
-          mediaFilesId: message.mediaFilesId,
+          mediaFilesId: mediaFilesId,
           pollId: message.pollId,
+          tableId:message.tableId,
           createdAt: message.createdAt,
           sender: {
             userId: sender.userId,
             userName: sender.userName,
           },
         };
+        console.log("message to broadcast",broadcastMessage);
 
         // Find all sockets in the room EXCEPT the sender's socket
         const socketsInRoom = await io.in(`room-${roomId}`).fetchSockets();
@@ -230,6 +232,9 @@ const setupSocketIO = (io, app) => {
               roomId,
               count: unreadMessagesByUser[socketUserId][roomId],
               lastMessage: lastMessageByRoom[roomId],
+              mediaFilesId:mediaFilesId,
+              polldId:pollId,
+              tableId:tableId
             });
 
             // Send room update
@@ -237,6 +242,9 @@ const setupSocketIO = (io, app) => {
               roomId,
               lastMessage: lastMessageByRoom[roomId],
               unreadCount: unreadMessagesByUser[socketUserId][roomId] || 0,
+              mediaFilesId:mediaFilesId,
+              pollId:pollId,
+              tableId:tableId
             });
           }
         }

@@ -93,7 +93,7 @@ export default function MediaUploadApp() {
       try {
         // Use axios with upload progress tracking
         const response = await axios.post(
-          `${API_URL}/upload`,
+          `${API_URL}/api/media/upload`,
           formData,
           {
             headers: {
