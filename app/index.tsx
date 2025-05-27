@@ -33,3 +33,68 @@ export default function Index() {
   // return <MediaUploadApp/>
   // return <Poling/>
 }
+
+// App.tsx - Usage Example
+// import React, { useState } from 'react';
+// import { View, Text, SafeAreaView } from 'react-native';
+// import DateTimePicker from '@/components/chat/DateTimePicker';
+
+// export default function App() {
+//   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+//   const [selectedTime, setSelectedTime] = useState<string | null>(null);
+
+//   return (
+//     <SafeAreaView className="flex-1 bg-gray-50">
+//       <View className="flex-1 justify-center px-4">
+//         <Text className="text-2xl font-bold text-center mb-8 text-gray-800">
+//           Schedule Message
+//         </Text>
+
+//         {/* Basic Usage */}
+//         <DateTimePicker
+//           selectedDate={selectedDate}
+//           setSelectedDate={setSelectedDate}
+//           selectedTime={selectedTime}
+//           setSelectedTime={setSelectedTime}
+//         />
+
+//         {/* Custom Styled Usage */}
+//         <View className="mt-8">
+//           <Text className="text-lg font-semibold mb-4 text-gray-700">
+//             Custom Styled:
+//           </Text>
+//           <DateTimePicker
+//             selectedDate={selectedDate}
+//             setSelectedDate={setSelectedDate}
+//             selectedTime={selectedTime}
+//             setSelectedTime={setSelectedTime}
+//             containerClassName="gap-2"
+//             dateButtonClassName="bg-blue-50 border-blue-200 shadow-sm"
+//             timeButtonClassName="bg-green-50 border-green-200 shadow-sm"
+//             dateButtonTextClassName="text-blue-700 font-medium"
+//             timeButtonTextClassName="text-green-700 font-medium"
+//           />
+//         </View>
+
+//         {/* Display Selected Values */}
+//         {(selectedDate || selectedTime) && (
+//           <View className="mt-8 p-4 bg-white rounded-lg shadow-sm">
+//             <Text className="text-lg font-semibold mb-2 text-gray-800">
+//               Selected:
+//             </Text>
+//             {selectedDate && (
+//               <Text className="text-gray-600">
+//                 Date: {selectedDate.toDateString()}
+//               </Text>
+//             )}
+//             {selectedTime && (
+//               <Text className="text-gray-600">
+//                 Time: {selectedTime}
+//               </Text>
+//             )}
+//           </View>
+//         )}
+//       </View>
+//     </SafeAreaView>
+//   );
+// }

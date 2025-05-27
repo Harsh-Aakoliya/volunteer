@@ -18,7 +18,7 @@ type Options = {
   text: string;
 };
 import { router } from "expo-router";
-import DateTimePicker from "../../../components/chat/DatePicker";
+import DateTimePicker from "../../../components/chat/DateTimePicker";
 import { AuthStorage } from '@/utils/authStorage';
 
 export default function Poling() {
@@ -32,6 +32,9 @@ export default function Poling() {
   const [showModal, setShowModal] = useState(false);
   const [endTime, setEndTime] = useState(null);
   const [pollId,setpollId]=useState(null);
+    const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [selectedTime, setSelectedTime] = useState<string | null>(null);
+
   // console.log("multipleChoice", multipleChoice);
   const sendPoll = async () => {
     try {
@@ -82,7 +85,12 @@ export default function Poling() {
   return (
     
     <View className="flex-1 p-2">
-      <DateTimePicker/>
+      <DateTimePicker
+          selectedDate={selectedDate}
+          setSelectedDate={setSelectedDate}
+          selectedTime={selectedTime} 
+          setSelectedTime={setSelectedTime}
+      />
       <View className="flex-row items-center justify-between pt-2 pb-2">
         <TextInput
           placeholder="Enter your question"
