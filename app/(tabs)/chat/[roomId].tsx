@@ -105,7 +105,7 @@ export default function ChatRoomScreen() {
 
     return () => {
       // Clean up socket listeners when component unmounts
-      socketService.removeListeners();
+      // socketService.removeListeners();
     };
   }, []);
 
@@ -330,28 +330,7 @@ export default function ChatRoomScreen() {
         setTimeout(() => {
           flatListRef.current?.scrollToEnd({ animated: true });
         }, 100);
-      // } 
-      // For the case of multiple media files, each with its own message
-      // else if (mediaFilesId && mediaFilesId > 1) {
-      //   // Create multiple optimistic messages, one for each media file
-      //   const optimisticMessages: Message[] = mediaFilesId.map((file, index) => ({
-      //     id: `temp-${Date.now()}-${index}`, // Temporary ID with index to make them unique
-      //     roomId: parseInt(roomId as string),
-      //     senderId: currentUser.userId,
-      //     senderName: currentUser.fullName || "You",
-      //     messageText: file.message || '',
-      //     createdAt: new Date().toISOString(),
-      //     mediaFiles: [file], // Each message has one media file
-      //   }));
-
-      //   // Add optimistic messages to the list
-      //   setMessages((prev) => [...prev, ...optimisticMessages]);
-
-      //   // Scroll to the bottom
-      //   setTimeout(() => {
-      //     flatListRef.current?.scrollToEnd({ animated: true });
-      //   }, 100);
-      // }
+      
 
       // Send the message via API
       const token = await AuthStorage.getToken();

@@ -61,6 +61,26 @@ interface UnreadMessagesEvent {
   };
 }
 
+interface LastMessageData {
+  createdAt: string;
+  id: number;
+  mediaFilesId: number | null;
+  messageText: string;
+  messageType: string;
+  pollId: number | null;
+  sender: {
+    userId: string;
+    userName: string;
+  };
+  tableId: number | null;
+}
+
+interface LastMessageResponse {
+  lastMessageByRoom: {
+    [roomId: string]: LastMessageData;
+  };
+}
+
 interface RoomUpdateEvent {
   roomId: string;
   lastMessage: {
@@ -99,13 +119,11 @@ interface LastMessageEvent {
 class SocketService {
   socket: Socket | null = null;
 
-  // Initialize the socket connection
   connect(): Socket | null {
     if (!this.socket) {
       try {
         this.socket = io(SOCKET_URL);
 
-        // Collapse
         this.socket.on("connect", () => {
           console.log("Socket connected:", this.socket?.id);
         });
@@ -117,24 +135,36 @@ class SocketService {
         this.socket.on("error", (error: any) => {
           console.error("Socket error:", error);
         });
+
+        // Add debugging for lastMessage events
+        this.socket.on("lastMessage", (data) => {
+          console.log("🔔 Received lastMessage event:", data);
+        });
+
       } catch (error) {
         console.error("Failed to connect to socket server:", error);
         return null;
       }
+    } else {
+      console.log("Socket already connected:", this.socket.id);
     }
 
     return this.socket;
   }
+
 
   // Check if socket is connected
   isConnected(): boolean {
     return this.socket?.connected || false;
   }
 
-  // Identify the user to the socket server
+  // Enhanced identify method
   identify(userId: string): void {
-    if (this.socket) {
+    if (this.socket && this.socket.connected) {
+      console.log("🔐 Identifying user:", userId);
       this.socket.emit("identify", { userId });
+    } else {
+      // console.error("❌ Cannot identify - socket not connected");
     }
   }
 
@@ -211,12 +241,28 @@ class SocketService {
     }
   }
 
-  // Listen for last message updates
-  onLastMessage(callback: (data: LastMessageEvent) => void): void {
+  // Enhanced lastMessage listener with debugging
+  onLastMessage(callback: (data: LastMessageResponse) => void): void {
     if (this.socket) {
-      this.socket.on("lastMessage", callback);
+      // Remove existing listeners to prevent duplicates
+      this.socket.off("lastMessage");
+      
+      this.socket.on("lastMessage", (data) => {
+        console.log("📨 LastMessage received in onLastMessage:", data);
+        console.log("📊 Data structure:", JSON.stringify(data, null, 2));
+        
+        if (data && data.lastMessageByRoom) {
+          console.log("✅ Valid lastMessage data, calling callback");
+          callback(data);
+        } else {
+          console.warn("⚠️ Invalid lastMessage data structure:", data);
+        }
+      });
+    } else {
+      console.error("❌ Socket not connected, cannot listen for lastMessage");
     }
   }
+
 
   // Listen for user going offline
   onUserOffline(callback: (data: UserOfflineEvent) => void): void {
@@ -263,6 +309,51 @@ class SocketService {
       this.socket = null;
     }
   }
+
+
+  // Add these methods to your socketService class
+
+// Listen for unread message counts
+onUnreadCounts(callback: (data: any) => void): void {
+  if (this.socket) {
+    this.socket.on("unreadCounts", callback);
+  }
+}
+
+// Listen for online user counts
+onOnlineCounts(callback: (data: any) => void): void {
+  if (this.socket) {
+    this.socket.on("onlineCounts", callback);
+  }
+}
+
+// Listen for combined room statistics
+onRoomStats(callback: (data: any) => void): void {
+  if (this.socket) {
+    this.socket.on("roomStats", callback);
+  }
+}
+
+// Request current unread counts
+requestUnreadCounts(): void {
+  if (this.socket) {
+    this.socket.emit("requestUnreadCounts");
+  }
+}
+
+// Request current online counts
+requestOnlineCounts(): void {
+  if (this.socket) {
+    this.socket.emit("requestOnlineCounts");
+  }
+}
+
+// Mark messages as read for a specific room
+markMessagesAsRead(roomId: string): void {
+  if (this.socket) {
+    this.socket.emit("markAsRead", { roomId });
+  }
+}
 }
 
 // Create a singleton instance

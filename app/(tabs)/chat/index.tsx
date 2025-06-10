@@ -1,4 +1,4 @@
-// app/chat/index.tsx
+// app/chat/index.tsx - Fixed version
 import React, { useEffect, useState, useCallback } from "react";
 import {
   View,
@@ -18,17 +18,29 @@ import { useFocusEffect } from "@react-navigation/native";
 import socketService from "@/utils/socketService";
 import { formatDistanceToNow } from "date-fns";
 
-// Extended ChatRoom type with unread count and last message
+interface LastMessageResponse {
+  lastMessageByRoom: {
+    [roomId: string]: LastMessageData;
+  };
+}
+
+interface LastMessageData {
+  createdAt: string;
+  id: number;
+  mediaFilesId: number | null;
+  messageText: string;
+  messageType: string;
+  pollId: number | null;
+  sender: {
+    userId: string;
+    userName: string;
+  };
+  tableId: number | null;
+}
+
 interface ExtendedChatRoom extends ChatRoom {
   unreadCount?: number;
-  lastMessage?: {
-    messageText: string;
-    createdAt: string;
-    sender: {
-      userId: string;
-      userName: string;
-    };
-  };
+  lastMessage?: LastMessageData;
   onlineCount?: number;
 }
 
@@ -39,172 +51,117 @@ export default function ChatRooms() {
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [appState, setAppState] = useState(AppState.currentState);
-  const pathname = usePathname(); // Add this hook to get the current path
+  const [lastMessages, setLastMessages] = useState<{ [key: string]: LastMessageData }>({});
+  const pathname = usePathname();
+
   // Sort rooms by most recent activity
   const sortRoomsByRecent = (rooms: ExtendedChatRoom[]) => {
     return [...rooms].sort((a, b) => {
-      // If a room has a last message, use its timestamp for sorting
       const aTime = a.lastMessage?.createdAt
         ? new Date(a.lastMessage.createdAt).getTime()
         : a.createdOn
-        ? new Date(a.createdOn).getTime()
-        : 0;
+          ? new Date(a.createdOn).getTime()
+          : 0;
 
       const bTime = b.lastMessage?.createdAt
         ? new Date(b.lastMessage.createdAt).getTime()
         : b.createdOn
-        ? new Date(b.createdOn).getTime()
-        : 0;
+          ? new Date(b.createdOn).getTime()
+          : 0;
 
-      return bTime - aTime; // Most recent first
+      return bTime - aTime;
     });
   };
 
-  // Handle app state changes (background/foreground)
-  useEffect(() => {
-    const subscription = AppState.addEventListener("change", (nextAppState) => {
-      setAppState(nextAppState);
-
-      // Collapse
-      // When app comes to foreground, refresh rooms and reconnect socket if needed
-      if (appState.match(/inactive|background/) && nextAppState === "active") {
-        loadChatRooms();
-
-        // Ensure socket is connected
-        if (!socketService.socket?.connected) {
-          const socket = socketService.connect();
-          if (socket && currentUser) {
-            socketService.identify(currentUser.userId);
-          }
-        }
+  // Update rooms with last messages
+  const updateRoomsWithLastMessages = (rooms: ExtendedChatRoom[], lastMessagesData: { [key: string]: LastMessageData }) => {
+    return rooms.map(room => {
+      const roomIdStr = room.roomId?.toString();
+      if (roomIdStr && lastMessagesData[roomIdStr]) {
+        return {
+          ...room,
+          lastMessage: lastMessagesData[roomIdStr]
+        };
       }
+      return room;
     });
+  };
 
-    return () => {
-      subscription.remove();
-    };
-  }, [appState, currentUser]);
+  // Initialize socket and setup listeners
+  const initializeSocket = useCallback(async () => {
+    console.log("🔌 Initializing socket connection...");
 
-  // Connect to socket and set up event listeners
-  useEffect(() => {
-    const initializeSocket = async () => {
-      const userData = await AuthStorage.getUser();
-      if (userData) {
-        setCurrentUser(userData);
-        const socket = socketService.connect();
-        if (socket) {
-          socketService.identify(userData.userId);
-
-          // Collapse
-          // Listen for room updates (new messages, etc.)
-          socketService.onRoomUpdate((data) => {
-            console.log("Room update received:", data);
-            setChatRooms((prevRooms) => {
-              const updatedRooms = prevRooms.map((room) => {
-                if (room.roomId?.toString() === data.roomId) {
-                  return {
-                    ...room,
-                    lastMessage: data.lastMessage,
-                    unreadCount: data.unreadCount,
-                  };
-                }
-                return room;
-              });
-
-              return sortRoomsByRecent(updatedRooms);
-            });
-          });
-
-          // Listen for unread message updates
-          socketService.onUnreadMessages((data) => {
-            console.log("Unread messages update received:", data);
-            setChatRooms((prevRooms) => {
-              const updatedRooms = prevRooms.map((room) => {
-                if (room.roomId?.toString() === data.roomId) {
-                  return {
-                    ...room,
-                    unreadCount: data.count, // Use the count directly from the server
-                    lastMessage: data.lastMessage,
-                  };
-                }
-                return room;
-              });
-
-              return sortRoomsByRecent(updatedRooms);
-            });
-          });
-
-          // Listen for new messages (to update room order)
-          socketService.onNewMessage((data) => {
-            // Only update if we're not in the specific room
-            // (room-specific updates are handled in the room component)
-            if (!pathname.includes(`/chat/${data.roomId}`)) {
-              console.log("New message received while not in room:", data);
-              setChatRooms((prevRooms) => {
-                const updatedRooms = prevRooms.map((room) => {
-                  if (room.roomId?.toString() === data.roomId) {
-                    // Update the room with new message data
-                    return {
-                      ...room,
-                      lastMessage: {
-                        messageText: data.messageText,
-                        createdAt: data.createdAt,
-                        sender: data.sender,
-                      },
-                      // Only increment unread count if the message is not from the current user
-                      unreadCount:
-                        data.sender.userId !== currentUser?.userId
-                          ? (room.unreadCount || 0) + 1
-                          : room.unreadCount || 0,
-                    };
-                  }
-                  return room;
-                });
-
-                // Sort rooms by most recent activity
-                return sortRoomsByRecent(updatedRooms);
-              });
-            }
-          });
-
-          // Listen for online users updates
-          socketService.onOnlineUsers(({ roomId, onlineUsers }) => {
-            console.log("Online users update received:", roomId, onlineUsers);
-            setChatRooms((prevRooms) => {
-              return prevRooms.map((room) => {
-                if (room.roomId?.toString() === roomId) {
-                  return { ...room, onlineCount: onlineUsers.length };
-                }
-                return room;
-              });
-            });
-          });
-        }
-      }
-    };
-
-    initializeSocket();
-
-    return () => {
-      // Clean up socket listeners when component unmounts
-      socketService.removeListeners();
-    };
-  }, []);
-
-  useFocusEffect(
-    useCallback(() => {
-      loadChatRooms();
-    }, [])
-  );
-
-  const loadChatRooms = async () => {
     try {
-      setIsLoading(true);
-      const rooms = await fetchChatRooms();
+      const userData = await AuthStorage.getUser();
+      if (!userData) {
+        console.log("❌ No user data found");
+        return;
+      }
 
-      // Collapse
-      // Get unread counts and last messages from server
-      // This would typically come from your API, but for now we'll initialize with empty values
+      setCurrentUser(userData);
+
+      // Always connect/reconnect socket
+      const socket = socketService.connect();
+      if (socket) {
+        console.log("✅ Socket connected, identifying user:", userData.userId);
+        socketService.identify(userData.userId);
+
+        // Clear existing listeners to prevent duplicates
+        socket.off("lastMessage");
+
+        // Set up lastMessage listener
+        socket.on("lastMessage", (data: LastMessageResponse) => {
+          console.log("📨 Received lastMessage event:", data);
+
+          if (data && data.lastMessageByRoom) {
+            console.log("📋 Updating last messages:", Object.keys(data.lastMessageByRoom));
+
+            // Update lastMessages state
+            setLastMessages(prevMessages => ({
+              ...prevMessages,
+              ...data.lastMessageByRoom
+            }));
+
+            // Update chat rooms with new last messages
+            setChatRooms(prevRooms => {
+              if (prevRooms.length === 0) {
+                console.log("⚠️ No rooms to update yet");
+                return prevRooms;
+              }
+
+              console.log("🔄 Updating chat rooms with last messages");
+              const updatedRooms = updateRoomsWithLastMessages(prevRooms, {
+                ...lastMessages,
+                ...data.lastMessageByRoom
+              });
+              const sortedRooms = sortRoomsByRecent(updatedRooms);
+              console.log("✅ Updated rooms count:", sortedRooms.length);
+              return sortedRooms;
+            });
+          }
+        });
+
+        // Request current last messages from server
+        // console.log("📤 Requesting last messages from server...");
+        // socket.emit("requestLastMessages");
+
+      } else {
+        console.error("❌ Failed to connect socket");
+      }
+    } catch (error) {
+      console.error("❌ Error initializing socket:", error);
+    }
+  }, [lastMessages]);
+
+  // Load chat rooms and apply last messages
+  const loadChatRooms = useCallback(async () => {
+    try {
+      console.log("📥 Loading chat rooms...");
+      setIsLoading(true);
+
+      const rooms = await fetchChatRooms();
+      console.log("📋 Fetched rooms:", rooms.length);
+
       const extendedRooms: ExtendedChatRoom[] = rooms.map((room) => ({
         ...room,
         unreadCount: 0,
@@ -212,30 +169,94 @@ export default function ChatRooms() {
         onlineCount: 0,
       }));
 
-      // Sort rooms by most recent activity
-      const sortedRooms = sortRoomsByRecent(extendedRooms);
+      // Apply existing last messages if available
+      const roomsWithLastMessages = updateRoomsWithLastMessages(extendedRooms, lastMessages);
+      const sortedRooms = sortRoomsByRecent(roomsWithLastMessages);
+
       setChatRooms(sortedRooms);
+      console.log("✅ Chat rooms loaded and sorted");
 
       // Check admin status
       const userData = await AuthStorage.getUser();
-      setCurrentUser(userData);
-      const adminStatus = userData?.isAdmin || false;
-      setIsAdmin(adminStatus);
+      if (userData) {
+        setCurrentUser(userData);
+        const adminStatus = userData?.isAdmin || false;
+        setIsAdmin(adminStatus);
+      }
+
     } catch (error) {
-      console.error("Error loading chat rooms:", error);
+      console.error("❌ Error loading chat rooms:", error);
     } finally {
       setIsLoading(false);
       setRefreshing(false);
     }
-  };
+  }, [lastMessages]);
+  useEffect(() => {
+    initializeSocket();
+  },[])
+  // Handle app state changes
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (nextAppState) => {
+      setAppState(nextAppState);
+
+      if (appState.match(/inactive|background/) && nextAppState === "active") {
+        console.log("📱 App came to foreground, refreshing...");
+        loadChatRooms();
+        initializeSocket();
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [appState, currentUser, loadChatRooms, initializeSocket]);
+  // initializeSocket();
+
+  // Main focus effect - runs when component comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      console.log("🎯 Chat routes focused");
+
+      // Load rooms first
+      loadChatRooms();
+
+      // Then initialize socket (with a small delay to ensure rooms are loaded)
+      const socketTimer = setTimeout(() => {
+        initializeSocket();
+      }, 100);
+
+      return () => {
+        console.log("🧹 Chat routes unfocused, cleaning up");
+        clearTimeout(socketTimer);
+        // Don't disconnect socket completely, just remove listeners
+        if (socketService.socket) {
+          socketService.socket.off("lastMessage");
+        }
+      };
+    }, []) // Empty dependency array is intentional
+  );
+
+  // Effect to update rooms when lastMessages change
+  useEffect(() => {
+    if (Object.keys(lastMessages).length > 0 && chatRooms.length > 0) {
+      console.log("🔄 LastMessages updated, refreshing room list");
+      setChatRooms(prevRooms => {
+        const updatedRooms = updateRoomsWithLastMessages(prevRooms, lastMessages);
+        return sortRoomsByRecent(updatedRooms);
+      });
+    }
+  }, [lastMessages]);
 
   const onRefresh = useCallback(() => {
+    console.log("🔄 Manual refresh triggered");
     setRefreshing(true);
+
+    // Reload rooms and reinitialize socket
     loadChatRooms();
-  }, []);
+    initializeSocket();
+  }, [loadChatRooms, initializeSocket]);
 
   const navigateToChatRoom = (roomId: string) => {
-    // Reset unread count for this room when navigating to it
     setChatRooms((prevRooms) => {
       return prevRooms.map((room) => {
         if (room.roomId?.toString() === roomId) {
@@ -251,7 +272,6 @@ export default function ChatRooms() {
     });
   };
 
-  // Format the time of the last message
   const formatMessageTime = (timestamp: string) => {
     if (!timestamp) return "";
 
@@ -264,27 +284,22 @@ export default function ChatRooms() {
   };
 
   const renderChatRoomItem = ({ item }: { item: ExtendedChatRoom }) => {
-    // Create a component that we'll return
     const RoomItem = () => {
-      // Prepare the message preview text
       let messagePreview = "";
       if (item.lastMessage) {
         const senderPrefix =
           item.lastMessage.sender.userId === currentUser?.userId
             ? "You: "
-            : `${item.lastMessage.sender.userName}`;
+            : `${item.lastMessage.sender.userName}: `;
         messagePreview = senderPrefix + item.lastMessage.messageText;
       } else if (item.roomDescription) {
         messagePreview = item.roomDescription;
       }
 
-      // Collapse
-      // Prepare the time text
       const timeText = item.lastMessage
         ? formatMessageTime(item.lastMessage.createdAt)
         : "";
 
-      // Prepare the unread count
       const hasUnread = item.unreadCount && item.unreadCount > 0;
       const unreadText = hasUnread
         ? (item.unreadCount ?? 0) > 99
@@ -312,7 +327,6 @@ export default function ChatRooms() {
                 color="#0284c7"
               />
 
-              {/* Online indicator */}
               {item.onlineCount && item.onlineCount > 0 ? (
                 <View className="absolute top-0 right-0 bg-green-500 rounded-full w-4 h-4 flex items-center justify-center">
                   <Text className="text-white text-xs font-bold">
@@ -325,14 +339,11 @@ export default function ChatRooms() {
             <View className="flex-1">
               <View className="flex-row justify-between items-center">
                 <Text className="text-lg font-bold">{item.roomName}</Text>
-
-                {/* Last message time */}
                 {timeText ? (
                   <Text className="text-xs text-gray-500">{timeText}</Text>
                 ) : null}
               </View>
 
-              {/* Message preview and unread count */}
               <View className="flex-row justify-between items-center mt-1">
                 <Text
                   className="flex-1 text-gray-600 text-sm mr-2"
@@ -356,7 +367,6 @@ export default function ChatRooms() {
       );
     };
 
-    // Return the component
     return <RoomItem />;
   };
 
@@ -403,7 +413,7 @@ export default function ChatRooms() {
           className="absolute bottom-6 right-6 bg-blue-500 p-4 rounded-full shadow-lg"
           onPress={() => router.push("/chat/create-room")}
         >
-          <Ionicons name="add" size={24} color="white" />
+          <Ionicons name="add" color="white" />
         </TouchableOpacity>
       )}
     </View>

@@ -1,0 +1,32 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+      {
+        "label": "Expo Start",
+        "type": "shell",
+        "command": "npx expo start",
+        "problemMatcher": [],
+        "presentation": {
+          "panel": "dedicated"
+        }
+      },
+      {
+        "label": "Backend Start",
+        "type": "shell",
+        "command": "npm start",
+        "options": {
+          "cwd": "${workspaceFolder}/Backend"
+        },
+        "problemMatcher": [],
+        "presentation": {
+          "panel": "new"
+        }
+      },
+      {
+        "label": "Run All",
+        "dependsOn": ["Expo Start", "Backend Start"],
+        "dependsOrder": "parallel"
+      }
+    ]
+  }
+  
