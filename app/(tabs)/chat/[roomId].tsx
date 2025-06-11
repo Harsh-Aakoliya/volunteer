@@ -11,12 +11,11 @@ import {
   Platform,
   SafeAreaView,
   AppState,
-  Touchable,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, router, useNavigation } from "expo-router";
 import { AuthStorage } from "@/utils/authStorage";
-import { Message, ChatRoom, ChatUser, MediaFile } from "@/types/type";
+import { Message, ChatRoom, ChatUser } from "@/types/type";
 import axios from "axios";
 import { API_URL } from "@/constants/api";
 import { useFocusEffect } from "@react-navigation/native";
@@ -24,9 +23,7 @@ import socketService from "@/utils/socketService";
 import OnlineUsersIndicator from "@/components/chat/OnlineUsersIndicator";
 import MembersModal from "@/components/chat/MembersModal";
 import MessageStatus from "@/components/chat/MessageStatus";
-import MessageMedia from "@/components/chat/MessageMedia";
 import RenderPoll from "@/components/chat/Attechments/RenderPoll";
-// import RenderDriveFiles from './RenderDriveFiles'; // Adjust import path as needed
 import RenderDriveFiles from "@/components/chat/RenderDriveFiles";
 import RenderTable from "@/components/chat/Attechments/RenderTable";
 
@@ -34,11 +31,6 @@ interface RoomDetails extends ChatRoom {
   members: ChatUser[];
   messages: Message[];
 }
-
-interface RoomMember extends ChatUser {
-  isOnline?: boolean;
-}
-
 
 export default function ChatRoomScreen() {
   const { roomId } = useLocalSearchParams();
@@ -74,8 +66,6 @@ export default function ChatRoomScreen() {
     const subscription = AppState.addEventListener("change", (nextAppState) => {
       setAppState(nextAppState);
 
-      // Collapse
-      // When app comes to foreground, refresh data and reconnect socket if needed
       if (appState.match(/inactive|background/) && nextAppState === "active") {
         loadRoomDetails();
 
@@ -101,22 +91,15 @@ export default function ChatRoomScreen() {
 
   // Connect to socket when component mounts
   useEffect(() => {
-    const socket = socketService.connect();
-
-    return () => {
-      // Clean up socket listeners when component unmounts
-      // socketService.removeListeners();
-    };
+    socketService.connect();
   }, []);
 
   // Join room and set up socket event listeners
-  // app/chat/[roomId].tsx - Update the useEffect for socket events
   useEffect(() => {
     if (roomId && currentUser) {
       // Keep track of received message IDs to prevent duplicates
       const receivedMessageIds = new Set();
 
-      // Collapse
       // Join the room
       socketService.joinRoom(
         roomId as string,
@@ -128,7 +111,6 @@ export default function ChatRoomScreen() {
       socketService.onOnlineUsers(
         ({ roomId: updatedRoomId, onlineUsers: users }) => {
           if (updatedRoomId === roomId) {
-            // console.log("Online users updated:", users);
             setOnlineUsers(users);
           }
         }
@@ -137,7 +119,6 @@ export default function ChatRoomScreen() {
       // Listen for room members updates
       socketService.onRoomMembers(({ roomId: updatedRoomId, members }) => {
         if (updatedRoomId === roomId) {
-          // console.log("Room members updated:", members);
           setRoomMembers(members);
         }
       });
@@ -165,13 +146,12 @@ export default function ChatRoomScreen() {
               senderId: data.sender.userId,
               senderName: data.sender.userName,
               messageText: data.messageText,
-              messageType:data.messageType,
+              messageType: data.messageType,
               createdAt: data.createdAt,
-              mediaFilesId: data?.mediaFilesId, // Add support for media files
+              mediaFilesId: data?.mediaFilesId,
               pollId: data?.pollId,
-              tableId:data?.tableId
+              tableId: data?.tableId
             };
-            console.log("new message is",newMessage);
             setMessages((prev) => [...prev, newMessage]);
 
             // Scroll to bottom when new message arrives
@@ -235,7 +215,6 @@ export default function ChatRoomScreen() {
     try {
       setIsLoading(true);
 
-      // Collapse
       // Get current user
       const userData = await AuthStorage.getUser();
       if (userData) {
@@ -244,7 +223,6 @@ export default function ChatRoomScreen() {
           fullName: userData.fullName || null
         });
       }
-      // console.log("userdata is", userData);
 
       // Fetch room details
       const token = await AuthStorage.getToken();
@@ -261,7 +239,6 @@ export default function ChatRoomScreen() {
           member.userId === userData?.userId && member.isAdmin
       );
       setIsAdmin(isUserAdmin);
-      console.log("is admin", isAdmin);
 
       // Initialize room members with online status
       const initialMembers = response.data.members.map((member: ChatUser) => ({
@@ -278,10 +255,6 @@ export default function ChatRoomScreen() {
           userData.fullName || "Anonymous"
         );
       }
-
-      // Reset unread count for this room
-      // This would typically be done via an API call, but we'll use socket for now
-      // The server will handle this when the user joins the room
     } catch (error) {
       console.error("Error loading room details:", error);
       alert("Failed to load chat room details");
@@ -292,10 +265,10 @@ export default function ChatRoomScreen() {
 
   const sendMessage = async (
     text: string, 
-    messageType:string, 
+    messageType: string, 
     mediaFilesId?: number,
     pollId?: number,
-    tableId?:number
+    tableId?: number
   ) => {
     if ((!text.trim() && (!mediaFilesId || !pollId || !tableId)) || !roomId || !currentUser || sending) return;
 
@@ -306,31 +279,27 @@ export default function ChatRoomScreen() {
       setSending(true);
       setMessageText(""); // Clear input immediately for better UX
 
-      // For the case of a single text message or text with media
-      // if (trimmedMessage || mediaFilesId || pollId) {
-        // Create optimistic message to show immediately
-        console.log("here table id is",tableId)
-        const optimisticMessage: Message = {
-          id: `temp-${Date.now()}`, // Temporary ID
-          roomId: parseInt(roomId as string),
-          senderId: currentUser.userId,
-          senderName: currentUser.fullName || "You",
-          messageText: trimmedMessage,
-          messageType: messageType,
-          createdAt: new Date().toISOString(),
-          mediaFilesId: mediaFilesId, // Include media files
-          pollId: pollId,
-          tableId:tableId
-        };
+      // Create optimistic message to show immediately
+      const optimisticMessage: Message = {
+        id: `temp-${Date.now()}`, // Temporary ID
+        roomId: parseInt(roomId as string),
+        senderId: currentUser.userId,
+        senderName: currentUser.fullName || "You",
+        messageText: trimmedMessage,
+        messageType: messageType,
+        createdAt: new Date().toISOString(),
+        mediaFilesId: mediaFilesId,
+        pollId: pollId,
+        tableId: tableId
+      };
 
-        // Add optimistic message to the list
-        setMessages((prev) => [...prev, optimisticMessage]);
+      // Add optimistic message to the list
+      setMessages((prev) => [...prev, optimisticMessage]);
 
-        // Scroll to the bottom
-        setTimeout(() => {
-          flatListRef.current?.scrollToEnd({ animated: true });
-        }, 100);
-      
+      // Scroll to the bottom
+      setTimeout(() => {
+        flatListRef.current?.scrollToEnd({ animated: true });
+      }, 100);
 
       // Send the message via API
       const token = await AuthStorage.getToken();
@@ -338,10 +307,10 @@ export default function ChatRoomScreen() {
         `${API_URL}/api/chat/rooms/${roomId}/messages`,
         { 
           messageText: trimmedMessage,
-          mediaFilesId: mediaFilesId, // Send media files to the server
+          mediaFilesId: mediaFilesId,
           pollId: pollId,
           messageType: messageType,
-          tableId:tableId
+          tableId: tableId
         },
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -388,9 +357,8 @@ export default function ChatRoomScreen() {
     }
   };
 
-  // Updated renderMessage function to support media files
+  // Render message function to support media files
   const renderMessage = ({ item }: { item: Message }) => {
-    // console.log("a;skdjfa;slk fa;sl dkfj;ad",item);
     const isOwnMessage = item.senderId === currentUser?.userId;
 
     // Determine message status
@@ -411,7 +379,6 @@ export default function ChatRoomScreen() {
           isOwnMessage ? "bg-blue-500 self-end" : "bg-gray-200 self-start"
         }`}
       >
-        <Text>{item.messageType}</Text>
         {!isOwnMessage && (
           <Text className="text-xs font-bold text-gray-600">
             {item.senderName || "Unknown"}
@@ -428,62 +395,53 @@ export default function ChatRoomScreen() {
         {item.mediaFilesId ? (
           <View>
             <Text>{item.mediaFilesId}</Text>
-            {/* <RenderDriveFiles /> */}
           </View>
-          
-        ):null}
+        ) : null}
 
-        {/* Render table if presend */}
-        {item.tableId ?(
+        {/* Render table if present */}
+        {item.tableId ? (
           <TouchableOpacity 
-          onPress={()=>{
-            if (typeof item.tableId === 'number') {
-              setTableId(item.tableId);
-              setShowTableModel(true);
-            }
-          }}>
+            onPress={() => {
+              if (typeof item.tableId === 'number') {
+                setTableId(item.tableId);
+                setShowTableModel(true);
+              }
+            }}>
             <Text>Show table</Text>
           </TouchableOpacity>
-        ):null}
+        ) : null}
 
-        {
-          showTableModle ? tableId !== null && currentUser?.userId && (
-            <RenderTable 
-              tableId={tableId}
-              visible={showTableModle}
-              setShowTable={setShowTableModel}
-            />
-          ):null
-        }
-
+        {showTableModle && tableId !== null && currentUser?.userId && (
+          <RenderTable 
+            tableId={tableId}
+            visible={showTableModle}
+            setShowTable={setShowTableModel}
+          />
+        )}
 
         {/* Render poll if present */}
-        {
-          item.pollId ? (
-            <TouchableOpacity
-              onPress={() => {
-                if (typeof item.pollId === 'number') {
-                  setPollId(item.pollId);
-                  setShowPollModel(true);
-                }
-              }}
-            >
-              <Text>Vote Now</Text>
-            </TouchableOpacity>
-          ) : null
-        }
+        {item.pollId ? (
+          <TouchableOpacity
+            onPress={() => {
+              if (typeof item.pollId === 'number') {
+                setPollId(item.pollId);
+                setShowPollModel(true);
+              }
+            }}
+          >
+            <Text>Vote Now</Text>
+          </TouchableOpacity>
+        ) : null}
 
-        {
-          showPollModel ? pollId !== null && currentUser?.userId && (
-            <RenderPoll
-              pollid={pollId} 
-              setShowPollModel={setShowPollModel} 
-              currentUserId={currentUser?.userId}
-              totalMembers={roomMembers.length}
-              visible={showPollModel}
-            />
-          ):null
-        }
+        {showPollModel && pollId !== null && currentUser?.userId && (
+          <RenderPoll
+            pollid={pollId} 
+            setShowPollModel={setShowPollModel} 
+            currentUserId={currentUser?.userId}
+            totalMembers={roomMembers.length}
+            visible={showPollModel}
+          />
+        )}
 
         <View className="flex-row justify-between items-center mt-1">
           <Text
@@ -503,10 +461,6 @@ export default function ChatRoomScreen() {
       </View>
     );
   };
-
-
-
-  
 
   if (isLoading) {
     return (
@@ -547,7 +501,6 @@ export default function ChatRoomScreen() {
           onPress={() => setShowMembersModal(true)}
         />
 
-        {/* Collapse */}
         {/* Messages list */}
         <FlatList
           ref={flatListRef}
@@ -566,52 +519,49 @@ export default function ChatRoomScreen() {
           }
         />
 
-      {/* Optional Grid */}
-      <View className="p-2 border-t border-gray-200 bg-white">
-        <View className="flex-row items-center">
-          <TouchableOpacity
-            className="p-2"
-            onPress={() => router.push({
-              pathname: "/chat/Attechments-grid",
-              params: { 
-                roomId, 
-                userId: currentUser?.userId
-              }
-            })}
-          >
-            <Ionicons 
-              name="add-circle" 
-              size={24} 
-              // color={(isUploading || sending) ? "#9CA3AF" : "#3B82F6"} 
-              />
-          </TouchableOpacity>
-          
-          {/* Input Bar */}
-          <TextInput
-            className="flex-1 bg-gray-100 rounded-full px-4 py-2 mr-2"
-            placeholder="Type a message..."
-            value={messageText}
-            onChangeText={setMessageText}
-            multiline={true}
-          />
-          
-          <TouchableOpacity
-            className={`rounded-full p-2 ${
-              messageText.trim() && !sending
-                ? "bg-blue-500"
-                : "bg-gray-300"
-            }`}
-            onPress={() => sendMessage(messageText,"text")}
-            disabled={!messageText.trim() || sending}
-          >
-            {sending ? (
-              <ActivityIndicator size="small" color="white" />
-            ) : (
-              <Ionicons name="send" size={24} color="white" />
-            )}
-          </TouchableOpacity>
+        {/* Optional Grid */}
+        <View className="p-2 border-t border-gray-200 bg-white">
+          <View className="flex-row items-center">
+            <TouchableOpacity
+              className="p-2"
+              onPress={() => router.push({
+                pathname: "/chat/Attechments-grid",
+                params: { 
+                  roomId, 
+                  userId: currentUser?.userId
+                }
+              })}
+            >
+              <Ionicons name="add-circle" size={24} />
+            </TouchableOpacity>
+            
+            {/* Input Bar */}
+            <TextInput
+              className="flex-1 bg-gray-100 rounded-full px-4 py-2 mr-2"
+              placeholder="Type a message..."
+              value={messageText}
+              onChangeText={setMessageText}
+              multiline={true}
+            />
+            
+            <TouchableOpacity
+              className={`rounded-full p-2 ${
+                messageText.trim() && !sending
+                  ? "bg-blue-500"
+                  : "bg-gray-300"
+              }`}
+              onPress={() => sendMessage(messageText, "text")}
+              disabled={!messageText.trim() || sending}
+            >
+              {sending ? (
+                <ActivityIndicator size="small" color="white" />
+              ) : (
+                <Ionicons name="send" size={24} color="white" />
+              )}
+            </TouchableOpacity>
+          </View>
         </View>
-      </View>
+
         {/* Members Modal to show who are currently online in this room */}
         <MembersModal
           visible={showMembersModal}

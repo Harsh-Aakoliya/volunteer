@@ -38,6 +38,18 @@ interface LastMessageData {
   tableId: number | null;
 }
 
+interface UnreadCountsEvent {
+  unreadCounts: {
+    [roomId: string]: number;
+  };
+}
+
+interface RoomUpdateEvent {
+  roomId: string;
+  lastMessage: LastMessageData;
+  unreadCount: number;
+}
+
 interface ExtendedChatRoom extends ChatRoom {
   unreadCount?: number;
   lastMessage?: LastMessageData;
@@ -52,6 +64,7 @@ export default function ChatRooms() {
   const [refreshing, setRefreshing] = useState(false);
   const [appState, setAppState] = useState(AppState.currentState);
   const [lastMessages, setLastMessages] = useState<{ [key: string]: LastMessageData }>({});
+  const [unreadCounts, setUnreadCounts] = useState<{ [key: string]: number }>({});
   const pathname = usePathname();
 
   // Sort rooms by most recent activity
@@ -73,14 +86,19 @@ export default function ChatRooms() {
     });
   };
 
-  // Update rooms with last messages
-  const updateRoomsWithLastMessages = (rooms: ExtendedChatRoom[], lastMessagesData: { [key: string]: LastMessageData }) => {
+  // Update rooms with last messages and unread counts
+  const updateRoomsWithData = (
+    rooms: ExtendedChatRoom[], 
+    lastMessagesData: { [key: string]: LastMessageData },
+    unreadCountsData: { [key: string]: number }
+  ) => {
     return rooms.map(room => {
       const roomIdStr = room.roomId?.toString();
-      if (roomIdStr && lastMessagesData[roomIdStr]) {
+      if (roomIdStr) {
         return {
           ...room,
-          lastMessage: lastMessagesData[roomIdStr]
+          lastMessage: lastMessagesData[roomIdStr] || room.lastMessage,
+          unreadCount: unreadCountsData[roomIdStr] || 0
         };
       }
       return room;
@@ -108,6 +126,8 @@ export default function ChatRooms() {
 
         // Clear existing listeners to prevent duplicates
         socket.off("lastMessage");
+        socket.off("unreadCounts");
+        socket.off("roomUpdate");
 
         // Set up lastMessage listener
         socket.on("lastMessage", (data: LastMessageResponse) => {
@@ -130,10 +150,10 @@ export default function ChatRooms() {
               }
 
               console.log("🔄 Updating chat rooms with last messages");
-              const updatedRooms = updateRoomsWithLastMessages(prevRooms, {
+              const updatedRooms = updateRoomsWithData(prevRooms, {
                 ...lastMessages,
                 ...data.lastMessageByRoom
-              });
+              }, unreadCounts);
               const sortedRooms = sortRoomsByRecent(updatedRooms);
               console.log("✅ Updated rooms count:", sortedRooms.length);
               return sortedRooms;
@@ -141,9 +161,71 @@ export default function ChatRooms() {
           }
         });
 
-        // Request current last messages from server
-        // console.log("📤 Requesting last messages from server...");
-        // socket.emit("requestLastMessages");
+        // Set up unreadCounts listener
+        socket.on("unreadCounts", (data: UnreadCountsEvent) => {
+          console.log("📊 Received unreadCounts event:", data);
+
+          if (data && data.unreadCounts) {
+            // Update unreadCounts state
+            setUnreadCounts(prevCounts => ({
+              ...prevCounts,
+              ...data.unreadCounts
+            }));
+
+            // Update chat rooms with new unread counts
+            setChatRooms(prevRooms => {
+              if (prevRooms.length === 0) {
+                return prevRooms;
+              }
+
+              const updatedRooms = updateRoomsWithData(prevRooms, lastMessages, {
+                ...unreadCounts,
+                ...data.unreadCounts
+              });
+              return sortRoomsByRecent(updatedRooms);
+            });
+          }
+        });
+
+        // Set up roomUpdate listener for real-time updates
+        socket.on("roomUpdate", (data: RoomUpdateEvent) => {
+          console.log("🔄 Received roomUpdate event:", data);
+
+          if (data && data.roomId) {
+            const roomIdStr = data.roomId.toString();
+
+            // Update both last messages and unread counts
+            setLastMessages(prevMessages => ({
+              ...prevMessages,
+              [roomIdStr]: data.lastMessage
+            }));
+
+            setUnreadCounts(prevCounts => ({
+              ...prevCounts,
+              [roomIdStr]: data.unreadCount
+            }));
+
+            // Update chat rooms
+            setChatRooms(prevRooms => {
+              const updatedRooms = prevRooms.map(room => {
+                if (room.roomId?.toString() === roomIdStr) {
+                  return {
+                    ...room,
+                    lastMessage: data.lastMessage,
+                    unreadCount: data.unreadCount
+                  };
+                }
+                return room;
+              });
+              return sortRoomsByRecent(updatedRooms);
+            });
+          }
+        });
+
+        // Request room data after setting up listeners
+        setTimeout(() => {
+          socketService.requestRoomData(userData.userId);
+        }, 10);
 
       } else {
         console.error("❌ Failed to connect socket");
@@ -151,7 +233,7 @@ export default function ChatRooms() {
     } catch (error) {
       console.error("❌ Error initializing socket:", error);
     }
-  }, [lastMessages]);
+  }, [lastMessages, unreadCounts]);
 
   // Load chat rooms and apply last messages
   const loadChatRooms = useCallback(async () => {
@@ -169,9 +251,9 @@ export default function ChatRooms() {
         onlineCount: 0,
       }));
 
-      // Apply existing last messages if available
-      const roomsWithLastMessages = updateRoomsWithLastMessages(extendedRooms, lastMessages);
-      const sortedRooms = sortRoomsByRecent(roomsWithLastMessages);
+      // Apply existing last messages and unread counts if available
+      const roomsWithData = updateRoomsWithData(extendedRooms, lastMessages, unreadCounts);
+      const sortedRooms = sortRoomsByRecent(roomsWithData);
 
       setChatRooms(sortedRooms);
       console.log("✅ Chat rooms loaded and sorted");
@@ -190,10 +272,12 @@ export default function ChatRooms() {
       setIsLoading(false);
       setRefreshing(false);
     }
-  }, [lastMessages]);
+  }, [lastMessages, unreadCounts]);
+
   useEffect(() => {
     initializeSocket();
-  },[])
+  }, [])
+
   // Handle app state changes
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (nextAppState) => {
@@ -210,7 +294,6 @@ export default function ChatRooms() {
       subscription.remove();
     };
   }, [appState, currentUser, loadChatRooms, initializeSocket]);
-  // initializeSocket();
 
   // Main focus effect - runs when component comes into focus
   useFocusEffect(
@@ -223,29 +306,30 @@ export default function ChatRooms() {
       // Then initialize socket (with a small delay to ensure rooms are loaded)
       const socketTimer = setTimeout(() => {
         initializeSocket();
-      }, 100);
-
+      }, 1);
       return () => {
         console.log("🧹 Chat routes unfocused, cleaning up");
         clearTimeout(socketTimer);
         // Don't disconnect socket completely, just remove listeners
         if (socketService.socket) {
           socketService.socket.off("lastMessage");
+          socketService.socket.off("unreadCounts");
+          socketService.socket.off("roomUpdate");
         }
       };
     }, []) // Empty dependency array is intentional
   );
 
-  // Effect to update rooms when lastMessages change
+  // Effect to update rooms when lastMessages or unreadCounts change
   useEffect(() => {
-    if (Object.keys(lastMessages).length > 0 && chatRooms.length > 0) {
-      console.log("🔄 LastMessages updated, refreshing room list");
+    if ((Object.keys(lastMessages).length > 0 || Object.keys(unreadCounts).length > 0) && chatRooms.length > 0) {
+      console.log("🔄 Room data updated, refreshing room list");
       setChatRooms(prevRooms => {
-        const updatedRooms = updateRoomsWithLastMessages(prevRooms, lastMessages);
+        const updatedRooms = updateRoomsWithData(prevRooms, lastMessages, unreadCounts);
         return sortRoomsByRecent(updatedRooms);
       });
     }
-  }, [lastMessages]);
+  }, [lastMessages, unreadCounts]);
 
   const onRefresh = useCallback(() => {
     console.log("🔄 Manual refresh triggered");
@@ -257,6 +341,7 @@ export default function ChatRooms() {
   }, [loadChatRooms, initializeSocket]);
 
   const navigateToChatRoom = (roomId: string) => {
+    // Clear unread count for this room when navigating
     setChatRooms((prevRooms) => {
       return prevRooms.map((room) => {
         if (room.roomId?.toString() === roomId) {
@@ -265,6 +350,12 @@ export default function ChatRooms() {
         return room;
       });
     });
+
+    // Also update local unread counts
+    setUnreadCounts(prev => ({
+      ...prev,
+      [roomId]: 0
+    }));
 
     router.push({
       pathname: "/chat/[roomId]",
@@ -286,14 +377,29 @@ export default function ChatRooms() {
   const renderChatRoomItem = ({ item }: { item: ExtendedChatRoom }) => {
     const RoomItem = () => {
       let messagePreview = "";
+      
       if (item.lastMessage) {
         const senderPrefix =
           item.lastMessage.sender.userId === currentUser?.userId
             ? "You: "
             : `${item.lastMessage.sender.userName}: `;
-        messagePreview = senderPrefix + item.lastMessage.messageText;
+        
+        // Handle different message types
+        if (item.lastMessage.messageType === "text" && item.lastMessage.messageText) {
+          messagePreview = senderPrefix + item.lastMessage.messageText;
+        } else if (item.lastMessage.pollId) {
+          messagePreview = senderPrefix + "shared a poll";
+        } else if (item.lastMessage.tableId) {
+          messagePreview = senderPrefix + "shared a table";
+        } else if (item.lastMessage.mediaFilesId) {
+          messagePreview = senderPrefix + "shared media";
+        } else {
+          messagePreview = senderPrefix + "sent a message";
+        }
       } else if (item.roomDescription) {
         messagePreview = item.roomDescription;
+      } else {
+        messagePreview = "No messages yet";
       }
 
       const timeText = item.lastMessage
@@ -307,9 +413,16 @@ export default function ChatRooms() {
           : (item.unreadCount ?? 0).toString()
         : "";
 
+      // Define colors based on unread status
+      const backgroundColor = hasUnread ? "bg-white" : "bg-gray-50";
+      const roomNameColor = hasUnread ? "text-gray-900" : "text-gray-700";
+      const messageColor = hasUnread ? "text-gray-700" : "text-gray-500";
+      const timeColor = hasUnread ? "text-gray-600" : "text-gray-400";
+      const borderColor = hasUnread ? "border-gray-200" : "border-gray-100";
+
       return (
         <TouchableOpacity
-          className="bg-white p-4 border-b border-gray-200"
+          className={`${backgroundColor} p-4 border-b ${borderColor}`}
           onPress={() => {
             if (item.roomId !== undefined) {
               navigateToChatRoom(item.roomId.toString());
@@ -338,15 +451,17 @@ export default function ChatRooms() {
 
             <View className="flex-1">
               <View className="flex-row justify-between items-center">
-                <Text className="text-lg font-bold">{item.roomName}</Text>
+                <Text className={`text-lg font-bold ${roomNameColor}`}>
+                  {item.roomName}
+                </Text>
                 {timeText ? (
-                  <Text className="text-xs text-gray-500">{timeText}</Text>
+                  <Text className={`text-xs ${timeColor}`}>{timeText}</Text>
                 ) : null}
               </View>
 
               <View className="flex-row justify-between items-center mt-1">
                 <Text
-                  className="flex-1 text-gray-600 text-sm mr-2"
+                  className={`flex-1 text-sm mr-2 ${messageColor}`}
                   numberOfLines={1}
                   ellipsizeMode="tail"
                 >

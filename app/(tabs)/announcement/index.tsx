@@ -333,30 +333,6 @@ const Announcements = () => {
               />
             </View>
 
-            {/* Likes and Dislikes */}
-            {/* <View className="flex-row justify-between items-center px-4 py-3 border-t border-gray-200">
-              <View className="flex-row">
-                <TouchableOpacity
-                  onPress={() => handleLike(selectedAnnouncement.id, "like")}
-                  className="flex-row items-center mr-6"
-                >
-                  <Text className="text-xl mr-2">👍</Text>
-                  <Text className="text-base font-medium">
-                    {selectedAnnouncement.likes}
-                  </Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  onPress={() => handleLike(selectedAnnouncement.id, "dislike")}
-                  className="flex-row items-center"
-                >
-                  <Text className="text-xl mr-2">👎</Text>
-                  <Text className="text-base font-medium">
-                    {selectedAnnouncement.dislikes}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </View> */}
 
             {/* Admin Actions */}
             {isAdmin && selectedAnnouncement && (

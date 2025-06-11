@@ -11,6 +11,140 @@ const setupSocketIO = (io, app) => {
   const socketToUser = new Map(); // socketId -> {userId, userName, currentRooms}
   const userToSockets = new Map(); // userId -> Set of socketIds
 
+  // Initialize unread counts and last messages from database
+  const initializeRoomData = async () => {
+    try {
+      console.log("🔄 Initializing room data on server startup...");
+      const pool = await import("./config/database.js").then((m) => m.default);
+      
+      // Get all rooms
+      const roomsResult = await pool.query('SELECT "roomId" FROM chatrooms');
+      
+      for (const room of roomsResult.rows) {
+        const roomId = room.roomId.toString();
+        
+        // Get last message for this room
+        const lastMessageResult = await pool.query(
+          `SELECT m.*, u."fullName" as "senderName" 
+           FROM chatmessages m 
+           JOIN "users" u ON m."senderId" = u."userId"
+           WHERE m."roomId" = $1 
+           ORDER BY m."createdAt" DESC 
+           LIMIT 1`,
+          [room.roomId]
+        );
+        
+        if (lastMessageResult.rows.length > 0) {
+          const lastMsg = lastMessageResult.rows[0];
+          lastMessageByRoom[roomId] = {
+            id: lastMsg.id,
+            messageText: lastMsg.messageText,
+            messageType: lastMsg.messageType || 'text',
+            createdAt: lastMsg.createdAt,
+            sender: {
+              userId: lastMsg.senderId,
+              userName: lastMsg.senderName || 'Unknown'
+            },
+            mediaFilesId: lastMsg.mediaFilesId || null,
+            pollId: lastMsg.pollId || null,
+            tableId: lastMsg.tableId || null,
+            roomId: roomId
+          };
+        }
+        
+        // Get room members and initialize unread counts
+        const membersResult = await pool.query(
+          'SELECT "userId" FROM chatroomusers WHERE "roomId" = $1',
+          [room.roomId]
+        );
+        
+        for (const member of membersResult.rows) {
+          const userId = member.userId;
+          
+          if (!unreadMessagesByUser[userId]) {
+            unreadMessagesByUser[userId] = {};
+          }
+          
+          if (!unreadMessagesByUser[userId][roomId]) {
+            // Count unread messages for this user in this room
+            // For simplicity, we'll start with 0, but you can implement logic
+            // to count actual unread messages based on last seen timestamp
+            unreadMessagesByUser[userId][roomId] = 0;
+          }
+        }
+      }
+      
+      console.log("✅ Room data initialization completed");
+      console.log(`📊 Initialized ${Object.keys(lastMessageByRoom).length} rooms with last messages`);
+      
+    } catch (error) {
+      console.error("❌ Error initializing room data:", error);
+    }
+  };
+
+  // Call initialization on startup
+  initializeRoomData();
+
+  // Helper function to send unread counts to a user
+  const sendUnreadCountsToUser = (userId) => {
+    const userSockets = userToSockets.get(userId) || new Set();
+    const userUnreadCounts = unreadMessagesByUser[userId] || {};
+    
+    userSockets.forEach(socketId => {
+      const socket = io.sockets.sockets.get(socketId);
+      if (socket) {
+        socket.emit("unreadCounts", { unreadCounts: userUnreadCounts });
+      }
+    });
+  };
+
+  // Helper function to send room updates to all members
+  const sendRoomUpdateToMembers = async (roomId, messageObj) => {
+    try {
+      const pool = await import("./config/database.js").then((m) => m.default);
+      const membersResult = await pool.query(
+        'SELECT "userId" FROM chatroomusers WHERE "roomId" = $1',
+        [roomId]
+      );
+      
+      const memberIds = membersResult.rows.map(row => row.userId);
+      const allConnectedSockets = await io.fetchSockets();
+      const userSocketMap = new Map();
+      
+      allConnectedSockets.forEach(socket => {
+        if (socket.data?.userId) {
+          if (!userSocketMap.has(socket.data.userId)) {
+            userSocketMap.set(socket.data.userId, []);
+          }
+          userSocketMap.get(socket.data.userId).push(socket);
+        }
+      });
+
+      memberIds.forEach(memberId => {
+        const memberSockets = userSocketMap.get(memberId) || [];
+        const unreadCount = unreadMessagesByUser[memberId]?.[roomId] || 0;
+        
+        memberSockets.forEach(memberSocket => {
+          // Send last message update
+          memberSocket.emit("lastMessage", {
+            lastMessageByRoom: {
+              [roomId]: messageObj
+            }
+          });
+
+          // Send room update with unread count
+          memberSocket.emit("roomUpdate", {
+            roomId,
+            lastMessage: messageObj,
+            unreadCount: unreadCount
+          });
+        });
+      });
+    } catch (error) {
+      console.error("Error sending room updates:", error);
+    }
+  };
+
   // Socket.io connection handling
   io.on("connection", async (socket) => {
     console.log("New client connected:", socket.id);
@@ -40,11 +174,50 @@ const setupSocketIO = (io, app) => {
         socket.emit("lastMessage", { lastMessageByRoom });
 
         // Send unread counts for this user
-        const userUnreadCounts = unreadMessagesByUser[userId] || {};
-        socket.emit("unreadCounts", { unreadCounts: userUnreadCounts });
+        sendUnreadCountsToUser(userId);
 
       } catch (error) {
         console.error("Error in identify event:", error);
+      }
+    });
+
+    // Handle user requesting room data (when navigating to index.tsx)
+    socket.on("requestRoomData", async ({ userId }) => {
+      try {
+        if (!userId) {
+          console.error("Invalid requestRoomData parameters:", { userId });
+          return;
+        }
+
+        console.log(`📋 User ${userId} requested room data`);
+
+        // Get rooms user is part of
+        const pool = await import("./config/database.js").then((m) => m.default);
+        const userRoomsResult = await pool.query(
+          'SELECT "roomId" FROM chatroomusers WHERE "userId" = $1',
+          [userId]
+        );
+
+        const userRoomIds = userRoomsResult.rows.map(row => row.roomId.toString());
+        
+        // Filter last messages for user's rooms only
+        const userLastMessages = {};
+        userRoomIds.forEach(roomId => {
+          if (lastMessageByRoom[roomId]) {
+            userLastMessages[roomId] = lastMessageByRoom[roomId];
+          }
+        });
+
+        // Send last messages for user's rooms
+        socket.emit("lastMessage", { lastMessageByRoom: userLastMessages });
+
+        // Send unread counts for this user
+        sendUnreadCountsToUser(userId);
+
+        console.log(`✅ Sent room data to user ${userId} for ${userRoomIds.length} rooms`);
+
+      } catch (error) {
+        console.error("Error in requestRoomData event:", error);
       }
     });
 
@@ -81,6 +254,8 @@ const setupSocketIO = (io, app) => {
         // Clear unread messages for this user in this room
         if (unreadMessagesByUser[userId] && unreadMessagesByUser[userId][roomId]) {
           unreadMessagesByUser[userId][roomId] = 0;
+          // Send updated unread counts
+          sendUnreadCountsToUser(userId);
         }
 
         // Get all members for this room from the database
@@ -112,14 +287,6 @@ const setupSocketIO = (io, app) => {
           roomId,
           members,
         });
-
-        // Notify user they've joined successfully
-        socket.emit("joinedRoom", {
-          roomId,
-          onlineCount: onlineUsersByRoom[roomId].size,
-          totalMembers: members.length,
-        });
-
       } catch (error) {
         console.error("Error in joinRoom event:", error);
       }
@@ -169,14 +336,13 @@ const setupSocketIO = (io, app) => {
         }
 
         console.log(`User ${userId} left room ${roomId}`);
-
       } catch (error) {
         console.error("Error in leaveRoom event:", error);
       }
     });
 
     // Handle sending messages
-    socket.on("sendMessage", async ({ roomId, message, sender, mediaFilesId, pollId, tableId }) => {
+    socket.on("sendMessage", async ({ roomId, message, sender }) => {
       try {
         console.log(`New message in room ${roomId} from ${sender.userName}`);
 
@@ -190,9 +356,10 @@ const setupSocketIO = (io, app) => {
             userId: sender.userId,
             userName: sender.userName,
           },
-          mediaFilesId: mediaFilesId || null,
-          pollId: pollId || null,
-          tableId: tableId || null,
+          mediaFilesId: message.mediaFilesId || null,
+          pollId: message.pollId || null,
+          tableId: message.tableId || null,
+          roomId: roomId
         };
 
         // Save the last message
@@ -220,8 +387,6 @@ const setupSocketIO = (io, app) => {
               unreadMessagesByUser[memberId][roomId] = 0;
             }
             unreadMessagesByUser[memberId][roomId]++;
-            
-            console.log(`Incremented unread count for user ${memberId} in room ${roomId}: ${unreadMessagesByUser[memberId][roomId]}`);
           }
         });
 
@@ -233,45 +398,10 @@ const setupSocketIO = (io, app) => {
           }
         }
 
-        // Send lastMessage update to all room members (even those not currently in the room)
-        const allConnectedSockets = await io.fetchSockets();
-        const userSocketMap = new Map();
-        
-        allConnectedSockets.forEach(socket => {
-          if (socket.data?.userId) {
-            if (!userSocketMap.has(socket.data.userId)) {
-              userSocketMap.set(socket.data.userId, []);
-            }
-            userSocketMap.get(socket.data.userId).push(socket);
-          }
-        });
-
-        // Send updates to all room members
-        memberIds.forEach(memberId => {
-          const memberSockets = userSocketMap.get(memberId) || [];
-          const unreadCount = unreadMessagesByUser[memberId]?.[roomId] || 0;
-          
-          memberSockets.forEach(memberSocket => {
-            // Send last message update
-            memberSocket.emit("lastMessage", {
-              lastMessageByRoom: {
-                [roomId]: messageObj
-              }
-            });
-
-            // Send unread count update (only if user is not the sender)
-            if (memberId !== sender.userId) {
-              memberSocket.emit("unreadUpdate", {
-                roomId,
-                unreadCount,
-                lastMessage: messageObj,
-              });
-            }
-          });
-        });
+        // Send room updates to all members (including those not in the room)
+        await sendRoomUpdateToMembers(roomId, messageObj);
 
         console.log(`Message sent to room ${roomId}, online users: ${onlineUsersInRoom.size}`);
-
       } catch (error) {
         console.error("Error in sendMessage event:", error);
       }
@@ -350,7 +480,6 @@ const setupSocketIO = (io, app) => {
           roomId,
           members,
         });
-
       } catch (error) {
         console.error("Error updating room members status:", error);
       }

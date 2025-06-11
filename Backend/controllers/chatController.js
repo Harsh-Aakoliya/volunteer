@@ -850,24 +850,7 @@ const chatController = {
       
       const memberIds = membersResult.rows.map(row => row.userId);
       
-      // Increment unread count for all members except sender
-      console.log("Unread message by users",unreadMessagesByUser);
-      if (unreadMessagesByUser) {
-        memberIds.forEach(memberId => {
-          if (memberId !== senderId) {
-            // Initialize if not exists
-            if (!unreadMessagesByUser[memberId]) {
-              unreadMessagesByUser[memberId] = {};
-            }
-            if (!unreadMessagesByUser[memberId][roomIdInt]) {
-              unreadMessagesByUser[memberId][roomIdInt] = 0;
-            }
-            
-            // Increment unread count by the number of messages created
-            unreadMessagesByUser[memberId][roomIdInt] += messagesWithSender.length;
-          }
-        });
-      }
+      // Note: Unread count is now handled by socket.js to avoid double counting
       
       // Emit all messages to all users in the room
       if (io) {
@@ -892,22 +875,7 @@ const chatController = {
           }, 3000);
         }
         
-        // Broadcast roomUpdate to all members to update their room list
-        memberIds.forEach(memberId => {
-          if (memberId !== senderId && unreadMessagesByUser && unreadMessagesByUser[memberId]) {
-            io.emit('roomUpdate', {
-              roomId: roomIdInt.toString(),
-              lastMessage: lastMessageByRoom[roomIdInt],
-              unreadCount: unreadMessagesByUser[memberId][roomIdInt] || 0,
-              mediaFilesId: mediaFilesId,
-              pollId:pollId,
-              tableId:tableId
-            });
-            setTimeout(() => {
-              console.log("roomUpdate sent");
-            }, 3000);
-          }
-        });
+        // Note: roomUpdate is now handled by socket.js to ensure proper unread count management
       }
       console.log("Message with sender",messagesWithSender);
       // Return all created messages or just the last message

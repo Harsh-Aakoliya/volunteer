@@ -1,12 +1,11 @@
 // utils/socketService.ts
 import { io, Socket } from "socket.io-client";
 import { API_URL } from "@/constants/api";
-import { MediaFile } from "@/types/type";
 
 // Remove the /api prefix if needed
 const SOCKET_URL = API_URL.replace("/api", "");
 
-// Define event types
+// Define event types - only keep what's actually used
 interface OnlineUsersEvent {
   roomId: string;
   onlineUsers: string[];
@@ -27,37 +26,14 @@ interface NewMessageEvent {
   id: number;
   roomId: string;
   messageText: string;
-  messageType:string;
+  messageType: string;
   createdAt: string;
   mediaFilesId?: number;
   pollId?: number;
-  tableId?:number;
+  tableId?: number;
   sender: {
     userId: string;
     userName: string;
-  };
-}
-
-interface UserOfflineEvent {
-  roomId: string;
-  userId: string;
-}
-
-interface UnreadMessagesEvent {
-  roomId: string;
-  count: number;
-  lastMessage: {
-    id: number;
-    messageText: string;
-    createdAt: string;
-    messageType:string;
-    mediaFilesId?: number;
-    pollId?: number;
-    tableId?:number;
-    sender: {
-      userId: string;
-      userName: string;
-    };
   };
 }
 
@@ -81,39 +57,16 @@ interface LastMessageResponse {
   };
 }
 
-interface RoomUpdateEvent {
-  roomId: string;
-  lastMessage: {
-    id: number;
-    messageText: string;
-    messageType:string;
-    createdAt: string;
-    mediaFilesId?: number;
-    pollId?: number;
-    tableId?:number;
-    sender: {
-      userId: string;
-      userName: string;
-    };
+interface UnreadCountsEvent {
+  unreadCounts: {
+    [roomId: string]: number;
   };
-  unreadCount: number;
 }
 
-interface LastMessageEvent {
+interface RoomUpdateEvent {
   roomId: string;
-  message: {
-    id: number;
-    messageText: string;
-    messageType:string;
-    createdAt: string;
-    mediaFilesId?: number;
-    pollId?: number;
-    tableId?:number;
-    sender: {
-      userId: string;
-      userName: string;
-    };
-  };
+  lastMessage: LastMessageData;
+  unreadCount: number;
 }
 
 class SocketService {
@@ -152,19 +105,24 @@ class SocketService {
     return this.socket;
   }
 
-
   // Check if socket is connected
   isConnected(): boolean {
     return this.socket?.connected || false;
   }
 
-  // Enhanced identify method
+  // Identify method
   identify(userId: string): void {
     if (this.socket && this.socket.connected) {
       console.log("🔐 Identifying user:", userId);
       this.socket.emit("identify", { userId });
-    } else {
-      // console.error("❌ Cannot identify - socket not connected");
+    }
+  }
+
+  // Request room data (unread counts and last messages)
+  requestRoomData(userId: string): void {
+    if (this.socket && this.socket.connected) {
+      console.log("📋 Requesting room data for user:", userId);
+      this.socket.emit("requestRoomData", { userId });
     }
   }
 
@@ -199,7 +157,7 @@ class SocketService {
           messageType: message.messageType,
           mediaFilesId: message.mediaFilesId,
           pollId: message.pollId,
-          tableId:message.tableId
+          tableId: message.tableId
         },
         sender,
       });
@@ -227,63 +185,24 @@ class SocketService {
     }
   }
 
-  // Listen for unread messages updates
-  onUnreadMessages(callback: (data: UnreadMessagesEvent) => void): void {
+  // Listen for last message updates
+  onLastMessage(callback: (data: LastMessageResponse) => void): void {
     if (this.socket) {
-      this.socket.on("unreadMessages", callback);
+      this.socket.on("lastMessage", callback);
     }
   }
 
-  // Listen for room updates
+  // Listen for unread counts updates
+  onUnreadCounts(callback: (data: UnreadCountsEvent) => void): void {
+    if (this.socket) {
+      this.socket.on("unreadCounts", callback);
+    }
+  }
+
+  // Listen for room updates (real-time)
   onRoomUpdate(callback: (data: RoomUpdateEvent) => void): void {
     if (this.socket) {
       this.socket.on("roomUpdate", callback);
-    }
-  }
-
-  // Enhanced lastMessage listener with debugging
-  onLastMessage(callback: (data: LastMessageResponse) => void): void {
-    if (this.socket) {
-      // Remove existing listeners to prevent duplicates
-      this.socket.off("lastMessage");
-      
-      this.socket.on("lastMessage", (data) => {
-        console.log("📨 LastMessage received in onLastMessage:", data);
-        console.log("📊 Data structure:", JSON.stringify(data, null, 2));
-        
-        if (data && data.lastMessageByRoom) {
-          console.log("✅ Valid lastMessage data, calling callback");
-          callback(data);
-        } else {
-          console.warn("⚠️ Invalid lastMessage data structure:", data);
-        }
-      });
-    } else {
-      console.error("❌ Socket not connected, cannot listen for lastMessage");
-    }
-  }
-
-
-  // Listen for user going offline
-  onUserOffline(callback: (data: UserOfflineEvent) => void): void {
-    if (this.socket) {
-      this.socket.on("userOffline", callback);
-    }
-  }
-
-  // Listen for room created event
-  onRoomCreated(callback: () => void): void {
-    if (this.socket) {
-      this.socket.on("room_created", callback);
-    }
-  }
-
-  // Listen for user status change
-  onUserStatusChange(
-    callback: (data: { userId: string; isOnline: boolean }) => void
-  ): void {
-    if (this.socket) {
-      this.socket.on("user_status_change", callback);
     }
   }
 
@@ -293,12 +212,9 @@ class SocketService {
       this.socket.off("onlineUsers");
       this.socket.off("roomMembers");
       this.socket.off("newMessage");
-      this.socket.off("unreadMessages");
-      this.socket.off("roomUpdate");
       this.socket.off("lastMessage");
-      this.socket.off("userOffline");
-      this.socket.off("room_created");
-      this.socket.off("user_status_change");
+      this.socket.off("unreadCounts");
+      this.socket.off("roomUpdate");
     }
   }
 
@@ -309,51 +225,6 @@ class SocketService {
       this.socket = null;
     }
   }
-
-
-  // Add these methods to your socketService class
-
-// Listen for unread message counts
-onUnreadCounts(callback: (data: any) => void): void {
-  if (this.socket) {
-    this.socket.on("unreadCounts", callback);
-  }
-}
-
-// Listen for online user counts
-onOnlineCounts(callback: (data: any) => void): void {
-  if (this.socket) {
-    this.socket.on("onlineCounts", callback);
-  }
-}
-
-// Listen for combined room statistics
-onRoomStats(callback: (data: any) => void): void {
-  if (this.socket) {
-    this.socket.on("roomStats", callback);
-  }
-}
-
-// Request current unread counts
-requestUnreadCounts(): void {
-  if (this.socket) {
-    this.socket.emit("requestUnreadCounts");
-  }
-}
-
-// Request current online counts
-requestOnlineCounts(): void {
-  if (this.socket) {
-    this.socket.emit("requestOnlineCounts");
-  }
-}
-
-// Mark messages as read for a specific room
-markMessagesAsRead(roomId: string): void {
-  if (this.socket) {
-    this.socket.emit("markAsRead", { roomId });
-  }
-}
 }
 
 // Create a singleton instance
