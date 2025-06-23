@@ -20,7 +20,7 @@ export const login = async (mobileNumber: string, password: string) => {
       await AuthStorage.storeToken(response.data.token);
 
       // If no user data in response, fetch user profile
-      let userData: User | null = null;
+      let userData: User;
       try {
         const profileResponse = await axios.get(
           `${API_URL}/api/users/${response.data.userId}/profile`,
@@ -44,11 +44,12 @@ export const login = async (mobileNumber: string, password: string) => {
       }
 
       // Store admin status
-      await AuthStorage.storeAdminStatus(response.data.isAdmin);
+      console.log("response.data.isAdmin", userData.isAdmin);
+      await AuthStorage.storeAdminStatus(userData.isAdmin);
 
       // Redirect to announcement page on successful login
       router.replace("/announcement");
-      return response.data;
+      return userData;
     } else {
       return response.data;
     }

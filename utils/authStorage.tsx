@@ -18,6 +18,7 @@ export const AuthStorage = {
     try {
       await AsyncStorage.setItem('userData', JSON.stringify(userData));
       console.log('User data stored successfully');
+      console.log("userData", userData);
     } catch (error) {
       console.error('Error storing user data:', error);
     }
@@ -35,6 +36,7 @@ export const AuthStorage = {
       }
       
       const userData = JSON.parse(userDataString);
+      console.log("userData", userData);
       return userData;
     } catch (error) {
       console.error('Error retrieving user data:', error);
@@ -44,6 +46,7 @@ export const AuthStorage = {
 
   // Store admin status
   async storeAdminStatus(isAdmin: boolean) {
+    console.log("storing admin status", isAdmin);
     console.log("storing admin status");
     await AsyncStorage.setItem('isAdmin', String(isAdmin));
     console.log("stored status", await AsyncStorage.getItem('isAdmin')); // Confirm it was saved

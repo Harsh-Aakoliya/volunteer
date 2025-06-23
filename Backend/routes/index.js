@@ -7,6 +7,8 @@ import uploadRoutes from './uploadRoutes.js';
 import { authenticateToken } from '../middlewares/auth.js';
 import pollRoutes from './pollRoutes.js';
 import tableRoutes from "./tableRoutes.js";
+import departmentRoutes from './departmentRoutes.js';
+import vmMediaRoutes from './vmMediaRoutes.js';
 const router = express.Router();
 
 // Test route
@@ -24,4 +26,6 @@ router.use('/announcements', announcementRoutes);
 router.use('/media', uploadRoutes);
 router.use('/poll', pollRoutes);
 router.use('/table',tableRoutes);
+router.use('/departments', departmentRoutes);
+router.use('/vmmedia', vmMediaRoutes);
 export default router; 

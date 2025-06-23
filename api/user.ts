@@ -23,7 +23,7 @@ export const fetchUserProfile = async () => {
         Authorization: `Bearer ${token}`
       }
     });
-    // console.log("response got after featching userprofile",response);
+    console.log("response got after featching userprofile",response.data);
 
     // Store the updated profile
     await AuthStorage.storeUser(response.data);
@@ -42,6 +42,37 @@ export const fetchUserProfile = async () => {
   }
 };
 
+// Fetch Sabha attendance records
+export const fetchSabhaAttendance = async () => {
+  try {
+    const token = await AuthStorage.getToken();
+    const storedUser = await AuthStorage.getUser();
+    
+    if (!token) {
+      throw new Error('No authentication token');
+    }
+
+    if (!storedUser || !storedUser.userId) {
+      throw new Error('No user userId found');
+    }
+
+    const response = await axios.get(`${API_URL}/api/users/${storedUser.userId}/attendance`, {
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    });
+
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching sabha attendance:', error);
+    throw error;
+  }
+};
+
 export const logout = async () => {
-  await AuthStorage.clear();
+  try {
+    await AuthStorage.clear();
+  } catch (error) {
+    console.error('Error during logout:', error);
+  }
 };

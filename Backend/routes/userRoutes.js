@@ -13,4 +13,8 @@ router.post('/approve-user', userController.approveUser);
 router.get('/:userId/profile', userController.getUserProfile);
 router.put('/:userId/profile', userController.updateUserProfile);
 
+// Sabha attendance routes
+router.get('/:userId/attendance', userController.getSabhaAttendance);
+router.post('/:userId/attendance', userController.recordSabhaAttendance);
+
 export default router; 

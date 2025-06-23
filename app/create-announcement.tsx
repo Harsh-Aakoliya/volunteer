@@ -9,38 +9,26 @@ const Announcement = () => {
   const params = useLocalSearchParams();
   
   // Extract params for editing
-  const announcementId = params.announcementId;
+  const announcementId = Number(params.announcementId);
   const initialTitle = params.title as string;
-  const initialBody = params.body as string;
+  const initialContent = params.content as string;
+  const announcementMode = params.announcementMode as string;
+  console.log("announcementMode", announcementMode);
+  console.log("initialTitle", initialTitle);
+  console.log("initialContent", initialContent);
+  console.log("announcementId", announcementId);
   
   // Determine if we're editing or creating
   const isEditing = !!announcementId;
 
   return (
-    <View style={{ flex: 1, padding: 16 }}>
-      {/* Back Button */}
-      <TouchableOpacity 
-        onPress={() => navigation.goBack()} 
-        style={{
-          padding: 10, 
-          backgroundColor: '#ddd', 
-          borderRadius: 5, 
-          marginBottom: 10, 
-          alignSelf: 'flex-start'
-        }}
-      >
-        <Text style={{ fontSize: 16 }}>← Back</Text>
-      </TouchableOpacity>
-
-      <Text style={{ fontSize: 20, fontWeight: 'bold', marginBottom: 16 }}>
-        {isEditing ? 'Edit Announcement' : 'Create Announcement'}
-      </Text>
-
+    <View style={{ flex: 1 }}>
       {/* Rich Text Editor with initial values if editing */}
       <RichTextEditor 
-        initialTitle={initialTitle || ''} 
-        initialContent={initialBody || ''}
-        announcementId={announcementId ? Number(announcementId) : undefined}
+        initialTitle={initialTitle} 
+        initialContent={initialContent}
+        announcementId={announcementId}
+        announcementMode={announcementMode}
       />
     </View>
   );

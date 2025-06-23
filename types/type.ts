@@ -39,10 +39,50 @@ export interface User {
   xetra?: string;
   mandal?: string;
   role?: string;
+  department?: string;
+  departmentId?: string;
   totalSabha?: number;
   presentCount?: number;
   absentCount?: number;
   isApproved?: boolean;
+}
+
+// Department-related Types
+export interface Department {
+  departmentId: string;
+  departmentName: string;
+  createdBy: string;
+  createdAt: string;
+  adminList: string[];
+  userList: string[];
+  createdByName?: string;
+  adminCount?: number;
+  userCount?: number;
+}
+
+export interface DepartmentUser {
+  userId: string;
+  fullName: string;
+  mobileNumber: string;
+  isAdmin: boolean;
+  department?: string;
+  departmentId?: string;
+  xetra?: string;
+  mandal?: string;
+  role?: string;
+}
+
+export interface CreateDepartmentRequest {
+  departmentName: string;
+  adminList: string[];
+  userList: string[];
+}
+
+export interface UpdateDepartmentRequest {
+  departmentId: string;
+  adminList?: string[];
+  userList?: string[];
+  departmentName?: string;
 }
 
 // Media-related Types
@@ -102,8 +142,27 @@ export interface Announcement {
   authorId: string;
   authorName?: string;
   createdAt: string;
-  likes: number;
+  likes: string[];
   dislikes: number;
+  readBy: ReadEntry[];
+  updatedAt: string;
+  status:string;
+}
+
+export interface ReadEntry {
+  userId: string;
+  readAt: string;
+}
+
+export interface LikedUser {
+  userId: string;
+  fullName: string;
+}
+
+export interface ReadUser {
+  userId: string;
+  fullName: string;
+  readAt: string;
 }
 
 // Admin-related Types
