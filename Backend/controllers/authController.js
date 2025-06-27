@@ -43,43 +43,48 @@ const register = async (req, res) => {
 // controllers/authController.js
 const login = async (req, res) => {
   const { mobileNumber, password } = req.body;
-  console.log(mobileNumber,password);
+  console.log("Login attempt:", mobileNumber, password);
+  
   try {
     const result = await pool.query(
       `SELECT * FROM users WHERE "mobileNumber" = $1 AND "password" = $2`,
       [mobileNumber, password]
     );
-    console.log("results ",result.rows);
+    console.log("Database results:", result.rows);
 
     if (result.rows.length > 0) {
-      const userId = result.rows[0].userId;
-      const isApproved = result.rows[0].isApproved;
+      const user = result.rows[0];
+      const userId = user.userId;
+      const isApproved = user.isApproved;
+      
       if (!isApproved) {
-        res.json({
+        return res.json({
           success: false,
           message: "User is not approved, wait for Admin approval",
         });
       }
+      
       const token = jwt.sign(
-        { userId: userId, isAdmin: result.rows[0].isAdmin },
+        { userId: userId, isAdmin: user.isAdmin },
         process.env.JWT_SECRET,
         { expiresIn: "24h" }
       );
+      
       res.json({
         success: true,
-        isAdmin: result.rows[0].isadmin,
+        isAdmin: user.isAdmin, // Fixed: was using isadmin (lowercase)
         token: token,
         userId: userId,
       });
     } else {
       res.json({
         success: false,
-        message: "Invalid credentials User not found",
+        message: "Invalid credentials. User not found.",
       });
     }
   } catch (error) {
-    console.log("here we got error in catch of login in backend");
-    res.status(400).json({ success: false, message: error.message });
+    console.error("Login error in backend:", error);
+    res.status(500).json({ success: false, message: "Server error. Please try again." });
   }
 };
 

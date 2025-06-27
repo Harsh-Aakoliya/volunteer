@@ -18,7 +18,7 @@ export const login = async (mobileNumber: string, password: string) => {
     if (response.data.success) {
       // Store token
       await AuthStorage.storeToken(response.data.token);
-
+      
       // If no user data in response, fetch user profile
       let userData: User;
       try {

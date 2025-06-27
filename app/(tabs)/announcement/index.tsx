@@ -8,23 +8,17 @@ import {
   ScrollView,
   StatusBar,
   SafeAreaView,
-  TouchableHighlight,
-  ViewStyle,
+
   RefreshControl,
   Alert,
 } from "react-native";
 import {
   fetchAnnouncements,
-  updateLikes,
   deleteAnnouncement,
   toggleLike,
   markAsRead,
   getLikedUsers,
   getReadUsers,
-  createDraft,
-  getDrafts,
-  deleteDraft,
-  fetchAnnouncementsDebug,
 } from "@/api/admin";
 import { router } from "expo-router";
 import { cssInterop } from "nativewind";
@@ -34,49 +28,39 @@ import { useCallback } from "react";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { getPreviewHTML } from "@/components/HtmlPreview";
 import { AuthStorage } from "@/utils/authStorage";
-import { Announcement, LikedUser, ReadUser } from "@/types/type";
 import { Ionicons } from '@expo/vector-icons';
 
-// Custom Checkbox Component with TypeScript
-interface CustomCheckboxProps { 
-  checked: boolean;
-  onPress: () => void;
-  style?: ViewStyle;
+interface Announcement {
+  id: number;
+  title: string;
+  body: string;
+  authorId: string;
+  authorName: string;
+  createdAt: string;
+  updatedAt: string;
+  likedBy: Array<{
+    userId: string;
+    fullName: string;
+    likedAt: string;
+  }>;
+  readBy: Array<{
+    userId: string;
+    fullName: string;
+    readAt: string;
+  }>;
 }
 
-const CustomCheckbox: React.FC<CustomCheckboxProps> = ({ 
-  checked, 
-  onPress, 
-  style 
-}) => {
-  return (
-    <TouchableOpacity 
-      onPress={onPress}
-      style={[
-        {
-          width: 24,
-          height: 24,
-          borderWidth: 2,
-          borderColor: 'gray',
-          borderRadius: 4,
-          justifyContent: 'center',
-          alignItems: 'center'
-        },
-        style
-      ]}
-    >
-      {checked && (
-        <View 
-          style={{
-            width: 12,
-            height: 12,
-            backgroundColor: 'blue'
-          }}
-        />
-      )}
-    </TouchableOpacity>
-  );
-};
+interface LikedUser {
+  userId: string;
+  fullName: string;
+  likedAt: string;
+}
+
+interface ReadUser {
+  userId: string;
+  fullName: string;
+  readAt: string;
+}
 
 // Use cssInterop for WebView
 const StyledWebView = cssInterop(WebView, {
@@ -88,24 +72,15 @@ const Announcements = () => {
   const [selectedAnnouncement, setSelectedAnnouncement] = useState<Announcement | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
-  const [isrefereshing,setIsrefereshing]=useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string>("");
   
-  // New state for selection
-  const [isSelectionMode, setIsSelectionMode] = useState(false);
-  const [selectedAnnouncements, setSelectedAnnouncements] = useState<{[key: number]: boolean}>({});
-
   // New states for like and read functionality
   const [likedUsers, setLikedUsers] = useState<LikedUser[]>([]);
   const [readUsers, setReadUsers] = useState<ReadUser[]>([]);
   const [showLikedUsers, setShowLikedUsers] = useState(false);
   const [showReadUsers, setShowReadUsers] = useState(false);
-
-  // New states for draft functionality
-  const [showCreateOptions, setShowCreateOptions] = useState(false);
-  const [showDraftModal, setShowDraftModal] = useState(false);
-  const [drafts, setDrafts] = useState<Announcement[]>([]);
-  const [isLoadingDrafts, setIsLoadingDrafts] = useState(false);
+  const [likingInProgress, setLikingInProgress] = useState<Set<number>>(new Set());
 
   useEffect(() => {
     loadAnnouncements();
@@ -133,70 +108,126 @@ const Announcements = () => {
     try {
       const data: Announcement[] = await fetchAnnouncements();
       setAnnouncements(data);
-      setIsrefereshing(false);
+      setIsRefreshing(false);
     } catch (error) {
       console.error("Error fetching announcements:", error);
-      setIsrefereshing(false);
-    }
-  };
-
-  const loadAnnouncementsDebug = async () => {
-    try {
-      console.log("Loading debug announcements...");
-      const data: Announcement[] = await fetchAnnouncementsDebug();
-      console.log("Debug announcements loaded:", data.length);
-      setAnnouncements(data); // Temporarily show all announcements
-    } catch (error) {
-      console.error("Error fetching debug announcements:", error);
+      setIsRefreshing(false);
     }
   };
 
   const onRefresh = useCallback(() => {
-    setIsrefereshing(true);
+    setIsRefreshing(true);
     loadAnnouncements();
   }, []);
 
   const handleToggleLike = async (id: number) => {
+    // Prevent multiple rapid clicks
+    if (likingInProgress.has(id)) {
+      return;
+    }
+
     try {
-      await toggleLike(id, currentUserId);
-      loadAnnouncements(); // Refresh to get updated likes
-    } catch (error) {
+      // Mark as in progress
+      setLikingInProgress(prev => new Set(prev.add(id)));
+
+      // Optimistically update the UI first for immediate feedback
+      setAnnouncements(prevAnnouncements => 
+        prevAnnouncements.map(announcement => {
+          if (announcement.id === id) {
+            const currentlyLiked = announcement.likedBy?.some(like => like.userId === currentUserId) || false;
+            let newLikedBy;
+            
+            if (currentlyLiked) {
+              // Remove user's like
+              newLikedBy = announcement.likedBy?.filter(like => like.userId !== currentUserId) || [];
+            } else {
+              // Add user's like
+              const newLike = {
+                userId: currentUserId,
+                fullName: 'You', // We'll get actual name from server response
+                likedAt: new Date().toISOString()
+              };
+              newLikedBy = [...(announcement.likedBy || []), newLike];
+            }
+            
+            return {
+              ...announcement,
+              likedBy: newLikedBy
+            };
+          }
+          return announcement;
+        })
+      );
+
+      // Also update selected announcement if it's the same one
+      if (selectedAnnouncement && selectedAnnouncement.id === id) {
+        const currentlyLiked = selectedAnnouncement.likedBy?.some(like => like.userId === currentUserId) || false;
+        let newLikedBy;
+        
+        if (currentlyLiked) {
+          newLikedBy = selectedAnnouncement.likedBy?.filter(like => like.userId !== currentUserId) || [];
+        } else {
+          const newLike = {
+            userId: currentUserId,
+            fullName: 'You',
+            likedAt: new Date().toISOString()
+          };
+          newLikedBy = [...(selectedAnnouncement.likedBy || []), newLike];
+        }
+        
+        setSelectedAnnouncement({
+          ...selectedAnnouncement,
+          likedBy: newLikedBy
+        });
+      }
+
+      // Send request to server
+      const result = await toggleLike(id, currentUserId);
+      console.log('Like toggle result:', result);
+      
+      // Success! The optimistic update should be correct
+      // We could optionally refresh to get accurate server data
+      
+    } catch (error: any) {
       console.error("Error toggling like:", error);
+      
+      // Revert optimistic update on error
+      loadAnnouncements();
+      
+      // Show error message
+      Alert.alert("Error", "Failed to update like. Please try again.");
+    } finally {
+      // Remove from in progress
+      setLikingInProgress(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(id);
+        return newSet;
+      });
     }
   };
 
   const handleMarkAsRead = async (id: number) => {
     try {
-      await markAsRead(id, currentUserId);
-      loadAnnouncements(); // Refresh to get updated read status
+      const result = await markAsRead(id, currentUserId);
+      if (result.wasNew) {
+        loadAnnouncements(); // Refresh to get updated read status
+      }
     } catch (error) {
       console.error("Error marking as read:", error);
     }
   };
 
   const openAnnouncement = async (announcement: Announcement) => {
-    if (!isSelectionMode) {
-      // Mark as read when opening
-      await handleMarkAsRead(announcement.id);
-      setSelectedAnnouncement(announcement);
-      setModalVisible(true);
-    }
-  };
-
-  const handleDeleteAnnouncement = (id: number) => {
-    deleteAnnouncement(id);
+    // Mark as read when opening
+    await handleMarkAsRead(announcement.id);
+    setSelectedAnnouncement(announcement);
+    setModalVisible(true);
   };
 
   const toggleModal = () => {
     setModalVisible(!modalVisible);
     setShowLikedUsers(false);
     setShowReadUsers(false);
-  };
-
-  const handleLongPress = () => {
-    if (isAdmin) {
-      setIsSelectionMode(true);
-    }
   };
 
   // Check if current user has read the announcement
@@ -206,147 +237,68 @@ const Announcements = () => {
 
   // Check if current user has liked the announcement
   const hasUserLiked = (announcement: Announcement) => {
-    return announcement.likes?.includes(currentUserId) || false;
+    return announcement.likedBy?.some(like => like.userId === currentUserId) || false;
   };
 
-  // Toggle selection of an announcement
-  const toggleAnnouncementSelection = (id: number) => {
-    setSelectedAnnouncements(prev => ({
-      ...prev,
-      [id]: !prev[id]
-    }));
-  };
-
-  // Bulk delete selected announcements
-  const handleBulkDelete = async () => {
-    try {
-      const idsToDelete = Object.keys(selectedAnnouncements)
-        .filter(id => selectedAnnouncements[parseInt(id)])
-        .map(id => parseInt(id));
-
-      for (const id of idsToDelete) {
-        await deleteAnnouncement(id);
-      }
-
-      loadAnnouncements();
-      cancelSelectionMode();
-    } catch (error) {
-      console.error('Error deleting announcements:', error);
-    }
-  };
-
-  // Cancel selection mode
-  const cancelSelectionMode = () => {
-    setIsSelectionMode(false);
-    setSelectedAnnouncements({});
-  };
-
-  // Load liked users
+  // Load liked users (only for authors)
   const loadLikedUsers = async (id: number) => {
     try {
-      const result = await getLikedUsers(id);
+      const result = await getLikedUsers(id, currentUserId);
       setLikedUsers(result.likedUsers || []);
       setShowLikedUsers(true);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error loading liked users:", error);
+      if (error.response?.status === 403) {
+        Alert.alert("Unauthorized", "Only the author can view who liked this announcement");
+      }
     }
   };
 
-  // Load read users
+  // Load read users (only for authors)
   const loadReadUsers = async (id: number) => {
     try {
-      const result = await getReadUsers(id);
+      const result = await getReadUsers(id, currentUserId);
       setReadUsers(result.readUsers || []);
       setShowReadUsers(true);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error loading read users:", error);
-    }
-  };
-
-  // Draft management functions
-  const handleCreateNewAnnouncement = async () => {
-    try {
-      setShowCreateOptions(false);
-      const draft = await createDraft(currentUserId);
-      console.log("Draft created:", draft);
-      router.push({
-        pathname: "../create-announcement",
-        params: {
-          announcementId: draft.id,
-          title:'',
-          content: '',
-          announcementMode: 'fresh'
-        }
-      });
-    } catch (error) {
-      console.error("Error creating draft:", error);
-      Alert.alert("Error", "Failed to create new announcement");
-    }
-  };
-
-  const handleCreateFromDraft = async () => {
-    try {
-      setShowCreateOptions(false);
-      setIsLoadingDrafts(true);
-      const userDrafts = await getDrafts(currentUserId);
-      setDrafts(userDrafts);
-      setShowDraftModal(true);
-    } catch (error) {
-      console.error("Error loading drafts:", error);
-      Alert.alert("Error", "Failed to load drafts");
-    } finally {
-      setIsLoadingDrafts(false);
-    }
-  };
-
-  const handleSelectDraft = (draft: Announcement) => {
-    setShowDraftModal(false);
-    console.log("Draft selected:", draft);
-    router.push({
-      pathname: "../create-announcement",
-      params: {
-        announcementId: draft.id,
-        title: draft.title || '',
-        content: draft.body || '',
-        announcementMode: 'draft'
+      if (error.response?.status === 403) {
+        Alert.alert("Unauthorized", "Only the author can view who read this announcement");
       }
+    }
+  };
+
+  const formatDateTime = (date: string) => {
+    return new Date(date).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
     });
   };
 
-  const handleDeleteDraft = async (draftId: number) => {
-    try {
-      await deleteDraft(draftId, currentUserId);
-      const updatedDrafts = await getDrafts(currentUserId);
-      setDrafts(updatedDrafts);
-    } catch (error) {
-      console.error("Error deleting draft:", error);
-      Alert.alert("Error", "Failed to delete draft");
-    }
+  const formatDateTimeWithTime = (date: string) => {
+    const dateObj = new Date(date);
+    
+    // Convert to IST (UTC+5:30)
+    const istOffset = 5.5 * 60 * 60 * 1000; // IST is UTC+5:30
+    const istDate = new Date(dateObj.getTime() + istOffset);
+    
+    const day = istDate.getUTCDate().toString().padStart(2, '0');
+    const month = (istDate.getUTCMonth() + 1).toString().padStart(2, '0');
+    const year = istDate.getUTCFullYear();
+    
+    let hours = istDate.getUTCHours();
+    const minutes = istDate.getUTCMinutes().toString().padStart(2, '0');
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    
+    hours = hours % 12;
+    hours = hours ? hours : 12; // the hour '0' should be '12'
+    
+    return `${day}/${month}/${year} ${hours}:${minutes} ${ampm}`;
   };
-const formatDateTime = (date: string) => {
-  return new Date(date).toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  });
-};
+
   return (
     <View className="flex-1 px-4 py-4">
-      {/* Bulk Delete Options */}
-      {isSelectionMode && isAdmin && (
-        <View className="flex-row justify-between items-center mb-4">
-          <TouchableOpacity onPress={cancelSelectionMode}>
-            <Text>Cancel</Text>
-          </TouchableOpacity>
-          <TouchableOpacity 
-            onPress={handleBulkDelete}
-            disabled={Object.values(selectedAnnouncements).filter(Boolean).length === 0}
-          >
-            <Text>Delete</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-
       <FlatList
         data={announcements}
         keyExtractor={(item) => item.id.toString()}
@@ -356,82 +308,79 @@ const formatDateTime = (date: string) => {
           
           return (
             <TouchableOpacity 
-              className="flex-row items-center"
-              onLongPress={handleLongPress}
+              onPress={() => openAnnouncement(item)}
             >
-              {/* Checkbox in selection mode */}
-              {isSelectionMode && (
-                <CustomCheckbox
-                  checked={selectedAnnouncements[item.id] || false}
-                  onPress={() => toggleAnnouncementSelection(item.id)}
-                  style={{ marginRight: 10 }}
-                />
-              )}
-
-              <TouchableOpacity 
-                className="flex-1"
-                onPress={() => openAnnouncement(item)}
-              >
-                <View className={`p-4 mb-3 rounded-xl shadow-sm border ${
-                  isRead 
-                    ? 'bg-gray-50 border-gray-200' 
-                    : 'bg-white border-blue-200 shadow-md'
+              <View className={`p-4 mb-3 rounded-xl shadow-sm border ${
+                isRead 
+                  ? 'bg-gray-50 border-gray-200' 
+                  : 'bg-white border-blue-200 shadow-md'
+              }`}>
+                {/* Unread indicator */}
+                {!isRead && (
+                  <View className="absolute top-2 right-2 w-3 h-3 bg-blue-500 rounded-full" />
+                )}
+                
+                <Text className={`text-lg font-bold mb-1 ${
+                  isRead ? 'text-gray-700' : 'text-gray-900'
                 }`}>
-                  {/* Unread indicator */}
-                  {!isRead && (
-                    <View className="absolute top-2 right-2 w-3 h-3 bg-blue-500 rounded-full" />
-                  )}
-                  
-                  <Text className={`text-lg font-bold mb-1 ${
-                    isRead ? 'text-gray-700' : 'text-gray-900'
-                  }`}>
-                    {item.title}
-                  </Text>
-                  <Text className="text-xs text-gray-500 mb-2">
-                    {formatDateTime(item.createdAt)}
-                  </Text>
+                  {item.title}
+                </Text>
+                <Text className="text-xs text-gray-500 mb-2">
+                  By {item.authorName} • {formatDateTime(item.createdAt)}
+                </Text>
 
-                  <View className="h-16 overflow-hidden mb-2">
-                    <StyledWebView
-                      className="flex-1"
-                      originWhitelist={["*"]}
-                      source={{ html: getPreviewHTML(item.body, true) }}
-                      scrollEnabled={false}
-                    />
-                  </View>
+                <View className="h-16 overflow-hidden mb-2">
+                  <StyledWebView
+                    className="flex-1"
+                    originWhitelist={["*"]}
+                    source={{ html: getPreviewHTML(item.body, true) }}
+                    scrollEnabled={false}
+                  />
+                </View>
 
-                  {/* Like and Read count indicators */}
-                  <View className="flex-row justify-between items-center mt-2">
-                    <View className="flex-row items-center space-x-4">
-                      <View className="flex-row items-center">
-                        <Ionicons 
-                          name={isLiked ? "heart" : "heart-outline"} 
-                          size={16} 
-                          color={isLiked ? "#ef4444" : "#6b7280"} 
-                        />
+                {/* Like and Read count indicators */}
+                <View className="flex-row justify-between items-center mt-2">
+                  <View className="flex-row items-center space-x-4">
+                    {/* Like button - always show */}
+                    <TouchableOpacity 
+                      onPress={() => handleToggleLike(item.id)}
+                      className="flex-row items-center"
+                      disabled={likingInProgress.has(item.id)}
+                    >
+                      <Ionicons 
+                        name={isLiked ? "heart" : "heart-outline"} 
+                        size={16} 
+                        color={likingInProgress.has(item.id) ? "#9ca3af" : (isLiked ? "#ef4444" : "#6b7280")} 
+                      />
+                      {/* Show count only for authors */}
+                      {item.authorId === currentUserId && (
                         <Text className="text-xs text-gray-500 ml-1">
-                          {item.likes?.length || 0}
+                          {item.likedBy?.length || 0}
                         </Text>
-                      </View>
+                      )}
+                    </TouchableOpacity>
+                    
+                    {/* Read count - only show for authors */}
+                    {item.authorId === currentUserId && (
                       <View className="flex-row items-center">
                         <Ionicons name="eye-outline" size={16} color="#6b7280" />
                         <Text className="text-xs text-gray-500 ml-1">
                           {item.readBy?.length || 0}
                         </Text>
                       </View>
-                    </View>
-                    {!isRead && (
-                      <Text className="text-xs font-semibold text-blue-600">NEW</Text>
                     )}
                   </View>
+                  {!isRead && (
+                    <Text className="text-xs font-semibold text-blue-600">NEW</Text>
+                  )}
                 </View>
-              </TouchableOpacity>
+              </View>
             </TouchableOpacity>
           );
         }}
         refreshControl={
           <RefreshControl
-            refreshing={isrefereshing}
+            refreshing={isRefreshing}
             onRefresh={onRefresh}
             colors={["#0284c7"]}
           />
@@ -441,121 +390,20 @@ const formatDateTime = (date: string) => {
       {/* Floating + Button (conditionally render for admin) */}
       {isAdmin && (
         <TouchableOpacity
-          onPress={() => setShowCreateOptions(true)}
+          onPress={() => {
+            router.push({
+              pathname: "../create-announcement",
+              params: {
+                announcementMode: 'new'
+              }
+            });
+          }}
           className="absolute bottom-6 right-6 bg-blue-500 w-14 h-14 rounded-full items-center justify-center shadow-lg"
           style={{ elevation: 8 }}
         >
           <Ionicons name="add" size={32} color="white" />
         </TouchableOpacity>
       )}
-
-      {/* Create Options Modal */}
-      <Modal
-        animationType="fade"
-        transparent={true}
-        visible={showCreateOptions}
-        onRequestClose={() => setShowCreateOptions(false)}
-      >
-        <View className="flex-1 justify-center items-center bg-black bg-opacity-50">
-          <View className="bg-white rounded-lg p-6 w-4/5 max-w-sm">
-            <Text className="text-lg font-bold mb-4 text-center">Create Announcement</Text>
-            
-            <TouchableOpacity
-              onPress={handleCreateNewAnnouncement}
-              className="bg-blue-500 py-3 px-4 rounded-lg mb-3"
-            >
-              <Text className="text-white font-semibold text-center">Create New Announcement</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity
-              onPress={handleCreateFromDraft}
-              className="bg-green-500 py-3 px-4 rounded-lg mb-3"
-            >
-              <Text className="text-white font-semibold text-center">Create from Draft</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity
-              onPress={() => setShowCreateOptions(false)}
-              className="bg-gray-300 py-3 px-4 rounded-lg"
-            >
-              <Text className="text-gray-700 font-semibold text-center">Cancel</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Drafts Modal */}
-      <Modal
-        animationType="slide"
-        transparent={false}
-        visible={showDraftModal}
-        onRequestClose={() => setShowDraftModal(false)}
-      >
-        <SafeAreaView className="flex-1 bg-white">
-          <StatusBar barStyle="dark-content" />
-          
-          {/* Modal Header */}
-          <View className="flex-row justify-between items-center px-4 py-3 border-b border-gray-200">
-            <Text className="text-xl font-bold">Your Drafts</Text>
-            <TouchableOpacity
-              className="bg-gray-200 py-2 px-4 rounded-lg"
-              onPress={() => setShowDraftModal(false)}
-            >
-              <Text className="text-gray-800">Cancel</Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Drafts List */}
-          <FlatList
-            data={drafts}
-            keyExtractor={(item) => item.id.toString()}
-            className="flex-1 px-4"
-            renderItem={({ item }) => (
-              <View className="bg-gray-50 p-4 mb-3 rounded-lg border border-gray-200">
-                <View className="flex-row justify-between items-start">
-                  <TouchableOpacity
-                    onPress={() => handleSelectDraft(item)}
-                    className="flex-1 mr-3"
-                  >
-                    <Text className="text-lg font-semibold text-gray-900 mb-1">
-                      {item.title || 'Untitled Draft'}
-                    </Text>
-                    <Text className="text-sm text-gray-500 mb-2">
-                      Last updated: {formatDateTime(item.updatedAt)}
-                    </Text>
-                    <Text className="text-gray-700" numberOfLines={3}>
-                      {item.body ? item.body.replace(/<[^>]*>/g, '') : 'No content'}
-                    </Text>
-                  </TouchableOpacity>
-                  
-                  <TouchableOpacity
-                    onPress={() => {
-                      Alert.alert(
-                        "Delete Draft",
-                        "Are you sure you want to delete this draft?",
-                        [
-                          { text: "Cancel", style: "cancel" },
-                          { text: "Delete", style: "destructive", onPress: () => handleDeleteDraft(item.id) }
-                        ]
-                      );
-                    }}
-                    className="bg-red-100 p-2 rounded-lg"
-                  >
-                    <Ionicons name="trash-outline" size={20} color="#ef4444" />
-                  </TouchableOpacity>
-                </View>
-              </View>
-            )}
-            ListEmptyComponent={
-              <View className="flex-1 justify-center items-center py-12">
-                <Ionicons name="document-outline" size={64} color="#9ca3af" />
-                <Text className="text-gray-500 text-center mt-4">No drafts found</Text>
-                <Text className="text-gray-400 text-center mt-2">Create your first draft to get started</Text>
-              </View>
-            }
-          />
-        </SafeAreaView>
-      </Modal>
 
       {/* Modal for announcement details */}
       <Modal
@@ -585,7 +433,7 @@ const formatDateTime = (date: string) => {
                 {selectedAnnouncement.title}
               </Text>
               <Text className="text-sm text-gray-500 mt-1">
-                {formatDateTime(selectedAnnouncement.createdAt)}
+                By {selectedAnnouncement.authorName} • {formatDateTime(selectedAnnouncement.createdAt)}
               </Text>
             </View>
 
@@ -606,19 +454,23 @@ const formatDateTime = (date: string) => {
                 <TouchableOpacity
                   onPress={() => handleToggleLike(selectedAnnouncement.id)}
                   className="flex-row items-center"
+                  disabled={likingInProgress.has(selectedAnnouncement.id)}
                 >
                   <Ionicons 
                     name={hasUserLiked(selectedAnnouncement) ? "heart" : "heart-outline"} 
                     size={24} 
-                    color={hasUserLiked(selectedAnnouncement) ? "#ef4444" : "#6b7280"} 
+                    color={likingInProgress.has(selectedAnnouncement.id) ? "#9ca3af" : (hasUserLiked(selectedAnnouncement) ? "#ef4444" : "#6b7280")} 
                   />
-                  <Text className="ml-2 text-gray-700">
-                    {selectedAnnouncement.likes?.length || 0} likes
-                  </Text>
+                  {/* Show count only for authors */}
+                  {selectedAnnouncement.authorId === currentUserId && (
+                    <Text className="ml-2 text-gray-700">
+                      {selectedAnnouncement.likedBy?.length || 0} likes
+                    </Text>
+                  )}
                 </TouchableOpacity>
 
                 {/* Author-only options */}
-                {isAdmin && selectedAnnouncement.authorId === currentUserId && (
+                {selectedAnnouncement.authorId === currentUserId && (
                   <View className="flex-row space-x-2">
                     <TouchableOpacity
                       onPress={() => loadLikedUsers(selectedAnnouncement.id)}
@@ -638,25 +490,20 @@ const formatDateTime = (date: string) => {
             </View>
 
             {/* Admin Actions */}
-            {isAdmin && selectedAnnouncement && (
+            {isAdmin && selectedAnnouncement.authorId === currentUserId && (
               <View className="flex-row justify-end items-center px-4 py-2 border-t border-gray-200">
                 <TouchableOpacity
-                  onPress={async () => {
-                    const userData = await AuthStorage.getUser();
-                    if (userData?.userId === selectedAnnouncement.authorId) {
-                      toggleModal();
-                      router.push({
-                        pathname: "../create-announcement",
-                        params: {  
-                          announcementId: selectedAnnouncement.id,
-                          title: selectedAnnouncement.title,
-                          content: selectedAnnouncement.body,
-                          announcementMode: 'edit'
-                        }
-                      });
-                    } else {
-                      alert("You can only edit your own announcements");
-                    }
+                  onPress={() => {
+                    toggleModal();
+                    router.push({
+                      pathname: "../create-announcement",
+                      params: {  
+                        announcementId: selectedAnnouncement.id,
+                        title: selectedAnnouncement.title,
+                        content: selectedAnnouncement.body,
+                        announcementMode: 'edit'
+                      }
+                    });
                   }}
                   className="bg-blue-500 py-2 px-4 rounded-lg mr-2"
                 >
@@ -665,19 +512,27 @@ const formatDateTime = (date: string) => {
 
                 <TouchableOpacity
                   onPress={async () => {
-                    const userData = await AuthStorage.getUser();
-                    if (userData?.userId === selectedAnnouncement.authorId) {
-                      try {
-                        await deleteAnnouncement(selectedAnnouncement.id);
-                        toggleModal();
-                        loadAnnouncements();
-                      } catch (error) {
-                        console.error("Error deleting announcement:", error);
-                        alert("Failed to delete announcement");
-                      }
-                    } else {
-                      alert("You can only delete your own announcements");
-                    }
+                    Alert.alert(
+                      "Delete Announcement",
+                      "Are you sure you want to delete this announcement?",
+                      [
+                        { text: "Cancel", style: "cancel" },
+                        { 
+                          text: "Delete", 
+                          style: "destructive", 
+                          onPress: async () => {
+                            try {
+                              await deleteAnnouncement(selectedAnnouncement.id);
+                              toggleModal();
+                              loadAnnouncements();
+                            } catch (error) {
+                              console.error("Error deleting announcement:", error);
+                              Alert.alert("Error", "Failed to delete announcement");
+                            }
+                          }
+                        }
+                      ]
+                    );
                   }}
                   className="bg-red-500 py-2 px-4 rounded-lg"
                 >
@@ -710,6 +565,9 @@ const formatDateTime = (date: string) => {
               renderItem={({ item }) => (
                 <View className="py-2 border-b border-gray-100">
                   <Text className="text-gray-900">{item.fullName}</Text>
+                  <Text className="text-xs text-gray-500">
+                    Liked on {formatDateTimeWithTime(item.likedAt)}
+                  </Text>
                 </View>
               )}
               ListEmptyComponent={
@@ -742,7 +600,7 @@ const formatDateTime = (date: string) => {
                 <View className="py-2 border-b border-gray-100">
                   <Text className="text-gray-900">{item.fullName}</Text>
                   <Text className="text-xs text-gray-500">
-                    Read on {formatDateTime(item.readAt)}
+                    Read on {formatDateTimeWithTime(item.readAt)}
                   </Text>
                 </View>
               )}

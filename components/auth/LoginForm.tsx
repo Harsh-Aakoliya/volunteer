@@ -15,7 +15,6 @@ import CustomButton from "../ui/CustomButton";
 import CustomInput from "../ui/CustomInput";
 import { login } from "@/api/auth";
 import { ScrollView } from "react-native";
-import { Redirect } from 'expo-router';
 
 
 export default function LoginForm() {
@@ -37,14 +36,15 @@ export default function LoginForm() {
     try {
       setIsLoading(true);
       const response = await login(mobileNumber, password);
-      console.log("response got after login at frontend",response);
-      if (response.success)  return <Redirect href="/announcement" />;
-      else {
-        Alert.alert(response.message);
-        router.replace("/signup");
+      console.log("response got after login at frontend", response);
+      // The login function already handles success/failure and redirects
+      // No need to handle success here as auth.ts handles it
+      if (response && response.message) {
+        Alert.alert("Error", response.message);
       }
     } catch (error) {
-      Alert.alert("Error", "Invalid credentials");
+      console.error("Login error:", error);
+      Alert.alert("Error", "Login failed. Please try again.");
     } finally {
       setIsLoading(false);
     }

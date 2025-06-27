@@ -21,22 +21,12 @@ const initDB = async () => {
         "xetra" VARCHAR(100),
         "mandal" VARCHAR(100),
         "role" VARCHAR(50),
-        "department" VARCHAR(100),
         "password" VARCHAR(100),
         "isApproved" BOOLEAN DEFAULT FALSE,
         "createdAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         "totalSabha" INTEGER DEFAULT 0,
         "presentCount" INTEGER DEFAULT 0,
-        "absentCount" INTEGER DEFAULT 0,
-        "gender" VARCHAR(20),
-        "dateOfBirth" DATE,
-        "bloodGroup" VARCHAR(10),
-        "maritalStatus" VARCHAR(20),
-        "education" VARCHAR(100),
-        "whatsappNumber" VARCHAR(15),
-        "emergencyContact" VARCHAR(15),
-        "email" VARCHAR(100),
-        "address" TEXT
+        "absentCount" INTEGER DEFAULT 0
       );
 
       CREATE TABLE IF NOT EXISTS "announcements" (
@@ -46,25 +36,46 @@ const initDB = async () => {
         "authorId" VARCHAR(50) REFERENCES "users"("userId"),
         "createdAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         "updatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        "status" VARCHAR(20) DEFAULT 'published',
-        "likes" TEXT[] DEFAULT '{}',
-        "dislikes" INT DEFAULT 0,
+        "likedBy" JSONB DEFAULT '[]',
         "readBy" JSONB DEFAULT '[]'
       );
 
-      CREATE TABLE IF NOT EXISTS "sabha_attendance" (
-        "id" SERIAL PRIMARY KEY,
-        "userId" VARCHAR(50) REFERENCES "users"("userId"),
-        "sabhaDate" DATE NOT NULL,
-        "isPresent" BOOLEAN DEFAULT FALSE,
-        "entryTime" TIME,
-        "sabhaStartTime" TIME DEFAULT '09:00:00',
-        "sabhaEndTime" TIME DEFAULT '11:00:00',
-        "isLate" BOOLEAN DEFAULT FALSE,
-        "timeDifference" INTERVAL,
-        "createdAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE("userId", "sabhaDate")
-      );
+      -- Add new columns to existing announcements table if they don't exist
+      DO $$ 
+      BEGIN
+        BEGIN
+          ALTER TABLE "announcements" ADD COLUMN "likedBy" JSONB DEFAULT '[]';
+        EXCEPTION
+          WHEN duplicate_column THEN
+            -- Column already exists, do nothing
+        END;
+        
+        BEGIN
+          ALTER TABLE "announcements" ADD COLUMN "readBy" JSONB DEFAULT '[]';
+        EXCEPTION
+          WHEN duplicate_column THEN
+            -- Column already exists, do nothing
+        END;
+        
+        BEGIN
+          ALTER TABLE "announcements" ADD COLUMN "updatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+        EXCEPTION
+          WHEN duplicate_column THEN
+            -- Column already exists, do nothing
+        END;
+      END $$;
+
+      -- Remove old likes/dislikes columns if they exist
+      DO $$ 
+      BEGIN
+        BEGIN
+          ALTER TABLE "announcements" DROP COLUMN IF EXISTS "likes";
+          ALTER TABLE "announcements" DROP COLUMN IF EXISTS "dislikes";
+        EXCEPTION
+          WHEN undefined_column THEN
+            -- Column doesn't exist, do nothing
+        END;
+      END $$;
     `);
   } finally {
     client.release();

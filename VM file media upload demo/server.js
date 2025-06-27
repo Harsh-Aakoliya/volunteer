@@ -13,7 +13,7 @@ if (!fs.existsSync(UPLOAD_DIR)) {
   console.log(`Upload directory created: ${UPLOAD_DIR}`);
 }
 
-// Middleware
+// Middlewarer
 app.use(cors());
 app.use(bodyParser.json({ limit: '100mb' }));
 app.use(bodyParser.urlencoded({ limit: '100mb', extended: true }));

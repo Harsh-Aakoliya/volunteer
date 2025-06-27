@@ -15,9 +15,11 @@ export default function Index() {
         console.log(`Token: ${token}`); // Log the token for debugging
         if (token) {
           // User is authenticated, redirect to announcement
+          console.log("redirecting to announcement");
           router.replace("/announcement");
         } else {
           // No token, redirect to login
+          console.log("redirecting to login");
           router.replace("/login");
         }
       } catch (error) {
