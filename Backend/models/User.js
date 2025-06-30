@@ -1,13 +1,6 @@
 // initDB.js
 import pool from "../config/database.js";
 
-//state
-//city
-
-//role=>dept
-//leave sabha not count
-//leave list
-//joining date
 
 const initDB = async () => {
   const client = await pool.connect();

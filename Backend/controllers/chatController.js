@@ -732,8 +732,8 @@ const chatController = {
       // } else {
         // Traditional single message without media files or with all media files in one message
 
-        //store caption in media table
-        if (mediaFiles) {
+        //store caption in media table (for old media upload system)
+        if (mediaFiles && messageType !== "media") {
           // Step 1: Get current driveUrlObject array from DB
           const { rows } = await pool.query(
             `SELECT "driveUrlObject" FROM media WHERE id = $1`,
@@ -762,6 +762,9 @@ const chatController = {
           );
 
         }
+        
+        // For VM media, the media entry and message are already created by vmMediaController
+        // So we don't need to update anything here
 
         
 

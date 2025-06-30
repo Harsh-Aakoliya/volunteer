@@ -11,7 +11,8 @@ const Announcement = () => {
   // Extract params for editing
   const announcementId = params.announcementId;
   const initialTitle = params.title as string;
-  const initialBody = params.body as string;
+  const initialBody = (params.body || params.content) as string;
+  const announcementMode = params.announcementMode as string;
   
   // Determine if we're editing or creating
   const isEditing = !!announcementId;
@@ -41,6 +42,7 @@ const Announcement = () => {
         initialTitle={initialTitle || ''} 
         initialContent={initialBody || ''}
         announcementId={announcementId ? Number(announcementId) : undefined}
+        announcementMode={announcementMode}
       />
     </View>
   );

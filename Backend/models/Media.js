@@ -11,7 +11,7 @@ const initMediaDB = async () => {
                 "createdAt" TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
                 "caption" VARCHAR(255),
                 "messageId" INTEGER REFERENCES chatmessages("id"),
-                "driveUrlObject" JSONB
+                "driveUrlObject" JSONB DEFAULT '[]'
             );
         `);
     } catch (error) {

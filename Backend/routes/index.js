@@ -27,5 +27,5 @@ router.use('/media', uploadRoutes);
 router.use('/poll', pollRoutes);
 router.use('/table',tableRoutes);
 router.use('/departments', departmentRoutes);
-router.use('/vmmedia', vmMediaRoutes);
+router.use('/vm-media', vmMediaRoutes);
 export default router; 

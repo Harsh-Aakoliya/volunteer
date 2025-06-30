@@ -20,6 +20,15 @@ export default function OptionalGrid() {
         </View>
         <View className="w-1/3 items-center justify-center">
         <TouchableOpacity onPress={() => router.push({
+            pathname: "/chat/MediaUploader",
+            params: { roomId, userId, vmMedia: "true" }
+        })}>
+            <SVGComponent color="black" height={60} width={60} />
+            <Text>VM Media</Text>
+        </TouchableOpacity>
+        </View>
+        <View className="w-1/3 items-center justify-center">
+        <TouchableOpacity onPress={() => router.push({
             pathname: "/chat/Polling",
             params: { roomId, userId }
         })}>

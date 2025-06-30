@@ -393,9 +393,16 @@ export default function ChatRoomScreen() {
         
         {/* Render media files if present */}
         {item.mediaFilesId ? (
-          <View>
-            <Text>{item.mediaFilesId}</Text>
-          </View>
+          <TouchableOpacity 
+            onPress={() => {
+              // TODO: Add modal to display VM media files
+              console.log("VM Media ID:", item.mediaFilesId);
+            }}
+            className="bg-blue-100 p-2 rounded-lg mt-1"
+          >
+            <Text className="text-blue-700 font-semibold">📁 Media Files</Text>
+            <Text className="text-blue-600 text-xs">Tap to view media</Text>
+          </TouchableOpacity>
         ) : null}
 
         {/* Render table if present */}

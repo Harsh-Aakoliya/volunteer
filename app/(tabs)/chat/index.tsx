@@ -522,13 +522,13 @@ export default function ChatRooms() {
           </View>
         )}
       />
-
       {isAdmin && (
         <TouchableOpacity
-          className="absolute bottom-6 right-6 bg-blue-500 p-4 rounded-full shadow-lg"
-          onPress={() => router.push("/chat/create-room")}
+        onPress={() => router.push("/chat/create-room")}
+          className="absolute bottom-6 right-6 bg-blue-500 w-14 h-14 rounded-full items-center justify-center shadow-lg"
+          style={{ elevation: 8 }}
         >
-          <Ionicons name="add" color="white" />
+          <Ionicons name="add" size={32} color="white" />
         </TouchableOpacity>
       )}
     </View>
