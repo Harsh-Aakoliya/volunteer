@@ -1,4 +1,4 @@
-import { idText } from "typescript";
+// import { idText } from "typescript";
 import pool from "../config/database.js"
 
 

@@ -1,35 +1,42 @@
+// initDepartmentDB.js
 import pool from "../config/database.js";
 
-const initDepartmentDB = async () => {
+const createDepartmentTable = async () => {
   const client = await pool.connect();
   try {
+    // Check if table exists
+    const tableCheck = await client.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables 
+        WHERE table_name = 'departments'
+      );
+    `);
+    
+    if (tableCheck.rows[0].exists) {
+      console.log("Departments table already exists");
+      return;
+    }
+
     await client.query(`
       CREATE TABLE IF NOT EXISTS "departments" (
-        "departmentId" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        "departmentName" VARCHAR(255) UNIQUE NOT NULL,
-        "createdBy" VARCHAR(50) REFERENCES "users"("userId"),
-        "createdAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        "adminList" TEXT[] DEFAULT '{}',
-        "userList" TEXT[] DEFAULT '{}'
+          "departmentId" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          "departmentName" VARCHAR(255) UNIQUE NOT NULL,
+          "createdBy" VARCHAR(50),
+          "createdAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          "adminList" TEXT[] DEFAULT '{}',
+          "userList" TEXT[] DEFAULT '{}'
       );
-
-      -- Add department fields to users table
-      DO $$ 
-      BEGIN
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
-                      WHERE table_name='users' AND column_name='department') THEN
-          ALTER TABLE "users" ADD COLUMN "department" VARCHAR(255);
-        END IF;
-        
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
-                      WHERE table_name='users' AND column_name='departmentId') THEN
-          ALTER TABLE "users" ADD COLUMN "departmentId" UUID REFERENCES "departments"("departmentId") ON DELETE SET NULL;
-        END IF;
-      END $$;
     `);
+    console.log("Departments table created successfully");
+  } catch (error) {
+    console.error("Error while creating departments table:", error);
   } finally {
     client.release();
   }
 };
 
-export default initDepartmentDB; 
+const initDepartmentDB = async () => {
+  await createDepartmentTable();
+};
+
+export default initDepartmentDB;

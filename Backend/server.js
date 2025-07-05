@@ -10,6 +10,7 @@ import initPollDB from "./models/Poll.js";
 import initMediaDB from "./models/Media.js";
 import initTableDB from "./models/Table.js";
 import initDepartmentDB from "./models/Department.js"; 
+import initializeForeignKeyConstraints from "./models/ForeignKeyConstraints.js"
 import errorHandling from "./middlewares/errorHandler.js";
 import apiRoutes from "./routes/index.js";
 import setupSocketIO from "./socket.js";
@@ -44,6 +45,7 @@ initPollDB();
 initMediaDB();
 initTableDB();
 initDepartmentDB();
+initializeForeignKeyConstraints();
 
 const UPLOAD_DIR = path.join(process.cwd(), 'media');
 console.log("UPLOAD_DIR",UPLOAD_DIR);
