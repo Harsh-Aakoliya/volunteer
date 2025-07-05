@@ -123,6 +123,129 @@ const updateUserProfile = async (req, res) => {
   }
 };
 
+// Get all users (admin only)
+const getAllUsers = async (req, res) => {
+  try {
+    // Check if the requesting user is an admin
+    const { userId } = req.user;
+    const adminCheck = await pool.query(
+      'SELECT "isAdmin" FROM "users" WHERE "userId" = $1',
+      [userId]
+    );
+    
+    if (!adminCheck.rows[0]?.isAdmin) {
+      return res.status(403).json({ message: "Access denied. Admin privileges required." });
+    }
+    
+    const result = await pool.query(
+      `SELECT 
+        "userId", 
+        "mobileNumber", 
+        "fullName", 
+        "xetra", 
+        "mandal", 
+        "role",
+        "department", 
+        "totalSabha", 
+        "presentCount", 
+        "absentCount", 
+        "isAdmin",
+        "isApproved",
+        "gender",
+        "dateOfBirth",
+        "bloodGroup",
+        "maritalStatus",
+        "education",
+        "whatsappNumber",
+        "emergencyContact",
+        "email",
+        "address"
+      FROM "users" 
+      WHERE "isApproved" = TRUE
+      ORDER BY "fullName" ASC`
+    );
+    
+    res.json(result.rows);
+  } catch (error) {
+    console.error("Error fetching all users:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
+// Update user (admin only)
+const updateUser = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { 
+      userId: newUserId,
+      mobileNumber, 
+      fullName, 
+      isAdmin,
+      gender,
+      dateOfBirth,
+      bloodGroup,
+      maritalStatus,
+      education,
+      whatsappNumber,
+      emergencyContact,
+      email,
+      address
+    } = req.body;
+    
+    // Check if the requesting user is an admin
+    const adminCheck = await pool.query(
+      'SELECT "isAdmin" FROM "users" WHERE "userId" = $1',
+      [req.user.userId]
+    );
+    
+    if (!adminCheck.rows[0]?.isAdmin) {
+      return res.status(403).json({ message: "Access denied. Admin privileges required." });
+    }
+    
+    // Check if new userId already exists (if userId is being changed)
+    if (newUserId !== userId) {
+      const userIdCheck = await pool.query(
+        'SELECT "userId" FROM "users" WHERE "userId" = $1',
+        [newUserId]
+      );
+      
+      if (userIdCheck.rows.length > 0) {
+        return res.status(400).json({ message: "User ID already exists" });
+      }
+    }
+    
+    const result = await pool.query(
+      `UPDATE "users" 
+       SET 
+        "userId" = $1,
+        "mobileNumber" = $2,
+        "fullName" = $3, 
+        "isAdmin" = $4,
+        "gender" = $5,
+        "dateOfBirth" = $6,
+        "bloodGroup" = $7,
+        "maritalStatus" = $8,
+        "education" = $9,
+        "whatsappNumber" = $10,
+        "emergencyContact" = $11,
+        "email" = $12,
+        "address" = $13
+       WHERE "userId" = $14 
+       RETURNING *`,
+      [newUserId, mobileNumber, fullName, isAdmin, gender, dateOfBirth, bloodGroup, maritalStatus, education, whatsappNumber, emergencyContact, email, address, userId]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: "User not found" });
+    }
+    
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error("Error updating user:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
 const getSabhaAttendance = async (req, res) => {
   try {
     const { userId } = req.params;
@@ -197,6 +320,8 @@ export default {
   approveUser, 
   updateUserProfile, 
   getUserProfile,
+  getAllUsers,
+  updateUser,
   getSabhaAttendance,
   recordSabhaAttendance
 };

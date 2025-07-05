@@ -17,4 +17,13 @@ router.put('/:userId/profile', userController.updateUserProfile);
 router.get('/:userId/attendance', userController.getSabhaAttendance);
 router.post('/:userId/attendance', userController.recordSabhaAttendance);
 
+// Get all users (admin only)
+router.get('/all', userController.getAllUsers);
+
+// Update user (admin only)
+router.put('/update/:userId', userController.updateUser);
+
+// Submit attendance
+// router.post('/attendance', userController.submitAttendance);
+
 export default router; 

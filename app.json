@@ -3,28 +3,8 @@
     "name": "Sevak",
     "slug": "Sevak",
     "version": "1.0.0",
-    "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
-    "scheme": "myapp",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
-    "ios": {
-      "supportsTablet": true
-    },
-    "android": {
-      "permissions": [
-        "android.permission.READ_EXTERNAL_STORAGE",
-        "android.permission.WRITE_EXTERNAL_STORAGE",
-        "android.permission.READ_MEDIA_IMAGES",
-        "android.permission.READ_MEDIA_VIDEO",
-        "android.permission.READ_MEDIA_AUDIO"
-      ],
-      "adaptiveIcon": {
-        "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
-      },
-      "package": "com.harsh123890.Sevak"
-    },
     "web": {
       "bundler": "metro",
       "output": "static",
@@ -32,22 +12,6 @@
     },
     "plugins": [
       "expo-router",
-      [
-        "expo-splash-screen",
-        {
-          "image": "./assets/images/splash-icon.png",
-          "imageWidth": 200,
-          "resizeMode": "contain",
-          "backgroundColor": "#ffffff"
-        }
-      ],
-      [
-        "expo-video",
-        {
-          "supportsBackgroundPlayback": true,
-          "supportsPictureInPicture": true
-        }
-      ],
       "expo-font"
     ],
     "experiments": {
@@ -61,6 +25,9 @@
         "projectId": "639317e2-9068-48c8-b1c4-dde98444a0db"
       }
     },
-    "owner": "harsh123890"
+    "owner": "harsh123890",
+    "android": {
+      "package": "com.harsh123890.Sevak"
+    }
   }
 }

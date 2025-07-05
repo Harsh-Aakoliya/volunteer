@@ -10,7 +10,10 @@ import {
   Modal,
   Pressable,
   Linking,
-  Alert
+  Alert,
+  TextInput,
+  SafeAreaView,
+  FlatList
 } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -19,6 +22,7 @@ import { StatCardProps, User } from '@/types/type';
 import { LinearGradient } from 'expo-linear-gradient';
 import { AuthStorage } from '@/utils/authStorage';
 import { fetchUserProfile, logout, fetchSabhaAttendance } from '@/api/user';
+import { API_URL } from '@/constants/api';
 
 export default function Profile() {
   const [user, setUser] = useState<User | null>(null);
@@ -29,6 +33,14 @@ export default function Profile() {
   const [error, setError] = useState<string | null>(null);
   const [menuVisible, setMenuVisible] = useState(false);
   const [activeTab, setActiveTab] = useState('personal'); // 'personal' or 'attendance'
+  const [searchModalVisible, setSearchModalVisible] = useState(false);
+  const [editModalVisible, setEditModalVisible] = useState(false);
+  const [allUsers, setAllUsers] = useState<any[]>([]);
+  const [filteredUsers, setFilteredUsers] = useState<any[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [editingUser, setEditingUser] = useState<any>(null);
+  const [editFormData, setEditFormData] = useState<any>({});
+  const [formValidation, setFormValidation] = useState<any>({});
   const scrollY = new Animated.Value(0);
 
   // Load user and profile data
@@ -62,6 +74,147 @@ export default function Profile() {
 
     loadProfileData();
   }, []);
+
+  // Fetch all users for search
+  const fetchAllUsers = async () => {
+    try {
+      const token = await AuthStorage.getToken();
+      const response = await fetch(`${API_URL}/api/users/all`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (response.ok) {
+        const users = await response.json();
+        setAllUsers(users);
+        setFilteredUsers(users);
+      } else {
+        Alert.alert('Error', 'Failed to fetch users');
+      }
+    } catch (error) {
+      console.error('Error fetching users:', error);
+      Alert.alert('Error', 'Failed to fetch users');
+    }
+  };
+
+  // Search users
+  const handleSearch = (query: string) => {
+    setSearchQuery(query);
+    if (query.trim() === '') {
+      setFilteredUsers(allUsers);
+    } else {
+      const filtered = allUsers.filter(user => 
+        user.fullName?.toLowerCase().includes(query.toLowerCase()) ||
+        user.mobileNumber?.includes(query)
+      );
+      setFilteredUsers(filtered);
+    }
+  };
+
+  // Validation functions
+  const validateUserId = (userId: string) => {
+    const existingUser = allUsers.find(user => user.userId === userId && user.userId !== editingUser?.userId);
+    return !existingUser;
+  };
+
+  const validateMobileNumber = (number: string) => {
+    return /^\d{10}$/.test(number);
+  };
+
+  const validateEmail = (email: string) => {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  };
+
+  // Update validation state
+  const updateValidation = (field: string, value: string) => {
+    let isValid = true;
+    
+    switch (field) {
+      case 'userId':
+        isValid = validateUserId(value) && value.trim() !== '';
+        break;
+      case 'mobileNumber':
+      case 'whatsappNumber':
+      case 'emergencyContact':
+        isValid = validateMobileNumber(value);
+        break;
+      case 'email':
+        isValid = value === '' || validateEmail(value);
+        break;
+      default:
+        isValid = true;
+    }
+    
+    setFormValidation((prev: any) => ({ ...prev, [field]: isValid }));
+  };
+
+  // Handle edit user
+  const handleEditUser = (user: any) => {
+    setEditingUser(user);
+    setEditFormData({
+      userId: user.userId || '',
+      mobileNumber: user.mobileNumber || '',
+      fullName: user.fullName || '',
+      isAdmin: user.isAdmin || false,
+      gender: user.gender || '',
+      dateOfBirth: user.dateOfBirth || '',
+      bloodGroup: user.bloodGroup || '',
+      maritalStatus: user.maritalStatus || '',
+      education: user.education || '',
+      whatsappNumber: user.whatsappNumber || '',
+      emergencyContact: user.emergencyContact || '',
+      email: user.email || '',
+      address: user.address || '',
+    });
+    
+    // Initialize validation
+    setFormValidation({
+      userId: true,
+      mobileNumber: validateMobileNumber(user.mobileNumber || ''),
+      whatsappNumber: validateMobileNumber(user.whatsappNumber || ''),
+      emergencyContact: validateMobileNumber(user.emergencyContact || ''),
+      email: user.email ? validateEmail(user.email) : true,
+    });
+    
+    setSearchModalVisible(false);
+    setEditModalVisible(true);
+  };
+
+  // Save user changes
+  const handleSaveUser = async () => {
+    try {
+      const token = await AuthStorage.getToken();
+      const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/users/update/${editingUser.userId}`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(editFormData),
+      });
+
+      if (response.ok) {
+        Alert.alert('Success', 'User updated successfully');
+        setEditModalVisible(false);
+        fetchAllUsers(); // Refresh the users list
+      } else {
+        const errorData = await response.json();
+        Alert.alert('Error', errorData.message || 'Failed to update user');
+      }
+    } catch (error) {
+      console.error('Error updating user:', error);
+      Alert.alert('Error', 'Failed to update user');
+    }
+  };
+
+  // Handle search user option
+  const handleSearchUser = () => {
+    setMenuVisible(false);
+    fetchAllUsers();
+    setSearchModalVisible(true);
+  };
 
   const StatCard = ({ title, value, icon, color = "#4F46E5" }: StatCardProps) => (
     <View className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex-1 mx-1">
@@ -113,6 +266,308 @@ export default function Profile() {
         <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
       )}
     </TouchableOpacity>
+  );
+
+  // User Search Modal Component
+  const UserSearchModal = () => (
+    <Modal
+      animationType="slide"
+      transparent={false}
+      visible={searchModalVisible}
+      onRequestClose={() => setSearchModalVisible(false)}
+    >
+      <SafeAreaView className="flex-1 bg-gray-50">
+        <View className="flex-row items-center justify-between p-4 bg-white border-b border-gray-200">
+          <Text className="text-lg font-bold text-gray-800">Search Users</Text>
+          <TouchableOpacity onPress={() => setSearchModalVisible(false)}>
+            <Ionicons name="close" size={24} color="#666" />
+          </TouchableOpacity>
+        </View>
+        
+        <View className="p-4">
+          <View className="flex-row items-center bg-white rounded-lg px-4 py-3 border border-gray-200">
+            <Ionicons name="search" size={20} color="#666" />
+            <TextInput
+              placeholder="Search by name or mobile number..."
+              className="flex-1 ml-3 text-gray-800"
+              value={searchQuery}
+              onChangeText={handleSearch}
+            />
+          </View>
+        </View>
+        
+        <FlatList
+          data={filteredUsers}
+          keyExtractor={(item) => item.userId}
+          renderItem={({ item }) => (
+            <View className="bg-white mx-4 mb-2 rounded-lg p-4 border border-gray-200">
+              <View className="flex-row justify-between items-start">
+                <View className="flex-1">
+                  <View className="flex-row items-center mb-2">
+                    <Text className="text-lg font-semibold text-gray-800">{item.fullName}</Text>
+                    {item.isAdmin && (
+                      <View className="ml-2 bg-blue-100 px-2 py-1 rounded-full">
+                        <Text className="text-xs font-bold text-blue-600">ADMIN</Text>
+                      </View>
+                    )}
+                  </View>
+                  <Text className="text-gray-600 mb-1">📞 {item.mobileNumber}</Text>
+                  <Text className="text-gray-600 mb-1">🆔 {item.userId}</Text>
+                  <Text className="text-gray-600">{item.department || 'No Department'}</Text>
+                </View>
+                <TouchableOpacity
+                  onPress={() => handleEditUser(item)}
+                  className="w-10 h-10 bg-blue-100 rounded-full items-center justify-center"
+                >
+                  <Ionicons name="create-outline" size={20} color="#0286ff" />
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+          showsVerticalScrollIndicator={false}
+        />
+      </SafeAreaView>
+    </Modal>
+  );
+
+  // User Edit Modal Component
+  const UserEditModal = () => (
+    <Modal
+      animationType="slide"
+      transparent={false}
+      visible={editModalVisible}
+      onRequestClose={() => setEditModalVisible(false)}
+    >
+      <SafeAreaView className="flex-1 bg-gray-50">
+        <View className="flex-row items-center justify-between p-4 bg-white border-b border-gray-200">
+          <Text className="text-lg font-bold text-gray-800">Edit User</Text>
+          <TouchableOpacity onPress={() => setEditModalVisible(false)}>
+            <Ionicons name="close" size={24} color="#666" />
+          </TouchableOpacity>
+        </View>
+        
+        <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
+          <View className="p-4">
+            {/* User ID */}
+            <View className="mb-4">
+              <Text className="text-sm font-medium text-gray-700 mb-2">User ID</Text>
+              <View className="flex-row items-center">
+                                 <TextInput
+                   value={editFormData.userId}
+                   onChangeText={(text) => {
+                     setEditFormData((prev: any) => ({ ...prev, userId: text }));
+                     updateValidation('userId', text);
+                   }}
+                   className="flex-1 bg-white p-3 rounded-lg border border-gray-200"
+                   placeholder="Enter User ID"
+                 />
+                {formValidation.userId && (
+                  <Ionicons name="checkmark-circle" size={20} color="#10B981" className="ml-2" />
+                )}
+              </View>
+            </View>
+
+            {/* Mobile Number */}
+            <View className="mb-4">
+              <Text className="text-sm font-medium text-gray-700 mb-2">Mobile Number</Text>
+              <View className="flex-row items-center">
+                <TextInput
+                  value={editFormData.mobileNumber}
+                  onChangeText={(text) => {
+                    setEditFormData((prev: any) => ({ ...prev, mobileNumber: text }));
+                    updateValidation('mobileNumber', text);
+                  }}
+                  className="flex-1 bg-white p-3 rounded-lg border border-gray-200"
+                  placeholder="Enter 10-digit mobile number"
+                  keyboardType="phone-pad"
+                  maxLength={10}
+                />
+                {formValidation.mobileNumber && (
+                  <Ionicons name="checkmark-circle" size={20} color="#10B981" className="ml-2" />
+                )}
+              </View>
+            </View>
+
+            {/* Full Name */}
+            <View className="mb-4">
+              <Text className="text-sm font-medium text-gray-700 mb-2">Full Name</Text>
+              <TextInput
+                value={editFormData.fullName}
+                onChangeText={(text) => setEditFormData((prev: any) => ({ ...prev, fullName: text }))}
+                className="bg-white p-3 rounded-lg border border-gray-200"
+                placeholder="Enter full name"
+              />
+            </View>
+
+            {/* Admin Toggle */}
+            <View className="mb-4">
+              <View className="flex-row items-center justify-between bg-white p-3 rounded-lg border border-gray-200">
+                <Text className="text-sm font-medium text-gray-700">Make Admin</Text>
+                <TouchableOpacity
+                  onPress={() => setEditFormData((prev: any) => ({ ...prev, isAdmin: !prev.isAdmin }))}
+                  className={`w-12 h-6 rounded-full ${editFormData.isAdmin ? 'bg-blue-500' : 'bg-gray-300'}`}
+                >
+                  <View className={`w-5 h-5 rounded-full bg-white mt-0.5 ${editFormData.isAdmin ? 'ml-6' : 'ml-1'}`} />
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* Gender */}
+            <View className="mb-4">
+              <Text className="text-sm font-medium text-gray-700 mb-2">Gender</Text>
+              <View className="flex-row">
+                <TouchableOpacity
+                  onPress={() => setEditFormData((prev: any) => ({ ...prev, gender: 'male' }))}
+                  className={`flex-1 p-3 rounded-lg border mr-2 ${editFormData.gender === 'male' ? 'bg-blue-100 border-blue-500' : 'bg-white border-gray-200'}`}
+                >
+                  <Text className={`text-center ${editFormData.gender === 'male' ? 'text-blue-600 font-medium' : 'text-gray-700'}`}>Male</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => setEditFormData((prev: any) => ({ ...prev, gender: 'female' }))}
+                  className={`flex-1 p-3 rounded-lg border ml-2 ${editFormData.gender === 'female' ? 'bg-blue-100 border-blue-500' : 'bg-white border-gray-200'}`}
+                >
+                  <Text className={`text-center ${editFormData.gender === 'female' ? 'text-blue-600 font-medium' : 'text-gray-700'}`}>Female</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* Date of Birth */}
+            <View className="mb-4">
+              <Text className="text-sm font-medium text-gray-700 mb-2">Date of Birth</Text>
+              <TextInput
+                value={editFormData.dateOfBirth}
+                onChangeText={(text) => setEditFormData((prev: any) => ({ ...prev, dateOfBirth: text }))}
+                className="bg-white p-3 rounded-lg border border-gray-200"
+                placeholder="YYYY-MM-DD"
+              />
+            </View>
+
+            {/* Blood Group */}
+            <View className="mb-4">
+              <Text className="text-sm font-medium text-gray-700 mb-2">Blood Group</Text>
+              <View className="flex-row flex-wrap">
+                {['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'].map((group) => (
+                  <TouchableOpacity
+                    key={group}
+                    onPress={() => setEditFormData((prev: any) => ({ ...prev, bloodGroup: group }))}
+                    className={`px-3 py-2 rounded-lg border mr-2 mb-2 ${editFormData.bloodGroup === group ? 'bg-blue-100 border-blue-500' : 'bg-white border-gray-200'}`}
+                  >
+                    <Text className={`${editFormData.bloodGroup === group ? 'text-blue-600 font-medium' : 'text-gray-700'}`}>{group}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
+            {/* Marital Status */}
+            <View className="mb-4">
+              <Text className="text-sm font-medium text-gray-700 mb-2">Marital Status</Text>
+              <View className="flex-row">
+                <TouchableOpacity
+                  onPress={() => setEditFormData((prev: any) => ({ ...prev, maritalStatus: 'single' }))}
+                  className={`flex-1 p-3 rounded-lg border mr-2 ${editFormData.maritalStatus === 'single' ? 'bg-blue-100 border-blue-500' : 'bg-white border-gray-200'}`}
+                >
+                  <Text className={`text-center ${editFormData.maritalStatus === 'single' ? 'text-blue-600 font-medium' : 'text-gray-700'}`}>Single</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => setEditFormData((prev: any) => ({ ...prev, maritalStatus: 'married' }))}
+                  className={`flex-1 p-3 rounded-lg border ml-2 ${editFormData.maritalStatus === 'married' ? 'bg-blue-100 border-blue-500' : 'bg-white border-gray-200'}`}
+                >
+                  <Text className={`text-center ${editFormData.maritalStatus === 'married' ? 'text-blue-600 font-medium' : 'text-gray-700'}`}>Married</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* Education */}
+            <View className="mb-4">
+              <Text className="text-sm font-medium text-gray-700 mb-2">Education</Text>
+              <TextInput
+                value={editFormData.education}
+                onChangeText={(text) => setEditFormData((prev: any) => ({ ...prev, education: text }))}
+                className="bg-white p-3 rounded-lg border border-gray-200"
+                placeholder="Enter education details"
+              />
+            </View>
+
+            {/* WhatsApp Number */}
+            <View className="mb-4">
+              <Text className="text-sm font-medium text-gray-700 mb-2">WhatsApp Number</Text>
+              <View className="flex-row items-center">
+                <TextInput
+                  value={editFormData.whatsappNumber}
+                  onChangeText={(text) => {
+                    setEditFormData((prev: any) => ({ ...prev, whatsappNumber: text }));
+                    updateValidation('whatsappNumber', text);
+                  }}
+                  className="flex-1 bg-white p-3 rounded-lg border border-gray-200"
+                  placeholder="Enter 10-digit WhatsApp number"
+                  keyboardType="phone-pad"
+                  maxLength={10}
+                />
+                {formValidation.whatsappNumber && (
+                  <Ionicons name="checkmark-circle" size={20} color="#10B981" className="ml-2" />
+                )}
+              </View>
+            </View>
+
+            {/* Emergency Contact */}
+            <View className="mb-4">
+              <Text className="text-sm font-medium text-gray-700 mb-2">Emergency Contact</Text>
+              <View className="flex-row items-center">
+                <TextInput
+                  value={editFormData.emergencyContact}
+                  onChangeText={(text) => {
+                    setEditFormData((prev: any) => ({ ...prev, emergencyContact: text }));
+                    updateValidation('emergencyContact', text);
+                  }}
+                  className="flex-1 bg-white p-3 rounded-lg border border-gray-200"
+                  placeholder="Enter 10-digit emergency contact"
+                  keyboardType="phone-pad"
+                  maxLength={10}
+                />
+                {formValidation.emergencyContact && (
+                  <Ionicons name="checkmark-circle" size={20} color="#10B981" className="ml-2" />
+                )}
+              </View>
+            </View>
+
+            {/* Email */}
+            <View className="mb-4">
+              <Text className="text-sm font-medium text-gray-700 mb-2">Email</Text>
+              <TextInput
+                value={editFormData.email}
+                onChangeText={(text) => {
+                  setEditFormData((prev: any) => ({ ...prev, email: text }));
+                  updateValidation('email', text);
+                }}
+                className="bg-white p-3 rounded-lg border border-gray-200"
+                placeholder="Enter email address"
+                keyboardType="email-address"
+              />
+            </View>
+
+            {/* Address */}
+            <View className="mb-6">
+              <Text className="text-sm font-medium text-gray-700 mb-2">Address</Text>
+              <TextInput
+                value={editFormData.address}
+                onChangeText={(text) => setEditFormData((prev: any) => ({ ...prev, address: text }))}
+                className="bg-white p-3 rounded-lg border border-gray-200"
+                placeholder="Enter address"
+                multiline
+                numberOfLines={3}
+              />
+            </View>
+
+            {/* Save Button */}
+            <CustomButton
+              title="Save Changes"
+              onPress={handleSaveUser}
+              className="mb-6"
+            />
+          </View>
+        </ScrollView>
+      </SafeAreaView>
+    </Modal>
   );
 
   const PersonalInfoTab = () => (
@@ -418,6 +873,13 @@ export default function Profile() {
                   <Ionicons name="business" size={20} color="#0286ff" />
                   <Text className="ml-3 text-gray-800 font-medium">Departments</Text>
                 </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={handleSearchUser}
+                  className="flex-row items-center px-4 py-4 border-b border-gray-100"
+                >
+                  <Ionicons name="search" size={20} color="#0286ff" />
+                  <Text className="ml-3 text-gray-800 font-medium">Search User</Text>
+                </TouchableOpacity>
               </>
             )}
             <TouchableOpacity
@@ -478,7 +940,7 @@ export default function Profile() {
                     {userProfile?.fullName || userProfile?.full_name || 'User Name'}
                   </Text>
                   <Text className="text-white/80 text-sm" numberOfLines={1}>
-                    {userProfile?.department || 'Department'} ({userProfile?.role || 'Role'})
+                    {userProfile?.department || 'Department'} ({isAdmin? "Admin" : "Sevak"})
                   </Text>
                 </View>
               </View>
@@ -544,6 +1006,8 @@ export default function Profile() {
       </View>
       
       <MenuModal />
+      <UserSearchModal />
+      <UserEditModal />
     </>
   );
 }

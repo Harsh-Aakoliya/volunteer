@@ -2,6 +2,9 @@
 
 # dependencies
 node_modules/
+Backend/node_modules/
+android/
+ios/
 
 # Expo
 .expo/

@@ -12,7 +12,7 @@ import {
 } from "react-native";
 import * as DocumentPicker from "expo-document-picker";
 import axios from "axios";
-import { Video, ResizeMode, Audio } from "expo-av";
+import { VideoView, useVideoPlayer } from "expo-video";
 import { API_URL } from "@/constants/api";
 import { TextInput } from "react-native";
 import { useLocalSearchParams, router, useNavigation } from "expo-router";
@@ -71,15 +71,14 @@ export default function MediaUploadApp() {
   const [audioModalVisible, setAudioModalVisible] = useState(false);
   const [selectedFile, setSelectedFile] = useState<VMMediaFile | null>(null);
 
-  console.log("selectedFile",selectedFile);
-  // Audio states
-  const [sound, setSound] = useState<Audio.Sound | null>(null);
-  const [audioStatus, setAudioStatus] = useState({
-    isLoaded: false,
-    isPlaying: false,
-    positionMillis: 0,
-    durationMillis: 0,
-  });
+  // Video player for selected video
+  const videoPlayer = useVideoPlayer(
+    selectedFile?.mimeType.startsWith("video") 
+      ? `${API_URL}/api/vm-media/file/${selectedFile.url}` 
+      : null
+  );
+
+  console.log("selectedFile", selectedFile);
 
   useEffect(() => {
     const unsubscribe = navigation.addListener('beforeRemove', (e) => {
@@ -145,8 +144,7 @@ export default function MediaUploadApp() {
       const filesWithData = await Promise.all(
         result.assets.map(async (asset: any) => {
           if (Platform.OS === "web") {
-            // On web, `asset.file` is a File object
-            const file = asset.file ?? (asset as any); // fallback if file is not present
+            const file = asset.file ?? (asset as any);
             const base64 = await new Promise<string>((resolve, reject) => {
               const reader = new FileReader();
               reader.onloadend = () => resolve(reader.result?.toString().split(",")[1] || "");
@@ -159,7 +157,6 @@ export default function MediaUploadApp() {
               fileData: base64,
             };
           } else {
-            // On native
             const fileData = await FileSystem.readAsStringAsync(asset.uri, {
               encoding: FileSystem.EncodingType.Base64,
             });
@@ -198,99 +195,64 @@ export default function MediaUploadApp() {
         setTimeout(() => setUploadingFiles([]), 1000);
       } catch (error) {
         console.error("Upload error:", error);
-        Alert.alert("Error", "Failed to upload files");
-        setUploadingFiles([]);
+        Alert.alert("Upload failed", "There was an error uploading your files.");
       } finally {
         setUploading(false);
       }
     } catch (error) {
       console.error("File selection error:", error);
-      Alert.alert("Error", "An error occurred while selecting files");
       setUploading(false);
-      setUploadingFiles([]);
     }
   };
-  
+
   const removeFile = async (file: VMMediaFile) => {
     try {
       const token = await AuthStorage.getToken();
-      await axios.delete(`${API_URL}/api/vm-media/temp/${tempFolderId}/${file.fileName}`, {
+      await axios.delete(`${API_URL}/api/vm-media/file/${file.id}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setVmMediaFiles(prev => prev.filter(f => f.id !== file.id));
     } catch (error) {
       console.error("Error removing file:", error);
-      Alert.alert("Error", "Failed to remove file");
     }
   };
 
   const sendToChat = async () => {
-    if (vmMediaFiles.length === 0 || !roomId || sending || !tempFolderId) return;
+    if (vmMediaFiles.length === 0) return;
+    
+    setSending(true);
     try {
-      setSending(true);
       const token = await AuthStorage.getToken();
-      const filesWithCaptions = vmMediaFiles.map(file => ({
-        fileName: file.fileName,
-        originalName: file.originalName,
-        caption: file.caption,
-        mimeType: file.mimeType,
-        size: file.size
-      }));
       
-      await axios.post(
-        `${API_URL}/api/vm-media/move-to-chat`,
-        { 
+      const response = await axios.post(
+        `${API_URL}/api/vm-media/send-to-chat`,
+        {
           tempFolderId,
           roomId,
-          senderId: userId,
-          filesWithCaptions
+          userId,
+          files: vmMediaFiles.map(f => ({
+            id: f.id,
+            caption: f.caption || ""
+          }))
         },
         {
           headers: { Authorization: `Bearer ${token}` }
         }
       );
 
-      // Mark as successfully sent to bypass alert
-      setIsSuccessfullySent(true);
-      
-      // Navigate directly to the chat room
-      router.push(`/chat/${roomId}`);
+      if (response.data.success) {
+        setIsSuccessfullySent(true);
+        Alert.alert("Success", "Media sent to chat successfully!", [
+          { text: "OK", onPress: () => router.back() }
+        ]);
+      }
     } catch (error) {
-      console.error("Error sending media:", error);
+      console.error("Error sending to chat:", error);
       Alert.alert("Error", "Failed to send media to chat");
     } finally {
       setSending(false);
     }
   };
-
-  useEffect(() => {
-    const unsubscribe = navigation.addListener('beforeRemove', (e) => {
-      // If successfully sent or no files, allow navigation without alert
-      if (isSuccessfullySent || vmMediaFiles.length === 0) {
-        navigation.dispatch(e.data.action);
-        return;
-      }
-      
-      // Prevent default behavior and show alert only if files exist and not sent
-      e.preventDefault();
-      Alert.alert(
-        'Discard media?',
-        'You have uploaded media files. What would you like to do?',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Discard and Exit',
-            style: 'destructive',
-            onPress: async () => {
-              await handleDiscardAndExit();
-              navigation.dispatch(e.data.action);
-            },
-          },
-        ]
-      );
-    });
-    return unsubscribe;
-  }, [navigation, vmMediaFiles.length, tempFolderId, isSuccessfullySent]);
 
   const openFileModal = (file: VMMediaFile) => {
     setSelectedFile(file);
@@ -300,53 +262,6 @@ export default function MediaUploadApp() {
       setVideoModalVisible(true);
     } else if (file.mimeType.startsWith("audio")) {
       setAudioModalVisible(true);
-    }
-  };
-
-  const closeAudioModal = async () => {
-    if (sound) {
-      await sound.unloadAsync();
-      setSound(null);
-    }
-    setAudioModalVisible(false);
-    setSelectedFile(null);
-    setAudioStatus({
-      isLoaded: false,
-      isPlaying: false,
-      positionMillis: 0,
-      durationMillis: 0,
-    });
-  };
-
-  const playPauseAudio = async () => {
-    if (!selectedFile) return;
-
-    try {
-      if (!sound) {
-        const { sound: newSound } = await Audio.Sound.createAsync(
-          { uri: `${API_URL}/api/vm-media/file/${selectedFile.url}` },
-          { shouldPlay: true },
-          (status) => {
-            if (status.isLoaded) {
-              setAudioStatus({
-                isLoaded: status.isLoaded,
-                isPlaying: status.isPlaying || false,
-                positionMillis: status.positionMillis || 0,
-                durationMillis: status.durationMillis || 0,
-              });
-            }
-          }
-        );
-        setSound(newSound);
-      } else {
-        if (audioStatus.isPlaying) {
-          await sound.pauseAsync();
-        } else {
-          await sound.playAsync();
-        }
-      }
-    } catch (error) {
-      console.error('Error playing audio:', error);
     }
   };
 
@@ -373,10 +288,6 @@ export default function MediaUploadApp() {
 
   return (
     <ScrollView className="flex-1 bg-white">
-    <Image
-        source={{ uri: 'http://172.22.64.1:3000/media/tempppp.jpg' }}
-        style={{ width: 200, height: 200 }}
-    />
       <View className="flex-1 p-5">
         <Text className="text-2xl font-bold mb-5">VM Media Uploader</Text>
         
@@ -437,13 +348,13 @@ export default function MediaUploadApp() {
                 <Text style={styles.closeButtonText}>Close</Text>
               </TouchableOpacity>
             </View>
-            {selectedFile && (
+            {selectedFile && selectedFile.mimeType.startsWith("video") && (
               <>
-                <Video
-                  source={{ uri: `${API_URL}/api/vm-media/file/${selectedFile.url}` }}
+                <VideoView
                   style={styles.video}
-                  useNativeControls
-                  resizeMode={ResizeMode.CONTAIN}
+                  player={videoPlayer}
+                  allowsFullscreen
+                  allowsPictureInPicture
                 />
                 <View style={styles.captionContainer}>
                   <TextInput
@@ -506,17 +417,17 @@ export default function MediaUploadApp() {
           </View>
         </Modal>
 
-        {/* Audio Modal */}
+        {/* Audio Modal - Simplified (no playback) */}
         <Modal
           visible={audioModalVisible}
           animationType="slide"
-          onRequestClose={closeAudioModal}
+          onRequestClose={() => setAudioModalVisible(false)}
         >
           <View style={styles.audioModal}>
             <View style={styles.audioHeader}>
               <TouchableOpacity
                 style={styles.closeButton}
-                onPress={closeAudioModal}
+                onPress={() => setAudioModalVisible(false)}
               >
                 <Text style={styles.closeButtonText}>Close</Text>
               </TouchableOpacity>
@@ -526,41 +437,10 @@ export default function MediaUploadApp() {
               <>
                 <View style={styles.audioPlayer}>
                   <Text style={styles.audioTitle}>🎵 {selectedFile.originalName}</Text>
-                  
-                  <View style={styles.audioControls}>
-                    <TouchableOpacity
-                      style={styles.audioButton}
-                      onPress={playPauseAudio}
-                    >
-                      <Text style={styles.audioButtonText}>
-                        {audioStatus.isPlaying ? '⏸️ Pause' : '▶️ Play'}
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-
-                  {audioStatus.isLoaded && (
-                    <View style={styles.audioInfo}>
-                      <Text style={styles.audioTime}>
-                        {formatDuration(audioStatus.positionMillis)} / {formatDuration(audioStatus.durationMillis)}
-                      </Text>
-                      
-                      <View style={styles.progressBar}>
-                        <View 
-                          style={[
-                            styles.progressFill, 
-                            { 
-                              width: `${(audioStatus.positionMillis / audioStatus.durationMillis) * 100 || 0}%` 
-                            }
-                          ]} 
-                        />
-                      </View>
-                      
-                      <Text style={styles.audioStatus}>
-                        {audioStatus.isPlaying ? 'Playing...' : 
-                         audioStatus.isLoaded ? 'Paused' : 'Loading...'}
-                      </Text>
-                    </View>
-                  )}
+                  <Text style={styles.audioSubtitle}>Audio file - {formatBytes(selectedFile.size)}</Text>
+                  <Text style={styles.audioNote}>
+                    Audio preview not available. File will be sent to chat.
+                  </Text>
                 </View>
                 <View style={styles.captionContainer}>
                   <TextInput
@@ -704,71 +584,42 @@ const styles = StyleSheet.create({
   audioTitle: {
     fontSize: 20,
     fontWeight: 'bold',
+    marginBottom: 10,
     textAlign: 'center',
-    marginBottom: 30,
-    color: '#333',
   },
-  audioControls: {
-    marginBottom: 30,
-  },
-  audioButton: {
-    backgroundColor: '#007AFF',
-    paddingHorizontal: 30,
-    paddingVertical: 15,
-    borderRadius: 25,
-  },
-  audioButtonText: {
-    color: 'white',
+  audioSubtitle: {
     fontSize: 16,
-    fontWeight: 'bold',
-  },
-  audioInfo: {
-    width: '100%',
-    alignItems: 'center',
-  },
-  audioTime: {
-    fontSize: 16,
-    color: '#333',
-    marginBottom: 10,
-  },
-  progressBar: {
-    width: '80%',
-    height: 4,
-    backgroundColor: '#ddd',
-    borderRadius: 2,
-    marginBottom: 10,
-  },
-  progressFill: {
-    height: '100%',
-    backgroundColor: '#007AFF',
-    borderRadius: 2,
-  },
-  audioStatus: {
-    fontSize: 14,
     color: '#666',
+    marginBottom: 10,
+    textAlign: 'center',
+  },
+  audioNote: {
+    fontSize: 14,
+    color: '#888',
+    textAlign: 'center',
+    fontStyle: 'italic',
   },
 
   // Common Styles
   closeButton: {
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    paddingHorizontal: 15,
-    paddingVertical: 8,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    padding: 10,
     borderRadius: 20,
   },
   closeButtonText: {
     color: 'white',
-    fontWeight: 'bold',
+    fontSize: 16,
   },
   captionContainer: {
     padding: 20,
     backgroundColor: 'white',
   },
   captionInput: {
-    backgroundColor: '#f0f0f0',
+    borderWidth: 1,
+    borderColor: '#ddd',
     borderRadius: 8,
-    padding: 12,
+    padding: 10,
+    minHeight: 60,
     fontSize: 16,
-    minHeight: 40,
-    maxHeight: 100,
   },
 });

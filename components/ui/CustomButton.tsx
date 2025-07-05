@@ -48,7 +48,7 @@ const CustomButton = ({
         onPress={onPress}
         disabled={disabled || loading}
         className={`
-            rounded-xl flex flex-row justify-center items-center
+            rounded-xl flex flex-row justify-center items-center p-2
             ${getBgVariantStyle(bgVariant)}
             ${disabled || loading ? 'opacity-50' : ''}
             ${className}

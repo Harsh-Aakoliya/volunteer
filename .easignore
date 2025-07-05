@@ -1,0 +1,45 @@
+# Backend server files (should not be in mobile app)
+Backend/
+
+# Development and demo files
+demo/
+management/
+VM file media upload demo/
+
+# Database files
+*.sql
+alter_database.sql
+mock_data.sql
+
+# Documentation
+README.md
+UPDATE_GUIDE.md
+
+# PowerShell scripts
+*.ps1
+start.ps1
+
+# Git files
+.git/
+.gitignore
+
+# IDE files
+.vscode/
+.idea/
+
+# Log files
+*.log
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# Temporary files
+*.tmp
+*.temp
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Environment files that shouldn't be in build
+.env*.local 
