@@ -5,6 +5,7 @@ import { AuthStorage } from '@/utils/authStorage';
 import MediaUploadApp from '@/components/chat/MediaUploader';
 import Poling from '@/app/(tabs)/chat/Polling';
 import * as Application from 'expo-application';
+import { checkForUpdates } from '@/utils/updateChecker';
 
 export default function Index() {
   const appVersion = Application.nativeApplicationVersion;
@@ -15,6 +16,17 @@ export default function Index() {
   useEffect(() => {
     const checkAuthStatus = async () => {
       try {
+        // First check for updates
+        console.log("Checking for updates...");
+        const updateCheckPassed = await checkForUpdates();
+        
+        if (!updateCheckPassed) {
+          console.log("Update check failed or user cancelled");
+          return; // Don't proceed with auth check if update failed
+        }
+        
+        console.log("Update check passed, proceeding with auth check");
+        
         const token = await AuthStorage.getToken();
         console.log(`Token: ${token}`); // Log the token for debugging
         if (token) {
@@ -35,7 +47,7 @@ export default function Index() {
     checkAuthStatus();
   }, []);
 
-  // return null; // This component doesn't render anything
+  return null; // This component doesn't render anything
   // return <MediaUploadApp/>
   // return <Poling/>
 }

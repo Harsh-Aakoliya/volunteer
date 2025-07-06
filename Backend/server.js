@@ -20,7 +20,7 @@ import fs from "fs";
 import { dirname } from 'path';
 
 dotenv.config();
-const PORT = process.env.PORT || 3000;
+const PORT =3000;
 
 const app = express();
 const httpServer = createServer(app);

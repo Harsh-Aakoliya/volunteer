@@ -9,6 +9,7 @@ import pollRoutes from './pollRoutes.js';
 import tableRoutes from "./tableRoutes.js";
 import departmentRoutes from './departmentRoutes.js';
 import vmMediaRoutes from './vmMediaRoutes.js';
+import versionRoutes from './versionRoutes.js';
 const router = express.Router();
 
 // Test route
@@ -18,6 +19,9 @@ router.get('/test', (req, res) => {
 
 // Auth routes (no authentication needed)
 router.use('/auth', authRoutes);
+
+// Version routes (no authentication needed)
+router.use('/version', versionRoutes);
 
 // Protected routes - all below require authentication
 router.use('/chat', chatRoutes);

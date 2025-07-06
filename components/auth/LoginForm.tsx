@@ -102,6 +102,9 @@ export default function LoginForm() {
                 <Text>Current app version is {Application.nativeApplicationVersion}</Text>
                 <Text>Current app build version is {Application.nativeBuildVersion}</Text> 
               </View>
+              <View>
+                <Text>Now this is version 1.0.4</Text>
+              </View>
               <TouchableOpacity onPress={() => {
                 axios.get(`${API_URL}/api/test`)
                 .then(res => {

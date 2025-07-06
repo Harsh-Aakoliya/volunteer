@@ -3,6 +3,8 @@ import { Stack } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { AuthStorage } from '@/utils/authStorage';
 import "../global.css";
+import { Text } from 'react-native';
+import React from 'react';
 
 export default function RootLayout() {
   const [isReady, setIsReady] = useState(false);
@@ -22,7 +24,7 @@ export default function RootLayout() {
   }, []);
 
   if (!isReady) {
-    return null; // Or a loading screen
+    return <Text>Loading...</Text>; // Or a loading screen
   }
 
   return <Stack screenOptions={{ headerShown: false }} />;

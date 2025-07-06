@@ -89,9 +89,51 @@ const createAnnouncementsTable = async () => {
   }
 };
 
+const createSabhaAttendanceTable = async () => {
+  const client = await pool.connect();
+  try {
+    // Check if table exists
+    const tableCheck = await client.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables 
+        WHERE table_name = 'sabha_attendance'
+      );
+    `);
+    
+    if (tableCheck.rows[0].exists) {
+      console.log("Sabha attendance table already exists");
+      return;
+    }
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS "sabha_attendance" (
+          "id" SERIAL PRIMARY KEY,
+          "userId" VARCHAR(50) NOT NULL,
+          "sabhaDate" DATE NOT NULL,
+          "isPresent" BOOLEAN DEFAULT TRUE,
+          "entryTime" TIME,
+          "sabhaStartTime" TIME DEFAULT '09:00:00',
+          "sabhaEndTime" TIME,
+          "isLate" BOOLEAN DEFAULT FALSE,
+          "timeDifference" INTEGER,
+          "createdAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          "updatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE("userId", "sabhaDate"),
+          FOREIGN KEY ("userId") REFERENCES "users"("userId") ON DELETE CASCADE
+      );
+    `);
+    console.log("Sabha attendance table created successfully");
+  } catch (error) {
+    console.error("Error while creating sabha attendance table:", error);
+  } finally {
+    client.release();
+  }
+};
+
 const initDB = async () => {
   await createUsersTable();
   await createAnnouncementsTable();
+  await createSabhaAttendanceTable();
 };
 
 export default initDB;

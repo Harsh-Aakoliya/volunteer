@@ -2,7 +2,7 @@
   "expo": {
     "name": "Sevak",
     "slug": "Sevak",
-    "version": "1.0.1",
+    "version": "1.0.4",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "web": {
@@ -12,7 +12,18 @@
     },
     "plugins": [
       "expo-router",
-      "expo-font"
+      "expo-font",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true,
+            "networkSecurityConfig": {
+              "cleartextTrafficPermitted": true
+            }
+          }
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true
@@ -27,7 +38,23 @@
     },
     "owner": "harsh123890",
     "android": {
-      "package": "com.harsh123890.Sevak"
+      "package": "com.harsh123890.Sevak",
+      "permissions": [
+        "INTERNET",
+        "ACCESS_NETWORK_STATE",
+        "REQUEST_INSTALL_PACKAGES",
+        "WRITE_EXTERNAL_STORAGE",
+        "READ_EXTERNAL_STORAGE"
+      ],
+      "networkSecurityConfig": {
+        "cleartextTrafficPermitted": true
+      },
+      "fileProvider": {
+        "authority": "com.harsh123890.Sevak.fileprovider",
+        "paths": [
+          "files"
+        ]
+      }
     }
   }
 }
