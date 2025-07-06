@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
+  TouchableOpacity,
 } from "react-native";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -15,6 +16,9 @@ import CustomButton from "../ui/CustomButton";
 import CustomInput from "../ui/CustomInput";
 import { login } from "@/api/auth";
 import { ScrollView } from "react-native";
+import * as Application from 'expo-application';
+import { API_URL } from "@/constants/api";
+import axios from "axios";
 
 
 export default function LoginForm() {
@@ -23,7 +27,31 @@ export default function LoginForm() {
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [touched, setTouched] = useState({ mobile: false, password: false });
-
+  const [deviceId, setDeviceId] = useState<string | null>(null);
+  const [isLoadingDeviceId, setIsLoadingDeviceId] = useState(false);
+  const [deviceIdError, setDeviceIdError] = useState<string | null>(null);
+  const [serverResponse, setServerResponse] = useState<string | null>(null);
+    // Fetch device ID on component mount
+    useEffect(() => {
+      const fetchDeviceId = async (): Promise<void> => {
+        setIsLoadingDeviceId(true);
+        try {
+          const id = await Application.getAndroidId();
+          setDeviceId(id);
+          console.log(id);
+          setDeviceIdError(null);
+          // Once we have the device ID, fetch user data
+          // fetchUserData(id);
+        } catch (error) {
+          console.error("Failed to fetch device ID:", error);
+          setDeviceIdError("Failed to fetch device ID");
+        } finally {
+          setIsLoadingDeviceId(false);
+        }
+      };
+      
+      fetchDeviceId();
+    }, []);
   //chekcing for changes
   const handleLogin = async () => {
     setTouched({ mobile: true, password: true });
@@ -62,8 +90,30 @@ export default function LoginForm() {
         /> */}
           <View className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-white">
             <Text className="text-3xl text-gray-800 font-JakartaBold">
-              Welcome Back
+              Welcome Back again
             </Text>
+              <View className="flex-row justify-between items-center">
+                <Text>Device id is {deviceId}</Text>
+              </View>
+              <View className="flex-row justify-between items-center">
+                {deviceIdError && <Text>Error: {deviceIdError}</Text>}
+              </View>
+              <View >
+                <Text>Current app version is {Application.nativeApplicationVersion}</Text>
+                <Text>Current app build version is {Application.nativeBuildVersion}</Text> 
+              </View>
+              <TouchableOpacity onPress={() => {
+                axios.get(`${API_URL}/api/test`)
+                .then(res => {
+                  setServerResponse(res.data.message)
+                })
+                .catch(err => {
+                  setServerResponse(err.response.data.message)
+                })
+              }}>
+                <Text>Test server</Text>
+                <Text>{serverResponse}</Text>
+              </TouchableOpacity>
             <Text className="text-gray-600 font-JakartaMedium mt-2">
               Log in to continue
             </Text>

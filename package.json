@@ -52,6 +52,7 @@
     "react-dom": "18.3.1",
     "react-native": "0.76.9",
     "react-native-css-interop": "^0.1.22",
+    "react-native-device-info": "^14.0.4",
     "react-native-gesture-handler": "~2.20.2",
     "react-native-pell-rich-editor": "^1.9.0",
     "react-native-reanimated": "~3.16.1",
@@ -84,6 +85,7 @@
           "autoprefixer",
           "postcss",
           "react-native-css-interop",
+          "react-native-pell-rich-editor",
           "socket.io-client",
           "uuid"
         ],

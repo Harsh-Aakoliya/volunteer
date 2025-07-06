@@ -4,7 +4,11 @@ import { useRouter } from 'expo-router';
 import { AuthStorage } from '@/utils/authStorage';
 import MediaUploadApp from '@/components/chat/MediaUploader';
 import Poling from '@/app/(tabs)/chat/Polling';
+import * as Application from 'expo-application';
+
 export default function Index() {
+  const appVersion = Application.nativeApplicationVersion;
+  console.log("current app version",appVersion);
   
   const router = useRouter();
 

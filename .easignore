@@ -42,4 +42,8 @@ yarn-error.*
 Thumbs.db
 
 # Environment files that shouldn't be in build
-.env*.local 
+.env*.local
+
+# Native project folders (for CNG/Prebuild)
+/android
+/ios 
