@@ -64,6 +64,7 @@ export default function MediaUploadApp() {
   const [sending, setSending] = useState(false);
   const [tempFolderId, setTempFolderId] = useState<string>("");
   const [isSuccessfullySent, setIsSuccessfullySent] = useState(false);
+  const [authHeaders, setAuthHeaders] = useState<any>({});
 
   // Modal states
   const [videoModalVisible, setVideoModalVisible] = useState(false);
@@ -78,7 +79,30 @@ export default function MediaUploadApp() {
       : null
   );
 
-  console.log("selectedFile", selectedFile);
+  // Get auth headers on component mount
+  useEffect(() => {
+    const getAuthHeaders = async () => {
+      try {
+        const token = await AuthStorage.getToken();
+        setAuthHeaders({
+          'Authorization': `Bearer ${token}`
+        });
+      } catch (error) {
+        console.error("Error getting auth token:", error);
+      }
+    };
+    getAuthHeaders();
+  }, []);
+
+  // Helper function to get authenticated image source
+  const getAuthenticatedImageSource = (url: string) => {
+    return {
+      uri: `${API_URL}/api/vm-media/file/${url}`,
+      headers: authHeaders
+    };
+  };
+
+  // console.log("selectedFile", selectedFile);
 
   useEffect(() => {
     const unsubscribe = navigation.addListener('beforeRemove', (e) => {
@@ -169,7 +193,7 @@ export default function MediaUploadApp() {
         })
       );
   
-      console.log("file with data", filesWithData);
+      // console.log("file with data", filesWithData);
   
       try {
         const token = await AuthStorage.getToken();
@@ -208,12 +232,13 @@ export default function MediaUploadApp() {
   const removeFile = async (file: VMMediaFile) => {
     try {
       const token = await AuthStorage.getToken();
-      await axios.delete(`${API_URL}/api/vm-media/file/${file.id}`, {
+      await axios.delete(`${API_URL}/api/vm-media/temp/${tempFolderId}/${file.fileName}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setVmMediaFiles(prev => prev.filter(f => f.id !== file.id));
     } catch (error) {
       console.error("Error removing file:", error);
+      Alert.alert("Error", "Failed to remove file");
     }
   };
 
@@ -224,16 +249,22 @@ export default function MediaUploadApp() {
     try {
       const token = await AuthStorage.getToken();
       
+      // Prepare files with captions in the format expected by backend
+      const filesWithCaptions = vmMediaFiles.map(f => ({
+        fileName: f.fileName,
+        originalName: f.originalName,
+        caption: f.caption || "",
+        mimeType: f.mimeType,
+        size: f.size
+      }));
+      
       const response = await axios.post(
-        `${API_URL}/api/vm-media/send-to-chat`,
+        `${API_URL}/api/vm-media/move-to-chat`,
         {
           tempFolderId,
           roomId,
-          userId,
-          files: vmMediaFiles.map(f => ({
-            id: f.id,
-            caption: f.caption || ""
-          }))
+          senderId: userId, // backend expects senderId, not userId
+          filesWithCaptions // backend expects filesWithCaptions, not files
         },
         {
           headers: { Authorization: `Bearer ${token}` }
@@ -246,9 +277,10 @@ export default function MediaUploadApp() {
           { text: "OK", onPress: () => router.back() }
         ]);
       }
-    } catch (error) {
+    } catch (error:any) {
       console.error("Error sending to chat:", error);
-      Alert.alert("Error", "Failed to send media to chat");
+      const errorMessage = error.response?.data?.error || error.message || "Failed to send media to chat";
+      Alert.alert("Error", errorMessage);
     } finally {
       setSending(false);
     }
@@ -256,6 +288,7 @@ export default function MediaUploadApp() {
 
   const openFileModal = (file: VMMediaFile) => {
     setSelectedFile(file);
+    console.log("Opening file:", file.url); // Debug log
     if (file.mimeType.startsWith("image")) {
       setImageModalVisible(true);
     } else if (file.mimeType.startsWith("video")) {
@@ -396,9 +429,14 @@ export default function MediaUploadApp() {
                   minimumZoomScale={1}
                 >
                   <Image
-                    source={{ uri: `${API_URL}/api/vm-media/file/${selectedFile.url}` }}
+                    source={getAuthenticatedImageSource(selectedFile.url)}
                     style={styles.image}
                     resizeMode="contain"
+                    onError={() => {
+                      console.error("Image load error for file:", selectedFile.url);
+                      Alert.alert("Error", "Failed to load image");
+                    }}
+                    onLoad={() => console.log("Image loaded successfully")}
                   />
                 </ScrollView>
                 <View style={styles.captionContainer}>
@@ -486,15 +524,31 @@ const VMMediaThumbnail = ({ file, onPress, onRemove }: {
   const isAudio = file.mimeType.startsWith("audio");
   const isVideo = file.mimeType.startsWith("video");
   
+  const [imageError, setImageError] = useState(false);
+
   return (
     <View className="w-24 h-24 rounded-lg overflow-hidden justify-center items-center relative bg-gray-100">
       <TouchableOpacity className="w-full h-full" onPress={onPress}>
-        {isImage && (
+        {isImage && !imageError && (
           <Image 
-            source={{ uri: `${API_URL}/api/vm-media/file/${file.url}` }} 
+            source={{ 
+              uri: `${API_URL}/api/vm-media/file/${file.url}`,
+            }} 
             className="w-full h-full" 
             resizeMode="cover"
+            onError={() => {
+              console.error("Thumbnail load error for:", file.url);
+              setImageError(true);
+            }}
           />
+        )}
+        {(isImage && imageError) && (
+          <View className="w-full h-full bg-gray-300 justify-center items-center">
+            <Text className="text-2xl mb-1">📷</Text>
+            <Text className="text-gray-600 text-xs text-center px-1" numberOfLines={1}>
+              {file.originalName}
+            </Text>
+          </View>
         )}
         {isAudio && (
           <View className="w-full h-full bg-purple-500 justify-center items-center">

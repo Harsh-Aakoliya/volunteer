@@ -26,6 +26,7 @@ import MessageStatus from "@/components/chat/MessageStatus";
 import RenderPoll from "@/components/chat/Attechments/RenderPoll";
 import RenderDriveFiles from "@/components/chat/RenderDriveFiles";
 import RenderTable from "@/components/chat/Attechments/RenderTable";
+import MediaViewerModal from "@/components/chat/MediaViewerModal";
 
 interface RoomDetails extends ChatRoom {
   members: ChatUser[];
@@ -54,6 +55,10 @@ export default function ChatRoomScreen() {
 
   const [showTableModle,setShowTableModel] =useState(false);
   const [tableId,setTableId]=useState<number | null>(null);
+
+  // Media viewer modal states
+  const [showMediaViewer, setShowMediaViewer] = useState(false);
+  const [selectedMediaId, setSelectedMediaId] = useState<number | null>(null);
 
   const flatListRef = useRef<FlatList>(null);
   const navigation = useNavigation();
@@ -357,6 +362,13 @@ export default function ChatRoomScreen() {
     }
   };
 
+  // Helper function to handle opening media viewer
+  const openMediaViewer = (mediaId: number) => {
+    console.log("Opening media viewer for media ID:", mediaId);
+    setSelectedMediaId(mediaId);
+    setShowMediaViewer(true);
+  };
+
   // Render message function to support media files
   const renderMessage = ({ item }: { item: Message }) => {
     const isOwnMessage = item.senderId === currentUser?.userId;
@@ -394,10 +406,7 @@ export default function ChatRoomScreen() {
         {/* Render media files if present */}
         {item.mediaFilesId ? (
           <TouchableOpacity 
-            onPress={() => {
-              // TODO: Add modal to display VM media files
-              console.log("VM Media ID:", item.mediaFilesId);
-            }}
+            onPress={() => openMediaViewer(item.mediaFilesId)}
             className="bg-blue-100 p-2 rounded-lg mt-1"
           >
             <Text className="text-blue-700 font-semibold">📁 Media Files</Text>
@@ -581,6 +590,18 @@ export default function ChatRoomScreen() {
           }))}
           currentUserId={currentUser?.userId || ""}
         />
+
+        {/* Media Viewer Modal */}
+        {selectedMediaId && (
+          <MediaViewerModal
+            visible={showMediaViewer}
+            onClose={() => {
+              setShowMediaViewer(false);
+              setSelectedMediaId(null);
+            }}
+            mediaId={selectedMediaId}
+          />
+        )}
       </KeyboardAvoidingView>
     </SafeAreaView>
   );

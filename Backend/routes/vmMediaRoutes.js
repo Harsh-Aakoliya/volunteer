@@ -4,7 +4,10 @@ import { authenticateToken } from '../middlewares/auth.js';
 
 const router = express.Router();
 
-// Apply authentication middleware to all routes
+// Test endpoint without auth for debugging
+router.get("/test-file/:folderName/:fileName", vmMediaController.getFile);
+
+// Apply authentication middleware to all other routes
 router.use(authenticateToken);
 
 // Legacy folder creation (keep for backward compatibility)
@@ -16,6 +19,7 @@ router.get("/temp/:tempFolderId", vmMediaController.getTempFiles);
 router.delete("/temp/:tempFolderId/:fileName", vmMediaController.deleteFile);
 router.delete("/temp/:tempFolderId", vmMediaController.deleteTempFolder);
 router.post("/move-to-chat", vmMediaController.moveToChat);
+router.get("/media/:mediaId", vmMediaController.getMediaById);
 router.get("/file/:folderName/:fileName", vmMediaController.getFile);
 
 export default router;

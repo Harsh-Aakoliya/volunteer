@@ -8,12 +8,15 @@ const tableController ={
             roomId,
             senderId,
             tableTitle,
-            tableData
+            tableData,
+            tableHeaders
         } = req.body;
         console.log("room id",typeof roomId,roomId)
         console.log("sender",typeof senderId,senderId)
         console.log("table title",typeof tableTitle,tableTitle);
         console.log("table data",typeof tableData,tableData);
+        console.log("table headers",typeof tableHeaders,tableHeaders);
+        
         // Convert to IST timezone
         const now = new Date();
         const istOffset = 5.5 * 60 * 60 * 1000; // IST is UTC+5:30
@@ -21,15 +24,16 @@ const tableController ={
         
         try {
             const result = await pool.query(`
-                INSERT INTO "table" ("roomId","senderId","createdAt","tableTitle","tableData")
-                VALUES ($1,$2,$3,$4,$5::jsonb)
+                INSERT INTO "table" ("roomId","senderId","createdAt","tableTitle","tableData","tableHeaders")
+                VALUES ($1,$2,$3,$4,$5::jsonb,$6::jsonb)
                 RETURNING *`,
                 [
                     roomId,
                     senderId,
                     istNow,
                     tableTitle,
-                    JSON.stringify(tableData)
+                    JSON.stringify(tableData),
+                    JSON.stringify(tableHeaders || ['Sr No', 'Column1', 'Column2', 'Column3'])
                 ]
             )
             console.log("result",result.rows[0]);

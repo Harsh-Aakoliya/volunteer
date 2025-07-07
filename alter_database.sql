@@ -29,4 +29,13 @@ CREATE TABLE IF NOT EXISTS "sabha_attendance" (
   "timeDifference" INTERVAL,
   "createdAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   UNIQUE("userId", "sabhaDate")
-); 
+);
+
+-- Add tableHeaders column to table if it doesn't exist
+DO $$ 
+BEGIN 
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                   WHERE table_name='table' AND column_name='tableHeaders') THEN
+        ALTER TABLE "table" ADD COLUMN "tableHeaders" JSONB DEFAULT '["Sr No", "Column1", "Column2", "Column3"]';
+    END IF;
+END $$; 

@@ -1,4 +1,4 @@
-import { View, Text, TouchableOpacity, TextInput, ScrollView, Modal, Dimensions,Alert } from 'react-native'
+import { View, Text, TouchableOpacity, TextInput, ScrollView, Modal, Dimensions, Alert, ActivityIndicator } from 'react-native'
 import React, { useState, useEffect } from 'react'
 import { useLocalSearchParams } from 'expo-router';
 
@@ -9,57 +9,59 @@ import axios from 'axios';
 import { router } from 'expo-router';
 const Table: React.FC = () => {
   const { roomId, userId } = useLocalSearchParams<{ roomId: string; userId: string }>();
-  const [tableTitle,setTableTitle]=useState("this is table title");
-  const [tableDbId,setTableDbId]=useState(null);
+  const [tableTitle, setTableTitle] = useState("this is table title");
   const [tableData, setTableData] = useState<string[][]>([
     ['1', '', '', ''],
     ['2', '', '', '']
   ]);
+  const [sending, setSending] = useState(false);
   console.log(tableData);
 
-  const sendTable = async () =>{
-    console.log("sending table");
+  const sendTableToChat = async () => {
+    console.log("Sending table to chat");
+    setSending(true);
     try {
-      const response= await axios.post(`${API_URL}/api/table/`,
-        {
-          roomId:roomId,
-          senderId:userId,
-          tableTitle:tableTitle,
-          tableData:tableData
-        }
-      );
-      console.log(response.data.result.id);
-      setTableDbId(response.data.result.id);
-    } catch (error) {
-      console.log("something went wrong");
-    }
-  }
-
-  const sendtableinmessage= async ()=>{
-    try {
+      // First create the table with headers included
+      const response = await axios.post(`${API_URL}/api/table/`, {
+        roomId: roomId,
+        senderId: userId,
+        tableTitle: tableTitle,
+        tableData: tableData,
+        tableHeaders: headers  // Include headers in the request
+      });
+      
+      console.log("Table created with ID:", response.data.result.id);
+      const tableId = response.data.result.id;
+      
+      // Then send it as a message
       const messageText = "";
       const token = await AuthStorage.getToken();
-      console.log("token is ",token);
-      console.log("table id here is",tableDbId);
-      const pollResponse = await axios.post(
+      
+      const messageResponse = await axios.post(
         `${API_URL}/api/chat/rooms/${roomId}/messages`,
         {
           messageText,
           messageType: "table",
-          tableId: tableDbId,
+          tableId: tableId,
         },
         {
           headers: { Authorization: `Bearer ${token}` },
         }
       );
-      console.log("Response after sending table in message", pollResponse.data);
-      router.back();
+      
+      console.log("Table sent to chat successfully:", messageResponse.data);
+      Alert.alert("Success", "Table sent to chat successfully!", [
+        { text: "OK", onPress: () => router.back() }
+      ]);
+      
     } catch (error) {
-      console.error("Error sending table in message:", error);
-      Alert.alert("Failed to send table message");
+      console.error("Error sending table to chat:", error);
+      Alert.alert("Error", "Failed to send table to chat. Please try again.");
+    } finally {
+      setSending(false);
     }
-  }
-  
+  };
+
   const [headers, setHeaders] = useState<string[]>(['Sr No', 'Column1', 'Column2', 'Column3']);
   const [contextMenu, setContextMenu] = useState<{ 
     visible: boolean; 
@@ -224,19 +226,30 @@ const Table: React.FC = () => {
   };
 
   return (
-    <View className="flex-1 bg-gray-50 pt-16">
-      {/* Header */}
-      <View className="px-6 pb-6 bg-white shadow-sm border-b border-gray-200">
-        <Text className="text-3xl font-bold text-gray-900 text-center">
-          Excel Table
-        </Text>
-        <Text className="text-sm text-gray-500 text-center mt-1">
-          Room: {roomId} | User: {userId}
-        </Text>
+    <View className="flex-1 bg-gray-50">
+      {/* Compact Header */}
+      <View className="px-4 py-3 bg-white shadow-sm border-b border-gray-200">
+        <View className="flex-row justify-between items-center mb-3">
+          <Text className="text-2xl font-bold text-gray-900">
+            Excel Table
+          </Text>
+          <Text className="text-xs text-gray-500">
+            Room: {roomId} | User: {userId}
+          </Text>
+        </View>
+        
+        {/* Simple Title Input */}
+        <TextInput
+          value={tableTitle}
+          onChangeText={setTableTitle}
+          className="border border-gray-300 rounded-lg px-3 py-2 text-gray-800 font-medium"
+          placeholder="Enter title"
+          placeholderTextColor="#9CA3AF"
+        />
       </View>
 
       {/* Add Buttons */}
-      <View className="flex-row justify-between px-6 py-4 bg-white border-b border-gray-200">
+      <View className="flex-row justify-between px-4 py-3 bg-white border-b border-gray-200">
         <TouchableOpacity
           onPress={addColumn}
           className="bg-blue-50 border border-blue-200 px-4 py-2 rounded-lg flex-row items-center"
@@ -250,9 +263,27 @@ const Table: React.FC = () => {
         >
           <Text className="text-green-600 text-sm font-semibold">+ Add Row</Text>
         </TouchableOpacity>
+
+        {/* Send Table Button */}
+        <TouchableOpacity
+          onPress={sendTableToChat}
+          disabled={sending}
+          className={`flex-row items-center justify-center px-4 py-2 rounded-lg ${
+            sending ? 'bg-gray-400 border border-gray-300' : 'bg-blue-600 border border-blue-700'
+          }`}
+        >
+          {sending ? (
+            <ActivityIndicator size="small" color="white" />
+          ) : (
+            <>
+              <Text className="text-white text-sm mr-1">📊</Text>
+              <Text className="text-white text-sm font-semibold">SEND</Text>
+            </>
+          )}
+        </TouchableOpacity>
       </View>
 
-      {/* Table Container */}
+      {/* Table Container - More Space */}
       <ScrollView 
         horizontal 
         showsHorizontalScrollIndicator={true}
@@ -266,7 +297,7 @@ const Table: React.FC = () => {
                 <TouchableOpacity
                   key={colIndex}
                   onLongPress={(e) => showContextMenu('column', colIndex, e)}
-                  className={`w-32 h-12 px-3 py-2 justify-center border-r border-gray-300 ${colIndex === 0 ? 'bg-gray-200' : 'bg-gray-100'}`}
+                  className={`w-32 min-h-[48px] px-3 py-2 justify-center border-r border-gray-300 ${colIndex === 0 ? 'bg-gray-200' : 'bg-gray-100'}`}
                 >
                   {colIndex === 0 ? (
                     <Text className="text-gray-700 font-bold text-sm text-center">
@@ -279,6 +310,7 @@ const Table: React.FC = () => {
                       className="text-gray-700 font-semibold text-sm text-center p-0"
                       selectTextOnFocus
                       multiline
+                      style={{ minHeight: 32 }}
                     />
                   )}
                 </TouchableOpacity>
@@ -292,7 +324,7 @@ const Table: React.FC = () => {
                   <TouchableOpacity
                     key={`cell-${rowIndex}-${colIndex}`}
                     onLongPress={colIndex === 0 ? (e) => showContextMenu('row', rowIndex, e) : undefined}
-                    className={`w-32 h-12 px-3 py-2 justify-center border-r border-gray-200 ${colIndex === 0 ? 'bg-gray-50' : 'bg-white'} ${rowIndex % 2 === 0 ? '' : 'bg-gray-25'}`}
+                    className={`w-32 min-h-[48px] px-3 py-2 justify-center border-r border-gray-200 ${colIndex === 0 ? 'bg-gray-50' : 'bg-white'} ${rowIndex % 2 === 0 ? '' : 'bg-gray-25'}`}
                   >
                     {colIndex === 0 ? (
                       <Text className="text-gray-600 font-semibold text-sm text-center">
@@ -307,6 +339,7 @@ const Table: React.FC = () => {
                         textAlignVertical="center"
                         placeholder="Enter data"
                         placeholderTextColor="#9CA3AF"
+                        style={{ minHeight: 32 }}
                       />
                     )}
                   </TouchableOpacity>
@@ -318,26 +351,6 @@ const Table: React.FC = () => {
       </ScrollView>
 
       {renderContextMenu()}
-
-      {/* table send button  */}
-      <TouchableOpacity
-        onPress={async () => {
-          const createdPollId = await sendTable();
-          console.log("here after a;lskdf");
-          
-        }}
-      >
-        <Text> store table </Text>
-      </TouchableOpacity>
-
-      {tableDbId ?<TouchableOpacity
-        onPress={async ()=>{
-          await sendtableinmessage();
-        }}
-      >
-        <Text>Send table</Text>
-      </TouchableOpacity>
-      :null}
     </View>
   );
 };

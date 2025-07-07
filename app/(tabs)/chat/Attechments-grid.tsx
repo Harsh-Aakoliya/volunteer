@@ -2,6 +2,7 @@ import { View, Text, TouchableOpacity } from "react-native";
 import SVGComponent from "../../../components/Icons/MdPermMedia";
 import { usePathname, useRouter } from "expo-router";
 import { useLocalSearchParams } from "expo-router";
+import React from "react";
 export default function OptionalGrid() {
     const router = useRouter();
     const { roomId, userId } = useLocalSearchParams();
@@ -9,7 +10,7 @@ export default function OptionalGrid() {
     console.log("userId", userId);
   return (
     <View className="flex flex-wrap flex-row">
-        <View className="w-1/3 items-center justify-center">
+        {/* <View className="w-1/3 items-center justify-center">
         <TouchableOpacity onPress={() => router.push({
             pathname: "/chat/MediaUploader",
             params: { roomId, userId }
@@ -17,7 +18,7 @@ export default function OptionalGrid() {
             <SVGComponent color="black" height={60} width={60} />
             <Text>Multimedia</Text>
         </TouchableOpacity>
-        </View>
+        </View> */}
         <View className="w-1/3 items-center justify-center">
         <TouchableOpacity onPress={() => router.push({
             pathname: "/chat/MediaUploader",
@@ -36,10 +37,10 @@ export default function OptionalGrid() {
             <Text>Poll</Text>
         </TouchableOpacity>
         </View>
-        <View className="w-1/3 items-center justify-center">
+        {/* <View className="w-1/3 items-center justify-center">
             <SVGComponent color="black" height={60} width={60} />
             <Text>Document</Text>
-        </View>
+        </View> */}
         <View className="w-1/3 items-center justify-center">
           <TouchableOpacity onPress={() => router.push({
               pathname: "/chat/table",
@@ -49,21 +50,15 @@ export default function OptionalGrid() {
               <Text>Table</Text>
           </TouchableOpacity>
         </View>
-        <View className="w-1/3 items-center justify-center">
+        {/* <View className="w-1/3 items-center justify-center">
             <SVGComponent color="black" height={60} width={60} />
             <Text>Contact</Text>
         </View>
         <View className="w-1/3 items-center justify-center">
             <SVGComponent color="black" height={60} width={60} />
             <Text>Temp</Text>
-        </View>
+        </View> */}
         
-
-      {/* {[...Array(7)].map((_, index) => (
-        <View key={index} className="w-1/3 p-2 items-center justify-center">
-          <SVGComponent color="black" height={60} width={60} />
-        </View>
-      ))} */}
     </View>
   );
 }

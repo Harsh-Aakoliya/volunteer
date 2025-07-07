@@ -275,14 +275,81 @@ const VmMediaController = {
         }
     },
 
+    // Get media files by media ID
+    getMediaById: async (req, res) => {
+        try {
+            const { mediaId } = req.params;
+            
+            if (!mediaId) {
+                return res.status(400).json({ error: "mediaId is required" });
+            }
+
+            console.log(`Fetching media for ID: ${mediaId}`);
+
+            const result = await pool.query(
+                'SELECT * FROM media WHERE "id" = $1',
+                [mediaId]
+            );
+
+            if (result.rows.length === 0) {
+                return res.status(404).json({ error: "Media not found" });
+            }
+
+            const mediaRecord = result.rows[0];
+            const driveUrlObject = mediaRecord.driveUrlObject || [];
+
+            console.log(`Found media with ${driveUrlObject.length} files`);
+
+            res.json({
+                success: true,
+                media: {
+                    id: mediaRecord.id,
+                    roomId: mediaRecord.roomId,
+                    senderId: mediaRecord.senderId,
+                    createdAt: mediaRecord.createdAt,
+                    messageId: mediaRecord.messageId,
+                    files: driveUrlObject
+                }
+            });
+
+        } catch (error) {
+            console.error("Error fetching media:", error);
+            res.status(500).json({ error: "Failed to fetch media", details: error.message });
+        }
+    },
+
     // Get file content (for serving files)
     getFile: async (req, res) => {
         try {
+            console.log("=== FILE REQUEST DEBUG ===");
+            console.log("Full request URL:", req.url);
+            console.log("Request params:", req.params);
+            console.log("Request headers:", req.headers);
+            
             const { folderName, fileName } = req.params;
+            
+            console.log(`Parsed params - folderName: "${folderName}", fileName: "${fileName}"`);
+            
+            if (!folderName || !fileName) {
+                console.log("Missing folderName or fileName parameters");
+                return res.status(400).json({ error: "folderName and fileName are required" });
+            }
             
             const filePath = path.join(process.cwd(), 'media', 'chat', folderName, fileName);
             
+            console.log(`Constructed file path: ${filePath}`);
+            console.log(`File exists: ${fs.existsSync(filePath)}`);
+            
             if (!fs.existsSync(filePath)) {
+                console.log(`File not found at: ${filePath}`);
+                // List directory contents for debugging
+                const dirPath = path.join(process.cwd(), 'media', 'chat', folderName);
+                if (fs.existsSync(dirPath)) {
+                    const files = fs.readdirSync(dirPath);
+                    console.log(`Directory contents: ${files.join(', ')}`);
+                } else {
+                    console.log(`Directory does not exist: ${dirPath}`);
+                }
                 return res.status(404).json({ error: "File not found" });
             }
 
@@ -290,8 +357,11 @@ const VmMediaController = {
             const stats = fs.statSync(filePath);
             const mimeType = getMimeType(fileName);
             
+            console.log(`Serving file - MIME: ${mimeType}, size: ${stats.size} bytes`);
+            
             res.setHeader('Content-Type', mimeType);
             res.setHeader('Content-Length', stats.size);
+            res.setHeader('Cache-Control', 'public, max-age=31536000'); // Cache for 1 year
             
             // Stream the file
             const fileStream = fs.createReadStream(filePath);

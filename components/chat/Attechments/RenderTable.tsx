@@ -9,6 +9,7 @@ type TableData = {
     tableTitle: string;
     messageId: string | null;
     tableData: string[][];
+    tableHeaders?: string[];
 }
 
 type ApiResponse = {
@@ -53,7 +54,13 @@ const RenderTable = ({ tableId, visible, setShowTable }: Props) => {
         fetchTableData();
     }, [visible, tableId]);
 
-    const generateHeaders = (data: string[][]) => {
+    const generateHeaders = (data: string[][], storedHeaders?: string[]) => {
+        // Use stored headers if available
+        if (storedHeaders && storedHeaders.length > 0) {
+            return storedHeaders;
+        }
+        
+        // Fallback to generated headers for backward compatibility
         if (!data || data.length === 0) return [];
         
         const columnCount = Math.max(...data.map(row => row.length));
@@ -137,10 +144,10 @@ const RenderTable = ({ tableId, visible, setShowTable }: Props) => {
                                 <View className="border border-gray-300 m-4">
                                     {/* Header Row */}
                                     <View className="flex-row bg-gray-100 border-b-2 border-gray-300">
-                                        {generateHeaders(tableData.tableData).map((header, colIndex) => (
+                                        {generateHeaders(tableData.tableData, tableData.tableHeaders).map((header, colIndex) => (
                                             <View
                                                 key={colIndex}
-                                                className={`w-32 h-12 px-3 py-2 justify-center border-r border-gray-300 ${colIndex === 0 ? 'bg-gray-200' : 'bg-gray-100'}`}
+                                                className={`w-32 min-h-[48px] px-3 py-2 justify-center border-r border-gray-300 ${colIndex === 0 ? 'bg-gray-200' : 'bg-gray-100'}`}
                                             >
                                                 <Text className="text-gray-700 font-bold text-sm text-center">
                                                     {header}
@@ -155,7 +162,7 @@ const RenderTable = ({ tableId, visible, setShowTable }: Props) => {
                                             {row.map((cell, colIndex) => (
                                                 <View
                                                     key={`cell-${rowIndex}-${colIndex}`}
-                                                    className={`w-32 h-12 px-3 py-2 justify-center border-r border-gray-200 ${colIndex === 0 ? 'bg-gray-50' : 'bg-white'} ${rowIndex % 2 === 0 ? '' : 'bg-gray-25'}`}
+                                                    className={`w-32 min-h-[48px] px-3 py-2 justify-center border-r border-gray-200 ${colIndex === 0 ? 'bg-gray-50' : 'bg-white'} ${rowIndex % 2 === 0 ? '' : 'bg-gray-25'}`}
                                                 >
                                                     <Text className={`text-sm text-center ${colIndex === 0 ? 'text-gray-600 font-semibold' : 'text-gray-800'}`}>
                                                         {cell || (colIndex === 0 ? row[0] : '-')}

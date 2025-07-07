@@ -18,12 +18,12 @@ export default function Index() {
       try {
         // First check for updates
         console.log("Checking for updates...");
-        const updateCheckPassed = await checkForUpdates();
+        // const updateCheckPassed = await checkForUpdates();
         
-        if (!updateCheckPassed) {
-          console.log("Update check failed or user cancelled");
-          return; // Don't proceed with auth check if update failed
-        }
+        // if (!updateCheckPassed) {
+        //   console.log("Update check failed or user cancelled");
+        //   return; // Don't proceed with auth check if update failed
+        // }
         
         console.log("Update check passed, proceeding with auth check");
         

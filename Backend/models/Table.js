@@ -31,7 +31,8 @@ const createTableTable = async () => {
             "createdAt" TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
             "tableTitle" VARCHAR(255),
             "messageId" INTEGER,
-            "tableData" JSONB
+            "tableData" JSONB,
+            "tableHeaders" JSONB DEFAULT '["Sr No", "Column1", "Column2", "Column3"]'
         );
     `);
     console.log("Table table created successfully");
