@@ -19,26 +19,6 @@ build/
 dist/
 .next/
 
-# Database files
-*.sql
-alter_database.sql
-mock_data.sql
-*.db
-*.sqlite
-*.sqlite3
-
-# Documentation
-README.md
-UPDATE_GUIDE.md
-AUTO_UPDATE_SYSTEM.md
-*.md
-
-# PowerShell scripts and batch files
-*.ps1
-*.bat
-*.cmd
-start.ps1
-
 # Test files
 test-*.js
 mock_data.sql
@@ -56,9 +36,6 @@ temp.txt
 
 # Log files
 *.log
-npm-debug.*
-yarn-debug.*
-yarn-error.*
 logs/
 
 # Temporary files
@@ -66,18 +43,12 @@ logs/
 *.temp
 .cache/
 
-# OS files
-.DS_Store
-Thumbs.db
-*.swp
-*.swo
-
-# Environment files that shouldn't be in build
+# Environment files
 .env
 .env.*
 .env*.local
 
-# Native project folders (for CNG/Prebuild)
+# Native project folders
 /android
 /ios
 
@@ -86,33 +57,21 @@ package-lock.json
 yarn.lock
 pnpm-lock.yaml
 
-# Large video/media files that might be in root
-*.mp4
-*.mov
-*.avi
-*.mkv
-*.flv
-*.wmv
-*.webm
-*.m4v
+# Database files
+*.sql
+*.db
+*.sqlite
+*.sqlite3
 
-# Large audio files
-*.mp3
-*.wav
-*.flac
-*.aac
-*.ogg
-*.wma
-*.m4a
-
-# Large image files
-*.psd
-*.ai
-*.eps
-*.tiff
-*.bmp
+# PowerShell scripts and batch files
+*.ps1
+*.bat
+*.cmd
 
 # APK files
 *.apk
 *.aab
-*.ipa 
+*.ipa
+
+# Documentation files
+*.md 

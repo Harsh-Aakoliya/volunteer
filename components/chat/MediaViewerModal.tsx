@@ -11,7 +11,9 @@ import {
   Dimensions,
   StyleSheet,
 } from "react-native";
+import { useEvent } from "expo";
 import { VideoView, useVideoPlayer } from "expo-video";
+import Sound from "react-native-sound"; // Commented out until package is installed
 import { API_URL } from "@/constants/api";
 import { AuthStorage } from "@/utils/authStorage";
 import axios from "axios";
@@ -51,28 +53,42 @@ const formatBytes = (bytes: number, decimals = 2) => {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
 };
 
+const formatAudioTime = (millis: number) => {
+  if (!millis) return '0:00';
+  const minutes = Math.floor(millis / 60000);
+  const seconds = Math.floor((millis % 60000) / 1000);
+  return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+};
+
 export default function MediaViewerModal({ visible, onClose, mediaId }: MediaViewerModalProps) {
   const [mediaData, setMediaData] = useState<MediaData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [currentFileIndex, setCurrentFileIndex] = useState(0);
   const [fileLoadingStates, setFileLoadingStates] = useState<Record<number, boolean>>({});
-  const [authHeaders, setAuthHeaders] = useState<any>({});
+  
+  // Audio player state
+  const [audioSound, setAudioSound] = useState<any>(null); // Changed to any as Sound is removed
+  const [audioStatus, setAudioStatus] = useState<any>(null);
+  const [isAudioPlaying, setIsAudioPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [progressInterval, setProgressInterval] = useState<NodeJS.Timeout | null>(null);
 
   // Get auth headers
   useEffect(() => {
-    const getAuthHeaders = async () => {
+    // Configure audio session for better playback
+    const configureAudioSession = async () => {
       try {
-        const token = await AuthStorage.getToken();
-        setAuthHeaders({
-          'Authorization': `Bearer ${token}`
-        });
+        // Enable playback in silent mode
+        // Sound.setCategory('Playback'); // Removed as Sound is removed
       } catch (error) {
-        console.error("Error getting auth token:", error);
+        console.error("Error configuring audio session:", error);
       }
     };
+    
     if (visible) {
-      getAuthHeaders();
+      configureAudioSession();
     }
   }, [visible]);
 
@@ -87,9 +103,139 @@ export default function MediaViewerModal({ visible, onClose, mediaId }: MediaVie
   const currentFile = mediaData?.files[currentFileIndex];
   const videoPlayer = useVideoPlayer(
     currentFile?.mimeType.startsWith("video") 
-      ? `${API_URL}/api/vm-media/file/${currentFile.url}` 
-      : null
+      ? `${API_URL}/media/chat/${currentFile.url}` 
+      : null,
+    player => {
+      if (player) {
+        player.loop = false; // Don't loop by default
+        // Don't autoplay by default
+      }
+    }
   );
+
+  // Video player state
+  const { isPlaying } = useEvent(videoPlayer, 'playingChange', { 
+    isPlaying: videoPlayer.playing 
+  });
+
+  // Audio player functions
+  const loadAudio = async (audioUrl: string) => {
+    try {
+      // Unload previous audio if exists
+      if (audioSound) {
+        // audioSound.stop(); // Removed as Sound is removed
+        // audioSound.release(); // Removed as Sound is removed
+        setAudioSound(null);
+      }
+
+      // Clear any existing progress interval
+      if (progressInterval) {
+        clearInterval(progressInterval);
+        setProgressInterval(null);
+      }
+
+      // const sound = new Sound( // Removed as Sound is removed
+      //   `${API_URL}/media/chat/${audioUrl}`,
+      //   '',
+      //   (error) => {
+      //     if (error) {
+      //       console.error("Error loading audio:", error);
+      //       Alert.alert("Error", "Failed to load audio file");
+      //     } else {
+      //       setAudioSound(sound);
+      //       setDuration(sound.getDuration());
+      //       setCurrentTime(0);
+      //       setIsAudioPlaying(false);
+      //     }
+      //   }
+      // );
+      
+    } catch (error) {
+      console.error("Error loading audio:", error);
+      Alert.alert("Error", "Failed to load audio file");
+    }
+  };
+
+  const toggleAudioPlayback = async () => {
+    if (!audioSound) return;
+    
+    try {
+      if (isAudioPlaying) {
+        // audioSound.pause(); // Removed as Sound is removed
+        setIsAudioPlaying(false);
+        if (progressInterval) {
+          clearInterval(progressInterval);
+          setProgressInterval(null);
+        }
+      } else {
+        // audioSound.play((success) => { // Removed as Sound is removed
+        //   if (success) {
+        //     console.log("Audio finished playing");
+        //     setIsAudioPlaying(false);
+        //     setCurrentTime(0);
+        //     if (progressInterval) {
+        //       clearInterval(progressInterval);
+        //       setProgressInterval(null);
+        //     }
+        //   }
+        // });
+        setIsAudioPlaying(true);
+        
+        // Start progress tracking
+        const interval = setInterval(() => {
+          if (audioSound && isAudioPlaying) {
+            // audioSound.getCurrentTime((seconds) => { // Removed as Sound is removed
+            //   setCurrentTime(seconds);
+            // });
+          }
+        }, 1000);
+        setProgressInterval(interval);
+      }
+    } catch (error) {
+      console.error("Error toggling audio playback:", error);
+    }
+  };
+
+  // Cleanup audio when modal closes or file changes
+  useEffect(() => {
+    if (!visible) {
+      if (audioSound) {
+        // audioSound.stop(); // Removed as Sound is removed
+        // audioSound.release(); // Removed as Sound is removed
+        setAudioSound(null);
+        setAudioStatus(null);
+        setIsAudioPlaying(false);
+      }
+      if (progressInterval) {
+        clearInterval(progressInterval);
+        setProgressInterval(null);
+      }
+      setCurrentTime(0);
+      setDuration(0);
+    }
+  }, [visible]);
+
+  // Load audio when audio file is selected
+  useEffect(() => {
+    if (currentFile?.mimeType.startsWith("audio")) {
+      loadAudio(currentFile.url);
+    } else {
+      // Clean up audio if switching to non-audio file
+      if (audioSound) {
+        // audioSound.stop(); // Removed as Sound is removed
+        // audioSound.release(); // Removed as Sound is removed
+        setAudioSound(null);
+        setAudioStatus(null);
+        setIsAudioPlaying(false);
+      }
+      if (progressInterval) {
+        clearInterval(progressInterval);
+        setProgressInterval(null);
+      }
+      setCurrentTime(0);
+      setDuration(0);
+    }
+  }, [currentFile]);
 
   const fetchMediaData = async () => {
     setLoading(true);
@@ -161,8 +307,8 @@ export default function MediaViewerModal({ visible, onClose, mediaId }: MediaVie
 
     return (
       <View style={styles.mediaContainer}>
-        {/* Loading indicator */}
-        {isLoading && (
+        {/* Loading indicator - only for images */}
+        {isLoading && isImage && (
           <View style={styles.loadingOverlay}>
             <ActivityIndicator size="large" color="#0284c7" />
             <Text style={styles.loadingText}>Loading {currentFile.originalName}...</Text>
@@ -179,8 +325,7 @@ export default function MediaViewerModal({ visible, onClose, mediaId }: MediaVie
           >
             <Image
               source={{
-                uri: `${API_URL}/api/vm-media/file/${currentFile.url}`,
-                headers: authHeaders
+                uri: `${API_URL}/media/chat/${currentFile.url}`
               }}
               style={styles.image}
               resizeMode="contain"
@@ -198,9 +343,23 @@ export default function MediaViewerModal({ visible, onClose, mediaId }: MediaVie
               player={videoPlayer}
               allowsFullscreen
               allowsPictureInPicture
-              onLoadStart={() => setFileLoadingStates(prev => ({ ...prev, [currentFileIndex]: true }))}
-              onLoad={() => handleFileLoad(currentFileIndex)}
             />
+            <View style={styles.videoControls}>
+              <TouchableOpacity
+                style={styles.playButton}
+                onPress={() => {
+                  if (isPlaying) {
+                    videoPlayer.pause();
+                  } else {
+                    videoPlayer.play();
+                  }
+                }}
+              >
+                <Text style={styles.playButtonText}>
+                  {isPlaying ? '⏸️' : '▶️'}
+                </Text>
+              </TouchableOpacity>
+            </View>
           </View>
         )}
 
@@ -210,9 +369,16 @@ export default function MediaViewerModal({ visible, onClose, mediaId }: MediaVie
             <Text style={styles.audioIcon}>🎵</Text>
             <Text style={styles.audioTitle}>{currentFile.originalName}</Text>
             <Text style={styles.audioSubtitle}>{formatBytes(currentFile.size)}</Text>
-            <Text style={styles.audioNote}>
-              Audio preview not available in this view
-            </Text>
+            
+            {/* Audio Controls - Placeholder */}
+            <View style={styles.audioControls}>
+              <Text style={styles.audioNote}>
+                Audio playback requires installing react-native-sound package.
+              </Text>
+              <Text style={styles.audioInstructions}>
+                Run: npm install react-native-sound
+              </Text>
+            </View>
           </View>
         )}
 
@@ -388,10 +554,26 @@ const styles = StyleSheet.create({
   videoContainer: {
     flex: 1,
     justifyContent: 'center',
+    alignItems: 'center',
+    position: 'relative',
   },
   video: {
     width: screenWidth,
     height: screenHeight * 0.6,
+  },
+  videoControls: {
+    position: 'absolute',
+    bottom: 20,
+    alignSelf: 'center',
+  },
+  playButton: {
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    padding: 15,
+    borderRadius: 25,
+  },
+  playButtonText: {
+    fontSize: 24,
+    color: 'white',
   },
   audioContainer: {
     flex: 1,
@@ -420,6 +602,12 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlign: 'center',
     fontStyle: 'italic',
+  },
+  audioInstructions: {
+    color: '#ccc',
+    fontSize: 14,
+    textAlign: 'center',
+    marginTop: 10,
   },
   fileInfo: {
     backgroundColor: 'rgba(0,0,0,0.8)',
@@ -469,5 +657,42 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  audioControls: {
+    flexDirection: 'column',
+    alignItems: 'center',
+    marginTop: 20,
+  },
+  audioPlayButton: {
+    backgroundColor: '#0284c7',
+    paddingHorizontal: 15,
+    paddingVertical: 10,
+    borderRadius: 8,
+    marginRight: 10,
+  },
+  audioPlayButtonText: {
+    color: 'white',
+    fontSize: 24,
+    fontWeight: 'bold',
+  },
+  audioProgress: {
+    flex: 1,
+    marginLeft: 10,
+  },
+  audioTime: {
+    color: 'white',
+    fontSize: 14,
+    marginBottom: 5,
+  },
+  progressBar: {
+    height: 8,
+    backgroundColor: '#555',
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    backgroundColor: '#0284c7',
+    borderRadius: 4,
   },
 }); 

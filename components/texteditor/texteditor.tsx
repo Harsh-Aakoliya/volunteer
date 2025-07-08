@@ -96,7 +96,11 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
       console.log("Setting content via ref availability check:", initialContent);
       setTimeout(() => {
         if (richText.current) {
-          richText.current.setContentHTML(initialContent);
+          try {
+            richText.current.setContentHTML(initialContent);
+          } catch (error) {
+            console.error("Error setting initial content:", error);
+          }
         }
       }, 200);
     }
@@ -595,12 +599,18 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
           initialHeight={300}
           ref={richText}
           onChange={handleContentChange}
+          androidHardwareAccelerationDisabled={true}
+          androidLayerType="software"
           onEditorInitialized={() => {
             // This callback is triggered when the editor is fully initialized
             // Set content here as an additional safety measure
             if (richText.current && initialContent) {
               console.log("Editor initialized, setting content:", initialContent);
-              richText.current.setContentHTML(initialContent);
+              try {
+                richText.current.setContentHTML(initialContent);
+              } catch (error) {
+                console.error("Error setting content on editor initialization:", error);
+              }
             }
           }}
           editorStyle={{

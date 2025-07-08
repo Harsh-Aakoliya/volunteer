@@ -74,7 +74,78 @@ app.use('/api', apiRoutes);
 
 // Set up Socket.IO
 setupSocketIO(io, app);
+// Add this to your server.js file, after the existing routes but before the test endpoint
 
+// API endpoint to list media files
+app.get("/media", (req, res) => {
+  try {
+    const mediaDir = path.join(process.cwd(), 'media');
+    
+    // Check if media directory exists
+    if (!fs.existsSync(mediaDir)) {
+      return res.json([]);
+    }
+
+    // Read all files in the media directory
+    const files = fs.readdirSync(mediaDir);
+    
+    // Filter out only media files (optional - you can remove this filter if you want all files)
+    const mediaFiles = files.filter(file => {
+      const ext = path.extname(file).toLowerCase();
+      return [
+        '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', // Images
+        '.mp4', '.mov', '.avi', '.mkv', '.webm', // Videos
+        '.mp3', '.wav', '.aac', '.m4a', '.ogg' // Audio
+      ].includes(ext);
+    });
+
+    console.log('Media files found:', mediaFiles);
+    res.json(mediaFiles);
+  } catch (error) {
+    console.error('Error reading media directory:', error);
+    res.status(500).json({ error: 'Unable to read media directory' });
+  }
+});
+
+// Alternative endpoint with more detailed file information (optional)
+app.get("/api/media", (req, res) => {
+  try {
+    const mediaDir = path.join(process.cwd(), 'media');
+    
+    if (!fs.existsSync(mediaDir)) {
+      return res.json([]);
+    }
+
+    const files = fs.readdirSync(mediaDir);
+    
+    const mediaFiles = files.map(file => {
+      const filePath = path.join(mediaDir, file);
+      const stats = fs.statSync(filePath);
+      const ext = path.extname(file).toLowerCase();
+      
+      let type = 'other';
+      if (['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'].includes(ext)) {
+        type = 'image';
+      } else if (['.mp4', '.mov', '.avi', '.mkv', '.webm'].includes(ext)) {
+        type = 'video';
+      } else if (['.mp3', '.wav', '.aac', '.m4a', '.ogg'].includes(ext)) {
+        type = 'audio';
+      }
+
+      return {
+        name: file,
+        type: type,
+        size: stats.size,
+        modified: stats.mtime
+      };
+    });
+
+    res.json(mediaFiles);
+  } catch (error) {
+    console.error('Error reading media directory:', error);
+    res.status(500).json({ error: 'Unable to read media directory' });
+  }
+});
 //checking 
 app.get("/api/test", (req, res) => {
   res.json({ message: "Server is running" });

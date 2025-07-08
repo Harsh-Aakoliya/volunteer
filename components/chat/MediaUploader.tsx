@@ -377,14 +377,14 @@ console.log(file);
               />
             )}
             
-            {isVideo && (
+            {/* {isVideo && (
               <Video
                 source={{ uri: file.url }}
                 useNativeControls
                 resizeMode={ResizeMode.CONTAIN}
                 className="w-full h-64 rounded-lg"
               />
-            )}
+            )} */}
             
             {isAudio && <AudioPlayer uri={file.url} />}
           </View>

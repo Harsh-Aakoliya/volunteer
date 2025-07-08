@@ -363,6 +363,13 @@ const VmMediaController = {
             res.setHeader('Content-Length', stats.size);
             res.setHeader('Cache-Control', 'public, max-age=31536000'); // Cache for 1 year
             
+            // Add headers for better audio/video streaming support
+            if (mimeType.startsWith('audio/') || mimeType.startsWith('video/')) {
+                res.setHeader('Accept-Ranges', 'bytes');
+                res.setHeader('Access-Control-Allow-Origin', '*');
+                res.setHeader('Access-Control-Allow-Headers', 'Range');
+            }
+            
             // Stream the file
             const fileStream = fs.createReadStream(filePath);
             fileStream.pipe(res);
@@ -378,16 +385,36 @@ const VmMediaController = {
 function getMimeType(fileName) {
     const ext = path.extname(fileName).toLowerCase();
     const mimeTypes = {
+        // Images
         '.jpg': 'image/jpeg',
         '.jpeg': 'image/jpeg',
         '.png': 'image/png',
         '.gif': 'image/gif',
+        '.webp': 'image/webp',
+        '.bmp': 'image/bmp',
+        '.svg': 'image/svg+xml',
+        
+        // Videos
         '.mp4': 'video/mp4',
         '.avi': 'video/avi',
         '.mov': 'video/quicktime',
+        '.wmv': 'video/x-ms-wmv',
+        '.flv': 'video/x-flv',
+        '.webm': 'video/webm',
+        '.mkv': 'video/x-matroska',
+        '.3gp': 'video/3gpp',
+        '.m4v': 'video/mp4',
+        
+        // Audio
         '.mp3': 'audio/mpeg',
         '.wav': 'audio/wav',
-        '.m4a': 'audio/m4a'
+        '.m4a': 'audio/m4a',
+        '.aac': 'audio/aac',
+        '.ogg': 'audio/ogg',
+        '.flac': 'audio/flac',
+        '.wma': 'audio/x-ms-wma',
+        '.opus': 'audio/opus',
+        '.amr': 'audio/amr'
     };
     return mimeTypes[ext] || 'application/octet-stream';
 }

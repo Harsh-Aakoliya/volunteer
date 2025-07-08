@@ -17,6 +17,7 @@
   "dependencies": {
     "@expo/vector-icons": "^14.0.4",
     "@react-native-async-storage/async-storage": "1.23.1",
+    "@react-native-community/slider": "4.5.5",
     "@react-navigation/bottom-tabs": "^7.2.0",
     "@react-navigation/native": "^7.0.14",
     "@react-navigation/native-stack": "^7.2.0",
@@ -26,6 +27,7 @@
     "date-fns": "^4.1.0",
     "eas-cli": "^16.13.4",
     "expo": "~52.0.47",
+    "expo-av": "~15.0.2",
     "expo-blur": "~14.0.3",
     "expo-build-properties": "~0.13.3",
     "expo-checkbox": "^4.0.1",
@@ -56,11 +58,14 @@
     "react-native-css-interop": "^0.1.22",
     "react-native-device-info": "^14.0.4",
     "react-native-gesture-handler": "~2.20.2",
+    "react-native-orientation-locker": "^1.7.0",
     "react-native-pell-rich-editor": "^1.9.0",
     "react-native-reanimated": "~3.16.1",
     "react-native-safe-area-context": "^4.12.0",
     "react-native-screens": "~4.4.0",
+    "react-native-sound": "^0.11.2",
     "react-native-svg": "15.8.0",
+    "react-native-video": "^6.16.1",
     "react-native-web": "^0.19.13",
     "react-native-webview": "13.12.5",
     "socket.io-client": "^4.8.1",
@@ -77,7 +82,9 @@
     "jest-expo": "~52.0.6",
     "react-test-renderer": "18.3.1",
     "tailwindcss": "^3.3.2",
-    "typescript": "^5.3.3"
+    "typescript": "^5.3.3",
+    "eslint": "^8.57.0",
+    "eslint-config-expo": "~8.0.1"
   },
   "private": true,
   "expo": {

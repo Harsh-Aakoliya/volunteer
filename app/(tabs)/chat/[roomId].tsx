@@ -406,7 +406,7 @@ export default function ChatRoomScreen() {
         {/* Render media files if present */}
         {item.mediaFilesId ? (
           <TouchableOpacity 
-            onPress={() => openMediaViewer(item.mediaFilesId)}
+            onPress={() => item.mediaFilesId && openMediaViewer(item.mediaFilesId)}
             className="bg-blue-100 p-2 rounded-lg mt-1"
           >
             <Text className="text-blue-700 font-semibold">📁 Media Files</Text>

@@ -12,7 +12,9 @@ import {
 } from "react-native";
 import * as DocumentPicker from "expo-document-picker";
 import axios from "axios";
+import { useEvent } from "expo";
 import { VideoView, useVideoPlayer } from "expo-video";
+// import Sound from "react-native-sound"; // Commented out until package is installed
 import { API_URL } from "@/constants/api";
 import { TextInput } from "react-native";
 import { useLocalSearchParams, router, useNavigation } from "expo-router";
@@ -71,13 +73,29 @@ export default function MediaUploadApp() {
   const [imageModalVisible, setImageModalVisible] = useState(false);
   const [audioModalVisible, setAudioModalVisible] = useState(false);
   const [selectedFile, setSelectedFile] = useState<VMMediaFile | null>(null);
+  
+  // Audio player state
+  const [audioSound, setAudioSound] = useState<any>(null); // Changed to any as react-native-sound is removed
+  const [audioStatus, setAudioStatus] = useState<any>(null);
+  const [isAudioPlaying, setIsAudioPlaying] = useState(false);
 
   // Video player for selected video
   const videoPlayer = useVideoPlayer(
-    selectedFile?.mimeType.startsWith("video") 
-      ? `${API_URL}/api/vm-media/file/${selectedFile.url}` 
-      : null
+    selectedFile?.mimeType.startsWith("video") && tempFolderId
+      ? `${API_URL}/media/chat/temp_${tempFolderId}/${selectedFile.fileName}` 
+      : null,
+    player => {
+      if (player) {
+        player.loop = false; // Don't loop by default in preview
+        // Don't autoplay in preview modal
+      }
+    }
   );
+
+  // Video player state
+  const { isPlaying } = useEvent(videoPlayer, 'playingChange', { 
+    isPlaying: videoPlayer.playing 
+  });
 
   // Get auth headers on component mount
   useEffect(() => {
@@ -94,13 +112,89 @@ export default function MediaUploadApp() {
     getAuthHeaders();
   }, []);
 
-  // Helper function to get authenticated image source
-  const getAuthenticatedImageSource = (url: string) => {
+  // Helper function to get direct image source
+  const getDirectImageSource = (fileName: string) => {
     return {
-      uri: `${API_URL}/api/vm-media/file/${url}`,
-      headers: authHeaders
+      uri: `${API_URL}/media/chat/temp_${tempFolderId}/${fileName}`
     };
   };
+
+  // Audio player functions
+  const loadAudio = async (audioUrl: string) => {
+    try {
+      // Unload previous audio if exists
+      if (audioSound) {
+        // No direct equivalent to Audio.setAudioModeAsync for react-native-sound
+        // This might need to be handled differently depending on your app's audio requirements
+        // For now, we'll just load the audio
+      }
+
+      // Placeholder for audio loading logic
+      console.log("Loading audio from:", audioUrl);
+      // In a real app, you would use a library like react-native-sound or a custom audio player
+      // For now, we'll just set status to loaded and not playing
+      setAudioStatus({ isLoaded: true, isPlaying: false, durationMillis: 0, positionMillis: 0 });
+      
+    } catch (error) {
+      console.error("Error loading audio:", error);
+      Alert.alert("Error", "Failed to load audio file");
+    }
+  };
+
+  const toggleAudioPlayback = async () => {
+    if (!audioSound) return;
+    
+    try {
+      if (isAudioPlaying) {
+        // No direct equivalent to Audio.pauseAsync for react-native-sound
+        // This might need to be handled differently depending on your app's audio requirements
+        console.log("Pausing audio playback (placeholder)");
+      } else {
+        // No direct equivalent to Audio.playAsync for react-native-sound
+        // This might need to be handled differently depending on your app's audio requirements
+        console.log("Playing audio playback (placeholder)");
+      }
+    } catch (error) {
+      console.error("Error toggling audio playback:", error);
+    }
+  };
+
+  const formatAudioTime = (millis: number) => {
+    if (!millis) return '0:00';
+    const minutes = Math.floor(millis / 60000);
+    const seconds = Math.floor((millis % 60000) / 1000);
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  };
+
+  // Load audio when audio modal opens
+  useEffect(() => {
+    if (audioModalVisible && selectedFile?.mimeType.startsWith("audio")) {
+      // Configure audio session
+      const configureAudioSession = async () => {
+        try {
+          // No direct equivalent to Audio.setAudioModeAsync for react-native-sound
+          // This might need to be handled differently depending on your app's audio requirements
+          // For now, we'll just load the audio
+        } catch (error) {
+          console.error("Error configuring audio session:", error);
+        }
+      };
+      
+      configureAudioSession().then(() => {
+        loadAudio(selectedFile.url);
+      });
+    } else {
+      // Clean up audio when modal closes
+      if (audioSound) {
+        // No direct equivalent to Audio.stopAsync or Audio.release for react-native-sound
+        // This might need to be handled differently depending on your app's audio requirements
+        console.log("Cleaning up audio (placeholder)");
+        setAudioSound(null);
+        setAudioStatus(null);
+        setIsAudioPlaying(false);
+      }
+    }
+  }, [audioModalVisible, selectedFile]);
 
   // console.log("selectedFile", selectedFile);
 
@@ -362,6 +456,7 @@ export default function MediaUploadApp() {
               file={file} 
               onPress={() => openFileModal(file)}
               onRemove={() => removeFile(file)}
+              tempFolderId={tempFolderId}
             />
           ))}
         </View>
@@ -383,12 +478,30 @@ export default function MediaUploadApp() {
             </View>
             {selectedFile && selectedFile.mimeType.startsWith("video") && (
               <>
-                <VideoView
-                  style={styles.video}
-                  player={videoPlayer}
-                  allowsFullscreen
-                  allowsPictureInPicture
-                />
+                <View style={styles.videoContainer}>
+                  <VideoView
+                    style={styles.video}
+                    player={videoPlayer}
+                    allowsFullscreen
+                    allowsPictureInPicture
+                  />
+                  <View style={styles.videoControls}>
+                    <TouchableOpacity
+                      style={styles.playButton}
+                      onPress={() => {
+                        if (isPlaying) {
+                          videoPlayer.pause();
+                        } else {
+                          videoPlayer.play();
+                        }
+                      }}
+                    >
+                      <Text style={styles.playButtonText}>
+                        {isPlaying ? '⏸️' : '▶️'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
                 <View style={styles.captionContainer}>
                   <TextInput
                     style={styles.captionInput}
@@ -429,11 +542,11 @@ export default function MediaUploadApp() {
                   minimumZoomScale={1}
                 >
                   <Image
-                    source={getAuthenticatedImageSource(selectedFile.url)}
+                    source={getDirectImageSource(selectedFile.fileName)}
                     style={styles.image}
                     resizeMode="contain"
                     onError={() => {
-                      console.error("Image load error for file:", selectedFile.url);
+                      console.error("Image load error for file:", selectedFile.fileName);
                       Alert.alert("Error", "Failed to load image");
                     }}
                     onLoad={() => console.log("Image loaded successfully")}
@@ -455,7 +568,7 @@ export default function MediaUploadApp() {
           </View>
         </Modal>
 
-        {/* Audio Modal - Simplified (no playback) */}
+        {/* Audio Modal - Placeholder for react-native-sound */}
         <Modal
           visible={audioModalVisible}
           animationType="slide"
@@ -476,9 +589,16 @@ export default function MediaUploadApp() {
                 <View style={styles.audioPlayer}>
                   <Text style={styles.audioTitle}>🎵 {selectedFile.originalName}</Text>
                   <Text style={styles.audioSubtitle}>Audio file - {formatBytes(selectedFile.size)}</Text>
-                  <Text style={styles.audioNote}>
-                    Audio preview not available. File will be sent to chat.
-                  </Text>
+                  
+                  {/* Audio Controls Placeholder */}
+                  <View style={styles.audioControls}>
+                    <Text style={styles.audioNote}>
+                      Audio playback requires installing react-native-sound package.
+                    </Text>
+                    <Text style={styles.audioInstructions}>
+                      Run: npm install react-native-sound
+                    </Text>
+                  </View>
                 </View>
                 <View style={styles.captionContainer}>
                   <TextInput
@@ -515,40 +635,30 @@ export default function MediaUploadApp() {
   );
 }
 
-const VMMediaThumbnail = ({ file, onPress, onRemove }: { 
+const VMMediaThumbnail = ({ file, onPress, onRemove, tempFolderId }: { 
   file: VMMediaFile; 
   onPress: () => void;
   onRemove: () => void;
+  tempFolderId: string;
 }) => {
   const isImage = file.mimeType.startsWith("image");
   const isAudio = file.mimeType.startsWith("audio");
   const isVideo = file.mimeType.startsWith("video");
-  
-  const [imageError, setImageError] = useState(false);
 
   return (
     <View className="w-24 h-24 rounded-lg overflow-hidden justify-center items-center relative bg-gray-100">
       <TouchableOpacity className="w-full h-full" onPress={onPress}>
-        {isImage && !imageError && (
+        {isImage && (
           <Image 
             source={{ 
-              uri: `${API_URL}/api/vm-media/file/${file.url}`,
+              uri: `${API_URL}/media/chat/temp_${tempFolderId}/${file.fileName}`,
             }} 
             className="w-full h-full" 
             resizeMode="cover"
             onError={() => {
-              console.error("Thumbnail load error for:", file.url);
-              setImageError(true);
+              console.error("Thumbnail load error for:", file.fileName);
             }}
           />
-        )}
-        {(isImage && imageError) && (
-          <View className="w-full h-full bg-gray-300 justify-center items-center">
-            <Text className="text-2xl mb-1">📷</Text>
-            <Text className="text-gray-600 text-xs text-center px-1" numberOfLines={1}>
-              {file.originalName}
-            </Text>
-          </View>
         )}
         {isAudio && (
           <View className="w-full h-full bg-purple-500 justify-center items-center">
@@ -590,8 +700,28 @@ const styles = StyleSheet.create({
     padding: 20,
     paddingTop: 50,
   },
-  video: {
+  videoContainer: {
     flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  video: {
+    width: '100%',
+    height: '80%',
+  },
+  videoControls: {
+    position: 'absolute',
+    bottom: 20,
+    alignSelf: 'center',
+  },
+  playButton: {
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    padding: 15,
+    borderRadius: 25,
+  },
+  playButtonText: {
+    fontSize: 24,
+    color: 'white',
   },
 
   // Image Modal Styles
@@ -652,6 +782,49 @@ const styles = StyleSheet.create({
     color: '#888',
     textAlign: 'center',
     fontStyle: 'italic',
+  },
+  audioInstructions: {
+    fontSize: 14,
+    color: '#555',
+    textAlign: 'center',
+    marginTop: 10,
+  },
+  audioControls: {
+    flexDirection: 'column',
+    alignItems: 'center',
+    marginTop: 10,
+    width: '100%',
+    justifyContent: 'center',
+  },
+  audioPlayButton: {
+    backgroundColor: '#4CAF50',
+    padding: 10,
+    borderRadius: 20,
+  },
+  audioPlayButtonText: {
+    color: 'white',
+    fontSize: 24,
+  },
+  audioProgress: {
+    marginTop: 10,
+    width: '100%',
+    alignItems: 'center',
+  },
+  audioTime: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 5,
+  },
+  progressBar: {
+    width: '80%',
+    height: 8,
+    backgroundColor: '#e0e0e0',
+    borderRadius: 4,
+  },
+  progressFill: {
+    height: '100%',
+    borderRadius: 4,
+    backgroundColor: '#4CAF50',
   },
 
   // Common Styles

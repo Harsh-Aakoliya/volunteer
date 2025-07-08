@@ -53,12 +53,14 @@ export default function Index() {
 }
 
 
+
 // import { useEvent } from 'expo';
 // import { useVideoPlayer, VideoView } from 'expo-video';
 // import { StyleSheet, View, Button } from 'react-native';
-
+// import React from 'react';
 // const videoSource =
-// "http://34.131.199.168:8080/?filename=temp.mp4";
+// 'http://192.168.254.33:3000/media/chat/temp/5752729-uhd_3840_2160_30fps.mp4';
+//   // 'http://192.168.254.33:3000/media/chat/2025-07-08T10-16-54-504Z_61_USR001_736/88c85ea5-0434-4f8e-ac00-fff8d8314147.mp4';
 
 // export default function VideoScreen() {
 //   const player = useVideoPlayer(videoSource, player => {
@@ -72,16 +74,6 @@ export default function Index() {
 //     <View style={styles.contentContainer}>
 //       <VideoView style={styles.video} player={player} allowsFullscreen allowsPictureInPicture />
 //       <View style={styles.controlsContainer}>
-//         <Button
-//           title={isPlaying ? 'Pause' : 'Play'}
-//           onPress={() => {
-//             if (isPlaying) {
-//               player.pause();
-//             } else {
-//               player.play();
-//             }
-//           }}
-//         />
 //       </View>
 //     </View>
 //   );
@@ -103,71 +95,3 @@ export default function Index() {
 //     padding: 10,
 //   },
 // });
-
-
-
-
-// // App.tsx - Usage Example
-// // import React, { useState } from 'react';
-// // import { View, Text, SafeAreaView } from 'react-native';
-// // import DateTimePicker from '@/components/chat/DateTimePicker';
-
-// // export default function App() {
-// //   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
-// //   const [selectedTime, setSelectedTime] = useState<string | null>(null);
-
-// //   return (
-// //     <SafeAreaView className="flex-1 bg-gray-50">
-// //       <View className="flex-1 justify-center px-4">
-// //         <Text className="text-2xl font-bold text-center mb-8 text-gray-800">
-// //           Schedule Message
-// //         </Text>
-
-// //         {/* Basic Usage */}
-// //         <DateTimePicker
-// //           selectedDate={selectedDate}
-// //           setSelectedDate={setSelectedDate}
-// //           selectedTime={selectedTime}
-// //           setSelectedTime={setSelectedTime}
-// //         />
-
-// //         {/* Custom Styled Usage */}
-// //         <View className="mt-8">
-// //           <Text className="text-lg font-semibold mb-4 text-gray-700">
-// //             Custom Styled:
-// //           </Text>
-// //           <DateTimePicker
-// //             selectedDate={selectedDate}
-// //             setSelectedDate={setSelectedDate}
-// //             selectedTime={selectedTime}
-// //             setSelectedTime={setSelectedTime}
-// //             containerClassName="gap-2"
-// //             dateButtonClassName="bg-blue-50 border-blue-200 shadow-sm"
-// //             timeButtonClassName="bg-green-50 border-green-200 shadow-sm"
-// //             dateButtonTextClassName="text-blue-700 font-medium"
-// //             timeButtonTextClassName="text-green-700 font-medium"
-// //           />
-// //         </View>
-
-// //         {/* Display Selected Values */}
-// //         {(selectedDate || selectedTime) && (
-// //           <View className="mt-8 p-4 bg-white rounded-lg shadow-sm">
-// //             <Text className="text-lg font-semibold mb-2 text-gray-800">
-// //               Selected:
-// //             </Text>
-// //             {selectedDate && (
-// //               <Text className="text-gray-600">
-// //                 Date: {selectedDate.toDateString()}
-// //               </Text>
-// //             )}
-// //             {selectedTime && (
-// //               <Text className="text-gray-600">
-// //                 Time: {selectedTime}
-// //               </Text>
-// //             )}
-// //           </View>
-// //         )}
-// //       </View>
-// //     </SafeAreaView>
-// //   );
-// // }
