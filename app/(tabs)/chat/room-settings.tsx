@@ -27,6 +27,7 @@ export default function RoomSettings() {
   const [roomName, setRoomName] = useState('');
   const [roomDescription, setRoomDescription] = useState('');
   const [currentUser, setCurrentUser] = useState<any>(null);
+  const [isGroupAdmin, setIsGroupAdmin] = useState(false); // Add group admin check
 
   console.log("here in room setting page",roomId);
 // Inside your component, add this effect
@@ -67,6 +68,27 @@ const loadRoomSettings = async () => {
     setMembers(response.data.members || []);
     setRoomName(response.data.roomName || '');
     setRoomDescription(response.data.roomDescription || '');
+    
+    // Check if current user is group admin
+    const isUserGroupAdmin = response.data.members.some(
+      (member: any) => member.userId === userData?.userId && member.isAdmin
+    );
+    setIsGroupAdmin(isUserGroupAdmin);
+    
+    // If user is not group admin, redirect them back
+    if (!isUserGroupAdmin) {
+      Alert.alert(
+        'Access Denied',
+        'Only group admins can access room settings.',
+        [
+          {
+            text: 'OK',
+            onPress: () => router.back()
+          }
+        ]
+      );
+      return;
+    }
     
   } catch (error) {
     console.error('Error loading room settings:', error);
@@ -190,6 +212,27 @@ const loadRoomSettings = async () => {
     return (
       <View className="flex-1 justify-center items-center">
         <ActivityIndicator size="large" color="#0284c7" />
+      </View>
+    );
+  }
+
+  // Show access denied message if not group admin
+  if (!isGroupAdmin) {
+    return (
+      <View className="flex-1 justify-center items-center p-4">
+        <Ionicons name="lock-closed-outline" size={60} color="#d1d5db" />
+        <Text className="text-gray-500 mt-4 text-center text-lg font-semibold">
+          Access Denied
+        </Text>
+        <Text className="text-gray-400 mt-2 text-center">
+          Only group admins can access room settings
+        </Text>
+        <TouchableOpacity
+          className="mt-4 bg-blue-500 px-4 py-2 rounded-lg"
+          onPress={() => router.back()}
+        >
+          <Text className="text-white font-bold">Go Back</Text>
+        </TouchableOpacity>
       </View>
     );
   }

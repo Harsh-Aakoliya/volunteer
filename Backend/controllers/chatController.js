@@ -671,11 +671,28 @@ const chatController = {
       if(!tableId) tableId=null;
       const senderId = req.user.userId;
 
-      // const messageType="text"
-      // if(mediaFiles) messageType="media";
-      
       // Convert roomId to integer
       const roomIdInt = parseInt(roomId, 10);
+      
+      // Check if user is a group admin of this room before allowing message sending
+      const groupAdminCheck = await pool.query(
+        `SELECT "isAdmin" FROM chatroomusers 
+        WHERE "roomId" = $1 AND "userId" = $2`,
+        [roomIdInt, senderId]
+      );
+
+      if (groupAdminCheck.rows.length === 0) {
+        return res.status(403).json({ 
+          message: "You are not a member of this chat room" 
+        });
+      }
+
+      const isGroupAdmin = groupAdminCheck.rows[0].isAdmin;
+      if (!isGroupAdmin) {
+        return res.status(403).json({ 
+          message: "Only group admins can send messages in this room" 
+        });
+      }
       
       let newMessages = [];
 
@@ -926,6 +943,256 @@ const chatController = {
     } catch (error) {
       console.error('Error getting room online users:', error);
       res.status(500).json({ message: "Server error", error: error.message });
+    }
+  },
+
+  // Helper function to send room updates to all members for message deletion
+  async sendRoomUpdateToMembersForDeletion(roomId, messageObj, memberIds, io, unreadMessagesByUser) {
+    try {
+      const allConnectedSockets = await io.fetchSockets();
+      const userSocketMap = new Map();
+      
+      allConnectedSockets.forEach(socket => {
+        if (socket.data?.userId) {
+          if (!userSocketMap.has(socket.data.userId)) {
+            userSocketMap.set(socket.data.userId, []);
+          }
+          userSocketMap.get(socket.data.userId).push(socket);
+        }
+      });
+
+      memberIds.forEach(memberId => {
+        const memberSockets = userSocketMap.get(memberId) || [];
+        const unreadCount = unreadMessagesByUser[memberId]?.[roomId] || 0;
+        
+        memberSockets.forEach(memberSocket => {
+          // Send last message update
+          memberSocket.emit("lastMessage", {
+            lastMessageByRoom: {
+              [roomId]: messageObj
+            }
+          });
+
+          // Send room update with unread count
+          memberSocket.emit("roomUpdate", {
+            roomId,
+            lastMessage: messageObj,
+            unreadCount: unreadCount
+          });
+        });
+      });
+    } catch (error) {
+      console.error("Error sending room updates for deletion:", error);
+    }
+  },
+
+  // Delete messages function
+  async deleteMessages(req, res) {
+    const client = await pool.connect();
+    
+    try {
+      await client.query('BEGIN');
+      
+      const { roomId } = req.params;
+      const { messageIds } = req.body;
+      const userId = req.user.userId;
+      
+      // Convert roomId to integer
+      const roomIdInt = parseInt(roomId, 10);
+      
+      console.log('Deleting messages:', { roomId: roomIdInt, messageIds, userId });
+
+      // Check if user is a member of this room and get their admin status
+      const memberCheck = await client.query(
+        `SELECT "isAdmin" FROM chatroomusers 
+        WHERE "roomId" = $1 AND "userId" = $2`,
+        [roomIdInt, userId]
+      );
+
+      if (memberCheck.rows.length === 0) {
+        return res.status(403).json({ 
+          message: "You are not a member of this chat room" 
+        });
+      }
+
+      const isGroupAdmin = memberCheck.rows[0].isAdmin;
+
+      // Only allow group admins to delete messages
+      if (!isGroupAdmin) {
+        return res.status(403).json({
+          message: "Only group admins can delete messages in this room"
+        });
+      }
+
+      // Get the messages to validate existence
+      const messagesToDelete = await client.query(
+        `SELECT "id", "senderId", "messageText", "messageType", "createdAt" 
+        FROM chatmessages 
+        WHERE "id" = ANY($1) AND "roomId" = $2`,
+        [messageIds, roomIdInt]
+      );
+
+      if (messagesToDelete.rows.length === 0) {
+        return res.status(404).json({
+          message: "No messages found to delete"
+        });
+      }
+
+      // Group admins can delete any message in their room
+      // Note: Removed the individual message permission check since group admins should be able to delete any message
+
+      // Before deleting messages, we need to handle foreign key constraints
+      // First, delete any associated media records that reference these messages
+      console.log("Checking for associated media records...");
+      
+      // Get all media records that reference these messages
+      const associatedMediaResult = await client.query(
+        `SELECT id FROM media WHERE "messageId" = ANY($1)`,
+        [messageIds]
+      );
+      
+      const mediaIdsToDelete = associatedMediaResult.rows.map(row => row.id);
+      
+      if (mediaIdsToDelete.length > 0) {
+        console.log("Found associated media records:", mediaIdsToDelete);
+        
+        // Step 1: Break the circular foreign key dependency by setting mediaFilesId to NULL
+        // in chatmessages table first
+        console.log("Breaking foreign key references in chatmessages...");
+        await client.query(
+          `UPDATE chatmessages SET "mediaFilesId" = NULL 
+           WHERE "id" = ANY($1) AND "mediaFilesId" = ANY($2)`,
+          [messageIds, mediaIdsToDelete]
+        );
+        
+        // Step 2: Now we can safely delete the media records
+        console.log("Deleting associated media records:", mediaIdsToDelete);
+        await client.query(
+          `DELETE FROM media WHERE id = ANY($1)`,
+          [mediaIdsToDelete]
+        );
+        
+        console.log(`Deleted ${mediaIdsToDelete.length} associated media records`);
+      }
+
+      // Delete the messages
+      console.log("messageIds and roomId",messageIds,roomIdInt);
+      const deleteResult = await client.query(
+        `DELETE FROM chatmessages 
+        WHERE "id" = ANY($1) AND "roomId" = $2
+        RETURNING *`,
+        [messageIds, roomIdInt]
+      );
+
+      const deletedMessages = deleteResult.rows;
+      console.log('Deleted messages:', deletedMessages.length);
+
+      // Get the io instance and other app data
+      const io = req.app.get('io');
+      const lastMessageByRoom = req.app.get('lastMessageByRoom');
+      const unreadMessagesByUser = req.app.get('unreadMessagesByUser');
+
+      // Check if we deleted the last message for this room
+      let needToUpdateLastMessage = false;
+      const currentLastMessage = lastMessageByRoom[roomIdInt];
+      
+      if (currentLastMessage && messageIds.includes(currentLastMessage.id)) {
+        needToUpdateLastMessage = true;
+      }
+
+      // Get new last message if needed
+      let newLastMessage = null;
+      if (needToUpdateLastMessage) {
+        const newLastMessageResult = await client.query(
+          `SELECT m.*, u."fullName" as "senderName" 
+          FROM chatmessages m 
+          JOIN "users" u ON m."senderId" = u."userId"
+          WHERE m."roomId" = $1 
+          ORDER BY m."createdAt" DESC 
+          LIMIT 1`,
+          [roomIdInt]
+        );
+
+        if (newLastMessageResult.rows.length > 0) {
+          const lastMsg = newLastMessageResult.rows[0];
+          newLastMessage = {
+            id: lastMsg.id,
+            messageText: lastMsg.messageText,
+            messageType: lastMsg.messageType || 'text',
+            createdAt: lastMsg.createdAt,
+            sender: {
+              userId: lastMsg.senderId,
+              userName: lastMsg.senderName || 'Unknown'
+            },
+            mediaFilesId: lastMsg.mediaFilesId || null,
+            pollId: lastMsg.pollId || null,
+            tableId: lastMsg.tableId || null,
+            roomId: roomIdInt.toString()
+          };
+          
+          // Update last message cache
+          lastMessageByRoom[roomIdInt] = newLastMessage;
+        } else {
+          // No messages left in room
+          delete lastMessageByRoom[roomIdInt];
+        }
+      }
+
+      // Get all members of the room for unread count updates
+      const membersResult = await client.query(
+        `SELECT "userId" FROM chatroomusers WHERE "roomId" = $1`,
+        [roomIdInt]
+      );
+      
+      const memberIds = membersResult.rows.map(row => row.userId);
+
+      // Update unread counts by decreasing count for deleted messages
+      memberIds.forEach((memberId) => {
+        if (unreadMessagesByUser[memberId] && unreadMessagesByUser[memberId][roomIdInt]) {
+          // Count how many deleted messages were unread for this user
+          let unreadDeletedCount = 0;
+          deletedMessages.forEach(deletedMsg => {
+            // If message was sent by someone else, it was potentially unread
+            if (deletedMsg.senderId !== memberId) {
+              unreadDeletedCount++;
+            }
+          });
+          
+          // Decrease unread count, but don't go below 0
+          const currentUnread = unreadMessagesByUser[memberId][roomIdInt];
+          unreadMessagesByUser[memberId][roomIdInt] = Math.max(0, currentUnread - unreadDeletedCount);
+        }
+      });
+
+      await client.query('COMMIT');
+
+      // Emit deletion events to all users in the room
+      if (io) {
+        // Emit message deletion to all users in the room
+        io.to(`room-${roomIdInt}`).emit('messagesDeleted', {
+          roomId: roomIdInt.toString(),
+          messageIds: messageIds,
+          deletedBy: userId
+        });
+
+        // If last message was updated, emit updates to all room members
+        if (needToUpdateLastMessage) {
+          await chatController.sendRoomUpdateToMembersForDeletion(roomIdInt, newLastMessage, memberIds, io, unreadMessagesByUser);
+        }
+      }
+
+      res.json({
+        message: "Messages deleted successfully",
+        deletedCount: deletedMessages.length,
+        newLastMessage: newLastMessage
+      });
+
+    } catch (error) {
+      await client.query('ROLLBACK');
+      console.error('Error deleting messages:', error);
+      res.status(500).json({ message: "Server error", error: error.message });
+    } finally {
+      client.release();
     }
   }
 };

@@ -25,7 +25,7 @@
 
 
 //normal env
-export const API_URL = 'http://192.168.254.33:3000'; 
+export const API_URL = 'http://192.168.117.33:3000'; 
 
 export const SOCKET_URL = API_URL; // Socket.IO connects to the same server
 

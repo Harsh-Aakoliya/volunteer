@@ -69,6 +69,12 @@ interface RoomUpdateEvent {
   unreadCount: number;
 }
 
+interface MessagesDeletedEvent {
+  roomId: string;
+  messageIds: (string | number)[];
+  deletedBy: string;
+}
+
 class SocketService {
   socket: Socket | null = null;
 
@@ -206,6 +212,13 @@ class SocketService {
     }
   }
 
+  // Listen for messages deleted events
+  onMessagesDeleted(callback: (data: MessagesDeletedEvent) => void): void {
+    if (this.socket) {
+      this.socket.on("messagesDeleted", callback);
+    }
+  }
+
   // Remove event listeners
   removeListeners(): void {
     if (this.socket) {
@@ -215,6 +228,7 @@ class SocketService {
       this.socket.off("lastMessage");
       this.socket.off("unreadCounts");
       this.socket.off("roomUpdate");
+      this.socket.off("messagesDeleted");
     }
   }
 

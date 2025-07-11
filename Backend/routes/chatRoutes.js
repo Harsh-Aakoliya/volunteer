@@ -28,6 +28,7 @@ router.delete('/rooms/:roomId/members/:memberId', chatController.removeRoomMembe
 
 // Room messages
 router.post('/rooms/:roomId/messages', chatController.sendMessage);
+router.delete('/rooms/:roomId/messages', chatController.deleteMessages);
 
 // Room online users
 router.get('/rooms/:roomId/online-users', chatController.getRoomOnlineUsers);

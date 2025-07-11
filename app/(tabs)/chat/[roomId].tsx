@@ -11,6 +11,8 @@ import {
   Platform,
   SafeAreaView,
   AppState,
+  Pressable,
+  BackHandler,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, router, useNavigation } from "expo-router";
@@ -27,6 +29,8 @@ import RenderPoll from "@/components/chat/Attechments/RenderPoll";
 import RenderDriveFiles from "@/components/chat/RenderDriveFiles";
 import RenderTable from "@/components/chat/Attechments/RenderTable";
 import MediaViewerModal from "@/components/chat/MediaViewerModal";
+import ChatMessageOptions from "@/components/chat/ChatMessageOptions";
+import ForwardMessagesModal from "@/components/chat/ForwardMessagesModal";
 
 interface RoomDetails extends ChatRoom {
   members: ChatUser[];
@@ -40,7 +44,7 @@ export default function ChatRoomScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [messageText, setMessageText] = useState("");
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [isGroupAdmin, setIsGroupAdmin] = useState(false); // Changed from isAdmin to isGroupAdmin for clarity
   const [onlineUsers, setOnlineUsers] = useState<string[]>([]);
   const [currentUser, setCurrentUser] = useState<{
     userId: string;
@@ -49,6 +53,12 @@ export default function ChatRoomScreen() {
   const [showMembersModal, setShowMembersModal] = useState(false);
   const [roomMembers, setRoomMembers] = useState<ChatUser[]>([]);
   const [appState, setAppState] = useState(AppState.currentState);
+
+  // Message selection state
+  const [selectedMessages, setSelectedMessages] = useState<Message[]>([]);
+
+  // Forward modal state
+  const [showForwardModal, setShowForwardModal] = useState(false);
 
   const [showPollModel, setShowPollModel]=useState(false);
   const [pollId,setPollId]=useState<number |null>(null);
@@ -98,6 +108,20 @@ export default function ChatRoomScreen() {
   useEffect(() => {
     socketService.connect();
   }, []);
+
+  // Handle Android back button when messages are selected
+  useEffect(() => {
+    const onBackPress = () => {
+      if (selectedMessages.length > 0) {
+        clearSelection();
+        return true; // Prevent default back action
+      }
+      return false; // Allow default back action
+    };
+
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+    return () => backHandler.remove();
+  }, [selectedMessages]);
 
   // Join room and set up socket event listeners
   useEffect(() => {
@@ -167,6 +191,16 @@ export default function ChatRoomScreen() {
         }
       });
 
+      // Listen for message deletions
+      socketService.onMessagesDeleted((data) => {
+        if (data.roomId === roomId) {
+          console.log("Messages deleted:", data);
+          
+          // Remove deleted messages from the list
+          setMessages((prev) => prev.filter(msg => !data.messageIds.includes(msg.id)));
+        }
+      });
+
       return () => {
         // Leave the room when component unmounts
         socketService.leaveRoom(roomId as string, currentUser.userId);
@@ -180,7 +214,8 @@ export default function ChatRoomScreen() {
         loadRoomDetails();
       }
       return () => {
-        // Optional cleanup
+        // Clear message selection when navigating away
+        setSelectedMessages([]);
       };
     }, [roomId])
   );
@@ -191,7 +226,7 @@ export default function ChatRoomScreen() {
       navigation.setOptions({
         title: room.roomName,
         headerRight: () =>
-          isAdmin ? (
+          isGroupAdmin ? ( // Only show room settings icon if user is group admin
             <TouchableOpacity
               onPressIn={() => {
                 console.log("Navigating to room settings with roomId:", roomId);
@@ -214,7 +249,7 @@ export default function ChatRoomScreen() {
           ),
       });
     }
-  }, [room, isAdmin, navigation]);
+  }, [room, isGroupAdmin, navigation]); // Changed isAdmin to isGroupAdmin
 
   const loadRoomDetails = async () => {
     try {
@@ -238,12 +273,12 @@ export default function ChatRoomScreen() {
       setRoom(response.data);
       setMessages(response.data.messages || []);
 
-      // Check if current user is admin of this room
-      const isUserAdmin = response.data.members.some(
+      // Check if current user is admin of this room (group admin)
+      const isUserGroupAdmin = response.data.members.some(
         (member: ChatUser) =>
           member.userId === userData?.userId && member.isAdmin
       );
-      setIsAdmin(isUserAdmin);
+      setIsGroupAdmin(isUserGroupAdmin); // This is specifically for group admin status
 
       // Initialize room members with online status
       const initialMembers = response.data.members.map((member: ChatUser) => ({
@@ -275,6 +310,12 @@ export default function ChatRoomScreen() {
     pollId?: number,
     tableId?: number
   ) => {
+    // Only allow group admins to send messages
+    if (!isGroupAdmin) {
+      alert("Only group admins can send messages in this room.");
+      return;
+    }
+
     if ((!text.trim() && (!mediaFilesId || !pollId || !tableId)) || !roomId || !currentUser || sending) return;
 
     // Trimmed message text
@@ -369,9 +410,142 @@ export default function ChatRoomScreen() {
     setShowMediaViewer(true);
   };
 
+  // Message selection helper functions
+  const isMessageSelected = (messageId: string | number) => {
+    return selectedMessages.some(msg => msg.id === messageId);
+  };
+
+  const handleMessageLongPress = (message: Message) => {
+    // Only allow group admins to select messages
+    if (!isGroupAdmin) {
+      return; // Don't allow message selection for non-group admins
+    }
+
+    if (selectedMessages.length === 0) {
+      // First message selection
+      setSelectedMessages([message]);
+    } else {
+      // Add to existing selection
+      if (!isMessageSelected(message.id)) {
+        setSelectedMessages(prev => [...prev, message]);
+      }
+    }
+  };
+
+  const handleMessagePress = (message: Message) => {
+    // Only allow group admins to interact with message selection
+    if (!isGroupAdmin) {
+      return; // Don't allow message interaction for non-group admins
+    }
+
+    if (selectedMessages.length > 0) {
+      // If in selection mode, toggle selection
+      if (isMessageSelected(message.id)) {
+        setSelectedMessages(prev => prev.filter(msg => msg.id !== message.id));
+      } else {
+        setSelectedMessages(prev => [...prev, message]);
+      }
+    }
+  };
+
+  const clearSelection = () => {
+    setSelectedMessages([]);
+  };
+
+  // Forward messages with delay and progress tracking
+  const handleForwardMessages = async (selectedRooms: ChatRoom[], messagesToForward: Message[]) => {
+    const totalOperations = selectedRooms.length * messagesToForward.length;
+    let completedOperations = 0;
+
+    console.log(`Starting to forward ${messagesToForward.length} messages to ${selectedRooms.length} rooms`);
+
+    // Process each room and message combination with delay
+    for (const room of selectedRooms) {
+      if (!room.roomId) continue;
+
+      for (const message of messagesToForward) {
+        try {
+          completedOperations++;
+          console.log(`Forwarding message ${completedOperations}/${totalOperations} to room ${room.roomName}`);
+
+          // Send message to specific room using API directly
+          const token = await AuthStorage.getToken();
+          const response = await axios.post(
+            `${API_URL}/api/chat/rooms/${room.roomId}/messages`,
+            { 
+              messageText: message.messageText || "",
+              mediaFilesId: message.mediaFilesId,
+              pollId: message.pollId,
+              messageType: message.messageType,
+              tableId: message.tableId
+            },
+            { headers: { Authorization: `Bearer ${token}` } }
+          );
+
+          // Get the created message from response
+          const createdMessage = response.data;
+
+          // Manually trigger socket sendMessage event to ensure unread counts and room updates work
+          // This mimics what happens in regular messaging
+          if (currentUser && createdMessage) {
+            socketService.sendMessage(room.roomId.toString(), {
+              id: createdMessage.id,
+              roomId: room.roomId,
+              senderId: currentUser.userId,
+              senderName: currentUser.fullName || "You",
+              messageText: message.messageText || "",
+              messageType: message.messageType,
+              createdAt: createdMessage.createdAt,
+              mediaFilesId: message.mediaFilesId,
+              pollId: message.pollId,
+              tableId: message.tableId
+            }, {
+              userId: currentUser.userId,
+              userName: currentUser.fullName || "Anonymous",
+            });
+          }
+
+          // Add delay between messages to prevent socket issues (1 second as requested)
+          if (completedOperations < totalOperations) {
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          }
+
+        } catch (error) {
+          console.error(`Error forwarding message to room ${room.roomName}:`, error);
+          throw error; // Re-throw to let the modal handle the error
+        }
+      }
+    }
+
+    console.log('All messages forwarded successfully');
+    
+    // Clear selection and close forward modal
+    clearSelection();
+    setShowForwardModal(false);
+  };
+
+  // Delete messages functionality
+  const handleDeleteMessages = async (messageIds: (string | number)[]) => {
+    try {
+      console.log(`Deleting ${messageIds.length} messages`);
+      
+      const token = await AuthStorage.getToken();
+      await axios.delete(`${API_URL}/api/chat/rooms/${roomId}/messages`, {
+        headers: { Authorization: `Bearer ${token}` },
+        data: { messageIds }
+      });
+
+      console.log('Messages deleted successfully');
+    } catch (error) {
+      console.error('Error deleting messages:', error);
+      throw error; // Re-throw to let the component handle the error
+    }
+  };
+
   // Render message function to support media files
   const renderMessage = ({ item }: { item: Message }) => {
     const isOwnMessage = item.senderId === currentUser?.userId;
+    const isSelected = isMessageSelected(item.id);
 
     // Determine message status
     let messageStatus: "sending" | "sent" | "delivered" | "read" | "error" =
@@ -386,95 +560,118 @@ export default function ChatRoomScreen() {
     }
 
     return (
-      <View
-        className={`p-2 max-w-[80%] rounded-lg my-1 ${
-          isOwnMessage ? "bg-blue-500 self-end" : "bg-gray-200 self-start"
-        }`}
-      >
-        {!isOwnMessage && (
-          <Text className="text-xs font-bold text-gray-600">
-            {item.senderName || "Unknown"}
-          </Text>
-        )}
-        
-        {item.messageText && (
-          <Text className={isOwnMessage ? "text-white" : "text-black"}>
-            {item.messageText}
-          </Text>
-        )}
-        
-        {/* Render media files if present */}
-        {item.mediaFilesId ? (
-          <TouchableOpacity 
-            onPress={() => item.mediaFilesId && openMediaViewer(item.mediaFilesId)}
-            className="bg-blue-100 p-2 rounded-lg mt-1"
-          >
-            <Text className="text-blue-700 font-semibold">📁 Media Files</Text>
-            <Text className="text-blue-600 text-xs">Tap to view media</Text>
-          </TouchableOpacity>
-        ) : null}
-
-        {/* Render table if present */}
-        {item.tableId ? (
-          <TouchableOpacity 
-            onPress={() => {
-              if (typeof item.tableId === 'number') {
-                setTableId(item.tableId);
-                setShowTableModel(true);
-              }
-            }}>
-            <Text>Show table</Text>
-          </TouchableOpacity>
-        ) : null}
-
-        {showTableModle && tableId !== null && currentUser?.userId && (
-          <RenderTable 
-            tableId={tableId}
-            visible={showTableModle}
-            setShowTable={setShowTableModel}
-          />
-        )}
-
-        {/* Render poll if present */}
-        {item.pollId ? (
-          <TouchableOpacity
-            onPress={() => {
-              if (typeof item.pollId === 'number') {
-                setPollId(item.pollId);
-                setShowPollModel(true);
-              }
-            }}
-          >
-            <Text>Vote Now</Text>
-          </TouchableOpacity>
-        ) : null}
-
-        {showPollModel && pollId !== null && currentUser?.userId && (
-          <RenderPoll
-            pollid={pollId} 
-            setShowPollModel={setShowPollModel} 
-            currentUserId={currentUser?.userId}
-            totalMembers={roomMembers.length}
-            visible={showPollModel}
-          />
-        )}
-
-        <View className="flex-row justify-between items-center mt-1">
-          <Text
-            className={`text-xs ${
-              isOwnMessage ? "text-blue-100" : "text-gray-500"
-            }`}
-          >
-            {new Date(item.createdAt).toLocaleTimeString([], {
-              hour: "2-digit",
-              minute: "2-digit",
-            })}
-          </Text>
-          {isOwnMessage && (
-            <MessageStatus status={messageStatus} className="ml-1" />
+      <View className="relative">
+        <Pressable
+          onPress={() => handleMessagePress(item)}
+          onLongPress={() => handleMessageLongPress(item)}
+          delayLongPress={300}
+          className="relative"
+        >
+          {/* Selection overlay - covers full width */}
+          {isSelected && (
+            <View 
+              className="absolute top-0 bottom-0 left-0 right-0 bg-black"
+              style={{ 
+                backgroundColor: 'rgba(0, 0, 0, 0.15)',
+                marginLeft: -16,
+                marginRight: -16,
+                zIndex: 1
+              }}
+            />
           )}
+          
+          <View
+            className={`p-2 max-w-[80%] rounded-lg my-1 relative ${
+              isOwnMessage ? "bg-blue-500 self-end" : "bg-gray-200 self-start"
+            }`}
+            style={{ zIndex: 2 }}
+          >
+          {!isOwnMessage && (
+            <Text className="text-xs font-bold text-gray-600">
+              {item.senderName || "Unknown"}
+            </Text>
+          )}
+          
+          {item.messageText && (
+            <Text className={isOwnMessage ? "text-white" : "text-black"}>
+              {item.messageText}
+            </Text>
+          )}
+          
+          {/* Render media files if present */}
+          {item.mediaFilesId ? (
+            <TouchableOpacity 
+              onPress={() => item.mediaFilesId && openMediaViewer(item.mediaFilesId)}
+              className="bg-blue-100 p-2 rounded-lg mt-1"
+            >
+              <Text className="text-blue-700 font-semibold">📁 Media Files</Text>
+              <Text className="text-blue-600 text-xs">Tap to view media</Text>
+            </TouchableOpacity>
+          ) : null}
+
+          {/* Render table if present */}
+          {item.tableId ? (
+            <TouchableOpacity 
+              onPress={() => {
+                if (typeof item.tableId === 'number') {
+                  setTableId(item.tableId);
+                  setShowTableModel(true);
+                }
+              }}>
+              <Text>Show table</Text>
+            </TouchableOpacity>
+          ) : null}
+
+          {showTableModle && tableId !== null && currentUser?.userId && (
+            <RenderTable 
+              tableId={tableId}
+              visible={showTableModle}
+              setShowTable={setShowTableModel}
+            />
+          )}
+
+          {/* Render poll if present */}
+          {item.pollId ? (
+            <TouchableOpacity
+              onPress={() => {
+                if (typeof item.pollId === 'number') {
+                  setPollId(item.pollId);
+                  setShowPollModel(true);
+                }
+              }}
+            >
+              <Text>Vote Now</Text>
+            </TouchableOpacity>
+          ) : null}
+
+          {showPollModel && pollId !== null && currentUser?.userId && (
+            <RenderPoll
+              pollid={pollId} 
+              setShowPollModel={setShowPollModel} 
+              currentUserId={currentUser?.userId}
+              totalMembers={roomMembers.length}
+              visible={showPollModel}
+            />
+          )}
+
+          <View className="flex-row justify-between items-center mt-1">
+            <Text
+              className={`text-xs ${
+                isOwnMessage ? "text-blue-100" : "text-gray-500"
+              }`}
+            >
+              {new Date(item.createdAt).toLocaleTimeString([], {
+                hour: "2-digit",
+                minute: "2-digit",
+              })}
+            </Text>
+            {isOwnMessage && (
+              <MessageStatus status={messageStatus} className="ml-1" />
+            )}
+          </View>
         </View>
-      </View>
+      </Pressable>
+    </View>
     );
   };
 
@@ -510,12 +707,23 @@ export default function ChatRoomScreen() {
         className="flex-1"
         keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
       >
-        {/* Online users indicator - Now clickable */}
-        <OnlineUsersIndicator
-          onlineCount={onlineUsers.length}
-          totalCount={roomMembers.length}
-          onPress={() => setShowMembersModal(true)}
-        />
+        {/* Conditional header: Show ChatMessageOptions when messages are selected AND user is group admin */}
+        {selectedMessages.length > 0 && isGroupAdmin ? (
+          <ChatMessageOptions
+            selectedMessages={selectedMessages}
+            setSelectedMessages={setSelectedMessages}
+            isAdmin={isGroupAdmin} // Pass group admin status
+            onClose={clearSelection}
+            onForwardPress={() => setShowForwardModal(true)}
+            onDeletePress={handleDeleteMessages}
+          />
+        ) : (
+          <OnlineUsersIndicator
+            onlineCount={onlineUsers.length}
+            totalCount={roomMembers.length}
+            onPress={() => setShowMembersModal(true)}
+          />
+        )}
 
         {/* Messages list */}
         <FlatList
@@ -523,60 +731,71 @@ export default function ChatRoomScreen() {
           data={messages}
           keyExtractor={(item) => item.id.toString()}
           renderItem={renderMessage}
-          contentContainerStyle={{ padding: 10 }}
+          contentContainerStyle={{ paddingVertical: 10, paddingHorizontal: 16 }}
           onLayout={() => flatListRef.current?.scrollToEnd({ animated: false })}
           ListEmptyComponent={
             <View className="flex-1 justify-center items-center p-4 mt-10">
               <Ionicons name="chatbubble-outline" size={60} color="#d1d5db" />
               <Text className="text-gray-500 mt-4 text-center">
-                No messages yet. Be the first to send a message!
+                No messages yet. {isGroupAdmin ? "Be the first to send a message!" : "Only group admins can send messages in this room."}
               </Text>
             </View>
           }
         />
 
-        {/* Optional Grid */}
-        <View className="p-2 border-t border-gray-200 bg-white">
-          <View className="flex-row items-center">
-            <TouchableOpacity
-              className="p-2"
-              onPress={() => router.push({
-                pathname: "/chat/Attechments-grid",
-                params: { 
-                  roomId, 
-                  userId: currentUser?.userId
-                }
-              })}
-            >
-              <Ionicons name="add-circle" size={24} />
-            </TouchableOpacity>
-            
-            {/* Input Bar */}
-            <TextInput
-              className="flex-1 bg-gray-100 rounded-full px-4 py-2 mr-2"
-              placeholder="Type a message..."
-              value={messageText}
-              onChangeText={setMessageText}
-              multiline={true}
-            />
-            
-            <TouchableOpacity
-              className={`rounded-full p-2 ${
-                messageText.trim() && !sending
-                  ? "bg-blue-500"
-                  : "bg-gray-300"
-              }`}
-              onPress={() => sendMessage(messageText, "text")}
-              disabled={!messageText.trim() || sending}
-            >
-              {sending ? (
-                <ActivityIndicator size="small" color="white" />
-              ) : (
-                <Ionicons name="send" size={24} color="white" />
-              )}
-            </TouchableOpacity>
+        {/* Message input - Only show for group admins */}
+        {isGroupAdmin && (
+          <View className="p-2 border-t border-gray-200 bg-white">
+            <View className="flex-row items-center">
+              <TouchableOpacity
+                className="p-2"
+                onPress={() => router.push({
+                  pathname: "/chat/Attechments-grid",
+                  params: { 
+                    roomId, 
+                    userId: currentUser?.userId
+                  }
+                })}
+              >
+                <Ionicons name="add-circle" size={24} />
+              </TouchableOpacity>
+              
+              {/* Input Bar */}
+              <TextInput
+                className="flex-1 bg-gray-100 rounded-full px-4 py-2 mr-2"
+                placeholder="Type a message..."
+                value={messageText}
+                onChangeText={setMessageText}
+                multiline={true}
+              />
+              
+              <TouchableOpacity
+                className={`rounded-full p-2 ${
+                  messageText.trim() && !sending
+                    ? "bg-blue-500"
+                    : "bg-gray-300"
+                }`}
+                onPress={() => sendMessage(messageText, "text")}
+                disabled={!messageText.trim() || sending}
+              >
+                {sending ? (
+                  <ActivityIndicator size="small" color="white" />
+                ) : (
+                  <Ionicons name="send" size={24} color="white" />
+                )}
+              </TouchableOpacity>
+            </View>
           </View>
-        </View>
+        )}
+
+        {/* Non-admin message - Show for non-group admins */}
+        {!isGroupAdmin && (
+          <View className="p-4 border-t border-gray-200 bg-gray-50">
+            <Text className="text-center text-gray-600 text-sm">
+              Only group admins can send messages in this room
+            </Text>
+          </View>
+        )}
 
         {/* Members Modal to show who are currently online in this room */}
         <MembersModal
@@ -600,6 +819,17 @@ export default function ChatRoomScreen() {
               setSelectedMediaId(null);
             }}
             mediaId={selectedMediaId}
+          />
+        )}
+
+        {/* Forward Messages Modal - Only show for group admins */}
+        {isGroupAdmin && (
+          <ForwardMessagesModal
+            visible={showForwardModal}
+            onClose={() => setShowForwardModal(false)}
+            selectedMessages={selectedMessages}
+            currentRoomId={roomId as string}
+            onForward={handleForwardMessages}
           />
         )}
       </KeyboardAvoidingView>

@@ -8,18 +8,23 @@ import {
 } from "react-native";
 import { Message } from "@/types/type";
 import { Ionicons } from '@expo/vector-icons';
+
 type ChatMessageOptionProps = {
     selectedMessages: Message[];
     setSelectedMessages:any;
-    isAdmin?: boolean;
+    isAdmin?: boolean; // This represents group admin status (admin of the specific chat room)
     onClose: () => void;
+    onForwardPress: () => void;
+    onDeletePress: (messageIds: (string | number)[]) => Promise<void>;
 }
 
 const ChatMessageOptions: React.FC<ChatMessageOptionProps> = ({ 
     selectedMessages,
     setSelectedMessages,
-    isAdmin = false,
-    onClose = ()=>console.log("closed calling")
+    isAdmin = false, // Group admin status - defaults to false for safety
+    onClose = ()=>console.log("closed calling"),
+    onForwardPress,
+    onDeletePress
 }) => {
     const [showPinOptions, setShowPinOptions] = useState(false);
     const selectedCount = selectedMessages.length;
@@ -27,6 +32,11 @@ const ChatMessageOptions: React.FC<ChatMessageOptionProps> = ({
     const selectedMessage = isSingleSelection ? selectedMessages[0] : null;
     const isTextMessage = selectedMessage?.messageType === 'text';
     const hasMessageText = selectedMessage?.messageText && selectedMessage.messageText.trim() !== '';
+
+    // Only show this component if user is a group admin
+    if (!isAdmin) {
+        return null;
+    }
 
     // Pin functionality
     const handlePin = (type: 'self' | 'others') => {
@@ -38,11 +48,33 @@ const ChatMessageOptions: React.FC<ChatMessageOptionProps> = ({
     };
 
     // Delete functionality
-    const handleDelete = () => {
-        console.log(`Deleting ${selectedCount} messages`);
-        // TODO: Implement delete API call
-        Alert.alert('Success', `${selectedCount} message${selectedCount > 1 ? 's' : ''} deleted`);
-        onClose();
+    const handleDelete = async () => {
+        const messageIds = selectedMessages.map(msg => msg.id);
+        console.log("messageIds",messageIds);
+        Alert.alert(
+            'Delete Messages',
+            `Are you sure you want to delete ${selectedCount} message${selectedCount > 1 ? 's' : ''}? This action cannot be undone.`,
+            [
+                {
+                    text: 'Cancel',
+                    style: 'cancel'
+                },
+                {
+                    text: 'Delete',
+                    style: 'destructive',
+                    onPress: async () => {
+                        try {
+                            console.log("deleting messages",messageIds);
+                            await onDeletePress(messageIds);
+                            onClose();
+                        } catch (error) {
+                            console.error('Error deleting messages:', error);
+                            Alert.alert('Error', 'Failed to delete messages. Please try again.');
+                        }
+                    }
+                }
+            ]
+        );
     };
 
     // Edit functionality
@@ -67,9 +99,7 @@ const ChatMessageOptions: React.FC<ChatMessageOptionProps> = ({
     // Forward functionality
     const handleForward = () => {
         console.log(`Forwarding ${selectedCount} messages`);
-        // TODO: Implement forward functionality - show contacts/groups list
-        Alert.alert('Forward', 'Forward functionality to be implemented');
-        onClose();
+        onForwardPress();
     };
 
     // Reply functionality
@@ -124,7 +154,7 @@ const ChatMessageOptions: React.FC<ChatMessageOptionProps> = ({
                             <Ionicons name="bookmark-outline" size={20} color="#1F2937" />
                         </TouchableOpacity>
 
-                        {/* Delete */}
+                        {/* Delete - Group admins can delete any message */}
                         <TouchableOpacity onPress={handleDelete} className="p-1">
                             <Ionicons name="trash-outline" size={20} color="#DC2626" />
                         </TouchableOpacity>
