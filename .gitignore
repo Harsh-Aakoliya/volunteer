@@ -1,17 +1,13 @@
-# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
-
-# dependencies
+# Dependencies
 node_modules/
-Backend/node_modules/
-Backend/apkdistribution
-android/
-ios/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
 # Expo
 .expo/
 dist/
 web-build/
-expo-env.d.ts
 
 # Native
 *.orig.*
@@ -24,7 +20,7 @@ expo-env.d.ts
 # Metro
 .metro-health-check*
 
-# debug
+# Debug
 npm-debug.*
 yarn-debug.*
 yarn-error.*
@@ -39,9 +35,71 @@ yarn-error.*
 # typescript
 *.tsbuildinfo
 
-app-example
+# Backend files
+Backend/
+demo/
+management/
+VM file media upload demo/
 
+# Large files
+*.dll
+*.exe
+*.aar
+*.so
+*.dylib
+*.framework
+*.bundle
+*.xcframework
+*.map
+*.d.ts
+*.tsbuildinfo
 
-Backend/api_keys
-Backend/media
-google-services.json
+# Test files
+*.test.js
+*.test.ts
+*.spec.js
+*.spec.ts
+__tests__/
+__mocks__/
+coverage/
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
+# OS files
+Thumbs.db
+*.swp
+*.swo
+
+# Large media files
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.flv
+*.wmv
+*.webm
+*.m4v
+*.mp3
+*.wav
+*.flac
+*.aac
+*.ogg
+*.wma
+*.m4a
+*.psd
+*.ai
+*.eps
+*.tiff
+*.bmp
+
+# APK files
+*.apk
+*.aab
+*.ipa

@@ -81,7 +81,10 @@ export const fetchChatRooms = async (): Promise<ChatRoom[]> => {
       roomDescription: room.roomDescription,
       isGroup: room.isGroup,
       createdBy: room.createdBy,
-      createdOn: room.createdOn
+      createdOn: room.createdOn,
+      // Include user permissions if available
+      isAdmin: room.isAdmin || false,
+      canSendMessage: room.canSendMessage || false
     }));
   } catch (error) {
     console.error("Error fetching chat rooms:", error);

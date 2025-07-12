@@ -29,6 +29,15 @@ interface ForwardProgress {
   status: 'pending' | 'sending' | 'completed' | 'error';
 }
 
+/**
+ * ForwardMessagesModal Component
+ * 
+ * This component shows all available chat rooms but only allows forwarding to rooms where:
+ * 1. The user is a group admin (canSendMessage = true)
+ * 2. It's not the current room (where the message is from)
+ * 
+ * Rooms that don't meet these criteria are shown but blurred/disabled with explanatory text.
+ */
 const ForwardMessagesModal: React.FC<ForwardMessagesModalProps> = ({
   visible,
   onClose,
@@ -56,12 +65,20 @@ const ForwardMessagesModal: React.FC<ForwardMessagesModalProps> = ({
       setIsLoading(true);
       const allRooms = await fetchChatRooms();
       
-      // Filter out current room
-      const availableRooms = allRooms.filter(
-        room => room.roomId?.toString() !== currentRoomId
-      );
+      // Show all rooms but mark which ones are available for forwarding
+      // A room is available if:
+      // 1. It's not the current room (where the message is from)
+      // 2. User is a group admin in that room (canSendMessage is true)
+      const roomsWithAvailability = allRooms.map(room => {
+        const isAvailable = room.roomId?.toString() !== currentRoomId && room.canSendMessage === true;
+        
+        return {
+          ...room,
+          isAvailableForForwarding: isAvailable
+        };
+      });
       
-      setRooms(availableRooms);
+      setRooms(roomsWithAvailability);
     } catch (error) {
       console.error('Error loading rooms:', error);
       Alert.alert('Error', 'Failed to load chat rooms');
@@ -71,6 +88,13 @@ const ForwardMessagesModal: React.FC<ForwardMessagesModalProps> = ({
   };
 
   const toggleRoomSelection = (roomId: number) => {
+    const room = rooms.find(r => r.roomId === roomId);
+    
+    // Only allow selection if the room is available for forwarding
+    if (!room?.isAvailableForForwarding) {
+      return;
+    }
+    
     const newSelection = new Set(selectedRooms);
     if (newSelection.has(roomId)) {
       newSelection.delete(roomId);
@@ -103,9 +127,17 @@ const ForwardMessagesModal: React.FC<ForwardMessagesModalProps> = ({
     setForwardProgress(progressData);
 
     try {
+      // Only forward to rooms that are available for forwarding
       const selectedRoomObjects = rooms.filter(room => 
-        room.roomId && selectedRooms.has(room.roomId)
+        room.roomId && 
+        selectedRooms.has(room.roomId) && 
+        room.isAvailableForForwarding
       );
+      
+      if (selectedRoomObjects.length === 0) {
+        Alert.alert('No Valid Rooms', 'No valid rooms selected for forwarding.');
+        return;
+      }
       
       await onForward(selectedRoomObjects, selectedMessages);
       
@@ -142,30 +174,47 @@ const ForwardMessagesModal: React.FC<ForwardMessagesModalProps> = ({
 
   const renderRoomItem = ({ item }: { item: ChatRoom }) => {
     const isSelected = item.roomId ? selectedRooms.has(item.roomId) : false;
+    const isAvailable = item.isAvailableForForwarding;
+    const isCurrentRoom = item.roomId?.toString() === currentRoomId;
     
     return (
       <TouchableOpacity
         className={`p-4 border-b border-gray-200 flex-row items-center ${
-          isSelected ? 'bg-blue-50' : 'bg-white'
-        }`}
+          isSelected ? 'bg-blue-50' : isAvailable ? 'bg-white' : 'bg-gray-50'
+        } ${!isAvailable ? 'opacity-60' : ''}`}
         onPress={() => item.roomId && toggleRoomSelection(item.roomId)}
-        disabled={isForwarding}
+        disabled={isForwarding || !isAvailable}
       >
-        <View className="w-12 h-12 bg-blue-100 rounded-full justify-center items-center mr-3">
+        <View className={`w-12 h-12 rounded-full justify-center items-center mr-3 ${
+          isAvailable ? 'bg-blue-100' : 'bg-gray-100'
+        }`}>
           <Ionicons
             name={item.isGroup ? "people" : "person"}
             size={24}
-            color="#0284c7"
+            color={isAvailable ? "#0284c7" : "#9ca3af"}
           />
         </View>
         
         <View className="flex-1">
-          <Text className="text-lg font-semibold text-gray-800">
+          <Text className={`text-lg font-semibold ${
+            isAvailable ? 'text-gray-800' : 'text-gray-500'
+          }`}>
             {item.roomName}
+            {isCurrentRoom && (
+              <Text className="text-sm text-gray-400 ml-2">(Current Room)</Text>
+            )}
+            {!isAvailable && !isCurrentRoom && (
+              <Text className="text-sm text-red-500 ml-2 font-medium">(No Send Permission)</Text>
+            )}
           </Text>
           {item.roomDescription && (
-            <Text className="text-sm text-gray-500 mt-1" numberOfLines={1}>
+            <Text className={`text-sm mt-1 ${isAvailable ? 'text-gray-500' : 'text-gray-400'}`} numberOfLines={1}>
               {item.roomDescription}
+            </Text>
+          )}
+          {!isAvailable && !isCurrentRoom && (
+            <Text className="text-xs text-gray-400 mt-1">
+              You need to be a group admin to forward messages here
             </Text>
           )}
         </View>
@@ -173,10 +222,15 @@ const ForwardMessagesModal: React.FC<ForwardMessagesModalProps> = ({
         <View className={`w-6 h-6 rounded-full border-2 ${
           isSelected 
             ? 'bg-blue-500 border-blue-500' 
-            : 'border-gray-300'
+            : isAvailable 
+              ? 'border-gray-300' 
+              : 'border-gray-200'
         } justify-center items-center`}>
           {isSelected && (
             <Ionicons name="checkmark" size={16} color="white" />
+          )}
+          {!isAvailable && !isSelected && (
+            <Ionicons name="lock-closed" size={12} color="#9ca3af" />
           )}
         </View>
       </TouchableOpacity>
@@ -250,6 +304,9 @@ const ForwardMessagesModal: React.FC<ForwardMessagesModalProps> = ({
           <Text className="text-sm text-gray-600 mt-2">
             Forwarding {selectedMessages.length} message{selectedMessages.length > 1 ? 's' : ''}
           </Text>
+          <Text className="text-xs text-gray-500 mt-1">
+            Only rooms where you are a group admin are available for forwarding
+          </Text>
         </View>
 
         {/* Progress View (shown when forwarding) */}
@@ -282,7 +339,10 @@ const ForwardMessagesModal: React.FC<ForwardMessagesModalProps> = ({
               <View className="flex-1 justify-center items-center p-8">
                 <Ionicons name="chatbubble-outline" size={60} color="#D1D5DB" />
                 <Text className="text-gray-500 mt-4 text-center">
-                  No other rooms available to forward messages to.
+                  No rooms available to forward messages to.
+                </Text>
+                <Text className="text-gray-400 mt-2 text-center text-sm">
+                  You need to be a group admin in other rooms to forward messages.
                 </Text>
               </View>
             }

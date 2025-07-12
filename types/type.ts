@@ -115,6 +115,9 @@ export interface ChatRoom {
   createdOn?: string;
   isGroup?: boolean;
   createdBy?: string;
+  isAdmin?: boolean;
+  canSendMessage?: boolean;
+  isAvailableForForwarding?: boolean;
 }
 
 export interface ChatUser {

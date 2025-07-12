@@ -45,16 +45,7 @@
         "REQUEST_INSTALL_PACKAGES",
         "WRITE_EXTERNAL_STORAGE",
         "READ_EXTERNAL_STORAGE"
-      ],
-      "networkSecurityConfig": {
-        "cleartextTrafficPermitted": true
-      },
-      "fileProvider": {
-        "authority": "com.harsh123890.Sevak.fileprovider",
-        "paths": [
-          "files"
-        ]
-      }
+      ]
     }
   }
 }

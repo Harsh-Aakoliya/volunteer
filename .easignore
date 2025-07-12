@@ -1,25 +1,30 @@
-# Backend server files (should not be in mobile app)
-Backend/
-Backend/**/*
+# Exclude node_modules completely
 node_modules/
-node_modules/**/*
+**/node_modules/
 
-# Development and demo files
+# Exclude Backend directory completely
+Backend/
+**/Backend/
+
+# Exclude development and demo files
 demo/
-demo/**/*
+**/demo/
 management/
-management/**/*
+**/management/
 VM file media upload demo/
-VM file media upload demo/**/*
+**/VM file media upload demo/**
 
-# Build artifacts and cache files
+# Exclude build artifacts and cache files
 .expo/
-.expo/**/*
+**/.expo/
 build/
+**/build/
 dist/
+**/dist/
 .next/
+**/.next/
 
-# Database files
+# Exclude database files
 *.sql
 alter_database.sql
 mock_data.sql
@@ -27,66 +32,67 @@ mock_data.sql
 *.sqlite
 *.sqlite3
 
-# Documentation
+# Exclude documentation
 README.md
 UPDATE_GUIDE.md
 AUTO_UPDATE_SYSTEM.md
 *.md
 
-# PowerShell scripts and batch files
+# Exclude PowerShell scripts and batch files
 *.ps1
 *.bat
 *.cmd
 start.ps1
 
-# Test files
+# Exclude test files
 test-*.js
 mock_data.sql
 temp.txt
 
-# Git files
+# Exclude Git files
 .git/
+**/.git/
 .gitignore
 
-# IDE files
+# Exclude IDE files
 .vscode/
-.vscode/**/*
+**/.vscode/
 .idea/
-.idea/**/*
+**/.idea/
 
-# Log files
+# Exclude log files
 *.log
 npm-debug.*
 yarn-debug.*
 yarn-error.*
 logs/
 
-# Temporary files
+# Exclude temporary files
 *.tmp
 *.temp
 .cache/
 
-# OS files
+# Exclude OS files
 .DS_Store
 Thumbs.db
 *.swp
 *.swo
 
-# Environment files that shouldn't be in build
+# Exclude environment files
 .env
 .env.*
 .env*.local
 
-# Native project folders (for CNG/Prebuild)
-/android
-/ios
+# Exclude native project folders
+android/
+ios/
 
-# Package manager files
+# Exclude package manager files
 package-lock.json
 yarn.lock
 pnpm-lock.yaml
 
-# Large video/media files that might be in root
+# Exclude large media files
 *.mp4
 *.mov
 *.avi
@@ -95,8 +101,6 @@ pnpm-lock.yaml
 *.wmv
 *.webm
 *.m4v
-
-# Large audio files
 *.mp3
 *.wav
 *.flac
@@ -104,15 +108,59 @@ pnpm-lock.yaml
 *.ogg
 *.wma
 *.m4a
-
-# Large image files
 *.psd
 *.ai
 *.eps
 *.tiff
 *.bmp
 
-# APK files
+# Exclude APK files
 *.apk
 *.aab
-*.ipa 
+*.ipa
+
+# Exclude large binary files
+*.dll
+*.exe
+*.aar
+*.so
+*.dylib
+*.framework
+*.bundle
+*.xcframework
+
+# Exclude source maps and debug files
+*.map
+*.d.ts
+*.tsbuildinfo
+
+# Exclude test and temporary files
+*.test.js
+*.test.ts
+*.spec.js
+*.spec.ts
+__tests__/
+__mocks__/
+coverage/
+
+# Additional explicit patterns for better exclusion
+**/node_modules/**
+**/Backend/**
+**/.git/**
+**/.expo/**
+**/build/**
+**/dist/**
+**/coverage/**
+**/__tests__/**
+**/__mocks__/**
+**/*.log
+**/*.map
+**/*.d.ts
+**/*.dll
+**/*.exe
+**/*.aar
+**/*.so
+**/*.dylib
+**/*.framework
+**/*.bundle
+**/*.xcframework 

@@ -52,8 +52,6 @@ export default function Index() {
   // return <Poling/>
 }
 
-
-
 // import { useEvent } from 'expo';
 // import { useVideoPlayer, VideoView } from 'expo-video';
 // import { StyleSheet, View, Button } from 'react-native';
