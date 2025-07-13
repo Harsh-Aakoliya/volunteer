@@ -1,13 +1,13 @@
 // // constants/index.js
 // // Replace with your actual server address - this would typically come from environment variables
 // // export const API_URL = 'http://103.47.172.58:50160';//outside org network
-// export const API_URL = 'http://192.168.8.34:3000'; // inside org network
+export const API_URL = 'http://192.168.8.34:3000'; // inside org network
 
-// export const SOCKET_URL = API_URL; // Socket.IO connects to the same server
+export const SOCKET_URL = API_URL; // Socket.IO connects to the same server
 
-// // Debug logging for API URL
-// console.log('🔗 API_URL configured as:', API_URL);
-// console.log('🌐 SOCKET_URL configured as:', SOCKET_URL);
+// Debug logging for API URL
+console.log('🔗 API_URL configured as:', API_URL);
+console.log('🌐 SOCKET_URL configured as:', SOCKET_URL);
 
 
 // // expo 
@@ -25,10 +25,14 @@
 
 
 //normal env
+<<<<<<< HEAD
 export const API_URL = 'http://192.168.148.33:3000'; 
+=======
+// export const API_URL = 'http://192.168.117.33:3000'; 
+>>>>>>> 736f24f1aecf27f65a7257034a27a24fa7984b1c
 
-export const SOCKET_URL = API_URL; // Socket.IO connects to the same server
+// export const SOCKET_URL = API_URL; // Socket.IO connects to the same server
 
-// Debug logging for API URL
-console.log('🔗 API_URL configured as:', API_URL);
-console.log('🌐 SOCKET_URL configured as:', SOCKET_URL);
+// // Debug logging for API URL
+// console.log('🔗 API_URL configured as:', API_URL);
+// console.log('🌐 SOCKET_URL configured as:', SOCKET_URL);
