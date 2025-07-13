@@ -28,9 +28,22 @@ const Announcement = {
   },
 
   publishDraft: async (id, title, body, authorId) => {
+    // First get the original createdAt timestamp
+    const originalResult = await pool.query(
+      'SELECT "createdAt" FROM "announcements" WHERE "id" = $1 AND "authorId" = $2',
+      [id, authorId]
+    );
+    
+    if (originalResult.rows.length === 0) {
+      throw new Error('Draft not found');
+    }
+    
+    const originalCreatedAt = originalResult.rows[0].createdAt;
+    
+    // Update the draft to published while preserving the original createdAt
     const result = await pool.query(
-      'UPDATE "announcements" SET "title" = $1, "body" = $2, "status" = $3, "updatedAt" = CURRENT_TIMESTAMP WHERE "id" = $4 AND "authorId" = $5 RETURNING *',
-      [title, body, 'published', id, authorId]
+      'UPDATE "announcements" SET "title" = $1, "body" = $2, "status" = $3, "createdAt" = $4, "updatedAt" = CURRENT_TIMESTAMP WHERE "id" = $5 AND "authorId" = $6 RETURNING *',
+      [title, body, 'published', originalCreatedAt, id, authorId]
     );
     return result.rows[0];
   },

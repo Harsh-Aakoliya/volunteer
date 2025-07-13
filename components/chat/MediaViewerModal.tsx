@@ -13,7 +13,7 @@ import {
 } from "react-native";
 import { useEvent } from "expo";
 import { VideoView, useVideoPlayer } from "expo-video";
-import Sound from "react-native-sound"; // Commented out until package is installed
+// import Sound from "react-native-sound"; // Package removed to reduce build size
 import { API_URL } from "@/constants/api";
 import { AuthStorage } from "@/utils/authStorage";
 import axios from "axios";

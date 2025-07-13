@@ -14,7 +14,7 @@ import * as DocumentPicker from "expo-document-picker";
 import axios from "axios";
 import { useEvent } from "expo";
 import { VideoView, useVideoPlayer } from "expo-video";
-// import Sound from "react-native-sound"; // Commented out until package is installed
+// import Sound from "react-native-sound"; // Package removed to reduce build size
 import { API_URL } from "@/constants/api";
 import { TextInput } from "react-native";
 import { useLocalSearchParams, router, useNavigation } from "expo-router";

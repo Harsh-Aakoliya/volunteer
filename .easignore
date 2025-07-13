@@ -87,10 +87,13 @@ Thumbs.db
 android/
 ios/
 
-# Exclude package manager files
+# Exclude package manager files (but keep patches/)
 package-lock.json
 yarn.lock
 pnpm-lock.yaml
+
+# Include patches for node_modules fixes
+!patches/
 
 # Exclude large media files
 *.mp4
@@ -143,6 +146,29 @@ __tests__/
 __mocks__/
 coverage/
 
+# Exclude font backup directory
+assets/fonts_backup/
+
+# Exclude compiled output
+*.js.map
+*.js.meta
+*.d.ts
+
+# Exclude ESLint cache
+.eslintcache
+
+# Exclude TypeScript cache
+*.tsbuildinfo
+
+# Exclude Metro cache
+.metro-cache/
+
+# Exclude Babel cache
+.babel.cache/
+
+# Exclude Jest cache
+.jest/
+
 # Additional explicit patterns for better exclusion
 **/node_modules/**
 **/Backend/**
@@ -164,3 +190,4 @@ coverage/
 **/*.framework
 **/*.bundle
 **/*.xcframework 
+**/assets/fonts_backup/** 
