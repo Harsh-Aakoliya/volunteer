@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   RefreshControl,
   AppState,
+  TextInput,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router, usePathname } from "expo-router";
@@ -58,6 +59,8 @@ interface ExtendedChatRoom extends ChatRoom {
 
 export default function ChatRooms() {
   const [chatRooms, setChatRooms] = useState<ExtendedChatRoom[]>([]);
+  const [filteredChatRooms, setFilteredChatRooms] = useState<ExtendedChatRoom[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
   const [currentUser, setCurrentUser] = useState<any>(null);
@@ -66,6 +69,19 @@ export default function ChatRooms() {
   const [lastMessages, setLastMessages] = useState<{ [key: string]: LastMessageData }>({});
   const [unreadCounts, setUnreadCounts] = useState<{ [key: string]: number }>({});
   const pathname = usePathname();
+
+  // Search functionality
+  const handleSearch = (query: string) => {
+    setSearchQuery(query);
+    if (query.trim() === '') {
+      setFilteredChatRooms(chatRooms);
+    } else {
+      const filtered = chatRooms.filter(room => 
+        room.roomName?.toLowerCase().includes(query.toLowerCase())
+      );
+      setFilteredChatRooms(filtered);
+    }
+  };
 
   // Sort rooms by most recent activity
   const sortRoomsByRecent = (rooms: ExtendedChatRoom[]) => {
@@ -256,6 +272,7 @@ export default function ChatRooms() {
       const sortedRooms = sortRoomsByRecent(roomsWithData);
 
       setChatRooms(sortedRooms);
+      setFilteredChatRooms(sortedRooms);
       console.log("✅ Chat rooms loaded and sorted");
 
       // Check admin status
@@ -326,7 +343,19 @@ export default function ChatRooms() {
       console.log("🔄 Room data updated, refreshing room list");
       setChatRooms(prevRooms => {
         const updatedRooms = updateRoomsWithData(prevRooms, lastMessages, unreadCounts);
-        return sortRoomsByRecent(updatedRooms);
+        const sortedRooms = sortRoomsByRecent(updatedRooms);
+        
+        // Update filtered rooms based on current search query
+        if (searchQuery.trim() === '') {
+          setFilteredChatRooms(sortedRooms);
+        } else {
+          const filtered = sortedRooms.filter(room => 
+            room.roomName?.toLowerCase().includes(searchQuery.toLowerCase())
+          );
+          setFilteredChatRooms(filtered);
+        }
+        
+        return sortedRooms;
       });
     }
   }, [lastMessages, unreadCounts]);
@@ -343,12 +372,24 @@ export default function ChatRooms() {
   const navigateToChatRoom = (roomId: string) => {
     // Clear unread count for this room when navigating
     setChatRooms((prevRooms) => {
-      return prevRooms.map((room) => {
+      const updatedRooms = prevRooms.map((room) => {
         if (room.roomId?.toString() === roomId) {
           return { ...room, unreadCount: 0 };
         }
         return room;
       });
+      
+      // Update filtered rooms based on current search query
+      if (searchQuery.trim() === '') {
+        setFilteredChatRooms(updatedRooms);
+      } else {
+        const filtered = updatedRooms.filter(room => 
+          room.roomName?.toLowerCase().includes(searchQuery.toLowerCase())
+        );
+        setFilteredChatRooms(filtered);
+      }
+      
+      return updatedRooms;
     });
 
     // Also update local unread counts
@@ -495,8 +536,26 @@ export default function ChatRooms() {
 
   return (
     <View className="flex-1 bg-gray-50">
+      {/* Search Bar */}
+      <View className="p-4 bg-white border-b border-gray-200">
+        <View className="flex-row items-center bg-gray-100 rounded-lg px-4 py-3">
+          <Ionicons name="search" size={20} color="#666" />
+          <TextInput
+            placeholder="Search chat rooms..."
+            className="flex-1 ml-3 text-gray-800"
+            value={searchQuery}
+            onChangeText={handleSearch}
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity onPress={() => handleSearch('')}>
+              <Ionicons name="close-circle" size={20} color="#666" />
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
+
       <FlatList
-        data={chatRooms}
+        data={filteredChatRooms}
         keyExtractor={(item) =>
           item.roomId?.toString() || Math.random().toString()
         }
@@ -516,8 +575,10 @@ export default function ChatRooms() {
               color="#d1d5db"
             />
             <Text className="text-gray-500 mt-4 text-center">
-              {"No chat rooms available."}
-              {isAdmin ? " Create one by tapping the + button." : ""}
+              {searchQuery.length > 0
+                ? "No chat rooms match your search."
+                : "No chat rooms available."}
+              {!searchQuery && isAdmin ? " Create one by tapping the + button." : ""}
             </Text>
           </View>
         )}

@@ -1,5 +1,5 @@
 // app/admin/dashboard.tsx
-import { View, Text, FlatList, RefreshControl } from "react-native";
+import { View, Text, FlatList, RefreshControl, Alert } from "react-native";
 import { useEffect, useState } from "react";
 import { router } from "expo-router";
 import CustomButton from "@/components/ui/CustomButton";
@@ -10,7 +10,7 @@ import { Ionicons } from '@expo/vector-icons';
 
 // Define a type for pending users
 interface PendingUser {
-  fullName: number;
+  fullName: string;
   mobileNumber: string;
   userId: string;
 }
@@ -20,16 +20,27 @@ export default function AdminDashboard() {
   const [selectedUsers, setSelectedUsers] = useState<Set<string>>(new Set());
   const [refreshing, setRefreshing] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
   // Check admin status on mount
   useEffect(() => {
     const checkAdminStatus = async () => {
-      const userData = await AuthStorage.getUser();
-      const adminStatus=userData?.isAdmin || false;
-      setIsAdmin(adminStatus);
-      console.log("Admin status:", adminStatus);
-      // Redirect if not admin
-      if (!adminStatus) {
+      try {
+        const userData = await AuthStorage.getUser();
+        const adminStatus = userData?.isAdmin || false;
+        setIsAdmin(adminStatus);
+        console.log("Admin status:", adminStatus);
+        
+        // Redirect if not admin
+        if (!adminStatus) {
+          Alert.alert(
+            "Access Denied",
+            "You don't have admin privileges to access this page.",
+            [{ text: "OK", onPress: () => router.replace("/") }]
+          );
+        }
+      } catch (error) {
+        console.error("Error checking admin status:", error);
         router.replace("/");
       }
     };
@@ -39,16 +50,22 @@ export default function AdminDashboard() {
 
   // Fetch pending users
   useEffect(() => {
-    fetchPendingUsers();
-  }, []);
+    if (isAdmin) {
+      fetchPendingUsers();
+    }
+  }, [isAdmin]);
 
   const fetchPendingUsers = async () => {
     try {
+      setIsLoading(true);
       const users = await getPendingUsers();
       console.log("Fetched Pending Users:", users);
       setPendingUsers(users);
     } catch (error) {
       console.error("Error fetching users:", error);
+      Alert.alert("Error", "Failed to fetch pending users. Please try again.");
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -59,37 +76,42 @@ export default function AdminDashboard() {
   };
 
   const handleApproveAll = async () => {
+    if (selectedUsers.size === 0) {
+      Alert.alert("No Selection", "Please select users to approve.");
+      return;
+    }
+
     try {
       const usersToApprove = Array.from(selectedUsers);
       console.log("Approving Users:", usersToApprove);
 
       await Promise.all(
-        usersToApprove.map((mobileNumber) => approveUser(mobileNumber))
+        usersToApprove.map((userId) => approveUser(userId))
       );
 
       setSelectedUsers(new Set());
-      fetchPendingUsers();
+      await fetchPendingUsers();
+      
+      Alert.alert(
+        "Success", 
+        `Successfully approved ${usersToApprove.length} user(s).`
+      );
     } catch (error) {
       console.error("Error approving users:", error);
+      Alert.alert("Error", "Failed to approve users. Please try again.");
     }
   };
 
-  const toggleSelection = (mobileNumber: string) => {
+  const toggleSelection = (userId: string) => {
     setSelectedUsers((prevSelected) => {
       const newSelected = new Set(prevSelected);
-      if (newSelected.has(mobileNumber)) {
-        newSelected.delete(mobileNumber);
+      if (newSelected.has(userId)) {
+        newSelected.delete(userId);
       } else {
-        newSelected.add(mobileNumber);
+        newSelected.add(userId);
       }
       return newSelected;
     });
-  };
-
-  const handleLogout = async () => {
-    console.log("Logout pressed");
-    await AuthStorage.clear();
-    router.replace("/");
   };
 
   // If not admin, don't render anything
@@ -106,12 +128,6 @@ export default function AdminDashboard() {
             <Text className="text-2xl font-bold text-gray-800">Admin Dashboard</Text>
             <Text className="text-gray-500">Manage pending approvals</Text>
           </View>
-          <CustomButton
-            title="Logout"
-            onPress={handleLogout}
-            bgVariant="danger"
-            textVariant="primary"
-          />
         </View>
       </View>
 
@@ -141,13 +157,15 @@ export default function AdminDashboard() {
       <FlatList
         className="px-4"
         data={pendingUsers}
-        // keyExtractor={(item) => item?.fullName.toString()}
+        keyExtractor={(item) => item.userId}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
         ListHeaderComponent={
           <View className="flex-row justify-between items-center py-4">
-            <Text className="text-lg font-semibold text-gray-700">Pending Approvals</Text>
+            <Text className="text-lg font-semibold text-gray-700">
+              Pending Approvals ({pendingUsers.length})
+            </Text>
             <CustomButton
               title="Approve Selected"
               onPress={handleApproveAll}
@@ -157,18 +175,35 @@ export default function AdminDashboard() {
             />
           </View>
         }
+        ListEmptyComponent={
+          <View className="bg-white p-8 rounded-xl shadow-sm border border-gray-100 items-center">
+            <Ionicons name="checkmark-circle-outline" size={48} color="#10B981" />
+            <Text className="text-gray-600 text-center mt-4 text-lg">
+              No pending approvals
+            </Text>
+            <Text className="text-gray-500 text-center mt-2">
+              All users have been approved or there are no new registrations.
+            </Text>
+          </View>
+        }
         renderItem={({ item }) => (
           <View className="bg-white p-4 rounded-xl mb-3 shadow-sm border border-gray-100">
             <View className="flex-row items-center">
               <Checkbox
-                value={selectedUsers.has(item.mobileNumber)}
-                onValueChange={() => toggleSelection(item.mobileNumber)}
+                value={selectedUsers.has(item.userId)}
+                onValueChange={() => toggleSelection(item.userId)}
                 className="mr-4"
               />
               <View className="flex-1">
                 <View className="flex-row items-center mb-1">
-                  <Ionicons name="call-outline" size={16} color="#6B7280" />
+                  <Ionicons name="person-outline" size={16} color="#6B7280" />
                   <Text className="text-gray-800 font-semibold ml-2">
+                    {item.fullName || 'Unknown User'}
+                  </Text>
+                </View>
+                <View className="flex-row items-center mb-1">
+                  <Ionicons name="call-outline" size={16} color="#6B7280" />
+                  <Text className="text-gray-600 ml-2">
                     {item.mobileNumber}
                   </Text>
                 </View>

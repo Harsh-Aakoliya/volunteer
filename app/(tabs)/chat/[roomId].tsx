@@ -13,6 +13,7 @@ import {
   AppState,
   Pressable,
   BackHandler,
+  Keyboard,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, router, useNavigation } from "expo-router";
@@ -31,6 +32,7 @@ import RenderTable from "@/components/chat/Attechments/RenderTable";
 import MediaViewerModal from "@/components/chat/MediaViewerModal";
 import ChatMessageOptions from "@/components/chat/ChatMessageOptions";
 import ForwardMessagesModal from "@/components/chat/ForwardMessagesModal";
+import AttachmentsGrid from "./Attechments-grid";
 
 interface RoomDetails extends ChatRoom {
   members: ChatUser[];
@@ -70,11 +72,46 @@ export default function ChatRoomScreen() {
   const [showMediaViewer, setShowMediaViewer] = useState(false);
   const [selectedMediaId, setSelectedMediaId] = useState<number | null>(null);
 
+  // Attachments grid state
+  const [showAttachmentsGrid, setShowAttachmentsGrid] = useState(false);
+
   const flatListRef = useRef<FlatList>(null);
+  const textInputRef = useRef<TextInput>(null);
   const navigation = useNavigation();
 
   // Use a Set to track received message IDs to prevent duplicates
   const receivedMessageIds = new Set<string | number>();
+
+  // Handle keyboard events
+  useEffect(() => {
+    const keyboardDidShowListener = Keyboard.addListener(
+      'keyboardDidShow',
+      () => {
+        if (showAttachmentsGrid) {
+          setShowAttachmentsGrid(false);
+        }
+      }
+    );
+
+    return () => {
+      keyboardDidShowListener?.remove();
+    };
+  }, [showAttachmentsGrid]);
+
+  // Handle attachments grid toggle
+  const toggleAttachmentsGrid = () => {
+    if (showAttachmentsGrid) {
+      // Hide attachments grid and show keyboard
+      setShowAttachmentsGrid(false);
+      setTimeout(() => {
+        textInputRef.current?.focus();
+      }, 100);
+    } else {
+      // Show attachments grid and hide keyboard
+      Keyboard.dismiss();
+      setShowAttachmentsGrid(true);
+    }
+  };
 
   // Handle app state changes (background/foreground)
   useEffect(() => {
@@ -745,28 +782,32 @@ export default function ChatRoomScreen() {
 
         {/* Message input - Only show for group admins */}
         {isGroupAdmin && (
-          <View className="p-2 border-t border-gray-200 bg-white">
-            <View className="flex-row items-center">
+          <View className="border-t border-gray-200 bg-white">
+            <View className="flex-row items-center p-2">
               <TouchableOpacity
                 className="p-2"
-                onPress={() => router.push({
-                  pathname: "/chat/Attechments-grid",
-                  params: { 
-                    roomId, 
-                    userId: currentUser?.userId
-                  }
-                })}
+                onPress={toggleAttachmentsGrid}
               >
-                <Ionicons name="add-circle" size={24} />
+                <Ionicons 
+                  name={showAttachmentsGrid ? "close-circle" : "add-circle"} 
+                  size={24} 
+                  color={showAttachmentsGrid ? "#ef4444" : "#6b7280"} 
+                />
               </TouchableOpacity>
               
               {/* Input Bar */}
               <TextInput
+                ref={textInputRef}
                 className="flex-1 bg-gray-100 rounded-full px-4 py-2 mr-2"
                 placeholder="Type a message..."
                 value={messageText}
                 onChangeText={setMessageText}
                 multiline={true}
+                onFocus={() => {
+                  if (showAttachmentsGrid) {
+                    setShowAttachmentsGrid(false);
+                  }
+                }}
               />
               
               <TouchableOpacity
@@ -785,6 +826,17 @@ export default function ChatRoomScreen() {
                 )}
               </TouchableOpacity>
             </View>
+
+            {/* Attachments Grid */}
+            {showAttachmentsGrid && (
+              <View className="border-t border-gray-200 bg-gray-50 p-4">
+                <AttachmentsGrid 
+                  roomId={roomId as string} 
+                  userId={currentUser?.userId || ""} 
+                  onOptionSelect={() => setShowAttachmentsGrid(false)}
+                />
+              </View>
+            )}
           </View>
         )}
 

@@ -68,13 +68,14 @@ const createAnnouncementsTable = async () => {
       console.log("Announcements table already exists");
       return;
     }
-
+    
     await client.query(`
       CREATE TABLE IF NOT EXISTS "announcements" (
           "id" SERIAL PRIMARY KEY,
           "title" VARCHAR(255) NOT NULL,
           "body" TEXT NOT NULL,
           "authorId" VARCHAR(50),
+          "thumbnail" VARCHAR(255) DEFAULT 'announcement_icon.png',
           "createdAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
           "updatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
           "likedBy" JSONB DEFAULT '[]',
@@ -84,6 +85,35 @@ const createAnnouncementsTable = async () => {
     console.log("Announcements table created successfully");
   } catch (error) {
     console.error("Error while creating announcements table:", error);
+  } finally {
+    client.release();
+  }
+};
+
+const addThumbnailColumnIfNotExists = async () => {
+  const client = await pool.connect();
+  try {
+    // Check if thumbnail column exists in announcements table
+    const columnCheck = await client.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.columns 
+        WHERE table_name = 'announcements' AND column_name = 'thumbnail'
+      );
+    `);
+    
+    if (columnCheck.rows[0].exists) {
+      console.log("Thumbnail column already exists in announcements table");
+      return;
+    }
+
+    // Add thumbnail column if it doesn't exist
+    await client.query(`
+      ALTER TABLE announcements 
+      ADD COLUMN thumbnail VARCHAR(255) DEFAULT 'announcement_icon.png';
+    `);
+    console.log("Thumbnail column added to announcements table successfully");
+  } catch (error) {
+    console.error("Error while adding thumbnail column to announcements table:", error);
   } finally {
     client.release();
   }
@@ -134,6 +164,7 @@ const initDB = async () => {
   await createUsersTable();
   await createAnnouncementsTable();
   await createSabhaAttendanceTable();
+  await addThumbnailColumnIfNotExists();
 };
 
 export default initDB;

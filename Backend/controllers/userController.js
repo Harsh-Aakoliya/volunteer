@@ -13,16 +13,30 @@ const getPendingUsers = async (req, res) => {
 };
 
 const approveUser = async (req, res) => {
-  const { mobileNumber, password } = req.body;
+  const { userId } = req.body;
   try {
+    // First get the user's mobile number to set as password
+    const userResult = await pool.query(
+      'SELECT "mobileNumber" FROM "users" WHERE "userId" = $1',
+      [userId]
+    );
+    
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+    
+    const mobileNumber = userResult.rows[0].mobileNumber;
+    
+    // Update user to approved status and set password same as mobile number
     await pool.query(
-      'UPDATE "users" SET "isApproved" = TRUE, "password" = $1 WHERE "mobileNumber" = $2',
-      [password, mobileNumber]
+      'UPDATE "users" SET "isApproved" = TRUE, "password" = $1 WHERE "userId" = $2',
+      [mobileNumber, userId]
     );
 
-    res.json({ success: true, message: "User approved and SMS sent" });
+    res.json({ success: true, message: "User approved successfully. Password set to mobile number." });
   } catch (error) {
-    res.status(400).json({ success: false, message: error.message });
+    console.error("Error approving user:", error);
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 

@@ -21,7 +21,7 @@ export const getCurrentVersion = async (req, res) => {
     const versionData = JSON.parse(fs.readFileSync(versionPath, 'utf8'));
     res.json({
       success: true,
-      currentVersion: versionData.currentenduserversion
+      ...versionData
     });
   } catch (error) {
     console.error('Error reading version file:', error);
@@ -64,9 +64,17 @@ export const downloadAPK = async (req, res) => {
       });
     }
 
+    // Get file size for Content-Length header
+    const fileStats = fs.statSync(apkFilePath);
+    const fileSize = fileStats.size;
+    
     // Set headers for file download
     res.setHeader('Content-Type', 'application/vnd.android.package-archive');
     res.setHeader('Content-Disposition', `attachment; filename="${apkFileName}"`);
+    res.setHeader('Content-Length', fileSize.toString());
+    res.setHeader('Accept-Ranges', 'bytes');
+    
+    console.log(`Serving APK: ${apkFileName}, Size: ${fileSize} bytes`);
     
     // Stream the file
     const fileStream = fs.createReadStream(apkFilePath);

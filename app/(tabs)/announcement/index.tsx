@@ -12,6 +12,7 @@ import {
   Alert,
   Animated,
   Dimensions,
+  Image,
 } from "react-native";
 import {
   fetchAnnouncements,
@@ -38,6 +39,7 @@ interface Announcement {
   body: string;
   authorId: string;
   authorName: string;
+  thumbnail: string;
   createdAt: string;
   updatedAt: string;
   likedBy: Array<{
@@ -69,6 +71,8 @@ const StyledWebView = cssInterop(WebView, {
   className: "style",
 });
 
+import { API_URL } from "@/constants/api";
+
 const Announcements = () => {
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [selectedAnnouncement, setSelectedAnnouncement] = useState<Announcement | null>(null);
@@ -84,6 +88,7 @@ const Announcements = () => {
   const [showReadUsers, setShowReadUsers] = useState(false);
   const [likingInProgress, setLikingInProgress] = useState<Set<number>>(new Set());
   const [showActionMenu, setShowActionMenu] = useState(false);
+  const [showModalActionMenu, setShowModalActionMenu] = useState(false);
   
   // Animation values
   const rotationAnim = useState(new Animated.Value(0))[0];
@@ -236,6 +241,7 @@ const Announcements = () => {
     setModalVisible(!modalVisible);
     setShowLikedUsers(false);
     setShowReadUsers(false);
+    setShowModalActionMenu(false);
   };
 
   // Check if current user has read the announcement
@@ -397,46 +403,89 @@ const Announcements = () => {
         renderItem={({ item }) => {
           const isRead = hasUserRead(item);
           const isLiked = hasUserLiked(item);
+          const isAuthor = item.authorId === currentUserId;
           
           return (
-            <TouchableOpacity 
-              onPress={() => openAnnouncement(item)}
-            >
-              <View className={`p-4 mb-3 rounded-xl shadow-sm border ${
-                isRead 
-                  ? 'bg-gray-50 border-gray-200' 
-                  : 'bg-white border-blue-200 shadow-md'
-              }`}>
-                {/* Unread indicator */}
-                {!isRead && (
-                  <View className="absolute top-2 right-2 w-3 h-3 bg-blue-500 rounded-full" />
-                )}
-                
-                <Text className={`text-lg font-bold mb-1 ${
-                  isRead ? 'text-gray-700' : 'text-gray-900'
-                }`}>
-                  {item.title}
-                </Text>
-                <Text className="text-xs text-gray-500 mb-2">
-                  By {item.authorName} • {formatDateTime(item.createdAt)}
-                </Text>
+            <View className={`p-4 mb-3 rounded-xl shadow-sm border ${
+              isRead 
+                ? 'bg-gray-50 border-gray-200' 
+                : 'bg-white border-blue-200 shadow-md'
+            }`}>
+              {/* Unread indicator */}
+              {!isRead && (
+                <View className="absolute top-2 right-2 w-3 h-3 bg-blue-500 rounded-full" />
+              )}
+              
+              {/* Main content layout */}
+              <View className="flex-row">
+                {/* Left side - Thumbnail */}
+                <TouchableOpacity 
+                  onPress={() => openAnnouncement(item)}
+                  className="mr-3"
+                >
+                  <View className="w-16 h-16 bg-gray-200 rounded-lg overflow-hidden">
+                    <Image
+                      source={{ uri: `${API_URL}/media/temp.png` 
+                      }}
+                      className="w-full h-full"
+                      resizeMode="cover"
+                      // defaultSource={/default announcement icon.png')} // Fallback image
+                    />
+                  </View>
+                </TouchableOpacity>
 
-                <View className="h-16 overflow-hidden mb-2">
-                  <StyledWebView
-                    className="flex-1"
-                    originWhitelist={["*"]}
-                    source={{ html: getPreviewHTML(item.body, true) }}
-                    scrollEnabled={false}
-                  />
-                </View>
+                {/* Right side - Content */}
+                <View className="flex-1">
+                  {/* Top section - Published date and author */}
+                  <Text className="text-xs text-gray-500 mb-1">
+                    {formatDateTime(item.createdAt)} | {item.authorName}
+                  </Text>
 
-                {/* Like and Read count indicators */}
-                <View className="flex-row justify-between items-center mt-2">
-                  <View className="flex-row items-center space-x-4">
-                    {/* Like button - always show */}
+                  {/* Middle section - Title (clickable) */}
+                  <TouchableOpacity 
+                    onPress={() => openAnnouncement(item)}
+                    className="mb-2"
+                  >
+                    <Text 
+                      className={`text-lg font-bold ${
+                        isRead ? 'text-gray-700' : 'text-gray-900'
+                      }`}
+                      numberOfLines={2}
+                      ellipsizeMode="tail"
+                    >
+                      {item.title}
+                    </Text>
+                  </TouchableOpacity>
+
+                  {/* Bottom section - Read | Like actions (only for authors) */}
+                  {isAuthor && (
+                    <View className="flex-row items-center">
+                      <TouchableOpacity
+                        onPress={() => loadReadUsers(item.id)}
+                        className="mr-4"
+                      >
+                        <Text className="text-sm text-blue-600 font-medium">
+                          Read ({item.readBy?.length || 0})
+                        </Text>
+                      </TouchableOpacity>
+                      
+                      <Text className="text-gray-400 mr-4">|</Text>
+                      
+                      <TouchableOpacity
+                        onPress={() => loadLikedUsers(item.id)}
+                      >
+                        <Text className="text-sm text-blue-600 font-medium">
+                          Like ({item.likedBy?.length || 0})
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+
+                  {/* Like button for non-authors */}
+                  {!isAuthor && (
                     <TouchableOpacity 
                       onPress={() => handleToggleLike(item.id)}
-                      className="flex-row items-center"
+                      className="flex-row items-center mt-1"
                       disabled={likingInProgress.has(item.id)}
                     >
                       <Ionicons 
@@ -444,30 +493,14 @@ const Announcements = () => {
                         size={16} 
                         color={likingInProgress.has(item.id) ? "#9ca3af" : (isLiked ? "#ef4444" : "#6b7280")} 
                       />
-                      {/* Show count only for authors */}
-                      {item.authorId === currentUserId && (
-                        <Text className="text-xs text-gray-500 ml-1">
-                          {item.likedBy?.length || 0}
-                        </Text>
-                      )}
+                      <Text className="text-xs text-gray-500 ml-1">
+                        {isLiked ? 'Liked' : 'Like'}
+                      </Text>
                     </TouchableOpacity>
-                    
-                    {/* Read count - only show for authors */}
-                    {item.authorId === currentUserId && (
-                      <View className="flex-row items-center">
-                        <Ionicons name="eye-outline" size={16} color="#6b7280" />
-                        <Text className="text-xs text-gray-500 ml-1">
-                          {item.readBy?.length || 0}
-                        </Text>
-                      </View>
-                    )}
-                  </View>
-                  {!isRead && (
-                    <Text className="text-xs font-semibold text-blue-600">NEW</Text>
                   )}
                 </View>
               </View>
-            </TouchableOpacity>
+            </View>
           );
         }}
         refreshControl={
@@ -602,87 +635,43 @@ const Announcements = () => {
         onRequestClose={() => setModalVisible(false)}
       >
         {selectedAnnouncement && (
-          <SafeAreaView className="flex-1 bg-white">
-            <StatusBar barStyle="dark-content" />
+          <TouchableOpacity 
+            activeOpacity={1} 
+            onPress={() => setShowModalActionMenu(false)}
+            className="flex-1"
+          >
+            <SafeAreaView className="flex-1 bg-white">
+              <StatusBar barStyle="dark-content" />
 
             {/* Modal Header */}
             <View className="flex-row justify-between items-center px-4 py-3 border-b border-gray-200">
               <Text className="text-xl font-bold">Announcement</Text>
-              <TouchableOpacity
-                className="bg-gray-200 py-2 px-4 rounded-lg"
-                onPress={toggleModal}
-              >
-                <Text className="text-gray-800">Close</Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* Title and Date */}
-            <View className="px-4 py-3">
-              <Text className="text-2xl font-bold text-gray-900">
-                {selectedAnnouncement.title}
-              </Text>
-              <Text className="text-sm text-gray-500 mt-1">
-                By {selectedAnnouncement.authorName} • {formatDateTime(selectedAnnouncement.createdAt)}
-              </Text>
-            </View>
-
-            {/* Content */}
-            <View className="flex-1 border-t border-gray-200 pt-2">
-              <StyledWebView
-                className="flex-1"
-                originWhitelist={["*"]}
-                source={{ html: getPreviewHTML(selectedAnnouncement.body) }}
-                showsVerticalScrollIndicator={true}
-              />
-            </View>
-
-            {/* Like and interaction section */}
-            <View className="px-4 py-3 border-t border-gray-200">
-              <View className="flex-row justify-between items-center">
-                {/* Like button */}
-                <TouchableOpacity
-                  onPress={() => handleToggleLike(selectedAnnouncement.id)}
-                  className="flex-row items-center"
-                  disabled={likingInProgress.has(selectedAnnouncement.id)}
-                >
-                  <Ionicons 
-                    name={hasUserLiked(selectedAnnouncement) ? "heart" : "heart-outline"} 
-                    size={24} 
-                    color={likingInProgress.has(selectedAnnouncement.id) ? "#9ca3af" : (hasUserLiked(selectedAnnouncement) ? "#ef4444" : "#6b7280")} 
-                  />
-                  {/* Show count only for authors */}
-                  {selectedAnnouncement.authorId === currentUserId && (
-                    <Text className="ml-2 text-gray-700">
-                      {selectedAnnouncement.likedBy?.length || 0} likes
-                    </Text>
-                  )}
-                </TouchableOpacity>
-
-                {/* Author-only options */}
+              <View className="flex-row items-center">
+                {/* Three-dot action menu (only for authors) */}
                 {selectedAnnouncement.authorId === currentUserId && (
-                  <View className="flex-row space-x-2">
-                    <TouchableOpacity
-                      onPress={() => loadLikedUsers(selectedAnnouncement.id)}
-                      className="bg-blue-100 py-2 px-3 rounded-lg"
-                    >
-                      <Text className="text-blue-700 text-sm">Who Liked</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      onPress={() => loadReadUsers(selectedAnnouncement.id)}
-                      className="bg-green-100 py-2 px-3 rounded-lg"
-                    >
-                      <Text className="text-green-700 text-sm">Who Read</Text>
-                    </TouchableOpacity>
-                  </View>
+                  <TouchableOpacity
+                    onPress={() => setShowModalActionMenu(!showModalActionMenu)}
+                    className="mr-3 p-2"
+                  >
+                    <Ionicons name="ellipsis-vertical" size={20} color="#6b7280" />
+                  </TouchableOpacity>
                 )}
+                
+                <TouchableOpacity
+                  className="bg-gray-200 py-2 px-4 rounded-lg"
+                  onPress={toggleModal}
+                >
+                  <Text className="text-gray-800">Close</Text>
+                </TouchableOpacity>
               </View>
             </View>
 
-            {/* Admin Actions */}
-            {isAdmin && selectedAnnouncement.authorId === currentUserId && (
-              <View className="flex-row justify-end items-center px-4 py-2 border-t border-gray-200">
+            {/* Action Menu Dropdown */}
+            {showModalActionMenu && selectedAnnouncement.authorId === currentUserId && (
+              <View className="absolute top-16 right-4 bg-white rounded-lg shadow-lg border border-gray-200 z-50">
                 <TouchableOpacity
                   onPress={() => {
+                    setShowModalActionMenu(false);
                     toggleModal();
                     router.push({
                       pathname: "../create-announcement",
@@ -694,13 +683,15 @@ const Announcements = () => {
                       }
                     });
                   }}
-                  className="bg-blue-500 py-2 px-4 rounded-lg mr-2"
+                  className="flex-row items-center px-4 py-3 border-b border-gray-100"
                 >
-                  <Text className="text-white">Edit</Text>
+                  <Ionicons name="create-outline" size={18} color="#6b7280" />
+                  <Text className="ml-3 text-gray-800">Edit</Text>
                 </TouchableOpacity>
-
+                
                 <TouchableOpacity
-                  onPress={async () => {
+                  onPress={() => {
+                    setShowModalActionMenu(false);
                     Alert.alert(
                       "Delete Announcement",
                       "Are you sure you want to delete this announcement?",
@@ -723,13 +714,55 @@ const Announcements = () => {
                       ]
                     );
                   }}
-                  className="bg-red-500 py-2 px-4 rounded-lg"
+                  className="flex-row items-center px-4 py-3"
                 >
-                  <Text className="text-white">Delete</Text>
+                  <Ionicons name="trash-outline" size={18} color="#ef4444" />
+                  <Text className="ml-3 text-red-500">Delete</Text>
                 </TouchableOpacity>
               </View>
             )}
-          </SafeAreaView>
+
+            {/* Title and Date */}
+            <View className="px-4 py-3">
+              <Text className="text-2xl font-bold text-gray-900">
+                {selectedAnnouncement.title}
+              </Text>
+              <Text className="text-sm text-gray-500 mt-1">
+                By {selectedAnnouncement.authorName} • {formatDateTime(selectedAnnouncement.createdAt)}
+              </Text>
+            </View>
+
+            {/* Content */}
+            <View className="flex-1 border-t border-gray-200 pt-2">
+              <StyledWebView
+                className="flex-1"
+                originWhitelist={["*"]}
+                source={{ html: getPreviewHTML(selectedAnnouncement.body) }}
+                showsVerticalScrollIndicator={true}
+              />
+            </View>
+
+            {/* Like button section (only for non-authors) */}
+            {selectedAnnouncement.authorId !== currentUserId && (
+              <View className="px-4 py-3 border-t border-gray-200">
+                <TouchableOpacity
+                  onPress={() => handleToggleLike(selectedAnnouncement.id)}
+                  className="flex-row items-center justify-center"
+                  disabled={likingInProgress.has(selectedAnnouncement.id)}
+                >
+                  <Ionicons 
+                    name={hasUserLiked(selectedAnnouncement) ? "heart" : "heart-outline"} 
+                    size={24} 
+                    color={likingInProgress.has(selectedAnnouncement.id) ? "#9ca3af" : (hasUserLiked(selectedAnnouncement) ? "#ef4444" : "#6b7280")} 
+                  />
+                  <Text className="ml-2 text-gray-700">
+                    {hasUserLiked(selectedAnnouncement) ? 'Liked' : 'Like'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
+            </SafeAreaView>
+          </TouchableOpacity>
         )}
       </Modal>
 
