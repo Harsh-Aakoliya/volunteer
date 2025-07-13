@@ -22,12 +22,13 @@ const chatController = {
   },
   async getChatRooms(req, res) {
     try {
-    console.log("request got ", req.user);
-    const userId = req.user.userId;
-    
-    
+      console.log("request got ", req.user);
+      const userId = req.user.userId;
+      
       const result = await pool.query(
-        `SELECT cr."roomId" as id, cr."roomName", cr."roomDescription", cr."isGroup"
+        `SELECT cr."roomId" as id, cr."roomName", cr."roomDescription", cr."isGroup", 
+                cr."createdBy", cr."createdOn", cru."isAdmin", 
+                CASE WHEN cru."isAdmin" = TRUE THEN TRUE ELSE FALSE END as "canSendMessage"
         FROM chatrooms cr
         JOIN chatroomusers cru ON cr."roomId" = cru."roomId"
         WHERE cru."userId" = $1
@@ -101,14 +102,15 @@ const chatController = {
       const roomId = roomResult.rows[0].roomId;
 
       // Add users to the room
-      const userInsertPromises = validUserIds.map(userId => 
-        client.query(
+      const userInsertPromises = validUserIds.map(userId => {
+        const isAdmin = userId === createdBy;
+        return client.query(
           `INSERT INTO chatroomusers 
           ("roomId", "userId", "isAdmin", "canSendMessage") 
           VALUES ($1, $2, $3, $4)`,
-          [roomId, userId, userId === createdBy, true]
-        )
-      );
+          [roomId, userId, isAdmin, isAdmin] // canSendMessage = isAdmin (only admins can send messages)
+        );
+      });
 
       // Make sure creator is also added to the room if not already in the list
       if (!validUserIds.includes(createdBy)) {
@@ -117,7 +119,7 @@ const chatController = {
             `INSERT INTO chatroomusers 
             ("roomId", "userId", "isAdmin", "canSendMessage") 
             VALUES ($1, $2, $3, $4)`,
-            [roomId, createdBy, true, true]
+            [roomId, createdBy, true, true] // Creator is always admin and can send messages
           )
         );
       }
@@ -355,7 +357,7 @@ const chatController = {
       const insertPromises = newMemberIds.map(memberId => 
         client.query(
           `INSERT INTO chatroomusers ("roomId", "userId", "isAdmin", "canSendMessage")
-          VALUES ($1, $2, FALSE, TRUE)`,
+          VALUES ($1, $2, FALSE, FALSE)`,
           [roomIdInt, memberId]
         )
       );

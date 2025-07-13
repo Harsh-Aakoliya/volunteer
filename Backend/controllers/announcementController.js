@@ -68,8 +68,8 @@ const Announcement = {
         WHERE a."status" = 'published'
         ORDER BY a."createdAt" DESC
       `);
-      console.log("Published announcements count:", result.rows.length);
-      console.log("Query result:", result.rows);
+      // console.log("Published announcements count:", result.rows.length);
+      // console.log("Query result:", result.rows);
       return result.rows;
     } catch (error) {
       console.error("Database query failed:", error);
@@ -85,8 +85,8 @@ const Announcement = {
         LEFT JOIN "users" u ON a."authorId" = u."userId"
         ORDER BY a."createdAt" DESC
       `);
-      console.log("ALL announcements (debug):", result.rows.length);
-      console.log("Debug query result:", result.rows);
+      // console.log("ALL announcements (debug):", result.rows.length);
+      // console.log("Debug query result:", result.rows);
       return result.rows;
     } catch (error) {
       console.error("Debug query failed:", error);
@@ -249,7 +249,7 @@ export const createAnnouncement = async (req, res) => {
 
 export const getAnnouncements = async (req, res) => {
   try {
-    console.log("at backend getAnnouncements");
+    // console.log("at backend getAnnouncements");
     const announcements = await Announcement.getAll();
     // console.log("all announcements", announcements);
     res.status(200).json(announcements);
@@ -260,7 +260,7 @@ export const getAnnouncements = async (req, res) => {
 
 export const getAnnouncementsDebug = async (req, res) => {
   try {
-    console.log("DEBUG: Getting all announcements regardless of status");
+    // console.log("DEBUG: Getting all announcements regardless of status");
     const announcements = await Announcement.getAllDebug();
     res.status(200).json(announcements);
   } catch (error) {
