@@ -6,7 +6,9 @@ import MediaUploadApp from '@/components/chat/MediaUploader';
 import Poling from '@/app/(tabs)/chat/Polling';
 import * as Application from 'expo-application';
 import { checkForUpdates } from '@/utils/updateChecker';
-
+import AutoUpdater from '@/components/AutoUpdater';
+import React from 'react';
+import { Updater } from '@/components/Updater';
 export default function Index() {
   const appVersion = Application.nativeApplicationVersion;
   console.log("current app version",appVersion);

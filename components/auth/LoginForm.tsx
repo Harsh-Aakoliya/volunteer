@@ -19,6 +19,7 @@ import { ScrollView } from "react-native";
 import * as Application from 'expo-application';
 import { API_URL } from "@/constants/api";
 import axios from "axios";
+import { Updater } from "../Updater";
 
 
 export default function LoginForm() {
@@ -117,6 +118,10 @@ export default function LoginForm() {
                 <Text>Test server</Text>
                 <Text>{serverResponse}</Text>
               </TouchableOpacity>
+              
+              {/* Add Updater component below API test part */}
+              <Updater />
+              
             <Text className="text-gray-600 font-JakartaMedium mt-2">
               Log in to continue
             </Text>

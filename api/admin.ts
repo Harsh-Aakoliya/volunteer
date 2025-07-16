@@ -274,7 +274,7 @@ export const createDraft = async (authorId: string) => {
       throw new Error('No authentication token');
     }
     
-    const response = await axios.post(`${API_URL}/api/drafts`, 
+    const response = await axios.post(`${API_URL}/api/announcements/draft`, 
       { authorId },
       {
         headers: {
@@ -296,7 +296,7 @@ export const updateDraft = async (id: number, title: string, body: string, autho
       throw new Error('No authentication token');
     }
     
-    const response = await axios.put(`${API_URL}/api/drafts/${id}`, 
+    const response = await axios.put(`${API_URL}/api/announcements/draft/${id}`, 
       { title, body, authorId },
       {
         headers: {
@@ -318,7 +318,7 @@ export const publishDraft = async (id: number, title: string, body: string, auth
       throw new Error('No authentication token');
     }
     
-    const response = await axios.post(`${API_URL}/api/drafts/${id}/publish`, 
+    const response = await axios.put(`${API_URL}/api/announcements/draft/${id}/publish`, 
       { title, body, authorId },
       {
         headers: {
@@ -340,7 +340,7 @@ export const getDrafts = async (authorId: string) => {
       throw new Error('No authentication token');
     }
     
-    const response = await axios.get(`${API_URL}/api/drafts/${authorId}`, {
+    const response = await axios.get(`${API_URL}/api/announcements/drafts/${authorId}`, {
       headers: {
         Authorization: `Bearer ${token}`
       }
@@ -359,7 +359,7 @@ export const deleteDraft = async (id: number, authorId: string) => {
       throw new Error('No authentication token');
     }
     
-    const response = await axios.delete(`${API_URL}/api/drafts/${id}`, {
+    const response = await axios.delete(`${API_URL}/api/announcements/draft/${id}`, {
       headers: {
         Authorization: `Bearer ${token}`
       },
@@ -379,7 +379,7 @@ export const removeEmptyDraft = async (id: number, authorId: string) => {
       throw new Error('No authentication token');
     }
     
-    const response = await axios.delete(`${API_URL}/api/drafts/${id}/empty`, {
+    const response = await axios.delete(`${API_URL}/api/announcements/draft/${id}/empty`, {
       headers: {
         Authorization: `Bearer ${token}`
       },
