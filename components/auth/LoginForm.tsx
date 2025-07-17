@@ -120,7 +120,7 @@ export default function LoginForm() {
               </TouchableOpacity>
               
               {/* Add Updater component below API test part */}
-              <Updater />
+              
               
             <Text className="text-gray-600 font-JakartaMedium mt-2">
               Log in to continue

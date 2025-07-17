@@ -151,6 +151,22 @@ app.get("/api/test", (req, res) => {
   res.json({ message: "Server is running" });
 });
 
+// Version endpoint
+app.get("/api/version", (req, res) => {
+  try {
+    const versionPath = path.join(process.cwd(), 'version.json');
+    if (fs.existsSync(versionPath)) {
+      const versionData = JSON.parse(fs.readFileSync(versionPath, 'utf8'));
+      res.json(versionData);
+    } else {
+      res.status(404).json({ error: 'Version file not found' });
+    }
+  } catch (error) {
+    console.error('Error reading version file:', error);
+    res.status(500).json({ error: 'Unable to read version file' });
+  }
+});
+
 // Use httpServer instead of app to listen
 httpServer.listen(PORT, "0.0.0.0", () => {
   const addresses = Object.values(os.networkInterfaces())

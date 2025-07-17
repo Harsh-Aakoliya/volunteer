@@ -1,32 +1,52 @@
-import React from "react";
-import { Button, View } from "react-native";
+import React, { useEffect } from "react";
+import { View } from "react-native";
 import * as FileSystem from "expo-file-system";
 import { startActivityAsync } from "expo-intent-launcher";
+import { API_URL } from "@/constants/api";
 
-export function Updater() {
+export function Updater({ version, onProgress, onDone }) {
+  useEffect(() => {
+    if (version) {
+      updateApk();
+    }
+  }, [version]);
+
   async function updateApk() {
-    const uri = "http://192.168.166.33:3000/media/1.0.5.apk";
-    const localFilePath = FileSystem.documentDirectory + "test.apk";
-    console.log(localFilePath);
+    const uri = `${API_URL}/media/${version}.apk`;
+    const localFilePath = FileSystem.documentDirectory + "update.apk";
+    
     try {
-      // Download to the file path first
-      await FileSystem.downloadAsync(uri, localFilePath);
+      console.log(`Downloading APK from: ${uri}`);
       
-      // Then get the content URI for the install activity
+      const downloadResumable = FileSystem.createDownloadResumable(
+        uri,
+        localFilePath,
+        {},
+        (downloadProgress) => {
+          const progress = downloadProgress.totalBytesWritten / downloadProgress.totalBytesExpectedToWrite;
+          // console.log(`Download progress: ${Math.round(progress * 100)}%`);
+          if (onProgress) onProgress(progress);
+        }
+      );
+      
+      const result = await downloadResumable.downloadAsync();
+      console.log('APK download completed:', result);
+      
       const localUri = await FileSystem.getContentUriAsync(localFilePath);
-
+      console.log('Installing APK from:', localUri);
+      
       await startActivityAsync("android.intent.action.INSTALL_PACKAGE", {
         data: localUri,
         flags: 1,
       });
+      
+      if (onDone) onDone();
     } catch (error) {
-      alert(`Error during installing APK: ${error}`);
+      console.error('Error during APK update:', error);
+      alert(`Error during installing APK: ${error.message}`);
+      if (onDone) onDone();
     }
   }
 
-  return (
-    <View>
-      <Button title="Reset APK" onPress={updateApk} />
-    </View>
-  );
+  return <View />;
 }
