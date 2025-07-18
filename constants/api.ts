@@ -1,33 +1,57 @@
-// constants/index.js
-// Replace with your actual server address - this would typically come from environment variables
-// export const API_URL = 'http://103.47.172.58:50160';//outside org network
-// // // export const API_URL = 'http://192.168.8.34:3000'; // inside org network
+// Dynamic API URL configuration
+let currentApiUrl = "http://192.168.166.33:3000"; // default URL
 
-// export const SOCKET_URL = API_URL; // Socket.IO connects to the same server
+// Function to get current API URL
+export const getApiUrl = (): string => currentApiUrl;
 
-// // Debug logging for API URL
-// console.log('🔗 API_URL configured as:', API_URL);
-// console.log('🌐 SOCKET_URL configured as:', SOCKET_URL);
+// Function to get current Socket URL
+export const getSocketUrl = (): string => currentApiUrl;
 
+// Function to set new API URL
+export const setApiUrl = (newUrl: string): void => {
+  currentApiUrl = newUrl;
+  console.log('🔗 API_URL updated to:', currentApiUrl);
+  console.log('🌐 SOCKET_URL updated to:', currentApiUrl);
+};
 
-// expo 
+// Create a proxy object that behaves like a string but returns dynamic value
+const createDynamicString = () => {
+  return new Proxy({}, {
+    get(target, prop) {
+      if (prop === Symbol.toPrimitive || prop === 'valueOf' || prop === 'toString') {
+        return () => currentApiUrl;
+      }
+      if (prop === 'replace') {
+        return (searchValue: string | RegExp, replaceValue: string) => currentApiUrl.replace(searchValue, replaceValue);
+      }
+      if (prop === 'includes') {
+        return (searchString: string, position?: number) => currentApiUrl.includes(searchString, position);
+      }
+      if (prop === 'startsWith') {
+        return (searchString: string, position?: number) => currentApiUrl.startsWith(searchString, position);
+      }
+      if (prop === 'endsWith') {
+        return (searchString: string, length?: number) => currentApiUrl.endsWith(searchString, length);
+      }
+      if (prop === 'substring') {
+        return (start: number, end?: number) => currentApiUrl.substring(start, end);
+      }
+      if (prop === 'slice') {
+        return (start?: number, end?: number) => currentApiUrl.slice(start, end);
+      }
+      if (prop === 'length') {
+        return currentApiUrl.length;
+      }
+      // For template literals and string concatenation
+      return currentApiUrl[prop as keyof string];
+    }
+  });
+};
 
-//both needs to be there in same network i.e. in org network
-//so api url will be outside org network and in expo we will use exp:192.168.8.34:8081 
-
-//development build
-
-//if both are in same network then 
-// for development build frontend we will use http:192.168.8.34:8081 and http://192.168.8.34:3000 for API_URL
-
-
-
-
-
-//normal env
-export const API_URL = "http://192.168.166.33:3000";
-export const SOCKET_URL = API_URL; // Socket.IO connects to the same server
+// Export dynamic string objects that behave like regular strings
+export const API_URL = createDynamicString() as any as string;
+export const SOCKET_URL = createDynamicString() as any as string;
 
 // Debug logging for API URL
-console.log('🔗 API_URL configured as:', API_URL);
-console.log('🌐 SOCKET_URL configured as:', SOCKET_URL);
+console.log('🔗 API_URL configured as:', currentApiUrl);
+console.log('🌐 SOCKET_URL configured as:', currentApiUrl);

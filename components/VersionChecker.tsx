@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, version } from "react";
 import { View, Text, Alert, Modal, TouchableOpacity, ActivityIndicator } from "react-native";
 import * as Application from 'expo-application';
 import { API_URL } from "@/constants/api";
 import { Updater } from "./Updater";
-
+import axios from "axios";
 interface VersionCheckerProps {
   onUpdateCheckComplete?: (updateRequired: boolean) => void;
 }
@@ -29,7 +29,9 @@ export function VersionChecker({ onUpdateCheckComplete }: VersionCheckerProps) {
       console.log("Current app version:", appVersion);
       
       const response = await fetch(`${API_URL}/api/version`);
+      console.log("response got",response);
       const versionData = await response.json();
+      console.log("versiondata",versionData);
       
       console.log("Server version data:", versionData);
       

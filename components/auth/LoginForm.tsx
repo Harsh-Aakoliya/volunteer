@@ -17,7 +17,7 @@ import CustomInput from "../ui/CustomInput";
 import { login } from "@/api/auth";
 import { ScrollView } from "react-native";
 import * as Application from 'expo-application';
-import { API_URL } from "@/constants/api";
+import { API_URL, setApiUrl } from "@/constants/api";
 import axios from "axios";
 import { Updater } from "../Updater";
 
@@ -27,11 +27,14 @@ export default function LoginForm() {
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [touched, setTouched] = useState({ mobile: false, password: false });
+  const [touched, setTouched] = useState({ mobile: false, password: false, backendUrl: false });
   const [deviceId, setDeviceId] = useState<string | null>(null);
   const [isLoadingDeviceId, setIsLoadingDeviceId] = useState(false);
   const [deviceIdError, setDeviceIdError] = useState<string | null>(null);
   const [serverResponse, setServerResponse] = useState<string | null>(null);
+  const [backendUrl, setBackendUrl] = useState(String(API_URL)); // Initialize with current API URL
+  const [showBackendUrlInput, setShowBackendUrlInput] = useState(false);
+
     // Fetch device ID on component mount
     useEffect(() => {
       const fetchDeviceId = async (): Promise<void> => {
@@ -53,9 +56,27 @@ export default function LoginForm() {
       
       fetchDeviceId();
     }, []);
+
+  const handleBackendUrlUpdate = () => {
+    if (backendUrl.trim()) {
+      // Ensure URL has proper format
+      let formattedUrl = backendUrl.trim();
+      if (!formattedUrl.startsWith('http://') && !formattedUrl.startsWith('https://')) {
+        formattedUrl = 'http://' + formattedUrl;
+      }
+      
+      setApiUrl(formattedUrl);
+      setBackendUrl(formattedUrl);
+      Alert.alert("Success", "Backend URL updated successfully!");
+      setShowBackendUrlInput(false);
+    } else {
+      Alert.alert("Error", "Please enter a valid backend URL");
+    }
+  };
+
   //chekcing for changes
   const handleLogin = async () => {
-    setTouched({ mobile: true, password: true });
+    setTouched({ mobile: true, password: true, backendUrl: true });
 
     if (!mobileNumber || !password) {
       Alert.alert("Error", "Please fill in all fields");
@@ -129,6 +150,46 @@ export default function LoginForm() {
         </View>
 
         <View className="p-6 space-y-5">
+          {/* Backend URL Configuration */}
+          <View className="mb-4">
+            <View className="flex-row justify-between items-center mb-2">
+                             <Text className="text-gray-700 font-JakartaMedium">
+                 Backend URL: {API_URL}
+               </Text>
+              <TouchableOpacity 
+                onPress={() => setShowBackendUrlInput(!showBackendUrlInput)}
+                className="bg-blue-100 px-3 py-1 rounded-md"
+              >
+                <Text className="text-blue-600 font-JakartaMedium text-sm">
+                  {showBackendUrlInput ? 'Cancel' : 'Change'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+            
+            {showBackendUrlInput && (
+              <View className="space-y-3">
+                <CustomInput
+                  label="Backend URL"
+                  placeholder="Enter backend URL (e.g., http://192.168.1.100:3000)"
+                  value={backendUrl}
+                  onChangeText={setBackendUrl}
+                  keyboardType="url"
+                  leftIcon={
+                    <Ionicons name="server-outline" size={20} color="#6B7280" />
+                  }
+                  error={touched.backendUrl && !backendUrl ? "Backend URL is required" : ""}
+                  touched={touched.backendUrl}
+                  onBlur={() => setTouched((prev) => ({ ...prev, backendUrl: true }))}
+                />
+                <CustomButton
+                  title="Update Backend URL"
+                  onPress={handleBackendUrlUpdate}
+                  bgVariant="success"
+                />
+              </View>
+            )}
+          </View>
+
           <CustomInput
             label="Mobile Number"
             placeholder="Enter mobile number"
@@ -157,8 +218,7 @@ export default function LoginForm() {
                 <Ionicons
                   name={showPassword ? "eye-outline" : "eye-off-outline"}
                   size={20}
-                  color="#6B7280"
-                />
+                  color="#6B7280" />
               </Pressable>
             }
             error={!password ? "Password is required" : ""}

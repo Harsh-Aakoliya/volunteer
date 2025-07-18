@@ -14,6 +14,7 @@ const router = express.Router();
 
 // Test route
 router.get('/test', (req, res) => {
+  console.log("req got");
   res.json({ message: "API is running" });
 });
 

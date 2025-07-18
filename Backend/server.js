@@ -153,6 +153,7 @@ app.get("/api/test", (req, res) => {
 
 // Version endpoint
 app.get("/api/version", (req, res) => {
+  console.log("version checking req got");
   try {
     const versionPath = path.join(process.cwd(), 'version.json');
     if (fs.existsSync(versionPath)) {
