@@ -1,5 +1,7 @@
 // Announcement model and controller
 import pool from "../config/database.js";
+import path from "path";
+const defaultCoverImage=path.join(process.cwd(), 'media',"defaultcoverimage.png");
 
 const Announcement = {
   create: async (title, body, authorId, status = 'published') => {
@@ -10,14 +12,94 @@ const Announcement = {
     );
     return result.rows[0];
   },
-
+  
   createDraft: async (authorId) => {
+    // console.log(path.join(process.cwd()));
+    // console.log("defaultCoverImage", defaultCoverImage);
     const result = await pool.query(
       'INSERT INTO "announcements" ("title", "body", "authorId", "status", "updatedAt") VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP) RETURNING *',
       ['', '', authorId, 'draft']
     );
     return result.rows[0];
   },
+  uploadCoverImage: async (req, res) => {
+    try {
+        const { files, announcementId } = req.body;
+        
+        if (!files || !Array.isArray(files) || files.length === 0) {
+            return res.status(400).json({ error: "No files provided" });
+        }
+
+        if (!announcementId) {
+            return res.status(400).json({ error: "Announcement ID is required" });
+        }
+
+        // Import fs module
+        const fs = await import('fs');
+        
+        const UPLOAD_DIR = path.join(process.cwd(), 'media', 'announcement', `${announcementId}`);
+        
+        if (!fs.default.existsSync(UPLOAD_DIR)) {
+            fs.default.mkdirSync(UPLOAD_DIR, { recursive: true });
+        }
+
+        const uploadedFiles = [];
+        const file = files[0]; // Only take the first file for cover image
+        
+        if (!file.fileData || !file.name || !file.mimeType) {
+            return res.status(400).json({ error: "Invalid file data" });
+        }
+
+        // Check if it's an image
+        if (!file.mimeType.startsWith('image/')) {
+            return res.status(400).json({ error: "Only image files are allowed for cover image" });
+        }
+
+        // Always save as .jpg for consistency
+        const fileName = `coverimage.jpg`;
+        const filePath = path.join(UPLOAD_DIR, fileName);
+
+        try {
+            // Remove existing cover image if it exists
+            if (fs.default.existsSync(filePath)) {
+                fs.default.unlinkSync(filePath);
+            }
+
+            // Convert base64 to buffer and write file
+            const buffer = Buffer.from(file.fileData, 'base64');
+            fs.default.writeFileSync(filePath, buffer);
+
+            // Update the announcement's hasCoverImage flag
+            await pool.query(
+                'UPDATE "announcements" SET "hasCoverImage" = TRUE WHERE "id" = $1',
+                [announcementId]
+            );
+
+            uploadedFiles.push({
+                originalName: file.name,
+                fileName: fileName,
+                mimeType: file.mimeType,
+                size: buffer.length,
+                url: `${process.env.API_URL || 'http://localhost:3000'}/media/announcement/${announcementId}/${fileName}`,
+                caption: ""
+            });
+
+            res.json({
+                success: true,
+                uploadedFiles,
+                message: "Cover image uploaded successfully"
+            });
+
+        } catch (writeError) {
+            console.error(`Error writing file ${file.name}:`, writeError);
+            res.status(500).json({ error: "Failed to write file" });
+        }
+
+    } catch (error) {
+        console.error("Error uploading cover image:", error);
+        res.status(500).json({ error: "Failed to upload cover image", details: error.message });
+    }
+},
 
   updateDraft: async (id, title, body, authorId) => {
     const result = await pool.query(
@@ -462,5 +544,15 @@ export const removeEmptyDraftController = async (req, res) => {
   } catch (error) {
     console.error('Error removing empty draft:', error);
     res.status(500).json({ error: 'Failed to remove empty draft' });
+  }
+};
+
+// Cover image upload controller
+export const uploadCoverImageController = async (req, res) => {
+  try {
+    return await Announcement.uploadCoverImage(req, res);
+  } catch (error) {
+    console.error('Error uploading cover image:', error);
+    res.status(500).json({ error: 'Failed to upload cover image' });
   }
 };

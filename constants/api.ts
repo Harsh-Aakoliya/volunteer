@@ -1,5 +1,5 @@
 // Dynamic API URL configuration
-let currentApiUrl = "http://192.168.166.33:3000"; // default URL
+let currentApiUrl = "http://103.47.172.58:50160"; // default URL
 
 // Function to get current API URL
 export const getApiUrl = (): string => currentApiUrl;

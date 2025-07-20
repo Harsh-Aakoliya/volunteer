@@ -87,12 +87,12 @@ export const login = async (mobileNumber: string, password: string) => {
   }
 };
 
-export const register = async (mobileNumber: string, userId: string) => {
+export const register = async (mobileNumber: string, userId: string, fullName: string) => {
   try {
-
     const response = await axios.post(`${API_URL}/api/auth/register`, {
       mobileNumber,
       userId,
+      fullName,
     });
     return response.data;
   } catch (error: any) {

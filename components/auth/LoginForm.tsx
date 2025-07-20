@@ -20,6 +20,7 @@ import * as Application from 'expo-application';
 import { API_URL, setApiUrl } from "@/constants/api";
 import axios from "axios";
 import { Updater } from "../Updater";
+import AppInfo from "./AppInfo";
 
 
 export default function LoginForm() {
@@ -28,34 +29,11 @@ export default function LoginForm() {
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [touched, setTouched] = useState({ mobile: false, password: false, backendUrl: false });
-  const [deviceId, setDeviceId] = useState<string | null>(null);
-  const [isLoadingDeviceId, setIsLoadingDeviceId] = useState(false);
-  const [deviceIdError, setDeviceIdError] = useState<string | null>(null);
-  const [serverResponse, setServerResponse] = useState<string | null>(null);
   const [backendUrl, setBackendUrl] = useState(String(API_URL)); // Initialize with current API URL
   const [showBackendUrlInput, setShowBackendUrlInput] = useState(false);
+  const [showAppInfo, setShowAppInfo] = useState(false);
 
-    // Fetch device ID on component mount
-    useEffect(() => {
-      const fetchDeviceId = async (): Promise<void> => {
-        setIsLoadingDeviceId(true);
-        try {
-          const id = await Application.getAndroidId();
-          setDeviceId(id);
-          console.log(id);
-          setDeviceIdError(null);
-          // Once we have the device ID, fetch user data
-          // fetchUserData(id);
-        } catch (error) {
-          console.error("Failed to fetch device ID:", error);
-          setDeviceIdError("Failed to fetch device ID");
-        } finally {
-          setIsLoadingDeviceId(false);
-        }
-      };
-      
-      fetchDeviceId();
-    }, []);
+
 
   const handleBackendUrlUpdate = () => {
     if (backendUrl.trim()) {
@@ -111,47 +89,28 @@ export default function LoginForm() {
           style={{height:100,width:100}}
         /> */}
           <View className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-white">
-            <Text className="text-3xl text-gray-800 font-JakartaBold">
-              Welcome Back again
-            </Text>
-              <View className="flex-row justify-between items-center">
-                <Text>Device id is {deviceId}</Text>
-              </View>
-              <View className="flex-row justify-between items-center">
-                {deviceIdError && <Text>Error: {deviceIdError}</Text>}
-              </View>
-              <View >
-                <Text>Current app version is {Application.nativeApplicationVersion}</Text>
-                <Text>Current app build version is {Application.nativeBuildVersion}</Text> 
-              </View>
+            <View className="flex-row justify-between items-center">
               <View>
-                <Text>Now this is version 1.0.4</Text>
+                <Text className="text-3xl text-gray-800 font-JakartaBold">
+                  Welcome Back again
+                </Text>
+                <Text className="text-gray-600 font-JakartaMedium mt-2">
+                  Log in to continue
+                </Text>
               </View>
-              <TouchableOpacity onPress={() => {
-                axios.get(`${API_URL}/api/test`)
-                .then(res => {
-                  setServerResponse(res.data.message)
-                })
-                .catch(err => {
-                  setServerResponse(err.response.data.message)
-                })
-              }}>
-                <Text>Test server</Text>
-                <Text>{serverResponse}</Text>
-              </TouchableOpacity>
-              
-              {/* Add Updater component below API test part */}
-              
-              
-            <Text className="text-gray-600 font-JakartaMedium mt-2">
-              Log in to continue
-            </Text>
+              {/* <TouchableOpacity 
+                onPress={() => setShowAppInfo(true)}
+                className="bg-gray-100 w-10 h-10 rounded-full items-center justify-center"
+              >
+                <Ionicons name="information-outline" size={20} color="#6b7280" />
+              </TouchableOpacity> */}
+            </View>
           </View>
         </View>
 
         <View className="p-6 space-y-5">
           {/* Backend URL Configuration */}
-          <View className="mb-4">
+          {/* <View className="mb-4">
             <View className="flex-row justify-between items-center mb-2">
                              <Text className="text-gray-700 font-JakartaMedium">
                  Backend URL: {API_URL}
@@ -188,7 +147,7 @@ export default function LoginForm() {
                 />
               </View>
             )}
-          </View>
+          </View> */}
 
           <CustomInput
             label="Mobile Number"
@@ -250,6 +209,12 @@ export default function LoginForm() {
           </View>
         </View>
       </View>
+
+      {/* App Info Modal */}
+      {/* <AppInfo 
+        visible={showAppInfo} 
+        onClose={() => setShowAppInfo(false)} 
+      /> */}
     </ScrollView>
   );
 }

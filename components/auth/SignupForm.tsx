@@ -9,20 +9,21 @@ import { register } from "@/api/auth";
 export default function SignupForm() {
   const [mobileNumber, setMobileNumber] = useState("");
   const [userId, setuserId] = useState("");
+  const [fullName, setFullName] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [touched, setTouched] = useState({ mobile: false, id: false });
+  const [touched, setTouched] = useState({ mobile: false, id: false, fullName: false });
 
   const handleSignup = async () => {
-    setTouched({ mobile: true, id: true });
+    setTouched({ mobile: true, id: true, fullName: true });
 
-    if (!mobileNumber || !userId) {
+    if (!mobileNumber || !userId || !fullName) {
       Alert.alert("Error", "Please fill in all fields");
       return;
     }
 
     try {
       setIsLoading(true);
-      const data = await register(mobileNumber, userId);
+      const data = await register(mobileNumber, userId, fullName);
       if (data.success) {
         Alert.alert(
           "Success",
@@ -62,6 +63,21 @@ export default function SignupForm() {
         </View>
 
         <View className="p-6 space-y-5">
+          <CustomInput
+            label="Full Name"
+            placeholder="Enter your full name"
+            value={fullName}
+            onChangeText={setFullName}
+            leftIcon={
+              <Ionicons name="person-outline" size={20} color="#6B7280" />
+            }
+            error={
+              !fullName && touched.fullName ? "Full name is required" : ""
+            }
+            touched={touched.fullName}
+            onBlur={() => setTouched((prev) => ({ ...prev, fullName: true }))}
+          />
+
           <CustomInput
             label="Mobile Number"
             placeholder="Enter your mobile number"

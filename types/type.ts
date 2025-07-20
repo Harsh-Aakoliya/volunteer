@@ -144,6 +144,7 @@ export interface Announcement {
   body: string;
   authorId: string;
   authorName?: string;
+  hasCoverImage?: boolean;
   createdAt: string;
   likes: string[];
   dislikes: number;

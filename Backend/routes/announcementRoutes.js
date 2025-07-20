@@ -15,7 +15,8 @@ import {
   publishDraftController,
   getDraftsController,
   deleteDraftController,
-  removeEmptyDraftController
+  removeEmptyDraftController,
+  uploadCoverImageController
 } from '../controllers/announcementController.js';
 import { authenticateToken } from '../middlewares/auth.js';
 
@@ -31,6 +32,9 @@ router.get('/debug', getAnnouncementsDebug);
 router.post('/likes', updateLikes);
 router.delete('/:id', deleteAnnouncement);
 router.put('/:id', updateAnnouncementController);
+
+// Cover image upload route
+router.post('/cover-image', uploadCoverImageController);
 
 // New routes for like/read functionality
 router.post('/:id/toggle-like', toggleLike);

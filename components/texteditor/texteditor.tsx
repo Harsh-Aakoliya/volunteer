@@ -1,9 +1,11 @@
 import React, { useRef, forwardRef, useState, useCallback, useEffect } from 'react';
-import { View, TouchableOpacity, Text, ScrollView, Dimensions, Modal, SafeAreaView, StatusBar, BackHandler } from 'react-native';
+import { View, TouchableOpacity, Text, ScrollView, Dimensions, Modal, SafeAreaView, StatusBar, BackHandler, Image } from 'react-native';
 import { RichEditor, RichToolbar, actions } from 'react-native-pell-rich-editor';
 import { cssInterop } from "nativewind";
 import WebView from 'react-native-webview';
 import { TextInput, Alert } from 'react-native';
+import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system';
 import { 
   createAnnouncement, 
   updateDraft, 
@@ -16,6 +18,9 @@ import { router } from 'expo-router';
 import { AuthStorage } from '@/utils/authStorage';
 import { Announcement } from '@/types/type';
 import { useFocusEffect } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
+import { API_URL } from '@/constants/api';
+import axios from 'axios';
 // Update the interface
 interface RichTextEditorProps {
   initialTitle?: string;
@@ -23,6 +28,7 @@ interface RichTextEditorProps {
   announcementId?: number;
   announcementMode?: string;
   draftId?: number;
+  coverImage?: string;
 }
 
 // Create a forwarded ref component for RichEditor
@@ -51,6 +57,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
   initialContent = '',
   announcementId,
   announcementMode,
+  coverImage 
 }) => {
     // console.log("initialContent", initialContent);
     // console.log("initialTitle", initialTitle);
@@ -71,7 +78,23 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
   const isFresh = announcementMode === 'new';
   const isDraft = announcementMode === 'draft';
   const isEdit = announcementMode === 'edit';
-
+  const [isUploadingCover, setIsUploadingCover] = useState<boolean>(false);
+  const [coverImageUri, setCoverImageUri] = useState<string>('');
+  const [hasCoverImage, setHasCoverImage] = useState<boolean>(false);
+  console.log("coverImage", coverImage);
+  
+  // Initialize cover image state
+  useEffect(() => {
+    if (coverImage === 'true' || coverImage === 'TRUE') {
+      setHasCoverImage(true);
+      // Use a generic coverimage.jpg path with cache busting for custom images
+      setCoverImageUri(`${API_URL}/media/announcement/${announcementId}/coverimage.jpg?t=${Date.now()}`);
+    } else {
+      setHasCoverImage(false);
+      setCoverImageUri(`${API_URL}/media/defaultcoverimage.png`);
+    }
+  }, [coverImage, announcementId]);
+  
   // Initialize state and user ID
   useEffect(() => {
     console.log("Initializing with:", { initialTitle, initialContent, announcementMode });
@@ -82,15 +105,29 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
     currentTitleRef.current = initialTitle;
   }, [initialTitle, initialContent, announcementMode]);
 
+
   // Set content when editor becomes ready
   useEffect(() => {
     if (isEditorReady && richText.current && initialContent) {
       console.log("Setting content in editor:", initialContent);
-      setTimeout(() => {
-        if (richText.current) {
-          richText.current.setContentHTML(initialContent);
-        }
-      }, 100);
+      // Try multiple times to ensure content is set
+      const setContentWithRetry = (attempts = 0) => {
+        if (attempts >= 3) return;
+        
+        setTimeout(() => {
+          if (richText.current) {
+            try {
+              richText.current.setContentHTML(initialContent);
+              console.log("Content set successfully on attempt:", attempts + 1);
+            } catch (error) {
+              console.log("Failed to set content, retrying...", error);
+              setContentWithRetry(attempts + 1);
+            }
+          }
+        }, 100 + (attempts * 100)); // Increasing delay for each retry
+      };
+      
+      setContentWithRetry();
     }
   }, [isEditorReady, initialContent]);
 
@@ -381,6 +418,130 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
     currentTitleRef.current = text; // Update ref immediately
   }, []);
 
+  // // Handle cover image selection
+  // const handleSelectCoverImage = async () => {
+  //   try {
+  //     const result = await DocumentPicker.getDocumentAsync({
+  //       type: 'image/*',
+  //       copyToCacheDirectory: true,
+  //     });
+
+  //     if (result.canceled || !result.assets[0]) {
+  //       return;
+  //     }
+
+  //     const asset = result.assets[0];
+  //     setIsUploadingCover(true);
+
+  //     try {
+  //       // Read the file as base64
+  //       const base64 = await FileSystem.readAsStringAsync(asset.uri, {
+  //         encoding: FileSystem.EncodingType.Base64,
+  //       });
+
+  //       // For now, just set the local URI - we'll upload when publishing
+  //       setCoverImageUri(asset.uri);
+  //       setCoverImage(base64); // Store base64 for upload later
+        
+  //       Alert.alert('Success', 'Cover image selected successfully!');
+  //     } catch (error) {
+  //       console.error('Error reading image file:', error);
+  //       Alert.alert('Error', 'Failed to process the selected image.');
+  //     } finally {
+  //       setIsUploadingCover(false);
+  //     }
+  //   } catch (error) {
+  //     console.error('Error selecting image:', error);
+  //     Alert.alert('Error', 'Failed to select image.');
+  //     setIsUploadingCover(false);
+  //   }
+  // };
+  const [uploadProgress, setUploadProgress] = useState<number>(0);
+  
+  const handleSelectCoverImage = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        multiple: false,
+        type: ["image/*"],
+        copyToCacheDirectory: true,
+      });
+
+      if (result.canceled || result.assets.length === 0) return;
+
+      const asset = result.assets[0];
+      
+      // Check if it's an image
+      if (!asset.mimeType?.startsWith('image/')) {
+        Alert.alert("Invalid File", "Please select an image file only.");
+        return;
+      }
+
+      setIsUploadingCover(true);
+      setUploadProgress(0);
+
+      try {
+        // Read file as base64
+        const fileData = await FileSystem.readAsStringAsync(asset.uri, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        
+        setUploadProgress(30);
+
+        const fileToUpload = {
+          name: asset.name,
+          mimeType: asset.mimeType || "image/jpeg",
+          fileData,
+        };
+
+        setUploadProgress(50);
+
+        const token = await AuthStorage.getToken();
+        const response = await axios.post(
+          `${API_URL}/api/announcements/cover-image`,
+          {
+            files: [fileToUpload],
+            announcementId: announcementId
+          },
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+          }
+        );
+
+        setUploadProgress(80);
+
+        if (response.data.success) {
+          // Update the cover image URI to the uploaded file (always saved as .jpg)
+          const newImageUri = `${API_URL}/media/announcement/${announcementId}/coverimage.jpg?t=${Date.now()}`;
+          setCoverImageUri(newImageUri);
+          setHasCoverImage(true);
+          setUploadProgress(100);
+          
+          Alert.alert("Success", "Cover image uploaded successfully!");
+        } else {
+          throw new Error("Upload failed");
+        }
+
+      } catch (error) {
+        console.error("Upload error:", error);
+        Alert.alert("Upload failed", "There was an error uploading your cover image.");
+        // Reset to default image on error
+        setCoverImageUri(`${API_URL}/media/defaultcoverimage.png`);
+        setHasCoverImage(false);
+      } finally {
+        setIsUploadingCover(false);
+        setUploadProgress(0);
+      }
+    } catch (error) {
+      console.error("File selection error:", error);
+      setIsUploadingCover(false);
+    }
+  };
+
+
+
   // Handle publishing/updating announcement
   const handlePublishAnnouncement = async () => {
     // Get current content from the editor and title
@@ -400,12 +561,16 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
         result = await publishDraft(announcementId as number, currentTitle, currentContent, currentUserId);
         console.log("Published draft:", result);
         
+        // Cover image is already uploaded during selection, no need to upload again
+        
         // Navigate back to announcement screen
         router.replace('/announcement');
       } else if (isEdit) {
         // Update existing published announcement
         result = await updateAnnouncement(announcementId, currentTitle, currentContent);
         console.log("Updated announcement:", result);
+        
+        // Cover image is already uploaded during selection, no need to upload again
         
         // Navigate back to announcement screen
         router.replace('/announcement');
@@ -424,6 +589,8 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
       setIsPublishing(false);
     }
   };
+
+
   // State to control the modal visibility
   const [modalVisible, setModalVisible] = useState<boolean>(false);
   const { width } = Dimensions.get('window');
@@ -520,38 +687,20 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
 
   return (
     <SafeAreaView className="flex-1 bg-white">
-      {/* Header with back button */}
-      <View className="flex-row justify-between items-center px-4 py-3 border-b border-gray-200">
+      {/* Header with back button and centered title */}
+      <View className="flex-row items-center justify-between px-4 py-3 border-b border-gray-200">
         <TouchableOpacity
           onPress={handleGoBack}
-          className="bg-gray-200 py-2 px-4 rounded-lg"
+          className="p-2"
         >
-          <Text className="text-gray-800">← Back</Text>
+          <Ionicons name="arrow-back" size={24} color="#374151" />
         </TouchableOpacity>
         
-        <Text className="text-lg font-bold">
-          {isEdit ? 'Edit Announcement' : isDraft ? 'Editing Draft' : 'New Announcement'}
+        <Text className="text-lg font-semibold text-gray-900">
+          {isEdit ? 'Edit Announcement' : isDraft ? 'Draft Announcement' : 'New Announcement'}
         </Text>
         
-        {isDraft && (
-          <TouchableOpacity
-            onPress={handleSaveProgress}
-            disabled={isSaving || !hasUnsavedChanges}
-            className={`py-2 px-4 rounded-lg ${
-              hasUnsavedChanges && !isSaving 
-                ? 'bg-blue-500' 
-                : 'bg-gray-300'
-            }`}
-          >
-            <Text className={`${
-              hasUnsavedChanges && !isSaving 
-                ? 'text-white' 
-                : 'text-gray-500'
-            }`}>
-              {isSaving ? 'Saving...' : 'Save Progress'}
-            </Text>
-          </TouchableOpacity>
-        )}
+        <View className="w-8" />
       </View>
 
       <ScrollView className="flex-1 px-4 py-4">
@@ -561,7 +710,8 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
           value={draftTitle}
           onChangeText={handleTitleChange}
           placeholder="Enter announcement title..."
-          className="border border-gray-300 rounded-lg p-3 mb-4 text-lg font-semibold"
+          className="text-xl font-semibold text-gray-900 py-3 border-b border-gray-200 mb-4"
+          style={{ borderWidth: 0, borderBottomWidth: 1 }}
         />
         
         {/* Toolbar */}
@@ -591,18 +741,18 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
           ]}
         />
         
-        {        /* Editor */}
+        {/* Editor */}
         {!isEditorReady && (
-          <View className="min-h-64 border border-gray-300 border-t-0 rounded-b-lg p-2 bg-gray-50 flex items-center justify-center">
+          <View className="min-h-80 border border-gray-300 border-t-0 rounded-b-lg p-2 bg-gray-50 flex items-center justify-center">
             <Text className="text-gray-500">Loading editor...</Text>
           </View>
         )}
         
         {isEditorReady && (
           <StyledRichEditor
-            className="min-h-64 border border-gray-300 border-t-0 rounded-b-lg p-2 bg-white"
+            className="min-h-80 border border-gray-300 border-t-0 rounded-b-lg p-2 bg-white"
             placeholder="Start writing your announcement..."
-            initialHeight={300}
+            initialHeight={400}
             ref={richText}
             onChange={handleContentChange}
             androidHardwareAccelerationDisabled={true}
@@ -611,14 +761,26 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
               console.log("Editor initialized callback triggered");
               setIsEditorReady(true);
               
-              // Set content after editor is ready
+              // Set content after editor is ready with retry logic
               if (initialContent) {
                 console.log("Setting content on initialization:", initialContent);
-                setTimeout(() => {
-                  if (richText.current) {
-                    richText.current.setContentHTML(initialContent);
-                  }
-                }, 200);
+                const setContentWithRetry = (attempts = 0) => {
+                  if (attempts >= 5) return;
+                  
+                  setTimeout(() => {
+                    if (richText.current) {
+                      try {
+                        richText.current.setContentHTML(initialContent);
+                        console.log("Content set successfully in callback on attempt:", attempts + 1);
+                      } catch (error) {
+                        console.log("Failed to set content in callback, retrying...", error);
+                        setContentWithRetry(attempts + 1);
+                      }
+                    }
+                  }, 200 + (attempts * 100));
+                };
+                
+                setContentWithRetry();
               }
             }}
             editorStyle={{
@@ -630,6 +792,47 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
             }}
           />
         )}
+        
+        {/* Cover Image Section */}
+        <View className="mb-6">
+          <Text className="text-lg font-semibold text-gray-900 mb-3">Cover Image</Text>
+          <View className="items-center">
+            <TouchableOpacity
+              onPress={handleSelectCoverImage}
+              disabled={isUploadingCover}
+              className="relative"
+            >
+              {/* Square Cover Image - 150x150 */}
+              <View className="w-[150px] h-[150px] bg-gray-200 rounded-lg overflow-hidden">
+                <Image
+                  source={{ uri: coverImageUri }}
+                  className="w-full h-full"
+                  resizeMode="cover"
+                />
+                
+                {/* Upload Progress Overlay */}
+                {isUploadingCover && (
+                  <View className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+                    <View className="bg-white bg-opacity-90 p-4 rounded-lg items-center">
+                      <Text className="text-gray-800 text-sm mb-2">Uploading...</Text>
+                      <View className="w-32 h-2 bg-gray-300 rounded-full overflow-hidden">
+                        <View 
+                          className="h-full bg-blue-500 rounded-full transition-all duration-300"
+                          style={{ width: `${uploadProgress}%` }}
+                        />
+                      </View>
+                      <Text className="text-gray-600 text-xs mt-1">{uploadProgress}%</Text>
+                    </View>
+                  </View>
+                )}
+              </View>
+              
+              <Text className="text-sm text-gray-600 mt-2 text-center">
+                {hasCoverImage ? 'Tap to change cover image' : 'Tap to add cover image'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
         
         {/* Action Buttons */}
         <View className="flex-row justify-between mt-6 space-x-3">
@@ -649,6 +852,27 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
           >
             <Text className="text-gray-800 text-center font-semibold">Clear All</Text>
           </TouchableOpacity>
+          
+          {/* Save Progress Button (only for drafts) */}
+          {isDraft && (
+            <TouchableOpacity
+              onPress={handleSaveProgress}
+              disabled={isSaving || !hasUnsavedChanges}
+              className={`py-3 px-6 rounded-lg flex-1 ${
+                hasUnsavedChanges && !isSaving 
+                  ? 'bg-blue-500' 
+                  : 'bg-gray-300'
+              }`}
+            >
+              <Text className={`text-center font-semibold ${
+                hasUnsavedChanges && !isSaving 
+                  ? 'text-white' 
+                  : 'text-gray-500'
+              }`}>
+                {isSaving ? 'Saving...' : 'Save Progress'}
+              </Text>
+            </TouchableOpacity>
+          )}
           
           <TouchableOpacity 
             className="bg-blue-600 py-3 px-6 rounded-lg flex-1"

@@ -6,7 +6,7 @@ import { UserDefinedMessageInstance } from "twilio/lib/rest/api/v2010/account/ca
 import { useId } from "react";
 
 const register = async (req, res) => {
-  const { mobileNumber, userId } = req.body;
+  const { mobileNumber, userId, fullName } = req.body;
   console.log("register ",mobileNumber,userId);
   //first checking if user is already exists or not
   try {
@@ -26,8 +26,8 @@ const register = async (req, res) => {
       res.json({ success: false, message: "Not able to capture" }); //this case will not arise
     } else {
       const result = await pool.query(
-        `INSERT INTO "users" ("mobileNumber", "userId") VALUES ($1, $2) RETURNING *`,
-        [mobileNumber, userId]
+        `INSERT INTO "users" ("mobileNumber", "userId", "fullName") VALUES ($1, $2, $3) RETURNING *`,
+        [mobileNumber, userId, fullName]
       );
       console.log("inserted successfully");
       res.json({

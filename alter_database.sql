@@ -39,3 +39,38 @@ BEGIN
         ALTER TABLE "table" ADD COLUMN "tableHeaders" JSONB DEFAULT '["Sr No", "Column1", "Column2", "Column3"]';
     END IF;
 END $$; 
+
+-- Add coverImage column to announcements table
+ALTER TABLE "announcements" ADD COLUMN IF NOT EXISTS "coverImage" VARCHAR(255);
+
+-- Add status column to announcements table if it doesn't exist
+ALTER TABLE "announcements" ADD COLUMN IF NOT EXISTS "status" VARCHAR(50) DEFAULT 'published';
+
+-- Update existing records to have default status
+UPDATE "announcements" SET "status" = 'published' WHERE "status" IS NULL;
+
+-- Change coverImage column to hasCoverImage boolean
+DO $$ 
+BEGIN 
+    -- Check if coverImage column exists and hasCoverImage doesn't
+    IF EXISTS (SELECT 1 FROM information_schema.columns 
+               WHERE table_name='announcements' AND column_name='coverImage')
+       AND NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                       WHERE table_name='announcements' AND column_name='hasCoverImage') THEN
+        
+        -- Add new hasCoverImage column
+        ALTER TABLE "announcements" ADD COLUMN "hasCoverImage" BOOLEAN DEFAULT FALSE;
+        
+        -- Update hasCoverImage based on existing coverImage values
+        UPDATE "announcements" SET "hasCoverImage" = TRUE WHERE "coverImage" IS NOT NULL AND "coverImage" != '';
+        
+        -- Drop the old coverImage column
+        ALTER TABLE "announcements" DROP COLUMN "coverImage";
+    END IF;
+    
+    -- If hasCoverImage doesn't exist yet, create it
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                   WHERE table_name='announcements' AND column_name='hasCoverImage') THEN
+        ALTER TABLE "announcements" ADD COLUMN "hasCoverImage" BOOLEAN DEFAULT FALSE;
+    END IF;
+END $$; 

@@ -15,6 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { AuthStorage } from '@/utils/authStorage';
 import { API_URL } from '@/constants/api';
 import CustomButton from '@/components/ui/CustomButton';
+import DobPicker from '@/components/chat/DobPicker';
 
 export default function EditUserScreen() {
   const { userData } = useLocalSearchParams();
@@ -22,6 +23,7 @@ export default function EditUserScreen() {
   const [editFormData, setEditFormData] = useState<any>({});
   const [formValidation, setFormValidation] = useState<any>({});
   const [hasChanges, setHasChanges] = useState(false);
+  const [selectedDOB, setSelectedDOB] = useState<Date | null>(null);
 
   // Initialize form data
   useEffect(() => {
@@ -29,9 +31,19 @@ export default function EditUserScreen() {
       const user = JSON.parse(userData as string);
       setOriginalUser(user);
       
-      // Convert date format from YYYY-MM-DD to DD-MM-YYYY for display
-      const formattedDOB = user.dateOfBirth ? 
-        formatDateForDisplay(user.dateOfBirth) : '';
+      // Set DOB date object for picker
+      let dobDate = null;
+      if (user.dateOfBirth) {
+        dobDate = new Date(user.dateOfBirth);
+        // If invalid date, set to current date
+        if (isNaN(dobDate.getTime())) {
+          dobDate = new Date();
+        }
+      } else {
+        // If no DOB, set to current date
+        dobDate = new Date();
+      }
+      setSelectedDOB(dobDate);
       
       const formData = {
         userId: user.userId || '',
@@ -39,7 +51,7 @@ export default function EditUserScreen() {
         fullName: user.fullName || '',
         isAdmin: user.isAdmin || false,
         gender: user.gender || '',
-        dateOfBirth: formattedDOB,
+        dateOfBirth: user.dateOfBirth || '',
         bloodGroup: user.bloodGroup || '',
         maritalStatus: user.maritalStatus || '',
         education: user.education || '',
@@ -61,16 +73,13 @@ export default function EditUserScreen() {
   // Check for changes whenever form data changes
   useEffect(() => {
     if (originalUser) {
-      const originalFormattedDOB = originalUser.dateOfBirth ? 
-        formatDateForDisplay(originalUser.dateOfBirth) : '';
-      
       const originalFormData = {
         userId: originalUser.userId || '',
         mobileNumber: originalUser.mobileNumber || '',
         fullName: originalUser.fullName || '',
         isAdmin: originalUser.isAdmin || false,
         gender: originalUser.gender || '',
-        dateOfBirth: originalFormattedDOB,
+        dateOfBirth: originalUser.dateOfBirth || '',
         bloodGroup: originalUser.bloodGroup || '',
         maritalStatus: originalUser.maritalStatus || '',
         education: originalUser.education || '',
@@ -120,68 +129,20 @@ export default function EditUserScreen() {
     return () => backHandler.remove();
   }, [hasChanges]);
 
-  // Date formatting functions
-  const formatDateForDisplay = (dateString: string) => {
-    if (!dateString) return '';
-    const date = new Date(dateString);
-    if (isNaN(date.getTime())) return dateString;
-    const day = date.getDate().toString().padStart(2, '0');
-    const month = (date.getMonth() + 1).toString().padStart(2, '0');
-    const year = date.getFullYear();
-    return `${day}-${month}-${year}`;
-  };
-
-  const formatDateForStorage = (dateString: string) => {
-    if (!dateString) return '';
-    const parts = dateString.split('-');
-    if (parts.length === 3) {
-      const [day, month, year] = parts;
-      return `${year}-${month}-${day}`;
+  // Handle DOB picker change
+  const handleDOBChange = (date: Date | null) => {
+    setSelectedDOB(date);
+    if (date) {
+      // Format date as YYYY-MM-DD for storage
+      const formattedDate = date.toISOString().split('T')[0];
+      setEditFormData((prev: any) => ({ ...prev, dateOfBirth: formattedDate }));
     }
-    return dateString;
-  };
-
-  // Validation functions
-  const validateDateOfBirth = (dateString: string) => {
-    if (!dateString) return true;
-    const parts = dateString.split('-');
-    if (parts.length !== 3) return false;
-    const [day, month, year] = parts.map(part => parseInt(part));
-    const date = new Date(year, month - 1, day);
-    return date.getDate() === day && date.getMonth() === month - 1 && date.getFullYear() === year;
-  };
-
-  // Update validation state
-  const updateValidation = (field: string, value: string) => {
-    let isValid = true;
-    
-    if (field === 'dateOfBirth') {
-      isValid = validateDateOfBirth(value);
-    }
-    
-    setFormValidation((prev: any) => ({ ...prev, [field]: isValid }));
   };
 
   // Save user changes
   const handleSaveUser = async () => {
     try {
-      // Validate DOB format before saving
-      if (editFormData.dateOfBirth && !validateDateOfBirth(editFormData.dateOfBirth)) {
-        Alert.alert(
-          'Invalid Date Format',
-          'Please enter Date of Birth in DD-MM-YYYY format',
-          [{ text: 'OK' }]
-        );
-        return;
-      }
-      
       const token = await AuthStorage.getToken();
-      
-      // Format DOB for storage
-      const formattedFormData = {
-        ...editFormData,
-        dateOfBirth: formatDateForStorage(editFormData.dateOfBirth)
-      };
       
       const response = await fetch(`${API_URL}/api/users/update/${originalUser.userId}`, {
         method: 'PUT',
@@ -189,7 +150,7 @@ export default function EditUserScreen() {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(formattedFormData),
+        body: JSON.stringify(editFormData),
       });
 
       if (response.ok) {
@@ -313,18 +274,16 @@ export default function EditUserScreen() {
           <View className="mb-4">
             <Text className="text-sm font-medium text-gray-700 mb-2">Date of Birth</Text>
             <View className="flex-row items-center">
-              <TextInput
-                value={editFormData.dateOfBirth}
-                onChangeText={(text) => {
-                  setEditFormData((prev: any) => ({ ...prev, dateOfBirth: text }));
-                  updateValidation('dateOfBirth', text);
-                }}
-                className="flex-1 bg-white p-3 rounded-lg border border-gray-200"
-                placeholder="DD-MM-YYYY"
-              />
-              {formValidation.dateOfBirth && (
-                <Ionicons name="checkmark-circle" size={20} color="#10B981" className="ml-2" />
-              )}
+              <View className="flex-1">
+                <DobPicker
+                  selectedDate={selectedDOB}
+                  setSelectedDate={handleDOBChange}
+                  dateButtonClassName="bg-white"
+                />
+              </View>
+              <TouchableOpacity className="ml-3 p-2">
+                <Ionicons name="calendar-outline" size={20} color="#6b7280" />
+              </TouchableOpacity>
             </View>
           </View>
 

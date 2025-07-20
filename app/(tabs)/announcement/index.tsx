@@ -40,6 +40,7 @@ interface Announcement {
   authorId: string;
   authorName: string;
   thumbnail: string;
+  hasCoverImage?: boolean;
   createdAt: string;
   updatedAt: string;
   likedBy: Array<{
@@ -95,6 +96,10 @@ const Announcements = () => {
   const scaleAnim = useState(new Animated.Value(0))[0];
   const opacityAnim = useState(new Animated.Value(0))[0];
 
+  // Get screen dimensions
+  const { height: screenHeight } = Dimensions.get('window');
+  const announcementHeight = screenHeight / 4; // Each announcement takes 1/4 of screen height
+  
   useEffect(() => {
     loadAnnouncements();
     getCurrentUser();
@@ -324,7 +329,8 @@ const Announcements = () => {
           announcementId: draft.id,
           announcementMode: 'new',
           title: '',
-          content: ''
+          content: '',
+          hasCoverImage: 'false'
         }
       });
     } catch (error) {
@@ -396,120 +402,129 @@ const Announcements = () => {
   };
 
   return (
-    <View className="flex-1 px-4 py-4">
+    <View className="flex-1 bg-gray-50">
       <FlatList
         data={announcements}
         keyExtractor={(item) => item.id.toString()}
+        refreshControl={
+          <RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />
+        }
+        ItemSeparatorComponent={() => (
+          <View className="h-px bg-gray-200 mx-4" />
+        )}
         renderItem={({ item }) => {
           const isRead = hasUserRead(item);
           const isLiked = hasUserLiked(item);
           const isAuthor = item.authorId === currentUserId;
-          
+          // console.log("item",item);
           return (
-            <View className={`p-4 mb-3 rounded-xl shadow-sm border ${
-              isRead 
-                ? 'bg-gray-50 border-gray-200' 
-                : 'bg-white border-blue-200 shadow-md'
-            }`}>
+            <View 
+              className={`bg-white mx-4 my-2 rounded-lg shadow-sm border ${
+                isRead 
+                  ? 'border-gray-200' 
+                  : 'border-blue-200 shadow-md'
+              }`}
+              style={{ height: 120 }} // Fixed height for consistent layout
+            >
               {/* Unread indicator */}
               {!isRead && (
-                <View className="absolute top-2 right-2 w-3 h-3 bg-blue-500 rounded-full" />
+                <View className="absolute top-3 right-3 w-3 h-3 bg-blue-500 rounded-full z-10" />
               )}
               
-              {/* Main content layout */}
-              <View className="flex-row">
-                {/* Left side - Thumbnail */}
+              {/* Horizontal Layout: Cover Image + Content */}
+              <View className="flex-row h-full">
+                {/* Cover Image - Square on the left */}
                 <TouchableOpacity 
                   onPress={() => openAnnouncement(item)}
-                  className="mr-3"
+                  className="relative"
                 >
-                  <View className="w-16 h-16 bg-gray-200 rounded-lg overflow-hidden">
+                  <View className="w-[120px] h-[120px] bg-gray-200 rounded-l-lg overflow-hidden">
                     <Image
-                      source={{ uri: `${API_URL}/media/temp.png` 
+                      source={{ 
+                        uri: item.hasCoverImage 
+                          ? `${API_URL}/media/announcement/${item.id}/coverimage.jpg?t=${Date.now()}`
+                          : `${API_URL}/media/defaultcoverimage.png`
                       }}
                       className="w-full h-full"
                       resizeMode="cover"
-                      // defaultSource={/default announcement icon.png')} // Fallback image
                     />
                   </View>
                 </TouchableOpacity>
 
-                {/* Right side - Content */}
-                <View className="flex-1">
-                  {/* Top section - Published date and author */}
-                  <Text className="text-xs text-gray-500 mb-1">
-                    {formatDateTime(item.createdAt)} | {item.authorName}
-                  </Text>
-
-                  {/* Middle section - Title (clickable) */}
-                  <TouchableOpacity 
-                    onPress={() => openAnnouncement(item)}
-                    className="mb-2"
-                  >
-                    <Text 
-                      className={`text-lg font-bold ${
-                        isRead ? 'text-gray-700' : 'text-gray-900'
-                      }`}
-                      numberOfLines={2}
-                      ellipsizeMode="tail"
-                    >
-                      {item.title}
+                {/* Content Section - Right side */}
+                <View className="flex-1 p-3 justify-between">
+                  {/* Top section: Date and Author */}
+                  <View>
+                    <Text className="text-xs text-gray-500 mb-1" numberOfLines={1}>
+                      {formatDateTime(item.createdAt)} | {item.authorName}
                     </Text>
-                  </TouchableOpacity>
 
-                  {/* Bottom section - Read | Like actions (only for authors) */}
-                  {isAuthor && (
-                    <View className="flex-row items-center">
-                      <TouchableOpacity
-                        onPress={() => loadReadUsers(item.id)}
-                        className="mr-4"
-                      >
-                        <Text className="text-sm text-blue-600 font-medium">
-                          Read ({item.readBy?.length || 0})
-                        </Text>
-                      </TouchableOpacity>
-                      
-                      <Text className="text-gray-400 mr-4">|</Text>
-                      
-                      <TouchableOpacity
-                        onPress={() => loadLikedUsers(item.id)}
-                      >
-                        <Text className="text-sm text-blue-600 font-medium">
-                          Like ({item.likedBy?.length || 0})
-                        </Text>
-                      </TouchableOpacity>
-                    </View>
-                  )}
-
-                  {/* Like button for non-authors */}
-                  {!isAuthor && (
+                    {/* Title */}
                     <TouchableOpacity 
-                      onPress={() => handleToggleLike(item.id)}
-                      className="flex-row items-center mt-1"
-                      disabled={likingInProgress.has(item.id)}
+                      onPress={() => openAnnouncement(item)}
+                      className="mb-2"
                     >
-                      <Ionicons 
-                        name={isLiked ? "heart" : "heart-outline"} 
-                        size={16} 
-                        color={likingInProgress.has(item.id) ? "#9ca3af" : (isLiked ? "#ef4444" : "#6b7280")} 
-                      />
-                      <Text className="text-xs text-gray-500 ml-1">
-                        {isLiked ? 'Liked' : 'Like'}
+                      <Text 
+                        className={`text-sm font-bold ${
+                          isRead ? 'text-gray-700' : 'text-gray-900'
+                        }`}
+                        numberOfLines={2}
+                        ellipsizeMode="tail"
+                      >
+                        {item.title}
                       </Text>
                     </TouchableOpacity>
-                  )}
+                  </View>
+
+                  {/* Bottom section: Action buttons */}
+                  <View className="flex-row items-center justify-between">
+                    {/* Action buttons - Read | Like (only for authors) */}
+                    {isAuthor && (
+                      <View className="flex-row items-center">
+                        <TouchableOpacity
+                          onPress={() => loadReadUsers(item.id)}
+                          className="mr-3"
+                        >
+                          <Text className="text-xs text-blue-600 font-medium">
+                            Read ({item.readBy?.length || 0})
+                          </Text>
+                        </TouchableOpacity>
+                        
+                        <Text className="text-gray-400 mr-3 text-xs">|</Text>
+                        
+                        <TouchableOpacity
+                          onPress={() => loadLikedUsers(item.id)}
+                        >
+                          <Text className="text-xs text-blue-600 font-medium">
+                            Like ({item.likedBy?.length || 0})
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
+
+                    {/* Like button for non-authors */}
+                    {!isAuthor && (
+                      <TouchableOpacity 
+                        onPress={() => handleToggleLike(item.id)}
+                        className="flex-row items-center"
+                        disabled={likingInProgress.has(item.id)}
+                      >
+                        <Ionicons 
+                          name={isLiked ? "heart" : "heart-outline"} 
+                          size={14} 
+                          color={likingInProgress.has(item.id) ? "#9ca3af" : (isLiked ? "#ef4444" : "#6b7280")} 
+                        />
+                        <Text className="text-xs text-gray-500 ml-1">
+                          {isLiked ? 'Liked' : 'Like'}
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
                 </View>
               </View>
             </View>
           );
         }}
-        refreshControl={
-          <RefreshControl
-            refreshing={isRefreshing}
-            onRefresh={onRefresh}
-            colors={["#0284c7"]}
-          />
-        }
       />
 
       {/* Twitter-style Floating Action Menu */}
@@ -679,7 +694,8 @@ const Announcements = () => {
                         announcementId: selectedAnnouncement.id,
                         title: selectedAnnouncement.title,
                         content: selectedAnnouncement.body,
-                        announcementMode: 'edit'
+                        announcementMode: 'edit',
+                        hasCoverImage: selectedAnnouncement.hasCoverImage ? 'true' : 'false'
                       }
                     });
                   }}
