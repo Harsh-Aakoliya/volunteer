@@ -556,3 +556,166 @@ export const uploadCoverImageController = async (req, res) => {
     res.status(500).json({ error: 'Failed to upload cover image' });
   }
 };
+
+// Announcement media upload controller
+export const uploadAnnouncementMediaController = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { files } = req.body;
+    
+    if (!files || !Array.isArray(files) || files.length === 0) {
+      return res.status(400).json({ error: "No files provided" });
+    }
+
+    // Import fs and crypto modules
+    const fs = await import('fs');
+    const crypto = await import('crypto');
+    
+    const UPLOAD_DIR = path.join(process.cwd(), 'media', 'announcement', `${id}`, 'media');
+    
+    if (!fs.default.existsSync(UPLOAD_DIR)) {
+      fs.default.mkdirSync(UPLOAD_DIR, { recursive: true });
+    }
+
+    const uploadedFiles = [];
+    
+    for (const file of files) {
+      if (!file.fileData || !file.name || !file.mimeType) {
+        console.error("Invalid file data:", file);
+        continue;
+      }
+
+      // Generate unique filename to avoid conflicts
+      const fileExtension = path.extname(file.name);
+      const baseName = path.basename(file.name, fileExtension);
+      const uniqueId = crypto.default.randomBytes(8).toString('hex');
+      const fileName = `${baseName}_${uniqueId}${fileExtension}`;
+      const filePath = path.join(UPLOAD_DIR, fileName);
+
+      try {
+        // Convert base64 to buffer and write file
+        const buffer = Buffer.from(file.fileData, 'base64');
+        fs.default.writeFileSync(filePath, buffer);
+
+        uploadedFiles.push({
+          id: uniqueId,
+          originalName: file.name,
+          fileName: fileName,
+          mimeType: file.mimeType,
+          size: buffer.length,
+          url: `${process.env.API_URL || 'http://localhost:3000'}/media/announcement/${id}/media/${fileName}`
+        });
+
+      } catch (writeError) {
+        console.error(`Error writing file ${file.name}:`, writeError);
+      }
+    }
+
+    if (uploadedFiles.length === 0) {
+      return res.status(400).json({ error: "No files were successfully uploaded" });
+    }
+
+    res.json({
+      success: true,
+      uploadedFiles,
+      message: `${uploadedFiles.length} file(s) uploaded successfully`
+    });
+
+  } catch (error) {
+    console.error("Error uploading announcement media:", error);
+    res.status(500).json({ error: "Failed to upload media files", details: error.message });
+  }
+};
+
+// Get announcement media files controller
+export const getAnnouncementMediaController = async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // Import fs module
+    const fs = await import('fs');
+    
+    const MEDIA_DIR = path.join(process.cwd(), 'media', 'announcement', `${id}`, 'media');
+    
+    if (!fs.default.existsSync(MEDIA_DIR)) {
+      return res.json({ success: true, files: [] });
+    }
+
+    const files = fs.default.readdirSync(MEDIA_DIR);
+    const mediaFiles = [];
+
+    for (const fileName of files) {
+      const filePath = path.join(MEDIA_DIR, fileName);
+      const stats = fs.default.statSync(filePath);
+      
+      // Try to determine MIME type based on file extension
+      const ext = path.extname(fileName).toLowerCase();
+      let mimeType = 'application/octet-stream';
+      
+      if (['.jpg', '.jpeg', '.png', '.gif', '.webp'].includes(ext)) {
+        mimeType = `image/${ext.slice(1) === 'jpg' ? 'jpeg' : ext.slice(1)}`;
+      } else if (['.mp4', '.avi', '.mov', '.wmv', '.flv'].includes(ext)) {
+        mimeType = `video/${ext.slice(1)}`;
+      } else if (['.mp3', '.wav', '.ogg', '.m4a', '.aac'].includes(ext)) {
+        mimeType = `audio/${ext.slice(1)}`;
+      }
+
+      // Extract unique ID from filename (assuming format: basename_uniqueId.ext)
+      const fileBaseName = path.basename(fileName, path.extname(fileName));
+      const uniqueId = fileBaseName.includes('_') ? fileBaseName.split('_').pop() : fileName;
+
+             // Try to extract original name from filename pattern (basename_uniqueid.ext)
+       let originalName = fileName;
+       if (fileBaseName.includes('_')) {
+         const parts = fileBaseName.split('_');
+         if (parts.length >= 2) {
+           parts.pop(); // Remove the unique ID part
+           originalName = parts.join('_') + path.extname(fileName);
+         }
+       }
+
+       mediaFiles.push({
+         id: uniqueId,
+         fileName: fileName,
+         originalName: originalName,
+         mimeType: mimeType,
+         size: stats.size,
+         url: `${process.env.API_URL || 'http://localhost:3000'}/media/announcement/${id}/media/${fileName}`
+       });
+    }
+
+    res.json({ success: true, files: mediaFiles });
+
+  } catch (error) {
+    console.error("Error getting announcement media:", error);
+    res.status(500).json({ error: "Failed to get media files", details: error.message });
+  }
+};
+
+// Delete announcement media file controller
+export const deleteAnnouncementMediaController = async (req, res) => {
+  try {
+    const { id, fileName } = req.params;
+    
+    // Import fs module
+    const fs = await import('fs');
+    
+    const filePath = path.join(process.cwd(), 'media', 'announcement', `${id}`, 'media', fileName);
+    
+    if (!fs.default.existsSync(filePath)) {
+      return res.status(404).json({ error: "File not found" });
+    }
+
+    // Delete the file
+    fs.default.unlinkSync(filePath);
+
+    res.json({
+      success: true,
+      message: "File deleted successfully"
+    });
+
+  } catch (error) {
+    console.error("Error deleting announcement media:", error);
+    res.status(500).json({ error: "Failed to delete media file", details: error.message });
+  }
+};

@@ -1,5 +1,5 @@
 import React, { useRef, forwardRef, useState, useCallback, useEffect } from 'react';
-import { View, TouchableOpacity, Text, ScrollView, Dimensions, Modal, SafeAreaView, StatusBar, BackHandler, Image } from 'react-native';
+import { View, TouchableOpacity, Text, ScrollView, Dimensions, Modal, SafeAreaView, StatusBar, BackHandler, Image, Keyboard, KeyboardAvoidingView, Platform } from 'react-native';
 import { RichEditor, RichToolbar, actions } from 'react-native-pell-rich-editor';
 import { cssInterop } from "nativewind";
 import WebView from 'react-native-webview';
@@ -21,6 +21,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { API_URL } from '@/constants/api';
 import axios from 'axios';
+import AnnouncementMediaUploader from './AnnouncementMediaUploader';
 // Update the interface
 interface RichTextEditorProps {
   initialTitle?: string;
@@ -139,6 +140,29 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
       }
     };
     getUserId();
+  }, []);
+
+  // Handle keyboard visibility
+  useEffect(() => {
+    const keyboardDidShowListener = Keyboard.addListener(
+      'keyboardDidShow',
+      (e) => {
+        setIsKeyboardVisible(true);
+        setKeyboardHeight(e.endCoordinates.height);
+      }
+    );
+    const keyboardDidHideListener = Keyboard.addListener(
+      'keyboardDidHide',
+      () => {
+        setIsKeyboardVisible(false);
+        setKeyboardHeight(0);
+      }
+    );
+
+    return () => {
+      keyboardDidShowListener?.remove();
+      keyboardDidHideListener?.remove();
+    };
   }, []);
 
   // Failsafe: If editor doesn't initialize within 2 seconds, set it as ready
@@ -457,6 +481,9 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
   //   }
   // };
   const [uploadProgress, setUploadProgress] = useState<number>(0);
+  const [isKeyboardVisible, setIsKeyboardVisible] = useState<boolean>(false);
+  const [keyboardHeight, setKeyboardHeight] = useState<number>(0);
+  const [attachedMediaFiles, setAttachedMediaFiles] = useState<any[]>([]);
   
   const handleSelectCoverImage = async () => {
     try {
@@ -597,6 +624,34 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
 
   // Create HTML with proper styling for the preview
   const getPreviewHTML = useCallback(() => {
+    const mediaFilesHTML = attachedMediaFiles.length > 0 ? `
+      <div class="media-attachments">
+        <h3 style="margin-top: 24px; margin-bottom: 16px; color: #374151;">Attached Media Files</h3>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px;">
+          ${attachedMediaFiles.map(file => {
+            if (file.mimeType.startsWith('image/')) {
+              return `<div style="text-align: center;">
+                <img src="${API_URL}/media/announcement/${announcementId}/media/${file.fileName}" 
+                     style="width: 100%; height: 120px; object-fit: cover; border-radius: 8px; margin-bottom: 8px;" />
+                <p style="font-size: 12px; color: #6b7280; margin: 0;">${file.originalName}</p>
+              </div>`;
+            } else if (file.mimeType.startsWith('video/')) {
+              return `<div style="text-align: center; background: #fee2e2; padding: 16px; border-radius: 8px;">
+                <div style="font-size: 24px; margin-bottom: 8px;">🎬</div>
+                <p style="font-size: 12px; color: #6b7280; margin: 0;">${file.originalName}</p>
+              </div>`;
+            } else if (file.mimeType.startsWith('audio/')) {
+              return `<div style="text-align: center; background: #f3e8ff; padding: 16px; border-radius: 8px;">
+                <div style="font-size: 24px; margin-bottom: 8px;">🎵</div>
+                <p style="font-size: 12px; color: #6b7280; margin: 0;">${file.originalName}</p>
+              </div>`;
+            }
+            return '';
+          }).join('')}
+        </div>
+      </div>
+    ` : '';
+
     return `
       <!DOCTYPE html>
       <html>
@@ -675,10 +730,11 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
           <div class="announcement-content">
             ${draftContent || '<span style="color: #9ca3af; font-style: italic;">No content to preview</span>'}
           </div>
+          ${mediaFilesHTML}
         </body>
       </html>
     `;
-  }, [draftContent, draftTitle]);
+  }, [draftContent, draftTitle, attachedMediaFiles, announcementId]);
 
   // Toggle modal visibility
   const toggleModal = () => {
@@ -703,95 +759,74 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
         <View className="w-8" />
       </View>
 
-      <ScrollView className="flex-1 px-4 py-4">
-        {/* Title Input */}
-        <TextInput
-          ref={titleInputRef}
-          value={draftTitle}
-          onChangeText={handleTitleChange}
-          placeholder="Enter announcement title..."
-          className="text-xl font-semibold text-gray-900 py-3 border-b border-gray-200 mb-4"
-          style={{ borderWidth: 0, borderBottomWidth: 1 }}
-        />
-        
-        {/* Toolbar */}
-        <StyledRichToolbar
-          editor={richText}
-          className="border border-gray-300 rounded-t-lg"
-          selectedIconTint="#2563EB" // tailwind blue-600
-          iconTint="#6B7280" // tailwind gray-500
-          actions={[
-            actions.setBold,
-            actions.setItalic,
-            actions.setUnderline,
-            actions.heading1,
-            actions.heading2,
-            actions.insertBulletsList,
-            actions.insertOrderedList,
-            actions.insertLink,
-            actions.insertImage,
-            actions.alignLeft,
-            actions.alignCenter,
-            actions.alignRight,
-            actions.code,
-            actions.blockquote,
-            actions.line,
-            actions.undo,
-            actions.redo,
-          ]}
-        />
-        
-        {/* Editor */}
-        {!isEditorReady && (
-          <View className="min-h-80 border border-gray-300 border-t-0 rounded-b-lg p-2 bg-gray-50 flex items-center justify-center">
-            <Text className="text-gray-500">Loading editor...</Text>
-          </View>
-        )}
-        
-        {isEditorReady && (
-          <StyledRichEditor
-            className="min-h-80 border border-gray-300 border-t-0 rounded-b-lg p-2 bg-white"
-            placeholder="Start writing your announcement..."
-            initialHeight={400}
-            ref={richText}
-            onChange={handleContentChange}
-            androidHardwareAccelerationDisabled={true}
-            androidLayerType="software"
-            onEditorInitialized={() => {
-              console.log("Editor initialized callback triggered");
-              setIsEditorReady(true);
-              
-              // Set content after editor is ready with retry logic
-              if (initialContent) {
-                console.log("Setting content on initialization:", initialContent);
-                const setContentWithRetry = (attempts = 0) => {
-                  if (attempts >= 5) return;
-                  
-                  setTimeout(() => {
-                    if (richText.current) {
-                      try {
-                        richText.current.setContentHTML(initialContent);
-                        console.log("Content set successfully in callback on attempt:", attempts + 1);
-                      } catch (error) {
-                        console.log("Failed to set content in callback, retrying...", error);
-                        setContentWithRetry(attempts + 1);
-                      }
-                    }
-                  }, 200 + (attempts * 100));
-                };
-                
-                setContentWithRetry();
-              }
-            }}
-            editorStyle={{
-              contentCSSText: `
-                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-                font-size: 16px;
-                padding: 8px;
-              `
-            }}
+      <KeyboardAvoidingView 
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        className="flex-1"
+      >
+        <ScrollView className="flex-1 px-4 py-4">
+          {/* Title Input */}
+          <TextInput
+            ref={titleInputRef}
+            value={draftTitle}
+            onChangeText={handleTitleChange}
+            placeholder="Enter announcement title..."
+            className="text-xl font-semibold text-gray-900 py-3 border-b border-gray-200 mb-4"
+            style={{ borderWidth: 0, borderBottomWidth: 1 }}
           />
-        )}
+          
+          {/* Editor - now without toolbar, matching title padding */}
+          {!isEditorReady && (
+            <View className="min-h-80 rounded-lg p-2 bg-gray-50 flex items-center justify-center mt-4" style={{ marginLeft: 0, paddingLeft: 0 }}>
+              <Text className="text-gray-500">Loading editor...</Text>
+            </View>
+          )}
+          
+          {isEditorReady && (
+            <StyledRichEditor
+              className="min-h-80 rounded-lg bg-white mt-4"
+              placeholder="Start writing your announcement..."
+              initialHeight={400}
+              ref={richText}
+              onChange={handleContentChange}
+              androidHardwareAccelerationDisabled={true}
+              androidLayerType="software"
+              onEditorInitialized={() => {
+                console.log("Editor initialized callback triggered");
+                setIsEditorReady(true);
+                
+                // Set content after editor is ready with retry logic
+                if (initialContent) {
+                  console.log("Setting content on initialization:", initialContent);
+                  const setContentWithRetry = (attempts = 0) => {
+                    if (attempts >= 5) return;
+                    
+                    setTimeout(() => {
+                      if (richText.current) {
+                        try {
+                          richText.current.setContentHTML(initialContent);
+                          console.log("Content set successfully in callback on attempt:", attempts + 1);
+                        } catch (error) {
+                          console.log("Failed to set content in callback, retrying...", error);
+                          setContentWithRetry(attempts + 1);
+                        }
+                      }
+                    }, 200 + (attempts * 100));
+                  };
+                  
+                  setContentWithRetry();
+                }
+              }}
+              editorStyle={{
+                contentCSSText: `
+                  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+                  font-size: 16px;
+                  padding: 12px 0px;
+                  margin: 0px;
+                  border: none;
+                `
+              }}
+            />
+          )}
         
         {/* Cover Image Section */}
         <View className="mb-6">
@@ -833,6 +868,14 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
             </TouchableOpacity>
           </View>
         </View>
+
+        {/* Media Attachments Section */}
+        {announcementId && (
+          <AnnouncementMediaUploader 
+            announcementId={announcementId}
+            onMediaChange={setAttachedMediaFiles}
+          />
+        )}
         
         {/* Action Buttons */}
         <View className="flex-row justify-between mt-6 space-x-3">
@@ -882,15 +925,50 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
           </TouchableOpacity>
         </View>
         
-        {/* Draft status indicator */}
-        {hasUnsavedChanges && (isDraft || isFresh) && (
-          <View className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-            <Text className="text-yellow-800 text-center">
-              ⚠️ You have unsaved changes
-            </Text>
+          {/* Draft status indicator */}
+          {hasUnsavedChanges && (isDraft || isFresh) && (
+            <View className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+              <Text className="text-yellow-800 text-center">
+                ⚠️ You have unsaved changes
+              </Text>
+            </View>
+          )}
+        </ScrollView>
+
+        {/* Floating Toolbar - only visible when keyboard is shown */}
+        {isKeyboardVisible && (
+          <View 
+            className="absolute left-0 right-0 bg-white border-t border-gray-300 shadow-lg"
+            style={{ bottom: keyboardHeight }}
+          >
+            <StyledRichToolbar
+              editor={richText}
+              className="bg-white"
+              selectedIconTint="#2563EB" // tailwind blue-600
+              iconTint="#6B7280" // tailwind gray-500
+              actions={[
+                actions.setBold,
+                actions.setItalic,
+                actions.setUnderline,
+                actions.heading1,
+                actions.heading2,
+                actions.insertBulletsList,
+                actions.insertOrderedList,
+                actions.insertLink,
+                actions.insertImage,
+                actions.alignLeft,
+                actions.alignCenter,
+                actions.alignRight,
+                actions.code,
+                actions.blockquote,
+                actions.line,
+                actions.undo,
+                actions.redo,
+              ]}
+            />
           </View>
         )}
-      </ScrollView>
+      </KeyboardAvoidingView>
 
       {/* Modal Preview Window */}
       <Modal

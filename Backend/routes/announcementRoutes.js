@@ -16,7 +16,10 @@ import {
   getDraftsController,
   deleteDraftController,
   removeEmptyDraftController,
-  uploadCoverImageController
+  uploadCoverImageController,
+  uploadAnnouncementMediaController,
+  getAnnouncementMediaController,
+  deleteAnnouncementMediaController
 } from '../controllers/announcementController.js';
 import { authenticateToken } from '../middlewares/auth.js';
 
@@ -35,6 +38,11 @@ router.put('/:id', updateAnnouncementController);
 
 // Cover image upload route
 router.post('/cover-image', uploadCoverImageController);
+
+// Media files routes
+router.post('/:id/media/upload', uploadAnnouncementMediaController);
+router.get('/:id/media', getAnnouncementMediaController);
+router.delete('/:id/media/:fileName', deleteAnnouncementMediaController);
 
 // New routes for like/read functionality
 router.post('/:id/toggle-like', toggleLike);
