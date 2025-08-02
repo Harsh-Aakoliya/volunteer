@@ -9,6 +9,7 @@ import { checkForUpdates } from '@/utils/updateChecker';
 import React from 'react';
 import { Updater } from '@/components/Updater';
 import { VersionChecker } from '@/components/VersionChecker';
+import { Platform } from 'react-native';
 
 export default function Index() {
   const appVersion = Application.nativeApplicationVersion;
@@ -51,7 +52,11 @@ export default function Index() {
   }, [versionCheckComplete]);
 
   return (
-    <VersionChecker onUpdateCheckComplete={handleUpdateCheckComplete} />
+    <>
+      {Platform.OS != "web" && (
+        <VersionChecker onUpdateCheckComplete={handleUpdateCheckComplete} />
+      )}
+    </>
   );
   // return <MediaUploadApp/>
   // return <Poling/>

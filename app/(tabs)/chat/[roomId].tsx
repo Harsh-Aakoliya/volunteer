@@ -14,6 +14,7 @@ import {
   Pressable,
   BackHandler,
   Keyboard,
+  ScrollView,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, router, useNavigation } from "expo-router";
@@ -39,6 +40,13 @@ interface RoomDetails extends ChatRoom {
   messages: Message[];
 }
 
+interface MentionSegment {
+  text: string;
+  isMention: boolean;
+  userId?: string;
+  isCurrentUser?: boolean;
+}
+
 export default function ChatRoomScreen() {
   const { roomId } = useLocalSearchParams();
   const [room, setRoom] = useState<RoomDetails | null>(null);
@@ -46,7 +54,7 @@ export default function ChatRoomScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [messageText, setMessageText] = useState("");
-  const [isGroupAdmin, setIsGroupAdmin] = useState(false); // Changed from isAdmin to isGroupAdmin for clarity
+  const [isGroupAdmin, setIsGroupAdmin] = useState(false);
   const [onlineUsers, setOnlineUsers] = useState<string[]>([]);
   const [currentUser, setCurrentUser] = useState<{
     userId: string;
@@ -74,6 +82,13 @@ export default function ChatRoomScreen() {
 
   // Attachments grid state
   const [showAttachmentsGrid, setShowAttachmentsGrid] = useState(false);
+
+  // Mention feature states
+  const [showMentionMenu, setShowMentionMenu] = useState(false);
+  const [mentionSearch, setMentionSearch] = useState("");
+  const [mentionStartIndex, setMentionStartIndex] = useState(-1);
+  const [filteredMembers, setFilteredMembers] = useState<ChatUser[]>([]);
+  const [cursorPosition, setCursorPosition] = useState(0);
 
   const flatListRef = useRef<FlatList>(null);
   const textInputRef = useRef<TextInput>(null);
@@ -111,6 +126,181 @@ export default function ChatRoomScreen() {
       Keyboard.dismiss();
       setShowAttachmentsGrid(true);
     }
+  };
+
+  // Handle mention functionality
+  const handleTextChange = (text: string) => {
+    setMessageText(renderMessageText(text).join(""));
+    
+    // Find the last @ symbol before cursor position
+    const beforeCursor = text.substring(0, cursorPosition);
+    const lastAtIndex = beforeCursor.lastIndexOf('@');
+    
+    if (lastAtIndex !== -1) {
+      // Check if there's a space after the @ symbol and before cursor
+      const afterAt = beforeCursor.substring(lastAtIndex + 1);
+      const hasSpaceAfterAt = afterAt.includes(' ');
+      
+      if (!hasSpaceAfterAt) {
+        // Extract the search term after @
+        const searchTerm = afterAt.toLowerCase();
+        setMentionSearch(searchTerm);
+        setMentionStartIndex(lastAtIndex);
+        
+        // Filter members based on search term (show all if searchTerm is empty)
+        const filtered = roomMembers.filter(member => 
+          searchTerm === '' || member.fullName?.toLowerCase().startsWith(searchTerm) || false
+        );
+        
+        setFilteredMembers(filtered);
+        setShowMentionMenu(filtered.length > 0);
+      } else {
+        setShowMentionMenu(false);
+      }
+    } else {
+      setShowMentionMenu(false);
+    }
+  };
+
+  const handleSelectionChange = (event: any) => {
+    setCursorPosition(event.nativeEvent.selection.start);
+  };
+
+  const selectMention = (member: ChatUser) => {
+    if (mentionStartIndex === -1 || !member.fullName) return;
+    console.log(mentionStartIndex);
+    const beforeMention = messageText.substring(0, mentionStartIndex);
+    const afterMention = messageText.substring(mentionStartIndex + mentionSearch.length + 1);
+    console.log("before mention",beforeMention);
+    console.log("after mention",afterMention);
+    const newText = `${beforeMention.slice(0,-1)}<Text>${member.fullName}</Text> ${afterMention}`;
+    setMessageText(renderMessageText(newText).join(""));
+    setShowMentionMenu(false);
+    
+    // Set cursor position after the mention
+    const newCursorPosition = mentionStartIndex + member.fullName.length + 13;
+    setTimeout(() => {
+      setCursorPosition(newCursorPosition);
+      textInputRef.current?.setNativeProps({
+        selection: { start: newCursorPosition, end: newCursorPosition }
+      });
+    }, 10);
+  };
+
+  // Parse message text to identify mentions
+  const parseMessageText = (text: string): MentionSegment[] => {
+    const segments: MentionSegment[] = [];
+    const mentionRegex = /<Text>([^<]+)<\/Text>/g;
+    let lastIndex = 0;
+    let match:any;
+  
+    while ((match = mentionRegex.exec(text)) !== null) {
+      // Add text before mention
+      if (match.index > lastIndex) {
+        segments.push({
+          text: text.substring(lastIndex, match.index),
+          isMention: false
+        });
+      }
+  
+      // Check if mentioned user exists in room members
+      const mentionedUser = roomMembers.find(member => 
+        member.fullName?.toLowerCase() === match[1].toLowerCase()
+      );
+  
+      if (mentionedUser) {
+        // Add mention segment with @ symbol
+        segments.push({
+          text: `@${match[1]}`,
+          isMention: true,
+          userId: mentionedUser.userId,
+          isCurrentUser: mentionedUser.userId === currentUser?.userId
+        });
+      } else {
+        // Add as normal text if user doesn't exist
+        segments.push({
+          text: `@${match[1]}`,
+          isMention: false
+        });
+      }
+  
+      lastIndex = match.index + match[0].length;
+    }
+  
+    // Add remaining text
+    if (lastIndex < text.length) {
+      segments.push({
+        text: text.substring(lastIndex),
+        isMention: false
+      });
+    }
+    console.log(segments);
+  
+    return segments;
+  };
+
+  // Render mention menu
+  const renderMentionMenu = () => {
+    if (!showMentionMenu || filteredMembers.length === 0) return null;
+  
+    return (
+      <View className="bg-white border border-gray-200 rounded-lg shadow-lg max-h-40 mb-2">
+        <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+          {filteredMembers.map((member) => (
+            <TouchableOpacity
+              key={member.userId}
+              onPress={() => selectMention(member)}
+              className="p-3 border-b border-gray-100 flex-row items-center"
+            >
+              <View className="w-8 h-8 bg-blue-500 rounded-full justify-center items-center mr-3">
+                <Text className="text-white font-bold text-sm">
+                  {member.fullName?.charAt(0).toUpperCase() || 'U'}
+                </Text>
+              </View>
+              <Text className="text-gray-800 font-medium">{member.fullName}</Text>
+              {member.isOnline && (
+                <View className="w-2 h-2 bg-green-500 rounded-full ml-auto" />
+              )}
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
+    );
+  };
+
+  // Render message text with mentions
+  const renderMessageTextWithMentions = (text: string) => {
+    const segments = parseMessageText(text);
+    
+    return (
+      <Text>
+        {segments.map((segment, index) => (
+          <Text
+            key={index}
+            className={
+              segment.isMention
+                ? segment.isCurrentUser
+                  ? "text-blue-600 bg-blue-100"
+                  : "text-blue-600"
+                : ""
+            }
+          >
+            {segment.text}
+          </Text>
+        ))}
+      </Text>
+    );
+  };
+
+  //Render whatever is user is writting in text input box
+  const renderMessageText = (text: string) => {
+    const segments = parseMessageText(text);
+    
+    return (
+        segments.map((segment, index) => (
+          segment.isMention ? "@"+segment.text : segment.text
+        ))
+    );
   };
 
   // Handle app state changes (background/foreground)
@@ -361,6 +551,7 @@ export default function ChatRoomScreen() {
     try {
       setSending(true);
       setMessageText(""); // Clear input immediately for better UX
+      setShowMentionMenu(false); // Hide mention menu
 
       // Create optimistic message to show immediately
       const optimisticMessage: Message = {
@@ -619,7 +810,7 @@ export default function ChatRoomScreen() {
           
           <View
             className={`p-2 max-w-[80%] rounded-lg my-1 relative ${
-              isOwnMessage ? "bg-blue-500 self-end" : "bg-gray-200 self-start"
+              isOwnMessage ? "bg-blue-200 self-end" : "bg-gray-200 self-start"
             }`}
             style={{ zIndex: 2 }}
           >
@@ -630,9 +821,9 @@ export default function ChatRoomScreen() {
           )}
           
           {item.messageText && (
-            <Text className={isOwnMessage ? "text-white" : "text-black"}>
-              {item.messageText}
-            </Text>
+            <View className={isOwnMessage ? "text-white" : "text-black"}>
+              {renderMessageTextWithMentions(item.messageText)}
+            </View>
           )}
           
           {/* Render media files if present */}
@@ -783,6 +974,13 @@ export default function ChatRoomScreen() {
         {/* Message input - Only show for group admins */}
         {isGroupAdmin && (
           <View className="border-t border-gray-200 bg-white">
+            {/* Mention Menu */}
+            {showMentionMenu && (
+              <View className="p-2">
+                {renderMentionMenu()}
+              </View>
+            )}
+            
             <View className="flex-row items-center p-2">
               <TouchableOpacity
                 className="p-2"
@@ -801,7 +999,8 @@ export default function ChatRoomScreen() {
                 className="flex-1 bg-gray-100 rounded-full px-4 py-2 mr-2"
                 placeholder="Type a message..."
                 value={messageText}
-                onChangeText={setMessageText}
+                onChangeText={handleTextChange}
+                onSelectionChange={handleSelectionChange}
                 multiline={true}
                 onFocus={() => {
                   if (showAttachmentsGrid) {

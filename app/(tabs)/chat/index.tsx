@@ -56,6 +56,12 @@ interface ExtendedChatRoom extends ChatRoom {
   lastMessage?: LastMessageData;
   onlineCount?: number;
 }
+interface MentionSegment {
+  text: string;
+  isMention: boolean;
+  userId?: string;
+  isCurrentUser?: boolean;
+}
 
 export default function ChatRooms() {
   const [chatRooms, setChatRooms] = useState<ExtendedChatRoom[]>([]);
@@ -414,6 +420,81 @@ export default function ChatRooms() {
       return "";
     }
   };
+    // Parse message text to identify mentions
+    const parseMessageText = (text: string): MentionSegment[] => {
+      const segments: MentionSegment[] = [];
+      const mentionRegex = /<Text>([^<]+)<\/Text>/g;
+      let lastIndex = 0;
+      let match:any;
+    
+      while ((match = mentionRegex.exec(text)) !== null) {
+        // Add text before mention
+        if (match.index > lastIndex) {
+          segments.push({
+            text: text.substring(lastIndex, match.index),
+            isMention: false
+          });
+        }
+    
+        // Check if mentioned user exists in room members
+        const roomMembers:any = [];//lets fix this later
+        const mentionedUser = roomMembers.find((member:any)=> 
+          member.fullName?.toLowerCase() === match[1].toLowerCase()
+        );
+    
+        if (mentionedUser) {
+          // Add mention segment with @ symbol
+          segments.push({
+            text: `@${match[1]}`,
+            isMention: true,
+            userId: mentionedUser.userId,
+            isCurrentUser: mentionedUser.userId === currentUser?.userId
+          });
+        } else {
+          // Add as normal text if user doesn't exist
+          segments.push({
+            text: `@${match[1]}`,
+            isMention: false
+          });
+        }
+    
+        lastIndex = match.index + match[0].length;
+      }
+    
+      // Add remaining text
+      if (lastIndex < text.length) {
+        segments.push({
+          text: text.substring(lastIndex),
+          isMention: false
+        });
+      }
+    
+      return segments;
+    };
+
+    // Render message text with mentions
+    const renderMessageTextWithMentions = (text: string) => {
+      const segments = parseMessageText(text);
+      
+      return (
+        <Text>
+          {segments.map((segment, index) => (
+            <Text
+              key={index}
+              className={
+                segment.isMention
+                  ? segment.isCurrentUser
+                    ? "text-blue-600 bg-blue-100"
+                    : "text-blue-600"
+                  : ""
+              }
+            >
+              {segment.text}
+            </Text>
+          ))}
+        </Text>
+      );
+    };
 
   const renderChatRoomItem = ({ item }: { item: ExtendedChatRoom }) => {
     const RoomItem = () => {
@@ -506,7 +587,7 @@ export default function ChatRooms() {
                   numberOfLines={1}
                   ellipsizeMode="tail"
                 >
-                  {messagePreview}
+                  {renderMessageTextWithMentions(messagePreview)}
                 </Text>
 
                 {hasUnread ? (

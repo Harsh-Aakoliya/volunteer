@@ -60,9 +60,6 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
   announcementMode,
   coverImage 
 }) => {
-    // console.log("initialContent", initialContent);
-    // console.log("initialTitle", initialTitle);
-  // State variables
   const richText = useRef<RichEditor>(null);
   const titleInputRef = useRef<TextInput>(null);
   const currentTitleRef = useRef<string>(initialTitle);
@@ -148,14 +145,14 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
       'keyboardDidShow',
       (e) => {
         setIsKeyboardVisible(true);
-        setKeyboardHeight(e.endCoordinates.height);
+        // setKeyboardHeight(e.endCoordinates.height);
       }
     );
     const keyboardDidHideListener = Keyboard.addListener(
       'keyboardDidHide',
       () => {
         setIsKeyboardVisible(false);
-        setKeyboardHeight(0);
+        // setKeyboardHeight(0);
       }
     );
 
@@ -172,7 +169,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
         console.log("Editor initialization timeout - setting as ready");
         setIsEditorReady(true);
       }
-    }, 2000);
+    }, 0);
 
     return () => clearTimeout(timeout);
   }, [isEditorReady]);
@@ -442,47 +439,8 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
     currentTitleRef.current = text; // Update ref immediately
   }, []);
 
-  // // Handle cover image selection
-  // const handleSelectCoverImage = async () => {
-  //   try {
-  //     const result = await DocumentPicker.getDocumentAsync({
-  //       type: 'image/*',
-  //       copyToCacheDirectory: true,
-  //     });
-
-  //     if (result.canceled || !result.assets[0]) {
-  //       return;
-  //     }
-
-  //     const asset = result.assets[0];
-  //     setIsUploadingCover(true);
-
-  //     try {
-  //       // Read the file as base64
-  //       const base64 = await FileSystem.readAsStringAsync(asset.uri, {
-  //         encoding: FileSystem.EncodingType.Base64,
-  //       });
-
-  //       // For now, just set the local URI - we'll upload when publishing
-  //       setCoverImageUri(asset.uri);
-  //       setCoverImage(base64); // Store base64 for upload later
-        
-  //       Alert.alert('Success', 'Cover image selected successfully!');
-  //     } catch (error) {
-  //       console.error('Error reading image file:', error);
-  //       Alert.alert('Error', 'Failed to process the selected image.');
-  //     } finally {
-  //       setIsUploadingCover(false);
-  //     }
-  //   } catch (error) {
-  //     console.error('Error selecting image:', error);
-  //     Alert.alert('Error', 'Failed to select image.');
-  //     setIsUploadingCover(false);
-  //   }
-  // };
   const [uploadProgress, setUploadProgress] = useState<number>(0);
   const [isKeyboardVisible, setIsKeyboardVisible] = useState<boolean>(false);
-  const [keyboardHeight, setKeyboardHeight] = useState<number>(0);
   const [attachedMediaFiles, setAttachedMediaFiles] = useState<any[]>([]);
   
   const handleSelectCoverImage = async () => {
@@ -620,7 +578,6 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
 
   // State to control the modal visibility
   const [modalVisible, setModalVisible] = useState<boolean>(false);
-  const { width } = Dimensions.get('window');
 
   // Create HTML with proper styling for the preview
   const getPreviewHTML = useCallback(() => {
@@ -633,17 +590,14 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
               return `<div style="text-align: center;">
                 <img src="${API_URL}/media/announcement/${announcementId}/media/${file.fileName}" 
                      style="width: 100%; height: 120px; object-fit: cover; border-radius: 8px; margin-bottom: 8px;" />
-                <p style="font-size: 12px; color: #6b7280; margin: 0;">${file.originalName}</p>
               </div>`;
             } else if (file.mimeType.startsWith('video/')) {
               return `<div style="text-align: center; background: #fee2e2; padding: 16px; border-radius: 8px;">
                 <div style="font-size: 24px; margin-bottom: 8px;">🎬</div>
-                <p style="font-size: 12px; color: #6b7280; margin: 0;">${file.originalName}</p>
               </div>`;
             } else if (file.mimeType.startsWith('audio/')) {
               return `<div style="text-align: center; background: #f3e8ff; padding: 16px; border-radius: 8px;">
                 <div style="font-size: 24px; margin-bottom: 8px;">🎵</div>
-                <p style="font-size: 12px; color: #6b7280; margin: 0;">${file.originalName}</p>
               </div>`;
             }
             return '';
@@ -763,15 +717,14 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         className="flex-1"
       >
-        <ScrollView className="flex-1 px-4 py-4">
+        <ScrollView className="flex-1 px-4 py-4 ">
           {/* Title Input */}
           <TextInput
             ref={titleInputRef}
             value={draftTitle}
             onChangeText={handleTitleChange}
             placeholder="Enter announcement title..."
-            className="text-xl font-semibold text-gray-900 py-3 border-b border-gray-200 mb-4"
-            style={{ borderWidth: 0, borderBottomWidth: 1 }}
+            className="text-3xl font-semibold text-gray-900 py-3 placeholder:text-gray-250"
           />
           
           {/* Editor - now without toolbar, matching title padding */}
@@ -783,8 +736,8 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
           
           {isEditorReady && (
             <StyledRichEditor
-              className="min-h-80 rounded-lg bg-white mt-4"
-              placeholder="Start writing your announcement..."
+              className="min-h-80 rounded-lg bg-white"
+              placeholder="Tap Here to Start Writing"
               initialHeight={400}
               ref={richText}
               onChange={handleContentChange}
@@ -828,6 +781,8 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
             />
           )}
         
+        <View className="border-b border-gray-200 mb-4"></View>
+
         {/* Cover Image Section */}
         <View className="mb-6">
           <Text className="text-lg font-semibold text-gray-900 mb-3">Cover Image</Text>
@@ -869,6 +824,8 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
           </View>
         </View>
 
+        <View className="border-b border-gray-200 mb-4"></View>
+
         {/* Media Attachments Section */}
         {announcementId && (
           <AnnouncementMediaUploader 
@@ -878,7 +835,8 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
         )}
         
         {/* Action Buttons */}
-        <View className="flex-row justify-between mt-6 space-x-3">
+        <SafeAreaView>
+        <View className="flex-row justify-between space-x-3 mb-10 gap-2">
           <TouchableOpacity 
             className="bg-gray-200 py-3 px-6 rounded-lg flex-1"
             onPress={() => {
@@ -924,9 +882,9 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
             <Text className="text-white text-center font-semibold">Preview</Text>
           </TouchableOpacity>
         </View>
-        
+        </SafeAreaView>
           {/* Draft status indicator */}
-          {hasUnsavedChanges && (isDraft || isFresh) && (
+          {hasUnsavedChanges && (isDraft) && (
             <View className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
               <Text className="text-yellow-800 text-center">
                 ⚠️ You have unsaved changes
@@ -938,8 +896,8 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
         {/* Floating Toolbar - only visible when keyboard is shown */}
         {isKeyboardVisible && (
           <View 
-            className="absolute left-0 right-0 bg-white border-t border-gray-300 shadow-lg"
-            style={{ bottom: keyboardHeight }}
+            className="left-0 right-0 bg-white border-t border-gray-300 shadow-lg"
+            style={{ bottom: 0 }}
           >
             <StyledRichToolbar
               editor={richText}
