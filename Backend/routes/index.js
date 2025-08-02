@@ -13,10 +13,13 @@ import versionRoutes from './versionRoutes.js';
 const router = express.Router();
 
 // Test route
-router.get('/test', (req, res) => {
-  console.log("req got");
+router.get("/test", (req, res) => {
+  const from = req.query.from;
+  const ip = req.query.ip;
+  console.log(`API Test Request From: ${from}, IP: ${ip}`);
   res.json({ message: "API is running" });
 });
+
 
 // Auth routes (no authentication needed)
 router.use('/auth', authRoutes);

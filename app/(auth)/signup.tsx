@@ -2,6 +2,7 @@ import { View, Text } from 'react-native';
 import { Link } from 'expo-router';
 // import SignupForm from '../../components/auth/SignupForm';
 import SignupForm from '@/components/auth/SignupForm';
+import React from 'react';
 
 export default function Signup() {
   return (

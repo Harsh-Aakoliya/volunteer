@@ -3,6 +3,7 @@ import React from 'react';
 import { useNavigation } from '@react-navigation/native';
 import RichTextEditor from '@/components/texteditor/texteditor';
 import { useLocalSearchParams } from 'expo-router';
+import { Platform } from 'react-native';
 
 const Announcement = () => {
   const navigation = useNavigation();
@@ -19,13 +20,18 @@ const Announcement = () => {
 
   return (
     <SafeAreaView className="flex-1 bg-white">
-      <RichTextEditor 
-        initialTitle={initialTitle || ''} 
-        initialContent={initialBody || ''}
-        announcementId={announcementId ? Number(announcementId) : undefined}
-        announcementMode={announcementMode}
-        coverImage={hasCoverImage}
-      />
+      {Platform.OS === "web" ? (
+        <></>
+      ) : (
+      //   <RichTextEditor 
+      //   initialTitle={initialTitle || ''} 
+      //   initialContent={initialBody || ''}
+      //   announcementId={announcementId ? Number(announcementId) : undefined}
+      //   announcementMode={announcementMode}
+      //   coverImage={hasCoverImage}
+      // />
+      <></>
+      )}
     </SafeAreaView>
   );
 };

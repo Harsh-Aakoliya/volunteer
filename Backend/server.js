@@ -146,9 +146,13 @@ app.get("/api/media", (req, res) => {
     res.status(500).json({ error: 'Unable to read media directory' });
   }
 });
+
 //checking 
 app.get("/api/test", (req, res) => {
-  res.json({ message: "Server is running" });
+  const from = req.query.from;
+  const ip = req.query.ip;
+  console.log(`🧪 API Test Request From: ${from}, IP: ${ip}`);
+  res.json({ message: "API is running" });
 });
 
 // Version endpoint

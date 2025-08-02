@@ -13,6 +13,7 @@ import {
   Animated,
   Dimensions,
   Image,
+  Platform,
 } from "react-native";
 import {
   fetchAnnouncements,
@@ -125,6 +126,7 @@ const Announcements = () => {
   const loadAnnouncements = async () => {
     try {
       const data: Announcement[] = await fetchAnnouncements();
+      console.log("data",data);
       setAnnouncements(data);
       setIsRefreshing(false);
     } catch (error) {
@@ -749,6 +751,7 @@ const Announcements = () => {
             </View>
 
             {/* Content */}
+            {Platform.OS === "ios" || Platform.OS === "android" ? (
             <View className="flex-1 border-t border-gray-200 pt-2">
               <StyledWebView
                 className="flex-1"
@@ -757,7 +760,11 @@ const Announcements = () => {
                 showsVerticalScrollIndicator={true}
               />
             </View>
-
+          ) : (
+            <View className="flex-1 border-t border-gray-200 pt-2">
+              {selectedAnnouncement.body}
+            </View>
+          )}
             {/* Like button section (only for non-authors) */}
             {selectedAnnouncement.authorId !== currentUserId && (
               <View className="px-4 py-3 border-t border-gray-200">

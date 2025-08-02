@@ -1,0 +1,12 @@
+1) change isDevMode=false in index.tsx file
+2) make sure internal and external ips are correct
+3) version updation in app.json file 
+4) make sure you have set "usesCleartextTraffic": true, in app.json file
+5) make sure you have right permissions set in app.json file
+6) write some desctiption in version.json file of backend
+7) make sure you change the user, host, db, password in .env file
+8) check .easignore file
+9) check .gitignore file
+10) run npx expo-doctor
+11) push to github
+12) and then run eas build command
