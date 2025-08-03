@@ -21,7 +21,9 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { API_URL } from '@/constants/api';
 import axios from 'axios';
+import { VideoView, useVideoPlayer } from 'expo-video';
 import AnnouncementMediaUploader from './AnnouncementMediaUploader';
+import ImageViewer from './ImageViewer';
 // Update the interface
 interface RichTextEditorProps {
   initialTitle?: string;
@@ -578,34 +580,20 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
 
   // State to control the modal visibility
   const [modalVisible, setModalVisible] = useState<boolean>(false);
+  
+  // States for media viewers
+  const [imageViewerVisible, setImageViewerVisible] = useState<boolean>(false);
+  const [selectedMediaFile, setSelectedMediaFile] = useState<any>(null);
+
+  // Handle image click from preview (only for images)
+  const handleImageClick = (file: any) => {
+    setSelectedMediaFile(file);
+    setModalVisible(false); // Close preview modal first
+    setImageViewerVisible(true);
+  };
 
   // Create HTML with proper styling for the preview
   const getPreviewHTML = useCallback(() => {
-    const mediaFilesHTML = attachedMediaFiles.length > 0 ? `
-      <div class="media-attachments">
-        <h3 style="margin-top: 24px; margin-bottom: 16px; color: #374151;">Attached Media Files</h3>
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px;">
-          ${attachedMediaFiles.map(file => {
-            if (file.mimeType.startsWith('image/')) {
-              return `<div style="text-align: center;">
-                <img src="${API_URL}/media/announcement/${announcementId}/media/${file.fileName}" 
-                     style="width: 100%; height: 120px; object-fit: cover; border-radius: 8px; margin-bottom: 8px;" />
-              </div>`;
-            } else if (file.mimeType.startsWith('video/')) {
-              return `<div style="text-align: center; background: #fee2e2; padding: 16px; border-radius: 8px;">
-                <div style="font-size: 24px; margin-bottom: 8px;">🎬</div>
-              </div>`;
-            } else if (file.mimeType.startsWith('audio/')) {
-              return `<div style="text-align: center; background: #f3e8ff; padding: 16px; border-radius: 8px;">
-                <div style="font-size: 24px; margin-bottom: 8px;">🎵</div>
-              </div>`;
-            }
-            return '';
-          }).join('')}
-        </div>
-      </div>
-    ` : '';
-
     return `
       <!DOCTYPE html>
       <html>
@@ -684,7 +672,6 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
           <div class="announcement-content">
             ${draftContent || '<span style="color: #9ca3af; font-style: italic;">No content to preview</span>'}
           </div>
-          ${mediaFilesHTML}
         </body>
       </html>
     `;
@@ -968,17 +955,129 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
           </View>
           
           {/* Full Page Preview */}
-          <View className="flex-1">
+          <ScrollView className="flex-1 bg-white">
+            {/* HTML Content */}
             <StyledWebView
               className="flex-1"
               originWhitelist={['*']}
               source={{ html: getPreviewHTML() }}
-              showsVerticalScrollIndicator={true}
+              showsVerticalScrollIndicator={false}
+              style={{ height: 400 }} // Fixed height for content
+              onMessage={(event) => {
+                try {
+                  const data = JSON.parse(event.nativeEvent.data);
+                  if (data.type === 'imageClick' && data.fileIndex !== undefined) {
+                    const file = attachedMediaFiles[data.fileIndex];
+                    if (file) {
+                      handleImageClick(file);
+                    }
+                  }
+                } catch (error) {
+                  console.log('Error parsing webview message:', error);
+                }
+              }}
             />
-          </View>
+            
+            {/* Media Files Section */}
+            {attachedMediaFiles.length > 0 && (
+              <View className="p-4">
+                <Text className="text-lg font-semibold text-gray-900 mb-4">Attached Media Files</Text>
+                
+                {attachedMediaFiles.map((file, index) => {
+                  if (file.mimeType.startsWith('image/')) {
+                    return (
+                      <TouchableOpacity
+                        key={index}
+                        onPress={() => handleImageClick(file)}
+                        className="bg-white p-1 rounded-lg mb-3 border border-gray-200 shadow-sm"
+                      >
+                        <Image
+                          source={{ uri: `${API_URL}/media/announcement/${announcementId}/media/${file.fileName}` }}
+                          style={{ 
+                            width: '100%', 
+                            aspectRatio: 1,
+                            alignSelf: 'center'
+                          }}
+                          className="rounded-lg"
+                          resizeMode="cover"
+                        />
+                        {/* <Text className="font-semibold text-gray-900 text-center mt-2">📷 {file.originalName || file.fileName}</Text>
+                        <Text className="text-sm text-gray-600 text-center">Tap to view full screen</Text> */}
+                      </TouchableOpacity>
+                    );
+                  } else if (file.mimeType.startsWith('video/')) {
+                    return (
+                      <VideoPreviewItem 
+                        key={index} 
+                        file={file} 
+                        announcementId={announcementId} 
+                      />
+                    );
+                  } else if (file.mimeType.startsWith('audio/')) {
+                    return (
+                      <View key={index} className="flex-row items-center bg-white p-3 rounded-lg mb-3 border border-gray-200 shadow-sm">
+                        <View className="w-16 h-16 bg-purple-100 rounded-lg mr-3 items-center justify-center">
+                          <Text className="text-2xl">🎵</Text>
+                        </View>
+                        <View className="flex-1">
+                          {/* <Text className="font-semibold text-gray-900">🎵 {file.originalName || file.fileName}</Text> */}
+                          <Text className="text-sm text-gray-600">Audio • Not supported yet (will fix in next update)</Text>
+                        </View>
+                      </View>
+                    );
+                  }
+                  return null;
+                })}
+              </View>
+            )}
+          </ScrollView>
         </SafeAreaView>
       </Modal>
+
+      {/* Image Viewer Only */}
+      {selectedMediaFile && (
+        <ImageViewer
+          visible={imageViewerVisible}
+          imageUri={`${API_URL}/media/announcement/${announcementId}/media/${selectedMediaFile.fileName}`}
+          onClose={() => {
+            setImageViewerVisible(false);
+            setSelectedMediaFile(null);
+            setModalVisible(true); // Reopen preview modal
+          }}
+          title={selectedMediaFile.originalName || selectedMediaFile.fileName}
+        />
+      )}
     </SafeAreaView>
+  );
+};
+
+// Separate component for video preview to avoid hook issues
+const VideoPreviewItem: React.FC<{ file: any; announcementId: number | undefined }> = ({ file, announcementId }) => {
+  if (!announcementId) return null;
+  const videoPlayer = useVideoPlayer(
+    `${API_URL}/media/announcement/${announcementId}/media/${file.fileName}`,
+    player => {
+      if (player) {
+        player.loop = false;
+      }
+    }
+  );
+
+  return (
+    <View className="bg-white p-1 rounded-lg mb-3 border border-gray-200 shadow-sm">
+      {/* <View className="flex-row items-center mb-2">
+        <View className="w-6 h-6 bg-red-100 rounded mr-2 items-center justify-center">
+          <Text className="text-xs">🎬</Text>
+        </View>
+        <Text className="font-semibold text-gray-900 flex-1">{file.originalName || file.fileName}</Text>
+      </View> */}
+      <VideoView
+        style={{ width: '100%', height: 200, borderRadius: 8 }}
+        player={videoPlayer}
+        allowsFullscreen
+        allowsPictureInPicture
+      />
+    </View>
   );
 };
 

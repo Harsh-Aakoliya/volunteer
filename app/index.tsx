@@ -7,7 +7,7 @@ import { VersionChecker } from '@/components/VersionChecker';
 import { Platform, Alert, TextInput, View, Text } from 'react-native';
 import { setApiUrl } from '@/constants/api';
 import React from 'react';
-
+  
 const DEV_IP = "http://192.168.137.33:3000";
 const INTERNAL_IP = "http://192.168.2.134:3000";
 const EXTERNAL_IP = "http://103.47.172.58:50160";
@@ -21,7 +21,7 @@ export default function Index() {
   const [devIpInput, setDevIpInput] = useState('');
 
   useEffect(() => {
-    const isDevMode = false; // Set to true to enable manual IP configuration for development
+    const isDevMode = true; // Set to true to enable manual IP configuration for development
 
     const pingServer = async (baseUrl: string, from: string, timeoutMs: number = 5000): Promise<boolean> => {
       try {

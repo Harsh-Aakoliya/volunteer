@@ -20,18 +20,18 @@ const Announcement = () => {
 
   return (
     <SafeAreaView className="flex-1 bg-white">
-      {Platform.OS === "web" ? (
+      {/* {Platform.OS === "web" ? (
         <></>
-      ) : (
-      //   <RichTextEditor 
-      //   initialTitle={initialTitle || ''} 
-      //   initialContent={initialBody || ''}
-      //   announcementId={announcementId ? Number(announcementId) : undefined}
-      //   announcementMode={announcementMode}
-      //   coverImage={hasCoverImage}
-      // />
-      <></>
-      )}
+      ) : ( */}
+        <RichTextEditor 
+        initialTitle={initialTitle || ''} 
+        initialContent={initialBody || ''}
+        announcementId={announcementId ? Number(announcementId) : undefined}
+        announcementMode={announcementMode}
+        coverImage={hasCoverImage}
+      />
+      {/* <></>
+      )} */}
     </SafeAreaView>
   );
 };

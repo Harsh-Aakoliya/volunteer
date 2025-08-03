@@ -4,20 +4,18 @@ import {
   Text,
   TouchableOpacity,
   Image,
-  Modal,
-  ActivityIndicator,
   Alert,
-  ScrollView,
   StyleSheet,
 } from "react-native";
 import * as DocumentPicker from "expo-document-picker";
 import axios from "axios";
-import { useEvent } from "expo";
-import { VideoView, useVideoPlayer } from "expo-video";
 import { API_URL } from "@/constants/api";
 import { AuthStorage } from "@/utils/authStorage";
 import * as FileSystem from "expo-file-system";
 import { Platform } from "react-native";
+import ImageViewer from './ImageViewer';
+import VideoViewer from './VideoViewer';
+import AudioViewer from './AudioViewer';
 
 type AnnouncementMediaFile = {
   id: string;
@@ -58,27 +56,12 @@ export default function AnnouncementMediaUploader({
   const [uploadingFiles, setUploadingFiles] = useState<UploadingFile[]>([]);
 
   // Modal states
-  const [videoModalVisible, setVideoModalVisible] = useState(false);
-  const [imageModalVisible, setImageModalVisible] = useState(false);
-  const [audioModalVisible, setAudioModalVisible] = useState(false);
+  const [imageViewerVisible, setImageViewerVisible] = useState(false);
+  const [videoViewerVisible, setVideoViewerVisible] = useState(false);
+  const [audioViewerVisible, setAudioViewerVisible] = useState(false);
   const [selectedFile, setSelectedFile] = useState<AnnouncementMediaFile | null>(null);
 
-  // Video player for selected video
-  const videoPlayer = useVideoPlayer(
-    selectedFile?.mimeType.startsWith("video") && announcementId
-      ? `${API_URL}/media/announcement/${announcementId}/media/${selectedFile.fileName}` 
-      : null,
-    player => {
-      if (player) {
-        player.loop = false;
-      }
-    }
-  );
 
-  // Video player state
-  const { isPlaying } = useEvent(videoPlayer, 'playingChange', { 
-    isPlaying: videoPlayer.playing 
-  });
 
   // Load existing media files on component mount
   useEffect(() => {
@@ -211,11 +194,11 @@ export default function AnnouncementMediaUploader({
   const openFileModal = (file: AnnouncementMediaFile) => {
     setSelectedFile(file);
     if (file.mimeType.startsWith("image")) {
-      setImageModalVisible(true);
+      setImageViewerVisible(true);
     } else if (file.mimeType.startsWith("video")) {
-      setVideoModalVisible(true);
+      setVideoViewerVisible(true);
     } else if (file.mimeType.startsWith("audio")) {
-      setAudioModalVisible(true);
+      setAudioViewerVisible(true);
     }
   };
 
@@ -269,121 +252,41 @@ export default function AnnouncementMediaUploader({
         </View>
       )}
 
-      {/* Video Modal */}
-      <Modal
-        visible={videoModalVisible}
-        animationType="slide"
-        onRequestClose={() => setVideoModalVisible(false)}
-      >
-        <View style={styles.videoModal}>
-          <View style={styles.videoHeader}>
-            <TouchableOpacity
-              style={styles.closeButton}
-              onPress={() => setVideoModalVisible(false)}
-            >
-              <Text style={styles.closeButtonText}>Close</Text>
-            </TouchableOpacity>
-          </View>
-          {selectedFile && selectedFile.mimeType.startsWith("video") && (
-            <View style={styles.videoContainer}>
-              <VideoView
-                style={styles.video}
-                player={videoPlayer}
-                allowsFullscreen
-                allowsPictureInPicture
-              />
-              <View style={styles.videoControls}>
-                <TouchableOpacity
-                  style={styles.playButton}
-                  onPress={() => {
-                    if (isPlaying) {
-                      videoPlayer.pause();
-                    } else {
-                      videoPlayer.play();
-                    }
-                  }}
-                >
-                  <Text style={styles.playButtonText}>
-                    {isPlaying ? '⏸️' : '▶️'}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          )}
-        </View>
-      </Modal>
-
-      {/* Image Modal */}
-      <Modal
-        visible={imageModalVisible}
-        animationType="fade"
-        onRequestClose={() => setImageModalVisible(false)}
-      >
-        <View style={styles.imageModal}>
-          <View style={styles.imageHeader}>
-            <TouchableOpacity
-              style={styles.closeButton}
-              onPress={() => setImageModalVisible(false)}
-            >
-              <Text style={styles.closeButtonText}>Close</Text>
-            </TouchableOpacity>
-          </View>
-          {selectedFile && (
-            <ScrollView
-              style={styles.imageScrollView}
-              contentContainerStyle={styles.imageContainer}
-              maximumZoomScale={3}
-              minimumZoomScale={1}
-            >
-              <Image
-                source={{
-                  uri: `${API_URL}/media/announcement/${announcementId}/media/${selectedFile.fileName}`
-                }}
-                style={styles.image}
-                resizeMode="contain"
-                onError={() => {
-                  console.error("Image load error for file:", selectedFile.fileName);
-                  Alert.alert("Error", "Failed to load image");
-                }}
-              />
-            </ScrollView>
-          )}
-        </View>
-      </Modal>
-
-      {/* Audio Modal */}
-      <Modal
-        visible={audioModalVisible}
-        animationType="slide"
-        onRequestClose={() => setAudioModalVisible(false)}
-      >
-        <View style={styles.audioModal}>
-          <View style={styles.audioHeader}>
-            <TouchableOpacity
-              style={styles.closeButton}
-              onPress={() => setAudioModalVisible(false)}
-            >
-              <Text style={styles.closeButtonText}>Close</Text>
-            </TouchableOpacity>
-          </View>
+      {/* Media Viewers */}
+      {selectedFile && (
+        <>
+          <ImageViewer
+            visible={imageViewerVisible}
+            imageUri={`${API_URL}/media/announcement/${announcementId}/media/${selectedFile.fileName}`}
+            onClose={() => {
+              setImageViewerVisible(false);
+              setSelectedFile(null);
+            }}
+            title={selectedFile.originalName || selectedFile.fileName}
+          />
           
-          {selectedFile && (
-            <View style={styles.audioPlayer}>
-              <Text style={styles.audioTitle}>🎵 {selectedFile.originalName}</Text>
-              <Text style={styles.audioSubtitle}>Audio file - {formatBytes(selectedFile.size)}</Text>
-              
-              <View style={styles.audioControls}>
-                <Text style={styles.audioNote}>
-                  Audio playback requires installing react-native-sound package.
-                </Text>
-                <Text style={styles.audioInstructions}>
-                  Run: npm install react-native-sound
-                </Text>
-              </View>
-            </View>
-          )}
-        </View>
-      </Modal>
+          <VideoViewer
+            visible={videoViewerVisible}
+            videoUri={`${API_URL}/media/announcement/${announcementId}/media/${selectedFile.fileName}`}
+            onClose={() => {
+              setVideoViewerVisible(false);
+              setSelectedFile(null);
+            }}
+            title={selectedFile.originalName || selectedFile.fileName}
+          />
+          
+          <AudioViewer
+            visible={audioViewerVisible}
+            audioUri={`${API_URL}/media/announcement/${announcementId}/media/${selectedFile.fileName}`}
+            onClose={() => {
+              setAudioViewerVisible(false);
+              setSelectedFile(null);
+            }}
+            title={selectedFile.originalName || selectedFile.fileName}
+            size={selectedFile.size}
+          />
+        </>
+      )}
     </View>
   );
 }
@@ -446,123 +349,4 @@ const MediaThumbnail = ({
   );
 };
 
-const styles = StyleSheet.create({
-  // Video Modal Styles
-  videoModal: {
-    flex: 1,
-    backgroundColor: 'black',
-  },
-  videoHeader: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    padding: 20,
-    paddingTop: 50,
-  },
-  videoContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  video: {
-    width: '100%',
-    height: '80%',
-  },
-  videoControls: {
-    position: 'absolute',
-    bottom: 20,
-    alignSelf: 'center',
-  },
-  playButton: {
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    padding: 15,
-    borderRadius: 25,
-  },
-  playButtonText: {
-    fontSize: 24,
-    color: 'white',
-  },
-
-  // Image Modal Styles
-  imageModal: {
-    flex: 1,
-    backgroundColor: 'black',
-  },
-  imageHeader: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    padding: 20,
-    paddingTop: 50,
-  },
-  imageScrollView: {
-    flex: 1,
-  },
-  imageContainer: {
-    flexGrow: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  image: {
-    width: '100%',
-    height: '100%',
-  },
-
-  // Audio Modal Styles
-  audioModal: {
-    flex: 1,
-    backgroundColor: '#f5f5f5',
-  },
-  audioHeader: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    padding: 20,
-    paddingTop: 50,
-  },
-  audioPlayer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  audioTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    marginBottom: 10,
-    textAlign: 'center',
-  },
-  audioSubtitle: {
-    fontSize: 16,
-    color: '#666',
-    marginBottom: 10,
-    textAlign: 'center',
-  },
-  audioNote: {
-    fontSize: 14,
-    color: '#888',
-    textAlign: 'center',
-    fontStyle: 'italic',
-  },
-  audioInstructions: {
-    fontSize: 14,
-    color: '#555',
-    textAlign: 'center',
-    marginTop: 10,
-  },
-  audioControls: {
-    flexDirection: 'column',
-    alignItems: 'center',
-    marginTop: 10,
-    width: '100%',
-    justifyContent: 'center',
-  },
-
-  // Common Styles
-  closeButton: {
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    padding: 10,
-    borderRadius: 20,
-  },
-  closeButtonText: {
-    color: 'white',
-    fontSize: 16,
-  },
-}); 
+const styles = StyleSheet.create({}); 

@@ -810,7 +810,7 @@ export default function ChatRoomScreen() {
           
           <View
             className={`p-2 max-w-[80%] rounded-lg my-1 relative ${
-              isOwnMessage ? "bg-blue-200 self-end" : "bg-gray-200 self-start"
+              isOwnMessage ? "bg-blue-500 self-end" : "bg-gray-200 self-start"
             }`}
             style={{ zIndex: 2 }}
           >

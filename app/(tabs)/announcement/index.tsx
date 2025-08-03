@@ -33,6 +33,9 @@ import { useRouter, useLocalSearchParams } from "expo-router";
 import { getPreviewHTML } from "@/components/HtmlPreview";
 import { AuthStorage } from "@/utils/authStorage";
 import { Ionicons } from '@expo/vector-icons';
+import { VideoView, useVideoPlayer } from 'expo-video';
+import ImageViewer from '@/components/texteditor/ImageViewer';
+import axios from 'axios';
 
 interface Announcement {
   id: number;
@@ -91,6 +94,11 @@ const Announcements = () => {
   const [likingInProgress, setLikingInProgress] = useState<Set<number>>(new Set());
   const [showActionMenu, setShowActionMenu] = useState(false);
   const [showModalActionMenu, setShowModalActionMenu] = useState(false);
+  
+  // Media viewing states
+  const [attachedMediaFiles, setAttachedMediaFiles] = useState<any[]>([]);
+  const [imageViewerVisible, setImageViewerVisible] = useState<boolean>(false);
+  const [selectedMediaFile, setSelectedMediaFile] = useState<any>(null);
   
   // Animation values
   const rotationAnim = useState(new Animated.Value(0))[0];
@@ -241,7 +249,37 @@ const Announcements = () => {
     // Mark as read when opening
     await handleMarkAsRead(announcement.id);
     setSelectedAnnouncement(announcement);
+    
+    // Load media files for this announcement
+    await loadAnnouncementMediaFiles(announcement.id);
+    
     setModalVisible(true);
+  };
+  
+  // Load media files for announcement
+  const loadAnnouncementMediaFiles = async (announcementId: number) => {
+    try {
+      const token = await AuthStorage.getToken();
+      const response = await axios.get(
+        `${API_URL}/api/announcements/${announcementId}/media`,
+        {
+          headers: { Authorization: `Bearer ${token}` }
+        }
+      );
+
+      if (response.data.success) {
+        setAttachedMediaFiles(response.data.files || []);
+      }
+    } catch (error) {
+      console.log("No media files found for announcement:", error);
+      setAttachedMediaFiles([]);
+    }
+  };
+  
+  // Handle image click
+  const handleImageClick = (file: any) => {
+    setSelectedMediaFile(file);
+    setImageViewerVisible(true);
   };
 
   const toggleModal = () => {
@@ -249,6 +287,8 @@ const Announcements = () => {
     setShowLikedUsers(false);
     setShowReadUsers(false);
     setShowModalActionMenu(false);
+    setAttachedMediaFiles([]);
+    setSelectedMediaFile(null);
   };
 
   // Check if current user has read the announcement
@@ -750,21 +790,76 @@ const Announcements = () => {
               </Text>
             </View>
 
-            {/* Content */}
-            {Platform.OS === "ios" || Platform.OS === "android" ? (
-            <View className="flex-1 border-t border-gray-200 pt-2">
-              <StyledWebView
-                className="flex-1"
-                originWhitelist={["*"]}
-                source={{ html: getPreviewHTML(selectedAnnouncement.body) }}
-                showsVerticalScrollIndicator={true}
-              />
-            </View>
-          ) : (
-            <View className="flex-1 border-t border-gray-200 pt-2">
-              {selectedAnnouncement.body}
-            </View>
-          )}
+            {/* Content and Media */}
+            <ScrollView className="flex-1 border-t border-gray-200">
+              {/* HTML Content */}
+              {Platform.OS === "ios" || Platform.OS === "android" ? (
+                <StyledWebView
+                  className="flex-1"
+                  originWhitelist={["*"]}
+                  source={{ html: getPreviewHTML(selectedAnnouncement.body) }}
+                  showsVerticalScrollIndicator={false}
+                  style={{ height: 400 }} // Fixed height for content
+                />
+              ) : (
+                <View className="p-4">
+                  <Text>{selectedAnnouncement.body}</Text>
+                </View>
+              )}
+              
+              {/* Media Files Section */}
+              {attachedMediaFiles.length > 0 && (
+                <View className="p-4">
+                  <Text className="text-lg font-semibold text-gray-900 mb-4">Attached Media Files</Text>
+                  
+                  {attachedMediaFiles.map((file, index) => {
+                    if (file.mimeType.startsWith('image/')) {
+                      return (
+                        <TouchableOpacity
+                          key={index}
+                          onPress={() => handleImageClick(file)}
+                          className="bg-white p-1 rounded-lg mb-3 border border-gray-200 shadow-sm"
+                        >
+                          <Image
+                            source={{ uri: `${API_URL}/media/announcement/${selectedAnnouncement.id}/media/${file.fileName}` }}
+                            style={{ 
+                              width: '100%', 
+                              aspectRatio: 1,
+                              alignSelf: 'center'
+                            }}
+                            className="rounded-lg"
+                            resizeMode="cover"
+                          />
+                          {/* <Text className="font-semibold text-gray-900 text-center mt-2">📷 {file.originalName || file.fileName}</Text>
+                          <Text className="text-sm text-gray-600 text-center">Tap to view full screen</Text> */}
+                        </TouchableOpacity>
+                      );
+                    } else if (file.mimeType.startsWith('video/')) {
+                      return (
+                        <VideoPreviewItem 
+                          key={index} 
+                          file={file} 
+                          announcementId={selectedAnnouncement.id} 
+                        />
+                      );
+                    } else if (file.mimeType.startsWith('audio/')) {
+                      return (
+                        <View key={index} className="flex-row items-center bg-white p-3 rounded-lg mb-3 border border-gray-200 shadow-sm">
+                          <View className="w-16 h-16 bg-purple-100 rounded-lg mr-3 items-center justify-center">
+                            <Text className="text-2xl">🎵</Text>
+                          </View>
+                          <View className="flex-1">
+                            <Text className="font-semibold text-gray-900">🎵 {file.originalName || file.fileName}</Text>
+                            <Text className="text-sm text-gray-600">Audio • Not supported yet (will fix in next update)</Text>
+                          </View>
+                        </View>
+                      );
+                    }
+                    return null;
+                  })}
+                </View>
+              )}
+            </ScrollView>
             {/* Like button section (only for non-authors) */}
             {selectedAnnouncement.authorId !== currentUserId && (
               <View className="px-4 py-3 border-t border-gray-200">
@@ -856,6 +951,48 @@ const Announcements = () => {
           </View>
         </View>
       </Modal>
+      
+      {/* Image Viewer */}
+      {selectedMediaFile && (
+        <ImageViewer
+          visible={imageViewerVisible}
+          imageUri={`${API_URL}/media/announcement/${selectedAnnouncement?.id}/media/${selectedMediaFile.fileName}`}
+          onClose={() => {
+            setImageViewerVisible(false);
+            setSelectedMediaFile(null);
+          }}
+          title={selectedMediaFile.originalName || selectedMediaFile.fileName}
+        />
+      )}
+    </View>
+  );
+};
+
+// Separate component for video preview to avoid hook issues
+const VideoPreviewItem: React.FC<{ file: any; announcementId: number }> = ({ file, announcementId }) => {
+  const videoPlayer = useVideoPlayer(
+    `${API_URL}/media/announcement/${announcementId}/media/${file.fileName}`,
+    player => {
+      if (player) {
+        player.loop = false;
+      }
+    }
+  );
+
+  return (
+    <View className="bg-white p-1 rounded-lg mb-3 border border-gray-200 shadow-sm">
+        {/* <View className="flex-row items-center mb-2">
+          <View className="w-6 h-6 bg-red-100 rounded mr-2 items-center justify-center">
+          <Text className="text-xs">🎬</Text>
+        </View>
+        <Text className="font-semibold text-gray-900 flex-1">{file.originalName || file.fileName}</Text>
+      </View> */}
+      <VideoView
+        style={{ width: '100%', height: 200, borderRadius: 8 }}
+        player={videoPlayer}
+        allowsFullscreen
+        allowsPictureInPicture
+      />
     </View>
   );
 };
