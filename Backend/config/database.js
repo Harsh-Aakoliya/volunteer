@@ -4,22 +4,31 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 const { Pool } = pkg;
-
-// Add these logs to verify the values
-console.log('Database connection config:', {
-  user: process.env.DB_USER,
-  host: process.env.DB_HOST,
-  database: process.env.DB_DATABASE,
-  password: process.env.DB_PASSWORD,
-  port: process.env.DB_PORT
+const isDev=true;
+let user=process.env.DB_USER;
+let host=process.env.DB_HOST;
+let database=process.env.DB_DATABASE;
+let password=process.env.DB_PASSWORD;
+let port=process.env.DB_PORT;
+if(isDev){
+  user=process.env.PGUSER;
+  host=process.env.PGHOST;
+  database=process.env.PGDATABASE;
+  password=process.env.PGPASSWORD;
+}
+console.log("Database configuration:",{
+  user:user,
+  host:host,
+  database:database,
+  password:password,
+  port:port
 });
-
 const pool = new Pool({
-  user: process.env.DB_USER,
-  host: process.env.DB_HOST,
-  database: process.env.DB_DATABASE,
-  password: process.env.DB_PASSWORD,
-  port: process.env.DB_PORT
+  user: user,
+  host: host,
+  database: database,
+  password: password,
+  port: port
 });
 
 pool.on('connect', () => {console.log('Connected to the database');});

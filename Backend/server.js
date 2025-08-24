@@ -69,11 +69,12 @@ app.set('unreadMessagesByUser', unreadMessagesByUser);
 const lastMessageByRoom = {};
 app.set('lastMessageByRoom', lastMessageByRoom);
 
+// Set up Socket.IO
+setupSocketIO(io, app);
+
 // API routes
 app.use('/api', apiRoutes);
 
-// Set up Socket.IO
-setupSocketIO(io, app);
 // Add this to your server.js file, after the existing routes but before the test endpoint
 
 // API endpoint to list media files

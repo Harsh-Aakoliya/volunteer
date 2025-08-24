@@ -87,12 +87,44 @@ const createChatMessagesTable = async (client) => {
           "messageType" "messageType" NOT NULL DEFAULT 'text',
           "pollId" INTEGER,
           "mediaFilesId" INTEGER,
-          "tableId" INTEGER
+          "tableId" INTEGER,
+          "isEdited" BOOLEAN DEFAULT FALSE,
+          "editedAt" TIMESTAMP WITH TIME ZONE,
+          "editedBy" VARCHAR(50)
       );
     `);
     console.log("Chatmessages table created successfully");
   } catch (error) {
     console.error("Error while creating chatmessages table:", error);
+    throw error;
+  }
+};
+
+const addEditColumnsIfNotExists = async (client) => {
+  try {
+    // Check if isEdited column exists
+    const isEditedCheck = await client.query(`
+      SELECT column_name 
+      FROM information_schema.columns 
+      WHERE table_name = 'chatmessages' AND column_name = 'isEdited'
+    `);
+    
+    if (isEditedCheck.rows.length === 0) {
+      console.log("Adding edit-related columns to chatmessages table...");
+      
+      await client.query(`
+        ALTER TABLE chatmessages 
+        ADD COLUMN "isEdited" BOOLEAN DEFAULT FALSE,
+        ADD COLUMN "editedAt" TIMESTAMP WITH TIME ZONE,
+        ADD COLUMN "editedBy" VARCHAR(50)
+      `);
+      
+      console.log("Edit-related columns added successfully");
+    } else {
+      console.log("Edit-related columns already exist in chatmessages table");
+    }
+  } catch (error) {
+    console.error("Error adding edit columns:", error);
     throw error;
   }
 };
@@ -104,6 +136,9 @@ const initChatDB = async () => {
     await createChatRoomsTable(client);
     await createChatRoomUsersTable(client);
     await createChatMessagesTable(client);
+    
+    // Add edit columns to existing tables
+    await addEditColumnsIfNotExists(client);
     
     console.log("All chat-related tables initialization completed");
   } catch (error) {

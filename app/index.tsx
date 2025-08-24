@@ -1,5 +1,5 @@
 // app/index.tsx
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'expo-router';
 import { AuthStorage } from '@/utils/authStorage';
 import * as Application from 'expo-application';
@@ -7,8 +7,8 @@ import { VersionChecker } from '@/components/VersionChecker';
 import { Platform, Alert, TextInput, View, Text } from 'react-native';
 import { setApiUrl } from '@/constants/api';
 import React from 'react';
-  
-const DEV_IP = "http://192.168.137.33:3000";
+
+const DEV_IP = "http://192.168.40.33:3000";
 const INTERNAL_IP = "http://192.168.2.134:3000";
 const EXTERNAL_IP = "http://103.47.172.58:50160";
 
@@ -19,6 +19,7 @@ export default function Index() {
   const [versionCheckComplete, setVersionCheckComplete] = useState(false);
   const [showDevIpInput, setShowDevIpInput] = useState(false);
   const [devIpInput, setDevIpInput] = useState('');
+  const [hasNavigated, setHasNavigated] = useState(false);
 
   useEffect(() => {
     const isDevMode = true; // Set to true to enable manual IP configuration for development
@@ -166,40 +167,46 @@ export default function Index() {
     }
   };
 
-  // Step 2: Start version check only after connectivity is established
+  // Step 2: Start version check only after connectivity is established (skip for web)
   useEffect(() => {
     if (!connectivityCheckComplete) return;
     
-    console.log("🔄 Connectivity established, starting version check...");
-    // This will trigger the VersionChecker component to run
-    setVersionCheckComplete(false); // Reset in case it was set before
+    if (Platform.OS === "web") {
+      console.log("🌐 Web platform detected, skipping version check");
+      setVersionCheckComplete(true);
+    } else {
+      console.log("🔄 Connectivity established, starting version check...");
+      // This will trigger the VersionChecker component to run
+      setVersionCheckComplete(false); // Reset in case it was set before
+    }
   }, [connectivityCheckComplete]);
 
-  // Step 3: Navigate to appropriate screen only after both connectivity and version checks are complete
-  useEffect(() => {
-    if (!connectivityCheckComplete || !versionCheckComplete) return;
-
-    console.log("🔄 Both connectivity and version checks complete, checking auth status...");
-    
-    const checkAuthStatus = async () => {
-      try {
-        const token = await AuthStorage.getToken();
-        console.log("Token:", token);
-        if (token) {
-          console.log("Redirecting to announcement");
-          router.replace("/announcement");
-        } else {
-          console.log("Redirecting to login");
-          router.replace("/login");
-        }
-      } catch (error) {
-        console.error("Auth check error:", error);
+  // Step 3: Define auth check function with useCallback at top level
+  const checkAuthStatus = useCallback(async () => {
+    try {
+      setHasNavigated(true); // Prevent multiple navigation attempts
+      const token = await AuthStorage.getToken();
+      console.log("Token:", token);
+      if (token) {
+        console.log("Redirecting to announcement");
+        router.replace("/announcement");
+      } else {
+        console.log("Redirecting to login");
         router.replace("/login");
       }
-    };
+    } catch (error) {
+      console.error("Auth check error:", error);
+      router.replace("/login");
+    }
+  }, [router]);
 
+  // Step 4: Navigate to appropriate screen only after both connectivity and version checks are complete
+  useEffect(() => {
+    if (!connectivityCheckComplete || !versionCheckComplete || hasNavigated) return;
+
+    console.log("🔄 Both connectivity and version checks complete, checking auth status...");
     checkAuthStatus();
-  }, [connectivityCheckComplete, versionCheckComplete]);
+  }, [connectivityCheckComplete, versionCheckComplete, hasNavigated, checkAuthStatus]);
 
   if (showDevIpInput) {
     return (
@@ -268,6 +275,8 @@ export default function Index() {
     );
   }
 
+
+
   return (
     <>
       {(Platform.OS === "ios" || Platform.OS === "android") && (
@@ -276,4 +285,6 @@ export default function Index() {
     </>
   );
 }
+
+
 

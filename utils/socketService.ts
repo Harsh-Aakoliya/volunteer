@@ -1,9 +1,14 @@
 // utils/socketService.ts
 import { io, Socket } from "socket.io-client";
-import { API_URL } from "@/constants/api";
+import { getApiUrl } from "@/constants/api";
 
-// Remove the /api prefix if needed
-const SOCKET_URL = API_URL.replace("/api", "");
+// Function to get socket URL dynamically
+const getSocketUrl = (): string => {
+  const apiUrl = getApiUrl();
+  const socketUrl = apiUrl.replace("/api", "");
+  console.log("🔌 Socket URL:", socketUrl);
+  return socketUrl;
+};
 
 // Define event types - only keep what's actually used
 interface OnlineUsersEvent {
@@ -75,37 +80,104 @@ interface MessagesDeletedEvent {
   deletedBy: string;
 }
 
+interface MessageEditedEvent {
+  roomId: string;
+  messageId: number;
+  messageText: string;
+  isEdited: boolean;
+  editedAt: string;
+  editedBy: string;
+  editorName?: string;
+  senderId: string;
+  senderName: string;
+}
+
 class SocketService {
   socket: Socket | null = null;
+  private connectionPromise: Promise<Socket | null> | null = null;
 
   connect(): Socket | null {
-    if (!this.socket) {
-      try {
-        this.socket = io(SOCKET_URL);
+    if (this.socket && this.socket.connected) {
+      console.log("✅ Socket already connected:", this.socket.id);
+      return this.socket;
+    }
 
-        this.socket.on("connect", () => {
-          console.log("Socket connected:", this.socket?.id);
-        });
-
-        this.socket.on("disconnect", () => {
-          console.log("Socket disconnected");
-        });
-
-        this.socket.on("error", (error: any) => {
-          console.error("Socket error:", error);
-        });
-
-        // Add debugging for lastMessage events
-        this.socket.on("lastMessage", (data) => {
-          console.log("🔔 Received lastMessage event:", data);
-        });
-
-      } catch (error) {
-        console.error("Failed to connect to socket server:", error);
+    try {
+      const socketUrl = getSocketUrl();
+      if (!socketUrl || socketUrl === "") {
+        console.error("❌ Socket URL is empty, cannot connect");
         return null;
       }
-    } else {
-      console.log("Socket already connected:", this.socket.id);
+
+      console.log("🔌 Connecting to socket:", socketUrl);
+      
+      // Disconnect old socket if exists
+      if (this.socket) {
+        this.socket.disconnect();
+      }
+
+      this.socket = io(socketUrl, {
+        transports: ['websocket', 'polling'],
+        timeout: 10000,
+        reconnection: true,
+        reconnectionAttempts: 5,
+        reconnectionDelay: 1000,
+        forceNew: true,
+      });
+
+      this.socket.on("connect", () => {
+        console.log("✅ Socket connected successfully! ID:", this.socket?.id);
+        console.log("🔗 Socket connected state:", this.socket?.connected);
+      });
+
+      this.socket.on("disconnect", (reason) => {
+        console.log("❌ Socket disconnected:", reason);
+      });
+
+      this.socket.on("connect_error", (error: any) => {
+        console.error("❌ Socket connection error:", error.message || error);
+      });
+
+      this.socket.on("error", (error: any) => {
+        console.error("❌ Socket error:", error);
+      });
+
+      this.socket.on("reconnect", (attemptNumber) => {
+        console.log("🔄 Socket reconnected after", attemptNumber, "attempts");
+      });
+
+      this.socket.on("reconnect_attempt", (attemptNumber) => {
+        console.log("🔄 Socket reconnection attempt:", attemptNumber);
+      });
+
+      // Add debugging for all events
+      this.socket.on("lastMessage", (data) => {
+        console.log("🔔 Received lastMessage event:", data);
+      });
+
+      this.socket.on("newMessage", (data) => {
+        console.log("📨 Received newMessage event:", data);
+      });
+
+      this.socket.on("unreadCounts", (data) => {
+        console.log("📊 Received unreadCounts event:", data);
+      });
+
+      this.socket.on("roomUpdate", (data) => {
+        console.log("🏠 Received roomUpdate event:", data);
+      });
+
+      // Test connection after a short delay
+      setTimeout(() => {
+        console.log("🧪 Testing socket connection status:");
+        console.log("- Socket exists:", !!this.socket);
+        console.log("- Socket connected:", this.socket?.connected);
+        console.log("- Socket ID:", this.socket?.id);
+      }, 2000);
+
+    } catch (error) {
+      console.error("❌ Failed to connect to socket server:", error);
+      return null;
     }
 
     return this.socket;
@@ -116,33 +188,53 @@ class SocketService {
     return this.socket?.connected || false;
   }
 
+  // Ensure socket is connected
+  private ensureConnection(): boolean {
+    if (!this.socket || !this.socket.connected) {
+      console.log("⚠️ Socket not connected, attempting to connect...");
+      this.connect();
+      return this.socket?.connected || false;
+    }
+    return true;
+  }
+
   // Identify method
   identify(userId: string): void {
-    if (this.socket && this.socket.connected) {
+    if (this.ensureConnection()) {
       console.log("🔐 Identifying user:", userId);
-      this.socket.emit("identify", { userId });
+      this.socket!.emit("identify", { userId });
+    } else {
+      console.error("❌ Cannot identify user: Socket not connected");
     }
   }
 
   // Request room data (unread counts and last messages)
   requestRoomData(userId: string): void {
-    if (this.socket && this.socket.connected) {
+    if (this.ensureConnection()) {
       console.log("📋 Requesting room data for user:", userId);
-      this.socket.emit("requestRoomData", { userId });
+      this.socket!.emit("requestRoomData", { userId });
+    } else {
+      console.error("❌ Cannot request room data: Socket not connected");
     }
   }
 
   // Join a chat room
   joinRoom(roomId: string, userId: string, userName: string): void {
-    if (this.socket) {
-      this.socket.emit("joinRoom", { roomId, userId, userName });
+    if (this.ensureConnection()) {
+      console.log("🏠 Joining room:", { roomId, userId, userName });
+      this.socket!.emit("joinRoom", { roomId, userId, userName });
+    } else {
+      console.error("❌ Cannot join room: Socket not connected");
     }
   }
 
   // Leave a chat room
   leaveRoom(roomId: string, userId: string): void {
-    if (this.socket) {
-      this.socket.emit("leaveRoom", { roomId, userId });
+    if (this.ensureConnection()) {
+      console.log("🚪 Leaving room:", { roomId, userId });
+      this.socket!.emit("leaveRoom", { roomId, userId });
+    } else {
+      console.error("❌ Cannot leave room: Socket not connected");
     }
   }
 
@@ -152,9 +244,9 @@ class SocketService {
     message: any,
     sender: { userId: string; userName: string }
   ): void {
-    if (this.socket) {
-      console.log("Sending message via socket:", { roomId, message, sender });
-      this.socket.emit("sendMessage", {
+    if (this.ensureConnection()) {
+      console.log("📤 Sending message via socket:", { roomId, message, sender });
+      this.socket!.emit("sendMessage", {
         roomId,
         message: {
           id: message.id,
@@ -167,6 +259,8 @@ class SocketService {
         },
         sender,
       });
+    } else {
+      console.error("❌ Cannot send message: Socket not connected");
     }
   }
 
@@ -219,6 +313,13 @@ class SocketService {
     }
   }
 
+  // Listen for message edited events
+  onMessageEdited(callback: (data: MessageEditedEvent) => void): void {
+    if (this.socket) {
+      this.socket.on("messageEdited", callback);
+    }
+  }
+
   // Remove event listeners
   removeListeners(): void {
     if (this.socket) {
@@ -229,6 +330,22 @@ class SocketService {
       this.socket.off("unreadCounts");
       this.socket.off("roomUpdate");
       this.socket.off("messagesDeleted");
+      this.socket.off("messageEdited");
+    }
+  }
+
+  // Debug method to check socket status
+  debug(): void {
+    console.log("🔍 Socket Debug Info:");
+    console.log("- Socket exists:", !!this.socket);
+    console.log("- Socket connected:", this.socket?.connected);
+    console.log("- Socket ID:", this.socket?.id);
+    console.log("- Socket URL:", getSocketUrl());
+    console.log("- API URL:", getApiUrl());
+    
+    if (this.socket) {
+      console.log("- Socket transport:", this.socket.io.engine?.transport?.name);
+      console.log("- Socket ready state:", this.socket.io.engine?.readyState);
     }
   }
 

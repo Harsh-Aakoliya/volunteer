@@ -6,8 +6,9 @@ import {
     Alert,
     Clipboard
 } from "react-native";
-import { Message } from "@/types/type";
+import { Message, ChatUser } from "@/types/type";
 import { Ionicons } from '@expo/vector-icons';
+import EditMessageModal from './EditMessageModal';
 
 type ChatMessageOptionProps = {
     selectedMessages: Message[];
@@ -16,6 +17,13 @@ type ChatMessageOptionProps = {
     onClose: () => void;
     onForwardPress: () => void;
     onDeletePress: (messageIds: (string | number)[]) => Promise<void>;
+    roomId?: string | number; // Add roomId prop
+    roomMembers?: ChatUser[];
+    currentUser?: {
+        userId: string;
+        fullName: string | null;
+    } | null;
+    onMessageEdited?: (editedMessage: Message) => void;
 }
 
 const ChatMessageOptions: React.FC<ChatMessageOptionProps> = ({ 
@@ -24,14 +32,25 @@ const ChatMessageOptions: React.FC<ChatMessageOptionProps> = ({
     isAdmin = false, // Group admin status - defaults to false for safety
     onClose = ()=>console.log("closed calling"),
     onForwardPress,
-    onDeletePress
+    onDeletePress,
+    roomId,
+    roomMembers = [],
+    currentUser = null,
+    onMessageEdited
 }) => {
     const [showPinOptions, setShowPinOptions] = useState(false);
+    const [showEditModal, setShowEditModal] = useState(false);
     const selectedCount = selectedMessages.length;
     const isSingleSelection = selectedCount === 1;
     const selectedMessage = isSingleSelection ? selectedMessages[0] : null;
     const isTextMessage = selectedMessage?.messageType === 'text';
     const hasMessageText = selectedMessage?.messageText && selectedMessage.messageText.trim() !== '';
+    
+    // Check if user can edit the selected message
+    const canEditMessage = isSingleSelection && isTextMessage && hasMessageText && 
+        (selectedMessage?.senderId === currentUser?.userId || isAdmin) &&
+        // Don't allow editing temporary messages
+        !(typeof selectedMessage?.id === 'string' && selectedMessage?.id.startsWith('temp-'));
 
     // Only show this component if user is a group admin
     if (!isAdmin) {
@@ -79,12 +98,18 @@ const ChatMessageOptions: React.FC<ChatMessageOptionProps> = ({
 
     // Edit functionality
     const handleEdit = () => {
-        if (selectedMessage) {
+        if (selectedMessage && canEditMessage) {
             console.log('Editing message:', selectedMessage.id);
-            // TODO: Implement edit functionality - open edit modal/input
-            Alert.alert('Edit', 'Edit functionality to be implemented');
-            onClose();
+            // Clear selection before opening edit modal
+            // setSelectedMessages([]);
+            setShowEditModal(true);
         }
+    };
+
+    // Handle message edited
+    const handleMessageEdited = (editedMessage: Message) => {
+        onMessageEdited && onMessageEdited(editedMessage);
+        onClose();
     };
 
     // Copy functionality
@@ -159,16 +184,16 @@ const ChatMessageOptions: React.FC<ChatMessageOptionProps> = ({
                             <Ionicons name="trash-outline" size={20} color="#DC2626" />
                         </TouchableOpacity>
 
-                        {/* Edit - Only for single text message */}
+                        {/* Edit - Only for single text message and if user can edit */}
                         <TouchableOpacity 
                             onPress={handleEdit} 
-                            disabled={!isSingleSelection || !isTextMessage || !hasMessageText}
+                            disabled={!canEditMessage}
                             className="p-1"
                         >
                             <Ionicons 
                                 name="create-outline" 
                                 size={20} 
-                                color={(!isSingleSelection || !isTextMessage || !hasMessageText) ? "#9CA3AF" : "#1F2937"} 
+                                color={!canEditMessage ? "#9CA3AF" : "#1F2937"} 
                             />
                         </TouchableOpacity>
 
@@ -243,6 +268,17 @@ const ChatMessageOptions: React.FC<ChatMessageOptionProps> = ({
                     </View>
                 </View>
             )}
+
+            {/* Edit Message Modal */}
+            <EditMessageModal
+                visible={showEditModal}
+                onClose={() => setShowEditModal(false)}
+                message={selectedMessage}
+                roomId={roomId || ''}
+                roomMembers={roomMembers}
+                currentUser={currentUser}
+                onMessageEdited={handleMessageEdited}
+            />
         </View>
     );
 };

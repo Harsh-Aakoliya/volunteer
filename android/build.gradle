@@ -39,3 +39,19 @@ allprojects {
         maven { url 'https://www.jitpack.io' }
     }
 }
+// subprojects { subproject ->
+//     afterEvaluate {
+//         if (subproject.hasProperty("android")) {
+//             subproject.android.defaultConfig {
+//                 ndk {
+//                     abiFilters "armeabi-v7a", "arm64-v8a"
+//                 }
+//                 externalNativeBuild {
+//                     cmake {
+//                         arguments "-DANDROID_ABI=armeabi-v7a;arm64-v8a"
+//                     }
+//                 }
+//             }
+//         }
+//     }
+// }

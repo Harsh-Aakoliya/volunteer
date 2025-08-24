@@ -1,6 +1,6 @@
 1) change isDevMode=false in index.tsx file
 2) make sure internal and external ips are correct
-3) version updation in app.json file 
+3) version updation in app.json or build.gradle file 
 4) make sure you have set "usesCleartextTraffic": true, in app.json file
 5) make sure you have right permissions set in app.json file
 6) write some desctiption in version.json file of backend
@@ -8,5 +8,21 @@
 8) check .easignore file
 9) check .gitignore file
 10) run npx expo-doctor
-11) push to github
-12) and then run eas build command
+11) change isDev to false in backend/config/database.js file
+12) push to github
+13) and then run eas build command
+
+
+
+now we need to change how we are showing the announcements on main page 
+1) user is sevak 
+so we will only show two tabs 
+in first tab we will show karyalay and in second tab we will show his department name
+from backend we will send those announcements in which recipientuserids contain current userid 
+and if user clicks on karyalay then he will see the announcements whose author have karyalay department and if user clicks on his department then user will see the remaining all the announcements (because if user is sevak then there will be only two cases like announcements can came from karyalay or from his department )
+
+2) user is hod (for which isadmin is true and department name is not Karyalay)
+same as user but we will show that + icon to create announcements
+
+3) user is from karyalay department
+in this case 

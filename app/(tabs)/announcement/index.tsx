@@ -23,6 +23,7 @@ import {
   getLikedUsers,
   getReadUsers,
   createDraft,
+  getAllDepartments,
 } from "@/api/admin";
 import { router } from "expo-router";
 import { cssInterop } from "nativewind";
@@ -35,6 +36,7 @@ import { AuthStorage } from "@/utils/authStorage";
 import { Ionicons } from '@expo/vector-icons';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import ImageViewer from '@/components/texteditor/ImageViewer';
+import AudioViewer from '@/components/texteditor/AudioViewer';
 import axios from 'axios';
 
 interface Announcement {
@@ -77,6 +79,7 @@ const StyledWebView = cssInterop(WebView, {
 });
 
 import { API_URL } from "@/constants/api";
+import VideoViewer from "@/components/texteditor/VideoViewer";
 
 const Announcements = () => {
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
@@ -85,6 +88,10 @@ const Announcements = () => {
   const [isAdmin, setIsAdmin] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string>("");
+  const [userDepartment, setUserDepartment] = useState<string>("");
+  const [isKaryalay, setIsKaryalay] = useState(false);
+  const [allDepartments, setAllDepartments] = useState<string[]>([]);
+  const [selectedDepartment, setSelectedDepartment] = useState<string>("Karyalay");
   
   // New states for like and read functionality
   const [likedUsers, setLikedUsers] = useState<LikedUser[]>([]);
@@ -99,6 +106,8 @@ const Announcements = () => {
   const [attachedMediaFiles, setAttachedMediaFiles] = useState<any[]>([]);
   const [imageViewerVisible, setImageViewerVisible] = useState<boolean>(false);
   const [selectedMediaFile, setSelectedMediaFile] = useState<any>(null);
+  const [showAudioViewer, setShowAudioViewer] = useState<boolean>(false);
+  const [selectedAudioFile, setSelectedAudioFile] = useState<any>(null);
   
   // Animation values
   const rotationAnim = useState(new Animated.Value(0))[0];
@@ -112,13 +121,30 @@ const Announcements = () => {
   useEffect(() => {
     loadAnnouncements();
     getCurrentUser();
+    loadDepartments();
   }, []);
+
+  useEffect(() => {
+    // Reload announcements when department changes
+    loadAnnouncements();
+  }, [selectedDepartment]);
 
   const getCurrentUser = async () => {
     const userData = await AuthStorage.getUser();
     if (userData) {
       setCurrentUserId(userData.userId);
       setIsAdmin(userData.isAdmin || false);
+      setUserDepartment(userData.department || '');
+      setIsKaryalay(userData.department === 'Karyalay');
+    }
+  };
+
+  const loadDepartments = async () => {
+    try {
+      const departments = await getAllDepartments();
+      setAllDepartments(departments);
+    } catch (error) {
+      console.error('Error loading departments:', error);
     }
   };
 
@@ -133,8 +159,9 @@ const Announcements = () => {
 
   const loadAnnouncements = async () => {
     try {
-      const data: Announcement[] = await fetchAnnouncements();
-      console.log("data",data);
+      // setIsRefreshing(true);
+      const data: Announcement[] = await fetchAnnouncements(selectedDepartment);
+      // console.log("data",data);
       setAnnouncements(data);
       setIsRefreshing(false);
     } catch (error) {
@@ -282,6 +309,12 @@ const Announcements = () => {
     setImageViewerVisible(true);
   };
 
+  // Handle audio click
+  const handleAudioClick = (file: any) => {
+    setSelectedAudioFile(file);
+    setShowAudioViewer(true);
+  };
+
   const toggleModal = () => {
     setModalVisible(!modalVisible);
     setShowLikedUsers(false);
@@ -289,6 +322,8 @@ const Announcements = () => {
     setShowModalActionMenu(false);
     setAttachedMediaFiles([]);
     setSelectedMediaFile(null);
+    setSelectedAudioFile(null);
+    setShowAudioViewer(false);
   };
 
   // Check if current user has read the announcement
@@ -361,8 +396,19 @@ const Announcements = () => {
   const handleCreateNewAnnouncement = async () => {
     try {
       closeActionMenu();
+      
+      // Determine department tags based on user type
+      let departmentTags: string[] = [];
+      if (userDepartment === 'Karyalay') {
+        // Karyalay users will select departments in the editor
+        departmentTags = [];
+      } else {
+        // HOD users auto-tag with their department
+        departmentTags = [userDepartment];
+      }
+      
       // Create a new draft entry in DB
-      const draft = await createDraft(currentUserId);
+      const draft = await createDraft(currentUserId, departmentTags);
       
       // Navigate to text editor with new draft
       router.push({
@@ -443,8 +489,60 @@ const Announcements = () => {
     }
   };
 
+  // Get tabs based on user type
+  const getDepartmentTabs = () => {
+    const tabs = ['Karyalay']; // Always show Karyalay first
+    
+    if (isKaryalay) {
+      // Karyalay users see all other departments
+      const otherDepartments = allDepartments.filter(dept => dept !== 'Karyalay');
+      tabs.push(...otherDepartments);
+    } else {
+      // HODs and Sevaks see only their department (if not Karyalay)
+      if (userDepartment && userDepartment !== 'Karyalay') {
+        tabs.push(userDepartment);
+      }
+    }
+    
+    return tabs;
+  };
+
+  const tabs = getDepartmentTabs();
+
   return (
     <View className="flex-1 bg-gray-50">
+      {/* Department Tabs */}
+      {tabs.length > 1 && (
+        <View className="bg-white border-b border-gray-200">
+          <ScrollView 
+            horizontal 
+            showsHorizontalScrollIndicator={false}
+            className="px-4 py-3"
+            contentContainerStyle={{ paddingRight: 20 }}
+          >
+            {tabs.map((department) => (
+              <TouchableOpacity
+                key={department}
+                onPress={() => setSelectedDepartment(department)}
+                className={`mr-4 px-4 py-2 rounded-full border ${
+                  selectedDepartment === department
+                    ? 'bg-blue-500 border-blue-500'
+                    : 'bg-white border-gray-300'
+                }`}
+              >
+                <Text
+                  className={`font-medium ${
+                    selectedDepartment === department ? 'text-white' : 'text-gray-700'
+                  }`}
+                >
+                  {department}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+      )}
+
       <FlatList
         data={announcements}
         keyExtractor={(item) => item.id.toString()}
@@ -569,7 +667,7 @@ const Announcements = () => {
         }}
       />
 
-      {/* Twitter-style Floating Action Menu */}
+      {/* Twitter-style Floating Action Menu - Only for HODs and Karyalay users */}
       {isAdmin && (
         <>
           {/* Blurred Background Overlay */}
@@ -844,15 +942,22 @@ const Announcements = () => {
                       );
                     } else if (file.mimeType.startsWith('audio/')) {
                       return (
-                        <View key={index} className="flex-row items-center bg-white p-3 rounded-lg mb-3 border border-gray-200 shadow-sm">
+                        <TouchableOpacity
+                          key={index}
+                          onPress={() => handleAudioClick(file)}
+                          className="flex-row items-center bg-white p-3 rounded-lg mb-3 border border-gray-200 shadow-sm"
+                        >
                           <View className="w-16 h-16 bg-purple-100 rounded-lg mr-3 items-center justify-center">
                             <Text className="text-2xl">🎵</Text>
                           </View>
                           <View className="flex-1">
-                            <Text className="font-semibold text-gray-900">🎵 {file.originalName || file.fileName}</Text>
-                            <Text className="text-sm text-gray-600">Audio • Not supported yet (will fix in next update)</Text>
+                            <Text className="font-semibold text-gray-900">{file.originalName || file.fileName}</Text>
+                            <Text className="text-sm text-gray-600">Audio file • Tap to play</Text>
                           </View>
-                        </View>
+                          <View className="items-center justify-center">
+                            <Ionicons name="play-circle" size={32} color="#8b5cf6" />
+                          </View>
+                        </TouchableOpacity>
                       );
                     }
                     return null;
@@ -964,37 +1069,100 @@ const Announcements = () => {
           title={selectedMediaFile.originalName || selectedMediaFile.fileName}
         />
       )}
+
+      {/* Audio Viewer */}
+      {selectedAudioFile && (
+        <AudioViewer
+          visible={showAudioViewer}
+          audioUri={`${API_URL}/media/announcement/${selectedAnnouncement?.id}/media/${selectedAudioFile.fileName}`}
+          onClose={() => {
+            setShowAudioViewer(false);
+            setSelectedAudioFile(null);
+          }}
+          title={selectedAudioFile.originalName || selectedAudioFile.fileName}
+          size={selectedAudioFile.size}
+        />
+      )}
     </View>
   );
 };
 
 // Separate component for video preview to avoid hook issues
-const VideoPreviewItem: React.FC<{ file: any; announcementId: number }> = ({ file, announcementId }) => {
-  const videoPlayer = useVideoPlayer(
-    `${API_URL}/media/announcement/${announcementId}/media/${file.fileName}`,
-    player => {
-      if (player) {
-        player.loop = false;
-      }
+const VideoPreviewItem: React.FC<{ file: any; announcementId: number | undefined }> = ({ file, announcementId }) => {
+  const [showVideoViewer, setShowVideoViewer] = useState(false);
+  
+  if (!announcementId) return null;
+  
+  const videoUrl = `${API_URL}/media/announcement/${announcementId}/media/${file.fileName}`;
+  
+  // Create video player for preview (paused, no controls)
+  const previewVideoPlayer = useVideoPlayer(videoUrl, player => {
+    if (player) {
+      player.loop = false;
+      player.muted = true; // Mute the preview
+      // Don't autoplay - let it show the first frame
+      player.pause();
     }
-  );
+  });
 
   return (
-    <View className="bg-white p-1 rounded-lg mb-3 border border-gray-200 shadow-sm">
-        {/* <View className="flex-row items-center mb-2">
-          <View className="w-6 h-6 bg-red-100 rounded mr-2 items-center justify-center">
-          <Text className="text-xs">🎬</Text>
+    <>
+      <TouchableOpacity
+        className="bg-white p-1 rounded-lg mb-3 border border-gray-200 shadow-sm"
+        onPress={() => setShowVideoViewer(true)}
+        activeOpacity={0.8}
+      >
+        <View className="relative">
+          {/* Video preview as background */}
+          <VideoView
+            style={{ 
+              width: '100%', 
+              height: 200, 
+              borderRadius: 8,
+            }}
+            player={previewVideoPlayer}
+            nativeControls={false}
+            allowsFullscreen={false}
+            allowsPictureInPicture={false}
+            showsTimecodes={false}
+            requiresLinearPlayback={true}
+          />
+          
+          {/* Play overlay on top of video */}
+          <View style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            justifyContent: 'center',
+            alignItems: 'center',
+            backgroundColor: 'rgba(0,0,0,0.3)', // Semi-transparent overlay
+            borderRadius: 8,
+          }}>
+            <View style={{
+              backgroundColor: 'rgba(0,0,0,0.6)',
+              borderRadius: 50,
+              width: 80,
+              height: 80,
+              justifyContent: 'center',
+              alignItems: 'center'
+            }}>
+              <Ionicons name="play" size={40} color="white" />
+            </View>
+          </View>
         </View>
-        <Text className="font-semibold text-gray-900 flex-1">{file.originalName || file.fileName}</Text>
-      </View> */}
-      <VideoView
-        style={{ width: '100%', height: 200, borderRadius: 8 }}
-        player={videoPlayer}
-        allowsFullscreen
-        allowsPictureInPicture
+      </TouchableOpacity>
+
+      <VideoViewer
+        visible={showVideoViewer}
+        videoUri={videoUrl}
+        onClose={() => setShowVideoViewer(false)}
+        title={file.originalName || file.fileName}
       />
-    </View>
+    </>
   );
 };
+
 
 export default Announcements;

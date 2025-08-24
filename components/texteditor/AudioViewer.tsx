@@ -1,11 +1,14 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Modal,
   TouchableOpacity,
   Text,
-  StyleSheet,
+  ActivityIndicator,
+  AppState,
 } from 'react-native';
+import { Audio } from 'expo-av';
+import { AVPlaybackStatus } from 'expo-av';
 
 interface AudioViewerProps {
   visible: boolean;
@@ -31,148 +34,244 @@ export default function AudioViewer({
   title,
   size 
 }: AudioViewerProps) {
+  const [sound, setSound] = useState<Audio.Sound | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [position, setPosition] = useState(0);
+  const [duration, setDuration] = useState(0);
+
+  // Initialize Audio when modal opens
+  useEffect(() => {
+    if (visible) {
+      loadAudio();
+    } else {
+      // Clean up when modal closes
+      unloadAudio();
+    }
+    
+    return () => {
+      unloadAudio();
+    };
+  }, [visible, audioUri]);
+
+  // Handle app state changes
+  useEffect(() => {
+    const handleAppStateChange = (nextAppState: string) => {
+      if (nextAppState === 'background' && sound && isPlaying) {
+        // Pause audio when app goes to background
+        sound.pauseAsync().catch(console.error);
+      } else if (nextAppState === 'active' && sound) {
+        // Reacquire audio focus when app becomes active
+        Audio.setAudioModeAsync({
+          allowsRecordingIOS: false,
+          staysActiveInBackground: true,
+          playsInSilentModeIOS: true,
+          shouldDuckAndroid: true,
+          playThroughEarpieceAndroid: false,
+          // interruptionModeIOS: Audio.INTERRUPTION_MODE_IOS_DO_NOT_MIX,
+          // interruptionModeAndroid: Audio.INTERRUPTION_MODE_ANDROID_DO_NOT_MIX,
+        }).catch(console.error);
+      }
+    };
+
+    const subscription = AppState.addEventListener('change', handleAppStateChange);
+    
+    return () => {
+      subscription?.remove();
+    };
+  }, [sound, isPlaying]);
+
+  const loadAudio = async () => {
+    try {
+      setIsLoading(true);
+      
+      // Set audio mode
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: false,
+        staysActiveInBackground: true,
+        playsInSilentModeIOS: true,
+        shouldDuckAndroid: true,
+        playThroughEarpieceAndroid: false,
+        // interruptionModeIOS: Audio.INTERRUPTION_MODE_IOS_DO_NOT_MIX,
+        // interruptionModeAndroid: Audio.INTERRUPTION_MODE_ANDROID_DO_NOT_MIX,
+      });
+
+      // Create and load sound
+      const { sound: newSound } = await Audio.Sound.createAsync(
+        { uri: audioUri },
+        { shouldPlay: false }
+      );
+
+      setSound(newSound);
+
+      // Set up status update callback
+      newSound.setOnPlaybackStatusUpdate((status: AVPlaybackStatus) => {
+        if (status.isLoaded) {
+          setPosition(status.positionMillis || 0);
+          setDuration(status.durationMillis || 0);
+          setIsPlaying(status.isPlaying || false);
+        }
+      });
+
+    } catch (error) {
+      console.error('Error loading audio:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const unloadAudio = async () => {
+    if (sound) {
+      await sound.unloadAsync();
+      setSound(null);
+    }
+    setIsPlaying(false);
+    setPosition(0);
+    setDuration(0);
+  };
+
+  const togglePlayback = async () => {
+    if (!sound) return;
+
+    try {
+      // Ensure audio mode is set before playback
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: false,
+        staysActiveInBackground: true,
+        playsInSilentModeIOS: true,
+        shouldDuckAndroid: true,
+        playThroughEarpieceAndroid: false,
+        // interruptionModeIOS: Audio.INTERRUPTION_MODE_IOS_DO_NOT_MIX,
+        // interruptionModeAndroid: Audio.INTERRUPTION_MODE_ANDROID_DO_NOT_MIX,
+      });
+
+      if (isPlaying) {
+        await sound.pauseAsync();
+      } else {
+        // Get the current status to ensure sound is loaded
+        const status = await sound.getStatusAsync();
+        if (status.isLoaded) {
+          await sound.playAsync();
+        } else {
+          console.error('Sound not loaded');
+        }
+      }
+    } catch (error: any) {
+      console.error('Error toggling playback:', error);
+      
+      // Handle specific audio focus errors
+      if (error.message?.includes('AudioFocusNotAcquiredException')) {
+        console.log('Audio focus lost, attempting to reload audio...');
+        // Try to reload the audio
+        await loadAudio();
+      }
+    }
+  };
+
+  const handleSeek = async (positionMillis: number) => {
+    if (!sound) return;
+    
+    try {
+      await sound.setPositionAsync(positionMillis);
+    } catch (error) {
+      console.error('Error seeking:', error);
+    }
+  };
+
+  const formatTime = (millis: number) => {
+    const totalSeconds = Math.floor(millis / 1000);
+    const mins = Math.floor(totalSeconds / 60);
+    const secs = totalSeconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const handleClose = () => {
+    unloadAudio();
+    onClose();
+  };
+
+  const progressPercentage = duration > 0 ? (position / duration) * 100 : 0;
+
   return (
     <Modal
       visible={visible}
       animationType="slide"
-      onRequestClose={onClose}
+      onRequestClose={handleClose}
     >
-      <View style={styles.modal}>
-        <View style={styles.header}>
+      <View className="flex-1 bg-gray-100">
+        <View className="flex-row justify-end p-5 pt-12">
           <TouchableOpacity
-            style={styles.closeButton}
-            onPress={onClose}
+            className="bg-black bg-opacity-60 px-4 py-2 rounded-full"
+            onPress={handleClose}
           >
-            <Text style={styles.closeButtonText}>Close</Text>
+            <Text className="text-white text-base">Close</Text>
           </TouchableOpacity>
         </View>
         
-        <View style={styles.audioPlayer}>
-          <View style={styles.audioIcon}>
-            <Text style={styles.audioEmoji}>🎵</Text>
+        <View className="flex-1 justify-center items-center p-5">
+          <View className="w-24 h-24 bg-purple-500 rounded-full justify-center items-center mb-5">
+            <Text className="text-4xl">🎵</Text>
           </View>
           
-          <Text style={styles.audioTitle}>
+          <Text className="text-xl font-bold mb-2 text-center text-gray-700">
             {title || 'Audio File'}
           </Text>
           
           {size && (
-            <Text style={styles.audioSubtitle}>
+            <Text className="text-base text-gray-500 mb-8 text-center">
               Audio file - {formatBytes(size)}
             </Text>
           )}
 
-          <View>
-            <Text>Not supported Yet (will fix in next update)</Text>
-          </View>
-          
-          {/* <View style={styles.audioControls}>
-            <Text style={styles.audioNote}>
-              Audio playback requires installing react-native-sound package.
+          {isLoading ? (
+            <ActivityIndicator size="large" color="#8b5cf6" className="mt-8" />
+          ) : sound ? (
+            <View className="flex-col items-center mt-8 w-full justify-center bg-white p-5 rounded-xl shadow-lg">
+              {/* Progress bar */}
+              <View className="flex-row items-center w-full mb-5">
+                <Text className="text-xs text-gray-500 w-10 text-center">
+                  {formatTime(position)}
+                </Text>
+                <TouchableOpacity 
+                  className="flex-1 h-1 bg-gray-200 rounded-sm mx-2 relative"
+                  onPress={(event) => {
+                    const { locationX } = event.nativeEvent;
+                    const progressBarWidth = 200;
+                    const newPosition = (locationX / progressBarWidth) * duration;
+                    handleSeek(newPosition);
+                  }}
+                >
+                  <View 
+                    className="h-full bg-purple-500 rounded-sm"
+                    style={{ width: `${progressPercentage}%` }}
+                  />
+                  <View
+                    className="absolute w-4 h-4 bg-purple-500 rounded-full -top-1.5 -ml-2"
+                    style={{ left: `${progressPercentage}%` }}
+                  />
+                </TouchableOpacity>
+                <Text className="text-xs text-gray-500 w-10 text-center">
+                  {formatTime(duration)}
+                </Text>
+              </View>
+
+              {/* Play/Pause button */}
+              <TouchableOpacity
+                className="w-16 h-16 rounded-full bg-purple-500 justify-center items-center shadow-lg"
+                onPress={togglePlayback}
+              >
+                <Text className="text-2xl text-white">
+                  {isPlaying ? '⏸️' : '▶️'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <Text className="text-base text-red-500 text-center mt-8">
+              Failed to load audio
             </Text>
-            <Text style={styles.audioInstructions}>
-              Run: npm install react-native-sound
-            </Text>
-            <Text style={styles.audioPath}>
-              File: {audioUri}
-            </Text>
-          </View> */}
+          )}
         </View>
       </View>
     </Modal>
   );
 }
-
-const styles = StyleSheet.create({
-  modal: {
-    flex: 1,
-    backgroundColor: '#f5f5f5',
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    padding: 20,
-    paddingTop: 50,
-  },
-  audioPlayer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  audioIcon: {
-    width: 100,
-    height: 100,
-    backgroundColor: '#8b5cf6',
-    borderRadius: 50,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  audioEmoji: {
-    fontSize: 40,
-  },
-  audioTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    marginBottom: 10,
-    textAlign: 'center',
-    color: '#374151',
-  },
-  audioSubtitle: {
-    fontSize: 16,
-    color: '#6b7280',
-    marginBottom: 30,
-    textAlign: 'center',
-  },
-  audioControls: {
-    flexDirection: 'column',
-    alignItems: 'center',
-    marginTop: 10,
-    width: '100%',
-    justifyContent: 'center',
-    backgroundColor: 'white',
-    padding: 20,
-    borderRadius: 12,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 3.84,
-    elevation: 5,
-  },
-  audioNote: {
-    fontSize: 14,
-    color: '#ef4444',
-    textAlign: 'center',
-    fontStyle: 'italic',
-    marginBottom: 10,
-  },
-  audioInstructions: {
-    fontSize: 14,
-    color: '#374151',
-    textAlign: 'center',
-    marginBottom: 15,
-    fontFamily: 'monospace',
-    backgroundColor: '#f3f4f6',
-    padding: 8,
-    borderRadius: 6,
-  },
-  audioPath: {
-    fontSize: 12,
-    color: '#6b7280',
-    textAlign: 'center',
-    fontStyle: 'italic',
-  },
-  closeButton: {
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    padding: 10,
-    borderRadius: 20,
-  },
-  closeButtonText: {
-    color: 'white',
-    fontSize: 16,
-  },
-});

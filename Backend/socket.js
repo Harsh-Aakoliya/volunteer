@@ -19,7 +19,7 @@ const setupSocketIO = (io, app) => {
       
       // Get all rooms
       const roomsResult = await pool.query('SELECT "roomId" FROM chatrooms');
-      
+      console.log("total rooms", roomsResult.rows.length);
       for (const room of roomsResult.rows) {
         const roomId = room.roomId.toString();
         
@@ -33,7 +33,7 @@ const setupSocketIO = (io, app) => {
            LIMIT 1`,
           [room.roomId]
         );
-        
+        console.log("lastMessageResult", lastMessageResult.rows.length);
         if (lastMessageResult.rows.length > 0) {
           const lastMsg = lastMessageResult.rows[0];
           lastMessageByRoom[roomId] = {

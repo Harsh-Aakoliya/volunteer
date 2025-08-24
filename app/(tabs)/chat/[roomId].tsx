@@ -34,6 +34,7 @@ import MediaViewerModal from "@/components/chat/MediaViewerModal";
 import ChatMessageOptions from "@/components/chat/ChatMessageOptions";
 import ForwardMessagesModal from "@/components/chat/ForwardMessagesModal";
 import AttachmentsGrid from "./Attechments-grid";
+import MessageInput from "@/components/chat/MessageInput";
 
 interface RoomDetails extends ChatRoom {
   members: ChatUser[];
@@ -80,119 +81,22 @@ export default function ChatRoomScreen() {
   const [showMediaViewer, setShowMediaViewer] = useState(false);
   const [selectedMediaId, setSelectedMediaId] = useState<number | null>(null);
 
-  // Attachments grid state
-  const [showAttachmentsGrid, setShowAttachmentsGrid] = useState(false);
-
-  // Mention feature states
-  const [showMentionMenu, setShowMentionMenu] = useState(false);
-  const [mentionSearch, setMentionSearch] = useState("");
-  const [mentionStartIndex, setMentionStartIndex] = useState(-1);
-  const [filteredMembers, setFilteredMembers] = useState<ChatUser[]>([]);
-  const [cursorPosition, setCursorPosition] = useState(0);
-
   const flatListRef = useRef<FlatList>(null);
-  const textInputRef = useRef<TextInput>(null);
   const navigation = useNavigation();
 
   // Use a Set to track received message IDs to prevent duplicates
   const receivedMessageIds = new Set<string | number>();
 
-  // Handle keyboard events
-  useEffect(() => {
-    const keyboardDidShowListener = Keyboard.addListener(
-      'keyboardDidShow',
-      () => {
-        if (showAttachmentsGrid) {
-          setShowAttachmentsGrid(false);
-        }
-      }
-    );
 
-    return () => {
-      keyboardDidShowListener?.remove();
-    };
-  }, [showAttachmentsGrid]);
 
-  // Handle attachments grid toggle
-  const toggleAttachmentsGrid = () => {
-    if (showAttachmentsGrid) {
-      // Hide attachments grid and show keyboard
-      setShowAttachmentsGrid(false);
-      setTimeout(() => {
-        textInputRef.current?.focus();
-      }, 100);
-    } else {
-      // Show attachments grid and hide keyboard
-      Keyboard.dismiss();
-      setShowAttachmentsGrid(true);
-    }
-  };
 
-  // Handle mention functionality
-  const handleTextChange = (text: string) => {
-    setMessageText(renderMessageText(text).join(""));
-    
-    // Find the last @ symbol before cursor position
-    const beforeCursor = text.substring(0, cursorPosition);
-    const lastAtIndex = beforeCursor.lastIndexOf('@');
-    
-    if (lastAtIndex !== -1) {
-      // Check if there's a space after the @ symbol and before cursor
-      const afterAt = beforeCursor.substring(lastAtIndex + 1);
-      const hasSpaceAfterAt = afterAt.includes(' ');
-      
-      if (!hasSpaceAfterAt) {
-        // Extract the search term after @
-        const searchTerm = afterAt.toLowerCase();
-        setMentionSearch(searchTerm);
-        setMentionStartIndex(lastAtIndex);
-        
-        // Filter members based on search term (show all if searchTerm is empty)
-        const filtered = roomMembers.filter(member => 
-          searchTerm === '' || member.fullName?.toLowerCase().startsWith(searchTerm) || false
-        );
-        
-        setFilteredMembers(filtered);
-        setShowMentionMenu(filtered.length > 0);
-      } else {
-        setShowMentionMenu(false);
-      }
-    } else {
-      setShowMentionMenu(false);
-    }
-  };
 
-  const handleSelectionChange = (event: any) => {
-    setCursorPosition(event.nativeEvent.selection.start);
-  };
-
-  const selectMention = (member: ChatUser) => {
-    if (mentionStartIndex === -1 || !member.fullName) return;
-    console.log(mentionStartIndex);
-    const beforeMention = messageText.substring(0, mentionStartIndex);
-    const afterMention = messageText.substring(mentionStartIndex + mentionSearch.length + 1);
-    console.log("before mention",beforeMention);
-    console.log("after mention",afterMention);
-    const newText = `${beforeMention.slice(0,-1)}<Text>${member.fullName}</Text> ${afterMention}`;
-    setMessageText(renderMessageText(newText).join(""));
-    setShowMentionMenu(false);
-    
-    // Set cursor position after the mention
-    const newCursorPosition = mentionStartIndex + member.fullName.length + 13;
-    setTimeout(() => {
-      setCursorPosition(newCursorPosition);
-      textInputRef.current?.setNativeProps({
-        selection: { start: newCursorPosition, end: newCursorPosition }
-      });
-    }, 10);
-  };
-
-  // Parse message text to identify mentions
+  // Parse message text to identify mentions (kept for rendering existing messages)
   const parseMessageText = (text: string): MentionSegment[] => {
     const segments: MentionSegment[] = [];
     const mentionRegex = /<Text>([^<]+)<\/Text>/g;
     let lastIndex = 0;
-    let match:any;
+    let match: any;
   
     while ((match = mentionRegex.exec(text)) !== null) {
       // Add text before mention
@@ -234,38 +138,8 @@ export default function ChatRoomScreen() {
         isMention: false
       });
     }
-    console.log(segments);
   
     return segments;
-  };
-
-  // Render mention menu
-  const renderMentionMenu = () => {
-    if (!showMentionMenu || filteredMembers.length === 0) return null;
-  
-    return (
-      <View className="bg-white border border-gray-200 rounded-lg shadow-lg max-h-40 mb-2">
-        <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-          {filteredMembers.map((member) => (
-            <TouchableOpacity
-              key={member.userId}
-              onPress={() => selectMention(member)}
-              className="p-3 border-b border-gray-100 flex-row items-center"
-            >
-              <View className="w-8 h-8 bg-blue-500 rounded-full justify-center items-center mr-3">
-                <Text className="text-white font-bold text-sm">
-                  {member.fullName?.charAt(0).toUpperCase() || 'U'}
-                </Text>
-              </View>
-              <Text className="text-gray-800 font-medium">{member.fullName}</Text>
-              {member.isOnline && (
-                <View className="w-2 h-2 bg-green-500 rounded-full ml-auto" />
-              )}
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      </View>
-    );
   };
 
   // Render message text with mentions
@@ -292,16 +166,7 @@ export default function ChatRoomScreen() {
     );
   };
 
-  //Render whatever is user is writting in text input box
-  const renderMessageText = (text: string) => {
-    const segments = parseMessageText(text);
-    
-    return (
-        segments.map((segment, index) => (
-          segment.isMention ? "@"+segment.text : segment.text
-        ))
-    );
-  };
+
 
   // Handle app state changes (background/foreground)
   useEffect(() => {
@@ -349,6 +214,40 @@ export default function ChatRoomScreen() {
     const backHandler = BackHandler.addEventListener('hardwareBackPress', onBackPress);
     return () => backHandler.remove();
   }, [selectedMessages]);
+
+  // Handle keyboard show/hide events for better scroll positioning
+  useEffect(() => {
+    const keyboardDidShowListener = Keyboard.addListener(
+      'keyboardDidShow',
+      (event) => {
+        // When keyboard shows, scroll to end to ensure last messages are visible
+        setTimeout(() => {
+          if (flatListRef.current && messages.length > 0) {
+            console.log("Keyboard opened, scrolling to end");
+            flatListRef.current.scrollToEnd({ animated: true });
+          }
+        }, 100);
+      }
+    );
+
+    const keyboardDidHideListener = Keyboard.addListener(
+      'keyboardDidHide',
+      () => {
+        // When keyboard hides, also scroll to end for consistency
+        setTimeout(() => {
+          if (flatListRef.current && messages.length > 0) {
+            console.log("Keyboard closed, scrolling to end");
+            flatListRef.current.scrollToEnd({ animated: true });
+          }
+        }, 100);
+      }
+    );
+
+    return () => {
+      keyboardDidShowListener?.remove();
+      keyboardDidHideListener?.remove();
+    };
+  }, [messages.length]);
 
   // Join room and set up socket event listeners
   useEffect(() => {
@@ -408,12 +307,17 @@ export default function ChatRoomScreen() {
               pollId: data?.pollId,
               tableId: data?.tableId
             };
-            setMessages((prev) => [...prev, newMessage]);
-
-            // Scroll to bottom when new message arrives
-            setTimeout(() => {
-              flatListRef.current?.scrollToEnd({ animated: true });
-            }, 100);
+            setMessages((prev) => {
+              const updatedMessages = [...prev, newMessage];
+              // Scroll to bottom when new message arrives with proper timing
+              setTimeout(() => { 
+                // console.log("flatlistref on new message", flatListRef.current);
+                if (flatListRef.current) {
+                  flatListRef.current.scrollToEnd({ animated: true });
+                }
+              }, 200);
+              return updatedMessages;
+            });
           }
         }
       });
@@ -425,6 +329,27 @@ export default function ChatRoomScreen() {
           
           // Remove deleted messages from the list
           setMessages((prev) => prev.filter(msg => !data.messageIds.includes(msg.id)));
+        }
+      });
+
+      // Listen for message edits
+      socketService.onMessageEdited((data) => {
+        if (data.roomId === roomId) {
+          console.log("Message edited:", data);
+          
+          // Update the edited message in the list
+          setMessages((prev) => prev.map(msg => 
+            msg.id === data.messageId 
+              ? {
+                  ...msg,
+                  messageText: data.messageText,
+                  isEdited: data.isEdited,
+                  editedAt: data.editedAt,
+                  editedBy: data.editedBy,
+                  editorName: data.editorName
+                }
+              : msg
+          ));
         }
       });
 
@@ -466,14 +391,7 @@ export default function ChatRoomScreen() {
             >
               <Ionicons name="settings-outline" size={24} color="#0284c7" />
             </TouchableOpacity>
-          ) : (
-            <TouchableOpacity
-              onPress={() => setShowMembersModal(true)}
-              className="mr-2"
-            >
-              <Ionicons name="people" size={24} color="#0284c7" />
-            </TouchableOpacity>
-          ),
+          ):<></>
       });
     }
   }, [room, isGroupAdmin, navigation]); // Changed isAdmin to isGroupAdmin
@@ -522,6 +440,17 @@ export default function ChatRoomScreen() {
           userData.fullName || "Anonymous"
         );
       }
+
+      // Scroll to end after messages are loaded (with proper delay for FlatList to mount)
+      setTimeout(() => {
+        if (response.data.messages && response.data.messages.length > 0) {
+          console.log("scrolling to end on load room details");
+          // console.log("FlatList ref:", flatListRef.current);
+          if (flatListRef.current) {
+            flatListRef.current.scrollToEnd({ animated: false });
+          }
+        }
+      }, 500);
     } catch (error) {
       console.error("Error loading room details:", error);
       alert("Failed to load chat room details");
@@ -551,7 +480,6 @@ export default function ChatRoomScreen() {
     try {
       setSending(true);
       setMessageText(""); // Clear input immediately for better UX
-      setShowMentionMenu(false); // Hide mention menu
 
       // Create optimistic message to show immediately
       const optimisticMessage: Message = {
@@ -568,12 +496,16 @@ export default function ChatRoomScreen() {
       };
 
       // Add optimistic message to the list
-      setMessages((prev) => [...prev, optimisticMessage]);
-
-      // Scroll to the bottom
-      setTimeout(() => {
-        flatListRef.current?.scrollToEnd({ animated: true });
-      }, 100);
+      setMessages((prev) => {
+        const updatedMessages = [...prev, optimisticMessage];
+        // Scroll to the bottom immediately for user's own messages
+        setTimeout(() => {
+          if (flatListRef.current) {
+            flatListRef.current.scrollToEnd({ animated: true });
+          }
+        }, 100);
+        return updatedMessages;
+      });
 
       // Send the message via API
       const token = await AuthStorage.getToken();
@@ -607,7 +539,15 @@ export default function ChatRoomScreen() {
           msg => !(typeof msg.id === 'string' && msg.id.includes('temp'))
         );
         // Add the new messages from the server
-        return [...filteredMessages, ...messagesWithSenderName];
+        const updatedMessages = [...filteredMessages, ...messagesWithSenderName];
+        // Ensure scroll position is maintained after server response
+        setTimeout(() => {
+          // console.log("flatlistref on send message", flatListRef.current);
+          if (flatListRef.current) {
+            flatListRef.current.scrollToEnd({ animated: false });
+          }
+        }, 150);
+        return updatedMessages;
       });
 
       // Send the messages via socket for real-time delivery
@@ -678,6 +618,13 @@ export default function ChatRoomScreen() {
 
   const clearSelection = () => {
     setSelectedMessages([]);
+  };
+
+  // Handle message edit
+  const handleMessageEdited = (editedMessage: Message) => {
+    setMessages((prev) => prev.map(msg => 
+      msg.id === editedMessage.id ? editedMessage : msg
+    ));
   };
 
   // Forward messages with delay and progress tracking
@@ -821,8 +768,27 @@ export default function ChatRoomScreen() {
           )}
           
           {item.messageText && (
-            <View className={isOwnMessage ? "text-white" : "text-black"}>
-              {renderMessageTextWithMentions(item.messageText)}
+            <View>
+              <View className={isOwnMessage ? "text-white" : "text-black"}>
+                {renderMessageTextWithMentions(item.messageText)}
+              </View>
+              {/* Show edit indicator */}
+              {item.isEdited && (
+                <Text className={`text-xs italic mt-1 ${
+                  isOwnMessage ? "text-blue-200" : "text-gray-500"
+                }`}>
+                  edited
+                  {item.editedBy !== item.senderId && item.editorName && 
+                    ` by ${item.editorName}`
+                  }
+                  {item.editedAt && 
+                    ` • ${new Date(item.editedAt).toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}`
+                  }
+                </Text>
+              )}
             </View>
           )}
           
@@ -944,6 +910,10 @@ export default function ChatRoomScreen() {
             onClose={clearSelection}
             onForwardPress={() => setShowForwardModal(true)}
             onDeletePress={handleDeleteMessages}
+            roomId={Array.isArray(roomId) ? roomId[0] : roomId}
+            roomMembers={roomMembers}
+            currentUser={currentUser}
+            onMessageEdited={handleMessageEdited}
           />
         ) : (
           <OnlineUsersIndicator
@@ -960,7 +930,24 @@ export default function ChatRoomScreen() {
           keyExtractor={(item) => item.id.toString()}
           renderItem={renderMessage}
           contentContainerStyle={{ paddingVertical: 10, paddingHorizontal: 16 }}
-          onLayout={() => flatListRef.current?.scrollToEnd({ animated: false })}
+          onLayout={() => {
+            // Ensure scroll to end after FlatList is laid out
+            setTimeout(() => {
+              if (flatListRef.current && messages.length > 0) {
+                // console.log("FlatList onLayout - scrolling to end");
+                flatListRef.current.scrollToEnd({ animated: false });
+              }
+            }, 100);
+          }}
+          onContentSizeChange={() => {
+            // Scroll to end when content size changes (new messages)
+            setTimeout(() => {
+              if (flatListRef.current && messages.length > 0) {
+                // console.log("FlatList content size changed - scrolling to end");
+                flatListRef.current.scrollToEnd({ animated: true });
+              }
+            }, 100);
+          }}
           ListEmptyComponent={
             <View className="flex-1 justify-center items-center p-4 mt-10">
               <Ionicons name="chatbubble-outline" size={60} color="#d1d5db" />
@@ -973,70 +960,27 @@ export default function ChatRoomScreen() {
 
         {/* Message input - Only show for group admins */}
         {isGroupAdmin && (
-          <View className="border-t border-gray-200 bg-white">
-            {/* Mention Menu */}
-            {showMentionMenu && (
-              <View className="p-2">
-                {renderMentionMenu()}
-              </View>
-            )}
-            
-            <View className="flex-row items-center p-2">
-              <TouchableOpacity
-                className="p-2"
-                onPress={toggleAttachmentsGrid}
-              >
-                <Ionicons 
-                  name={showAttachmentsGrid ? "close-circle" : "add-circle"} 
-                  size={24} 
-                  color={showAttachmentsGrid ? "#ef4444" : "#6b7280"} 
-                />
-              </TouchableOpacity>
-              
-              {/* Input Bar */}
-              <TextInput
-                ref={textInputRef}
-                className="flex-1 bg-gray-100 rounded-full px-4 py-2 mr-2"
-                placeholder="Type a message..."
-                value={messageText}
-                onChangeText={handleTextChange}
-                onSelectionChange={handleSelectionChange}
-                multiline={true}
-                onFocus={() => {
-                  if (showAttachmentsGrid) {
-                    setShowAttachmentsGrid(false);
-                  }
-                }}
-              />
-              
-              <TouchableOpacity
-                className={`rounded-full p-2 ${
-                  messageText.trim() && !sending
-                    ? "bg-blue-500"
-                    : "bg-gray-300"
-                }`}
-                onPress={() => sendMessage(messageText, "text")}
-                disabled={!messageText.trim() || sending}
-              >
-                {sending ? (
-                  <ActivityIndicator size="small" color="white" />
-                ) : (
-                  <Ionicons name="send" size={24} color="white" />
-                )}
-              </TouchableOpacity>
-            </View>
-
-            {/* Attachments Grid */}
-            {showAttachmentsGrid && (
-              <View className="border-t border-gray-200 bg-gray-50 p-4">
-                <AttachmentsGrid 
-                  roomId={roomId as string} 
-                  userId={currentUser?.userId || ""} 
-                  onOptionSelect={() => setShowAttachmentsGrid(false)}
-                />
-              </View>
-            )}
-          </View>
+          <MessageInput
+            messageText={messageText}
+            onChangeText={setMessageText}
+            onSend={sendMessage}
+            sending={sending}
+            disabled={false}
+            roomMembers={roomMembers}
+            currentUser={currentUser}
+            roomId={roomId as string}
+            showAttachments={true}
+            onFocus={() => {
+              // When input is focused, scroll to end to ensure last messages are visible
+              setTimeout(() => {
+                if (flatListRef.current && messages.length > 0) {
+                  console.log("MessageInput focused - scrolling to end");
+                  flatListRef.current.scrollToEnd({ animated: true });
+                }
+              }, 300);
+            }}
+            style={{ borderTopWidth: 1, borderTopColor: '#e5e7eb', backgroundColor: 'white' }}
+          />
         )}
 
         {/* Non-admin message - Show for non-group admins */}

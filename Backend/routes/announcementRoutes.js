@@ -19,7 +19,9 @@ import {
   uploadCoverImageController,
   uploadAnnouncementMediaController,
   getAnnouncementMediaController,
-  deleteAnnouncementMediaController
+  deleteAnnouncementMediaController,
+  getAllDepartmentsController,
+  getAnnouncementDetailsController
 } from '../controllers/announcementController.js';
 import { authenticateToken } from '../middlewares/auth.js';
 
@@ -57,5 +59,11 @@ router.put('/draft/:id/publish', publishDraftController);
 router.get('/drafts/:authorId', getDraftsController);
 router.delete('/draft/:id', deleteDraftController);
 router.delete('/draft/:id/empty', removeEmptyDraftController);
+
+// Get all departments
+router.get('/departments', getAllDepartmentsController);
+
+// Get announcement details with recipients
+router.get('/:id/details', getAnnouncementDetailsController);
 
 export default router; 

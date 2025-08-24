@@ -105,7 +105,11 @@ export interface Message {
   messageType:string;
   mediaFilesId?: number; // Optional array of media files
   pollId?: number;
-  tableId?:number
+  tableId?:number;
+  isEdited?: boolean;
+  editedAt?: string;
+  editedBy?: string;
+  editorName?: string;
 }
 
 export interface ChatRoom {
@@ -124,6 +128,7 @@ export interface ChatUser {
   userId: string;
   fullName?: string | null;
   mobileNumber?: string;
+  department?: string;
   isAdmin?: boolean;
   isOnline?: boolean;
 }

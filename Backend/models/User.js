@@ -80,7 +80,8 @@ const createAnnouncementsTable = async () => {
           "createdAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
           "updatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
           "likedBy" JSONB DEFAULT '[]',
-          "readBy" JSONB DEFAULT '[]'
+          "readBy" JSONB DEFAULT '[]',
+          "departmentTag" TEXT[] DEFAULT '{}'
       );
     `);
     console.log("Announcements table created successfully");
@@ -115,6 +116,64 @@ const addThumbnailColumnIfNotExists = async () => {
     console.log("Thumbnail column added to announcements table successfully");
   } catch (error) {
     console.error("Error while adding thumbnail column to announcements table:", error);
+  } finally {
+    client.release();
+  }
+};
+
+const addDepartmentTagColumnIfNotExists = async () => {
+  const client = await pool.connect();
+  try {
+    // Check if departmentTag column exists in announcements table
+    const columnCheck = await client.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.columns 
+        WHERE table_name = 'announcements' AND column_name = 'departmentTag'
+      );
+    `);
+    
+    if (columnCheck.rows[0].exists) {
+      console.log("DepartmentTag column already exists in announcements table");
+      return;
+    }
+
+    // Add departmentTag column if it doesn't exist
+    await client.query(`
+      ALTER TABLE announcements 
+      ADD COLUMN "departmentTag" TEXT[] DEFAULT '{}';
+    `);
+    console.log("DepartmentTag column added to announcements table successfully");
+  } catch (error) {
+    console.error("Error while adding departmentTag column to announcements table:", error);
+  } finally {
+    client.release();
+  }
+};
+
+const addRecipientUserIdsColumnIfNotExists = async () => {
+  const client = await pool.connect();
+  try {
+    // Check if recipientUserIds column exists in announcements table
+    const columnCheck = await client.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.columns 
+        WHERE table_name = 'announcements' AND column_name = 'recipientUserIds'
+      );
+    `);
+    
+    if (columnCheck.rows[0].exists) {
+      console.log("RecipientUserIds column already exists in announcements table");
+      return;
+    }
+
+    // Add recipientUserIds column if it doesn't exist
+    await client.query(`
+      ALTER TABLE announcements 
+      ADD COLUMN "recipientUserIds" TEXT[] DEFAULT '{}';
+    `);
+    console.log("RecipientUserIds column added to announcements table successfully");
+  } catch (error) {
+    console.error("Error while adding recipientUserIds column to announcements table:", error);
   } finally {
     client.release();
   }
@@ -166,6 +225,8 @@ const initDB = async () => {
   await createAnnouncementsTable();
   await createSabhaAttendanceTable();
   await addThumbnailColumnIfNotExists();
+  await addDepartmentTagColumnIfNotExists();
+  await addRecipientUserIdsColumnIfNotExists();
 };
 
 export default initDB;

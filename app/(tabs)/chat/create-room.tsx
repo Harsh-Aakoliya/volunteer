@@ -15,6 +15,7 @@ import Checkbox from 'expo-checkbox';
 import CustomButton from '@/components/ui/CustomButton';
 import { Ionicons } from '@expo/vector-icons';
 import { AuthStorage } from '@/utils/authStorage';
+import DepartmentSelector from '@/components/texteditor/DepartmentSelector';
 
 export default function CreateRoomUserSelection() {
   const [users, setUsers] = useState<ChatUser[]>([]);
@@ -23,6 +24,8 @@ export default function CreateRoomUserSelection() {
   const [selectedUsers, setSelectedUsers] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
   const [currentUser, setCurrentUser] = useState<any>(null);
+  const [isKaryalayAdmin, setIsKaryalayAdmin] = useState(false);
+  const [selectedUsersFromDept, setSelectedUsersFromDept] = useState<ChatUser[]>([]);
 console.log("all users",users);
   useEffect(() => {
     const fetchCurrentLoggedUser = async () => {
@@ -30,6 +33,10 @@ console.log("all users",users);
         const currentUserData = await AuthStorage.getUser();
         console.log("Current user is:", currentUserData);
         setCurrentUser(currentUserData);
+        
+        // Check if user is Karyalay admin
+        const isKaryalay = currentUserData?.isAdmin && currentUserData?.department === "Karyalay";
+        setIsKaryalayAdmin(isKaryalay || false);
       } catch (error) {
         console.log("Error fetching current user:", error);
       }
@@ -40,9 +47,13 @@ console.log("all users",users);
   useEffect(() => {
     const loadChatUsers = async () => {
       try {
-        const fetchedUsers = await fetchChatUsers();//{userId, fullName, mobileNumber}
-        setUsers(fetchedUsers);
-        setFilteredUsers(fetchedUsers);
+        // Only load users for HOD (non-Karyalay admins)
+        // Karyalay admins will use the department selector
+        if (currentUser && !isKaryalayAdmin) {
+          const fetchedUsers = await fetchChatUsers();//{userId, fullName, mobileNumber, department}
+          setUsers(fetchedUsers);
+          setFilteredUsers(fetchedUsers);
+        }
       } catch (error) {
         console.error('Error loading chat users:', error);
       } finally {
@@ -50,8 +61,10 @@ console.log("all users",users);
       }
     };
 
-    loadChatUsers();
-  }, []);
+    if (currentUser) {
+      loadChatUsers();
+    }
+  }, [currentUser, isKaryalayAdmin]);
 
   useEffect(() => {
     if (searchQuery.trim() === '') {
@@ -75,6 +88,13 @@ console.log("all users",users);
       }
       return newSelected;
     });
+  };
+
+  // Handle selection from department selector (for Karyalay admins)
+  const handleDepartmentSelection = (users: ChatUser[]) => {
+    setSelectedUsersFromDept(users);
+    const userIds = new Set(users.map(user => user.userId));
+    setSelectedUsers(userIds);
   };
 
   const renderUserItem = ({ item }: { item: ChatUser }) => {
@@ -130,17 +150,73 @@ const handleNextStep = () => {
     }
   });
 };
-  if (isLoading) {
+  if (isLoading || !currentUser) {
     return (
       <View className="flex-1 justify-center items-center">
         <ActivityIndicator size="large" color="#0284c7" />
+        <Text className="text-gray-500 mt-2">Loading...</Text>
       </View>
     );
   }
 
+  // Render different UI based on user type
+  if (isKaryalayAdmin) {
+    // Karyalay admin sees department-based selection
+    return (
+      <View className="flex-1 bg-gray-50">
+        <View className="p-4 bg-white border-b border-gray-200">
+          <Text className="text-lg font-bold mb-2">Select Users by Department</Text>
+          <Text className="text-gray-600 mb-4">
+            Expand departments and select users for your chat room.
+          </Text>
+          
+          <View className="flex-row items-center bg-gray-100 rounded-lg px-3 py-2">
+            <Ionicons name="search" size={20} color="#6b7280" />
+            <TextInput
+              className="flex-1 ml-2 text-base"
+              placeholder="Search departments or users..."
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+            />
+            {searchQuery.length > 0 && (
+              <TouchableOpacity onPress={() => setSearchQuery('')}>
+                <Ionicons name="close-circle" size={20} color="#6b7280" />
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+
+        <DepartmentSelector 
+          onSelectionChange={handleDepartmentSelection}
+          searchQuery={searchQuery}
+        />
+
+        <View className="p-4 bg-white border-t border-gray-200">
+          <CustomButton
+            title={`Next (${selectedUsers.size} selected)`}
+            onPress={handleNextStep}
+            disabled={selectedUsers.size === 0}
+            bgVariant="primary"
+            IconRight={() => <Ionicons name="arrow-forward" size={20} color="white" />}
+          />
+        </View>
+      </View>
+    );
+  }
+
+  // HOD or regular users see traditional user list
   return (
     <View className="flex-1 bg-gray-50">
       <View className="p-4 bg-white border-b border-gray-200">
+        <Text className="text-lg font-bold mb-2">
+          Select Users {currentUser.isAdmin ? `from ${currentUser.department}` : ''}
+        </Text>
+        <Text className="text-gray-600 mb-4">
+          {currentUser.isAdmin 
+            ? `As a department admin, you can only add users from your department (${currentUser.department}).`
+            : 'Select users to add to your chat room.'}
+        </Text>
+        
         <View className="flex-row items-center bg-gray-100 rounded-lg px-3 py-2">
           <Ionicons name="search" size={20} color="#6b7280" />
           <TextInput

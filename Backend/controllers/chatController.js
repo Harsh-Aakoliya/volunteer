@@ -6,14 +6,44 @@ const chatController = {
     try {
       const authenticatedUserId = req.user.userId;
 
-      const result = await pool.query(
-        `SELECT "userId", "fullName", "mobileNumber" 
-          FROM "users" 
-          WHERE "isApproved" = TRUE AND "userId" != $1 
-          ORDER BY "fullName"`,
+      // Get current user's information to check department and admin status
+      const currentUserResult = await pool.query(
+        `SELECT "isAdmin", "department" FROM "users" WHERE "userId" = $1`,
         [authenticatedUserId]
       );
 
+      if (currentUserResult.rows.length === 0) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      const currentUser = currentUserResult.rows[0];
+      let query;
+      let params;
+
+      if (currentUser.isAdmin && currentUser.department === "Karyalay") {
+        // Karyalay admin can see all users from all departments
+        query = `SELECT "userId", "fullName", "mobileNumber", "department" 
+                 FROM "users" 
+                 WHERE "isApproved" = TRUE AND "userId" != $1 
+                 ORDER BY "department", "fullName"`;
+        params = [authenticatedUserId];
+      } else if (currentUser.isAdmin && currentUser.department !== "Karyalay") {
+        // HOD can only see users from their own department
+        query = `SELECT "userId", "fullName", "mobileNumber", "department" 
+                 FROM "users" 
+                 WHERE "isApproved" = TRUE AND "userId" != $1 AND "department" = $2 
+                 ORDER BY "fullName"`;
+        params = [authenticatedUserId, currentUser.department];
+      } else {
+        // Regular users can see all users (existing behavior for non-admin users)
+        query = `SELECT "userId", "fullName", "mobileNumber", "department" 
+                 FROM "users" 
+                 WHERE "isApproved" = TRUE AND "userId" != $1 
+                 ORDER BY "fullName"`;
+        params = [authenticatedUserId];
+      }
+
+      const result = await pool.query(query, params);
       res.json(result.rows);
     } catch (error) {
       console.error('Error fetching chat users:', error);
@@ -77,16 +107,46 @@ const chatController = {
         throw new Error("No valid user IDs provided after filtering");
       }
 
-      // Check if all userIds exist in the users table
-      const userCheckResult = await client.query(
-        `SELECT "userId" FROM "users" WHERE "userId" = ANY($1)`,
-        [validUserIds]
+      // Get current user's department and admin status for access control
+      const currentUserResult = await client.query(
+        `SELECT "isAdmin", "department" FROM "users" WHERE "userId" = $1`,
+        [createdBy]
       );
+
+      if (currentUserResult.rows.length === 0) {
+        throw new Error("Creator user not found");
+      }
+
+      const currentUser = currentUserResult.rows[0];
+
+      // Check if all userIds exist and validate department access
+      let userCheckQuery;
+      let userCheckParams;
+
+      if (currentUser.isAdmin && currentUser.department === "Karyalay") {
+        // Karyalay admin can add users from any department
+        userCheckQuery = `SELECT "userId", "department" FROM "users" WHERE "userId" = ANY($1)`;
+        userCheckParams = [validUserIds];
+      } else if (currentUser.isAdmin && currentUser.department !== "Karyalay") {
+        // HOD can only add users from their own department
+        userCheckQuery = `SELECT "userId", "department" FROM "users" WHERE "userId" = ANY($1) AND "department" = $2`;
+        userCheckParams = [validUserIds, currentUser.department];
+      } else {
+        // Regular users can add any user (existing behavior)
+        userCheckQuery = `SELECT "userId", "department" FROM "users" WHERE "userId" = ANY($1)`;
+        userCheckParams = [validUserIds];
+      }
+
+      const userCheckResult = await client.query(userCheckQuery, userCheckParams);
 
       const foundUserIds = userCheckResult.rows.map(row => row.userId);
       const missingUserIds = validUserIds.filter(id => !foundUserIds.includes(id));
 
       if (missingUserIds.length > 0) {
+        // Provide specific error message for department access restrictions
+        if (currentUser.isAdmin && currentUser.department !== "Karyalay") {
+          throw new Error(`You can only add users from your department (${currentUser.department}). Some selected users are not from your department or don't exist: ${missingUserIds.join(', ')}`);
+        }
         throw new Error(`Some user IDs do not exist: ${missingUserIds.join(', ')}`);
       }
 
@@ -189,12 +249,15 @@ const chatController = {
         [roomIdInt]
       );
 
-      // Get recent messages with mediaFiles
+      // Get recent messages with mediaFiles and edit information
       const messagesResult = await pool.query(
-        `SELECT m."id", m."messageText",m."messageType", m."mediaFilesId",m."pollId",m."tableId", m."createdAt", 
-                u."userId" as "senderId", u."fullName" as "senderName"
+        `SELECT m."id", m."messageText", m."messageType", m."mediaFilesId", m."pollId", m."tableId", 
+                m."createdAt", m."isEdited", m."editedAt", m."editedBy",
+                u."userId" as "senderId", u."fullName" as "senderName",
+                e."fullName" as "editorName"
         FROM chatmessages m
         JOIN "users" u ON m."senderId" = u."userId"
+        LEFT JOIN "users" e ON m."editedBy" = e."userId"
         WHERE m."roomId" = $1
         ORDER BY m."createdAt" DESC
         LIMIT 20`,
@@ -321,16 +384,49 @@ const chatController = {
         return res.status(404).json({ message: "Chat room not found" });
       }
 
-      // Check if all userIds exist
-      const userCheckResult = await client.query(
-        `SELECT "userId" FROM "users" WHERE "userId" = ANY($1)`,
-        [userIds]
+      // Get current user's department and admin status for access control
+      const currentUserResult = await client.query(
+        `SELECT "isAdmin", "department" FROM "users" WHERE "userId" = $1`,
+        [userId]
       );
+
+      if (currentUserResult.rows.length === 0) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      const currentUser = currentUserResult.rows[0];
+
+      // Check if all userIds exist and validate department access
+      let userCheckQuery;
+      let userCheckParams;
+
+      if (currentUser.isAdmin && currentUser.department === "Karyalay") {
+        // Karyalay admin can add users from any department
+        userCheckQuery = `SELECT "userId", "department" FROM "users" WHERE "userId" = ANY($1)`;
+        userCheckParams = [userIds];
+      } else if (currentUser.isAdmin && currentUser.department !== "Karyalay") {
+        // HOD can only add users from their own department
+        userCheckQuery = `SELECT "userId", "department" FROM "users" WHERE "userId" = ANY($1) AND "department" = $2`;
+        userCheckParams = [userIds, currentUser.department];
+      } else {
+        // Regular users can add any user (existing behavior)
+        userCheckQuery = `SELECT "userId", "department" FROM "users" WHERE "userId" = ANY($1)`;
+        userCheckParams = [userIds];
+      }
+
+      const userCheckResult = await client.query(userCheckQuery, userCheckParams);
 
       const foundUserIds = userCheckResult.rows.map(row => row.userId);
       const missingUserIds = userIds.filter(id => !foundUserIds.includes(id));
 
       if (missingUserIds.length > 0) {
+        // Provide specific error message for department access restrictions
+        if (currentUser.isAdmin && currentUser.department !== "Karyalay") {
+          return res.status(403).json({ 
+            message: `You can only add users from your department (${currentUser.department}). Some selected users are not from your department or don't exist.`,
+            invalidUserIds: missingUserIds
+          });
+        }
         return res.status(400).json({
           message: `Some user IDs do not exist: ${missingUserIds.join(', ')}`
         });
@@ -944,6 +1040,178 @@ const chatController = {
       });
     } catch (error) {
       console.error('Error getting room online users:', error);
+      res.status(500).json({ message: "Server error", error: error.message });
+    }
+  },
+
+  // Edit message function
+  async editMessage(req, res) {
+    try {
+      const { roomId, messageId } = req.params;
+      const { messageText } = req.body;
+      const userId = req.user.userId;
+      
+      // Convert IDs to appropriate types
+      const roomIdInt = parseInt(roomId, 10);
+      
+      // Handle both string and number message IDs
+      let messageIdInt;
+      if (typeof messageId === 'string') {
+        // Check if it's a temporary message ID (starts with 'temp-')
+        if (messageId.startsWith('temp-')) {
+          return res.status(400).json({ 
+            message: "Cannot edit temporary message" 
+          });
+        }
+        messageIdInt = parseInt(messageId, 10);
+      } else {
+        messageIdInt = messageId;
+      }
+      
+      // Validate that we have valid numbers
+      if (isNaN(roomIdInt) || isNaN(messageIdInt)) {
+        console.error('Invalid IDs:', { roomId, messageId, roomIdInt, messageIdInt });
+        return res.status(400).json({ 
+          message: `Invalid room ID (${roomId}) or message ID (${messageId})` 
+        });
+      }
+      
+      console.log('Editing message:', { roomId: roomIdInt, messageId: messageIdInt, messageText, userId });
+
+      // Validate input
+      if (!messageText || !messageText.trim()) {
+        return res.status(400).json({ 
+          message: "Message text cannot be empty" 
+        });
+      }
+
+      // Check if user is a member of this room and get their admin status
+      const memberCheck = await pool.query(
+        `SELECT "isAdmin" FROM chatroomusers 
+        WHERE "roomId" = $1 AND "userId" = $2`,
+        [roomIdInt, userId]
+      );
+
+      if (memberCheck.rows.length === 0) {
+        return res.status(403).json({ 
+          message: "You are not a member of this chat room" 
+        });
+      }
+
+      const isGroupAdmin = memberCheck.rows[0].isAdmin;
+
+      // Get the message to edit
+      const messageResult = await pool.query(
+        `SELECT "id", "senderId", "messageText", "messageType", "createdAt" 
+        FROM chatmessages 
+        WHERE "id" = $1 AND "roomId" = $2`,
+        [messageIdInt, roomIdInt]
+      );
+
+      if (messageResult.rows.length === 0) {
+        return res.status(404).json({
+          message: "Message not found"
+        });
+      }
+
+      const message = messageResult.rows[0];
+
+      // Check if message is editable (only text messages can be edited)
+      if (message.messageType !== 'text') {
+        return res.status(400).json({
+          message: "Only text messages can be edited"
+        });
+      }
+
+      // Check permissions: user can edit their own messages OR group admin can edit any message
+      if (message.senderId !== userId && !isGroupAdmin) {
+        return res.status(403).json({
+          message: "You can only edit your own messages"
+        });
+      }
+
+      // Check if message text is actually different
+      if (message.messageText === messageText.trim()) {
+        return res.status(400).json({
+          message: "No changes detected"
+        });
+      }
+
+      // Update the message
+      const updateResult = await pool.query(
+        `UPDATE chatmessages 
+        SET "messageText" = $1, "isEdited" = TRUE, "editedAt" = NOW(), "editedBy" = $2
+        WHERE "id" = $3 AND "roomId" = $4
+        RETURNING *`,
+        [messageText.trim(), userId, messageIdInt, roomIdInt]
+      );
+
+      const updatedMessage = updateResult.rows[0];
+
+      // Get sender information
+      const senderResult = await pool.query(
+        `SELECT "fullName" FROM users WHERE "userId" = $1`,
+        [message.senderId]
+      );
+      
+      const senderName = senderResult.rows[0]?.fullName || 'Unknown User';
+
+      // Get editor information (if different from sender)
+      let editorName = null;
+      if (message.senderId !== userId) {
+        const editorResult = await pool.query(
+          `SELECT "fullName" FROM users WHERE "userId" = $1`,
+          [userId]
+        );
+        editorName = editorResult.rows[0]?.fullName || 'Unknown User';
+      }
+
+      // Create the response message object
+      const responseMessage = {
+        ...updatedMessage,
+        senderName,
+        editorName
+      };
+
+      // Get the io instance for real-time updates
+      const io = req.app.get('io');
+      const lastMessageByRoom = req.app.get('lastMessageByRoom');
+
+      // Update last message if this was the last message
+      if (lastMessageByRoom && lastMessageByRoom[roomIdInt] && lastMessageByRoom[roomIdInt].id === messageIdInt) {
+        lastMessageByRoom[roomIdInt] = {
+          ...lastMessageByRoom[roomIdInt],
+          messageText: messageText.trim(),
+          isEdited: true,
+          editedAt: updatedMessage.editedAt,
+          editedBy: userId
+        };
+      }
+
+      // Emit message edit event to all users in the room
+      if (io) {
+        io.to(`room-${roomIdInt}`).emit('messageEdited', {
+          roomId: roomIdInt.toString(),
+          messageId: messageIdInt,
+          messageText: messageText.trim(),
+          isEdited: true,
+          editedAt: updatedMessage.editedAt,
+          editedBy: userId,
+          editorName: editorName,
+          senderId: message.senderId,
+          senderName: senderName
+        });
+
+        console.log(`Message edit event sent to room ${roomIdInt}`);
+      }
+
+      res.json({
+        message: "Message edited successfully",
+        editedMessage: responseMessage
+      });
+
+    } catch (error) {
+      console.error('Error editing message:', error);
       res.status(500).json({ message: "Server error", error: error.message });
     }
   },

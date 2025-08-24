@@ -10,8 +10,8 @@ export const getSocketUrl = (): string => currentApiUrl;
 // Function to set new API URL
 export const setApiUrl = (newUrl: string): void => {
   currentApiUrl = newUrl;
-  console.log('🔗 API_URL updated to:', currentApiUrl);
-  console.log('🌐 SOCKET_URL updated to:', currentApiUrl);
+  console.log('🔗 API_URL configured as:', currentApiUrl);
+  console.log('🌐 SOCKET_URL configured as:', currentApiUrl);
 };
 
 // Create a proxy object that behaves like a string but returns dynamic value
@@ -51,7 +51,3 @@ const createDynamicString = () => {
 // Export dynamic string objects that behave like regular strings
 export const API_URL = createDynamicString() as any as string;
 export const SOCKET_URL = createDynamicString() as any as string;
-
-// Debug logging for API URL
-console.log('🔗 API_URL configured as:', currentApiUrl);
-console.log('🌐 SOCKET_URL configured as:', currentApiUrl);

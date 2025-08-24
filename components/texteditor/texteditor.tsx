@@ -12,7 +12,8 @@ import {
   publishDraft, 
   removeEmptyDraft,
   updateAnnouncement,
-  deleteDraft
+  deleteDraft,
+  getAnnouncementDetails
 } from '@/api/admin';
 import { router } from 'expo-router';
 import { AuthStorage } from '@/utils/authStorage';
@@ -24,6 +25,9 @@ import axios from 'axios';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import AnnouncementMediaUploader from './AnnouncementMediaUploader';
 import ImageViewer from './ImageViewer';
+import VideoViewer from './VideoViewer';
+import AudioViewer from './AudioViewer';
+import DepartmentSelector from './DepartmentSelector';
 // Update the interface
 interface RichTextEditorProps {
   initialTitle?: string;
@@ -81,6 +85,10 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
   const [isUploadingCover, setIsUploadingCover] = useState<boolean>(false);
   const [coverImageUri, setCoverImageUri] = useState<string>('');
   const [hasCoverImage, setHasCoverImage] = useState<boolean>(false);
+  const [userDepartment, setUserDepartment] = useState<string>('');
+  const [selectedDepartments, setSelectedDepartments] = useState<string[]>([]);
+  const [lockedUserIds, setLockedUserIds] = useState<string[]>([]);
+  const [isLoadingAnnouncementData, setIsLoadingAnnouncementData] = useState(false);
   console.log("coverImage", coverImage);
   
   // Initialize cover image state
@@ -103,7 +111,47 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
     setDraftTitle(initialTitle);
     setDraftContent(initialContent);
     currentTitleRef.current = initialTitle;
+    
+    // Load existing department tags if editing
+    if (isEdit && announcementId) {
+      loadExistingDepartmentTags();
+    }
   }, [initialTitle, initialContent, announcementMode]);
+
+  const loadExistingDepartmentTags = async () => {
+    if (!announcementId || !isEdit) return;
+    
+    try {
+      setIsLoadingAnnouncementData(true);
+      const announcementDetails = await getAnnouncementDetails(announcementId);
+      
+      if (announcementDetails) {
+        // Set existing department tags
+        const existingDepartments = announcementDetails.departmentTags || [];
+        setSelectedDepartments(existingDepartments);
+        
+        // Set locked users (users who already received the announcement)
+        const recipients = announcementDetails.recipients || [];
+        const recipientIds = recipients.map((recipient: any) => recipient.userId);
+        setLockedUserIds(recipientIds);
+        
+        console.log('Loaded existing announcement data:', {
+          departments: existingDepartments,
+          lockedUsers: recipientIds
+        });
+      }
+    } catch (error) {
+      console.error('Error loading existing announcement data:', error);
+      // Don't block the user if we can't load this data
+      Alert.alert(
+        'Warning',
+        'Could not load some existing announcement data. You can still edit the announcement.',
+        [{ text: 'OK' }]
+      );
+    } finally {
+      setIsLoadingAnnouncementData(false);
+    }
+  };
 
 
   // Set content when editor becomes ready
@@ -136,6 +184,15 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
       const user = await AuthStorage.getUser();
       if (user) {
         setCurrentUserId(user.userId);
+        setUserDepartment(user.department || '');
+        
+        // Auto-tag for HODs (non-Karyalay departments)
+        if (user.department && user.department !== 'Karyalay') {
+          setSelectedDepartments([user.department]);
+        } else if (user.department === 'Karyalay') {
+          // Karyalay users start with no departments selected
+          setSelectedDepartments([]);
+        }
       }
     };
     getUserId();
@@ -234,7 +291,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
       const { currentTitle, currentContent } = await getCurrentContent();
       
       console.log("saving draft", currentTitle, currentContent, currentUserId);
-      await updateDraft(announcementId, currentTitle, currentContent, currentUserId);
+      await updateDraft(announcementId, currentTitle, currentContent, currentUserId, selectedDepartments);
       
       // Update the main content to match draft content
       setTitle(currentTitle);
@@ -257,7 +314,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
     try {
       setIsSaving(true);
       console.log("saving draft with current content", title, content, currentUserId);
-      await updateDraft(announcementId, title, content, currentUserId);
+      await updateDraft(announcementId, title, content, currentUserId, selectedDepartments);
       
       // Update all state variables
       setTitle(title);
@@ -539,13 +596,19 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
       return;
     }
     
+    // Validate department selection
+    if (selectedDepartments.length === 0) {
+      Alert.alert('Error', 'Please select at least one department for this announcement.');
+      return;
+    }
+    
     try {
       setIsPublishing(true);
       let result;
       
       if (isFresh || isDraft) {
         // Publish draft (either new or existing draft)
-        result = await publishDraft(announcementId as number, currentTitle, currentContent, currentUserId);
+        result = await publishDraft(announcementId as number, currentTitle, currentContent, currentUserId, selectedDepartments);
         console.log("Published draft:", result);
         
         // Cover image is already uploaded during selection, no need to upload again
@@ -554,7 +617,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
         router.replace('/announcement');
       } else if (isEdit) {
         // Update existing published announcement
-        result = await updateAnnouncement(announcementId, currentTitle, currentContent);
+        result = await updateAnnouncement(announcementId, currentTitle, currentContent, selectedDepartments);
         console.log("Updated announcement:", result);
         
         // Cover image is already uploaded during selection, no need to upload again
@@ -584,12 +647,21 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
   // States for media viewers
   const [imageViewerVisible, setImageViewerVisible] = useState<boolean>(false);
   const [selectedMediaFile, setSelectedMediaFile] = useState<any>(null);
+  const [showAudioViewer, setShowAudioViewer] = useState<boolean>(false);
+  const [selectedAudioFile, setSelectedAudioFile] = useState<any>(null);
 
   // Handle image click from preview (only for images)
   const handleImageClick = (file: any) => {
     setSelectedMediaFile(file);
     setModalVisible(false); // Close preview modal first
     setImageViewerVisible(true);
+  };
+
+  // Handle audio click from preview
+  const handleAudioClick = (file: any) => {
+    setSelectedAudioFile(file);
+    setModalVisible(false); // Close preview modal first
+    setShowAudioViewer(true);
   };
 
   // Create HTML with proper styling for the preview
@@ -711,7 +783,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
             value={draftTitle}
             onChangeText={handleTitleChange}
             placeholder="Enter announcement title..."
-            className="text-3xl font-semibold text-gray-900 py-3 placeholder:text-gray-250"
+            className="text-3xl font-semibold text-gray-900 py-3 placeholder:text-gray-400"
           />
           
           {/* Editor - now without toolbar, matching title padding */}
@@ -810,6 +882,40 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
             </TouchableOpacity>
           </View>
         </View>
+
+        <View className="border-b border-gray-200 mb-4"></View>
+
+        {/* Department Selector Section */}
+        {isLoadingAnnouncementData ? (
+          <View className="p-4 items-center">
+            <Text className="text-gray-500">Loading existing announcement data...</Text>
+          </View>
+        ) : (
+          <>
+            <DepartmentSelector
+              selectedDepartments={selectedDepartments}
+              onDepartmentsChange={setSelectedDepartments}
+              userDepartment={userDepartment}
+              lockedUserIds={isEdit ? lockedUserIds : []}
+            />
+            
+            {/* Show locked users info for editing */}
+            {isEdit && lockedUserIds.length > 0 && (
+              <View className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                <View className="flex-row items-center mb-2">
+                  <Ionicons name="lock-closed" size={16} color="#d97706" />
+                  <Text className="text-yellow-800 font-medium ml-2">
+                    Users with locked selections
+                  </Text>
+                </View>
+                <Text className="text-yellow-700 text-sm">
+                  {lockedUserIds.length} user{lockedUserIds.length !== 1 ? 's' : ''} already received this announcement and cannot be deselected. 
+                  You can still add new users to existing departments or select additional departments.
+                </Text>
+              </View>
+            )}
+          </>
+        )}
 
         <View className="border-b border-gray-200 mb-4"></View>
 
@@ -1015,15 +1121,22 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
                     );
                   } else if (file.mimeType.startsWith('audio/')) {
                     return (
-                      <View key={index} className="flex-row items-center bg-white p-3 rounded-lg mb-3 border border-gray-200 shadow-sm">
+                      <TouchableOpacity
+                        key={index}
+                        onPress={() => handleAudioClick(file)}
+                        className="flex-row items-center bg-white p-3 rounded-lg mb-3 border border-gray-200 shadow-sm"
+                      >
                         <View className="w-16 h-16 bg-purple-100 rounded-lg mr-3 items-center justify-center">
                           <Text className="text-2xl">🎵</Text>
                         </View>
                         <View className="flex-1">
-                          {/* <Text className="font-semibold text-gray-900">🎵 {file.originalName || file.fileName}</Text> */}
-                          <Text className="text-sm text-gray-600">Audio • Not supported yet (will fix in next update)</Text>
+                          <Text className="font-semibold text-gray-900">{file.originalName || file.fileName}</Text>
+                          <Text className="text-sm text-gray-600">Audio file • Tap to play</Text>
                         </View>
-                      </View>
+                        <View className="items-center justify-center">
+                          <Ionicons name="play-circle" size={32} color="#8b5cf6" />
+                        </View>
+                      </TouchableOpacity>
                     );
                   }
                   return null;
@@ -1047,37 +1160,99 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
           title={selectedMediaFile.originalName || selectedMediaFile.fileName}
         />
       )}
+
+      {/* Audio Viewer */}
+      {selectedAudioFile && (
+        <AudioViewer
+          visible={showAudioViewer}
+          audioUri={`${API_URL}/media/announcement/${announcementId}/media/${selectedAudioFile.fileName}`}
+          onClose={() => {
+            setShowAudioViewer(false);
+            setSelectedAudioFile(null);
+            setModalVisible(true); // Reopen preview modal
+          }}
+          title={selectedAudioFile.originalName || selectedAudioFile.fileName}
+          size={selectedAudioFile.size}
+        />
+      )}
     </SafeAreaView>
   );
 };
 
 // Separate component for video preview to avoid hook issues
 const VideoPreviewItem: React.FC<{ file: any; announcementId: number | undefined }> = ({ file, announcementId }) => {
+  const [showVideoViewer, setShowVideoViewer] = useState(false);
+  
   if (!announcementId) return null;
-  const videoPlayer = useVideoPlayer(
-    `${API_URL}/media/announcement/${announcementId}/media/${file.fileName}`,
-    player => {
-      if (player) {
-        player.loop = false;
-      }
+  
+  const videoUrl = `${API_URL}/media/announcement/${announcementId}/media/${file.fileName}`;
+  
+  // Create video player for preview (paused, no controls)
+  const previewVideoPlayer = useVideoPlayer(videoUrl, player => {
+    if (player) {
+      player.loop = false;
+      player.muted = true; // Mute the preview
+      // Don't autoplay - let it show the first frame
+      player.pause();
     }
-  );
+  });
 
   return (
-    <View className="bg-white p-1 rounded-lg mb-3 border border-gray-200 shadow-sm">
-      {/* <View className="flex-row items-center mb-2">
-        <View className="w-6 h-6 bg-red-100 rounded mr-2 items-center justify-center">
-          <Text className="text-xs">🎬</Text>
+    <>
+      <TouchableOpacity
+        className="bg-white p-1 rounded-lg mb-3 border border-gray-200 shadow-sm"
+        onPress={() => setShowVideoViewer(true)}
+        activeOpacity={0.8}
+      >
+        <View className="relative">
+          {/* Video preview as background */}
+          <VideoView
+            style={{ 
+              width: '100%', 
+              height: 200, 
+              borderRadius: 8,
+            }}
+            player={previewVideoPlayer}
+            nativeControls={false}
+            allowsFullscreen={false}
+            allowsPictureInPicture={false}
+            showsTimecodes={false}
+            requiresLinearPlayback={true}
+          />
+          
+          {/* Play overlay on top of video */}
+          <View style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            justifyContent: 'center',
+            alignItems: 'center',
+            backgroundColor: 'rgba(0,0,0,0.3)', // Semi-transparent overlay
+            borderRadius: 8,
+          }}>
+            <View style={{
+              backgroundColor: 'rgba(0,0,0,0.6)',
+              borderRadius: 50,
+              width: 80,
+              height: 80,
+              justifyContent: 'center',
+              alignItems: 'center'
+            }}>
+              <Ionicons name="play" size={40} color="white" />
+            </View>
+          </View>
         </View>
-        <Text className="font-semibold text-gray-900 flex-1">{file.originalName || file.fileName}</Text>
-      </View> */}
-      <VideoView
-        style={{ width: '100%', height: 200, borderRadius: 8 }}
-        player={videoPlayer}
-        allowsFullscreen
-        allowsPictureInPicture
+      </TouchableOpacity>
+
+      <VideoViewer
+        visible={showVideoViewer}
+        videoUri={videoUrl}
+        onClose={() => setShowVideoViewer(false)}
+        title={file.originalName || file.fileName}
       />
-    </View>
+    </>
   );
 };
 

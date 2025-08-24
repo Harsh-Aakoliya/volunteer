@@ -4,21 +4,21 @@ import path from "path";
 const defaultCoverImage=path.join(process.cwd(), 'media',"defaultcoverimage.png");
 
 const Announcement = {
-  create: async (title, body, authorId, status = 'published') => {
+  create: async (title, body, authorId, status = 'published', recipientUserIds = []) => {
     // console.log("Body of announcement at backend", body);
     const result = await pool.query(
-      'INSERT INTO "announcements" ("title", "body", "authorId", "status", "updatedAt") VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP) RETURNING *',
-      [title, body, authorId, status]
+      'INSERT INTO "announcements" ("title", "body", "authorId", "status", "updatedAt", "recipientUserIds") VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, $5) RETURNING *',
+      [title, body, authorId, status, recipientUserIds]
     );
     return result.rows[0];
   },
   
-  createDraft: async (authorId) => {
+  createDraft: async (authorId, recipientUserIds = []) => {
     // console.log(path.join(process.cwd()));
     // console.log("defaultCoverImage", defaultCoverImage);
     const result = await pool.query(
-      'INSERT INTO "announcements" ("title", "body", "authorId", "status", "updatedAt") VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP) RETURNING *',
-      ['', '', authorId, 'draft']
+      'INSERT INTO "announcements" ("title", "body", "authorId", "status", "updatedAt", "recipientUserIds") VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, $5) RETURNING *',
+      ['', '', authorId, 'draft', recipientUserIds]
     );
     return result.rows[0];
   },
@@ -101,15 +101,15 @@ const Announcement = {
     }
 },
 
-  updateDraft: async (id, title, body, authorId) => {
+  updateDraft: async (id, title, body, authorId, recipientUserIds = []) => {
     const result = await pool.query(
-      'UPDATE "announcements" SET "title" = $1, "body" = $2, "updatedAt" = CURRENT_TIMESTAMP WHERE "id" = $3 AND "authorId" = $4 AND "status" = $5 RETURNING *',
-      [title, body, id, authorId, 'draft']
+      'UPDATE "announcements" SET "title" = $1, "body" = $2, "recipientUserIds" = $3, "updatedAt" = CURRENT_TIMESTAMP WHERE "id" = $4 AND "authorId" = $5 AND "status" = $6 RETURNING *',
+      [title, body, recipientUserIds, id, authorId, 'draft']
     );
     return result.rows[0];
   },
 
-  publishDraft: async (id, title, body, authorId) => {
+  publishDraft: async (id, title, body, authorId, recipientUserIds = []) => {
     // First get the original createdAt timestamp
     const originalResult = await pool.query(
       'SELECT "createdAt" FROM "announcements" WHERE "id" = $1 AND "authorId" = $2',
@@ -124,8 +124,8 @@ const Announcement = {
     
     // Update the draft to published while preserving the original createdAt
     const result = await pool.query(
-      'UPDATE "announcements" SET "title" = $1, "body" = $2, "status" = $3, "createdAt" = $4, "updatedAt" = CURRENT_TIMESTAMP WHERE "id" = $5 AND "authorId" = $6 RETURNING *',
-      [title, body, 'published', originalCreatedAt, id, authorId]
+      'UPDATE "announcements" SET "title" = $1, "body" = $2, "recipientUserIds" = $3, "status" = $4, "createdAt" = $5, "updatedAt" = CURRENT_TIMESTAMP WHERE "id" = $6 AND "authorId" = $7 RETURNING *',
+      [title, body, recipientUserIds, 'published', originalCreatedAt, id, authorId]
     );
     return result.rows[0];
   },
@@ -165,6 +165,45 @@ const Announcement = {
       `);
       // console.log("Published announcements count:", result.rows.length);
       // console.log("Query result:", result.rows);
+      return result.rows;
+    } catch (error) {
+      console.error("Database query failed:", error);
+      throw error;
+    }
+  },
+
+  getByDepartment: async (departmentName) => {
+    try {
+      // Get announcements for a department by finding all announcements 
+      // where any user from that department is in the recipient list
+      const result = await pool.query(`
+        SELECT DISTINCT a.*, u."fullName" as "authorName" 
+        FROM "announcements" a
+        LEFT JOIN "users" u ON a."authorId" = u."userId"
+        WHERE a."status" = 'published' 
+        AND EXISTS (
+          SELECT 1 FROM "users" dept_users 
+          WHERE dept_users."department" = $1 
+          AND dept_users."userId" = ANY(a."recipientUserIds")
+        )
+        ORDER BY a."createdAt" DESC
+      `, [departmentName]);
+      return result.rows;
+    } catch (error) {
+      console.error("Database query failed:", error);
+      throw error;
+    }
+  },
+
+  getByUserId: async (userId) => {
+    try {
+      const result = await pool.query(`
+        SELECT a.*, u."fullName" as "authorName" 
+        FROM "announcements" a
+        LEFT JOIN "users" u ON a."authorId" = u."userId"
+        WHERE a."status" = 'published' AND $1 = ANY(a."recipientUserIds")
+        ORDER BY a."createdAt" DESC
+      `, [userId]);
       return result.rows;
     } catch (error) {
       console.error("Database query failed:", error);
@@ -334,8 +373,20 @@ const Announcement = {
 
 export const createAnnouncement = async (req, res) => {
   try {
-    const { title, body, authorId, status = 'published' } = req.body;
-    const announcement = await Announcement.create(title, body, authorId, status);
+    const { title, body, authorId, status = 'published', recipientUserIds = [] } = req.body;
+    
+    // Check if user has permission to create announcements
+    const userResult = await pool.query('SELECT "isAdmin", "department" FROM "users" WHERE "userId" = $1', [authorId]);
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    const user = userResult.rows[0];
+    if (!user.isAdmin) {
+      return res.status(403).json({ error: 'Only HODs and Karyalay users can create announcements' });
+    }
+    
+    const announcement = await Announcement.create(title, body, authorId, status, recipientUserIds);
     res.status(201).json(announcement);
   } catch (error) {
     res.status(500).json({ error: 'Failed to create announcement' });
@@ -344,9 +395,15 @@ export const createAnnouncement = async (req, res) => {
 
 export const getAnnouncements = async (req, res) => {
   try {
-    // console.log("at backend getAnnouncements");
-    const announcements = await Announcement.getAll();
-    // console.log("all announcements", announcements);
+    const { department } = req.query;
+    let announcements;
+    
+    if (department) {
+      announcements = await Announcement.getByDepartment(department);
+    } else {
+      announcements = await Announcement.getAll();
+    }
+    
     res.status(200).json(announcements);
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch announcements' });
@@ -437,12 +494,12 @@ export const deleteAnnouncement = async (req, res) => {
 export const updateAnnouncementController = async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, body } = req.body;
+    const { title, body, recipientUserIds = [] } = req.body;
     
     // Update the announcement
     const result = await pool.query(
-      'UPDATE "announcements" SET "title" = $1, "body" = $2, "updatedAt" = CURRENT_TIMESTAMP WHERE "id" = $3 RETURNING *',
-      [title, body, id]
+      'UPDATE "announcements" SET "title" = $1, "body" = $2, "recipientUserIds" = $3, "updatedAt" = CURRENT_TIMESTAMP WHERE "id" = $4 RETURNING *',
+      [title, body, recipientUserIds, id]
     );
     
     if (result.rows.length === 0) {
@@ -459,8 +516,21 @@ export const updateAnnouncementController = async (req, res) => {
 // New draft-related controllers
 export const createDraftController = async (req, res) => {
   try {
-    const { authorId } = req.body;
-    const draft = await Announcement.createDraft(authorId);
+    const { authorId, recipientUserIds = [] } = req.body;
+    
+    // Check if user has permission to create announcements
+    const userResult = await pool.query('SELECT "isAdmin", "department" FROM "users" WHERE "userId" = $1', [authorId]);
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    const user = userResult.rows[0];
+    if (!user.isAdmin) {
+      return res.status(403).json({ error: 'Only HODs and Karyalay users can create announcements' });
+    }
+    
+    // Start with empty recipient list - user will select recipients in Step 3
+    const draft = await Announcement.createDraft(authorId, recipientUserIds);
     res.status(201).json(draft);
   } catch (error) {
     console.error('Error creating draft:', error);
@@ -471,8 +541,8 @@ export const createDraftController = async (req, res) => {
 export const updateDraftController = async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, body, authorId } = req.body;
-    const draft = await Announcement.updateDraft(id, title, body, authorId);
+    const { title, body, authorId, recipientUserIds = [] } = req.body;
+    const draft = await Announcement.updateDraft(id, title, body, authorId, recipientUserIds);
     
     if (!draft) {
       return res.status(404).json({ error: 'Draft not found or not authorized' });
@@ -488,8 +558,8 @@ export const updateDraftController = async (req, res) => {
 export const publishDraftController = async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, body, authorId } = req.body;
-    const announcement = await Announcement.publishDraft(id, title, body, authorId);
+    const { title, body, authorId, recipientUserIds = [] } = req.body;
+    const announcement = await Announcement.publishDraft(id, title, body, authorId, recipientUserIds);
     
     if (!announcement) {
       return res.status(404).json({ error: 'Draft not found or not authorized' });
@@ -717,5 +787,62 @@ export const deleteAnnouncementMediaController = async (req, res) => {
   } catch (error) {
     console.error("Error deleting announcement media:", error);
     res.status(500).json({ error: "Failed to delete media file", details: error.message });
+  }
+};
+
+// Get announcement details with recipients for editing
+export const getAnnouncementDetailsController = async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // Get announcement with recipient details
+    const result = await pool.query(`
+      SELECT a.*, u."fullName" as "authorName",
+             COALESCE(a."recipientUserIds", '{}') as "recipientUserIds"
+      FROM "announcements" a
+      LEFT JOIN "users" u ON a."authorId" = u."userId"
+      WHERE a."id" = $1
+    `, [id]);
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Announcement not found' });
+    }
+    
+    const announcement = result.rows[0];
+    
+    // Get recipient user details
+    const recipientUserIds = announcement.recipientUserIds || [];
+    let recipients = [];
+    
+    if (recipientUserIds.length > 0) {
+      const recipientsResult = await pool.query(`
+        SELECT "userId", "fullName", "department"
+        FROM "users"
+        WHERE "userId" = ANY($1)
+      `, [recipientUserIds]);
+      recipients = recipientsResult.rows;
+    }
+    
+    res.status(200).json({
+      ...announcement,
+      recipients: recipients,
+      // For backward compatibility, derive department tags from recipients
+      departmentTags: [...new Set(recipients.map(r => r.department).filter(Boolean))]
+    });
+  } catch (error) {
+    console.error('Error getting announcement details:', error);
+    res.status(500).json({ error: 'Failed to get announcement details' });
+  }
+};
+
+// Get all departments controller
+export const getAllDepartmentsController = async (req, res) => {
+  try {
+    const result = await pool.query('SELECT DISTINCT "departmentName" FROM "departments" ORDER BY "departmentName"');
+    const departments = result.rows.map(row => row.departmentName);
+    res.status(200).json(departments);
+  } catch (error) {
+    console.error('Error getting departments:', error);
+    res.status(500).json({ error: 'Failed to get departments' });
   }
 };
