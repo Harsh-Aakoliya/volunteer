@@ -257,6 +257,60 @@ const pollController = {
             console.error("Error updating poll:", error);
             res.status(500).json({ error: "Error updating poll" });
         }
+    },
+
+    reactivatePoll: async (req, res) => {
+        const { pollId } = req.params;
+        const { userId, pollEndTime } = req.body;
+
+        try {
+            // First check if user is the creator
+            const pollResult = await pool.query(
+                `SELECT * FROM poll WHERE "id" = $1`,
+                [parseInt(pollId)]
+            );
+
+            if (pollResult.rows.length === 0) {
+                return res.status(404).json({ error: "Poll not found" });
+            }
+
+            const poll = pollResult.rows[0];
+
+            if (poll.createdBy !== userId) {
+                return res.status(403).json({ error: "Only poll creator can reactivate poll" });
+            }
+
+            if (!pollEndTime) {
+                return res.status(400).json({ error: "Poll end time is required" });
+            }
+
+            // Validate that the new end time is in the future
+            const newEndTime = new Date(pollEndTime);
+            const now = new Date();
+            if (newEndTime <= now) {
+                return res.status(400).json({ error: "Poll end time must be in the future" });
+            }
+
+            // Reactivate the poll with new end time
+            const updateResult = await pool.query(
+                `UPDATE poll SET 
+                    "isActive" = true,
+                    "pollEndTime" = $1
+                WHERE "id" = $2 RETURNING *`,
+                [newEndTime, parseInt(pollId)]
+            );
+
+            console.log("Poll reactivated successfully:", updateResult.rows[0]);
+            
+            res.status(200).json({ 
+                message: "Poll reactivated successfully", 
+                poll: updateResult.rows[0] 
+            });
+
+        } catch (error) {
+            console.error("Error reactivating poll:", error);
+            res.status(500).json({ error: "Error reactivating poll" });
+        }
     }
 };
 

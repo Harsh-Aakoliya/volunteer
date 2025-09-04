@@ -23,6 +23,15 @@ router.get('/all', userController.getAllUsers);
 // Update user (admin only)
 router.put('/update/:userId', userController.updateUser);
 
+// Advanced search with department/subdepartment filtering
+router.get('/search', userController.searchUsers);
+
+// Get search filters (departments/subdepartments)
+router.get('/search-filters', userController.getSearchFilters);
+
+// Update user with subdepartments
+router.put('/update-with-subdepartments/:userId', userController.updateUserWithSubdepartments);
+
 // Submit attendance
 // router.post('/attendance', userController.submitAttendance);
 

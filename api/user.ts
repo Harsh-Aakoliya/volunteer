@@ -2,7 +2,7 @@
 import axios from 'axios';
 import { API_URL } from '@/constants/api';
 import { AuthStorage } from '@/utils/authStorage';
-import { User } from '@/types/type';
+import { User, SearchUsersRequest, SearchUsersResponse, SearchFiltersResponse } from '@/types/type';
 
 // api/user.ts
 export const fetchUserProfile = async () => {
@@ -74,5 +74,85 @@ export const logout = async () => {
     await AuthStorage.clear();
   } catch (error) {
     console.error('Error during logout:', error);
+  }
+};
+
+// Advanced search for users with department/subdepartment filtering
+export const searchUsers = async (searchParams: SearchUsersRequest): Promise<SearchUsersResponse> => {
+  try {
+    const token = await AuthStorage.getToken();
+    if (!token) throw new Error('No authentication token');
+
+    const queryParams = new URLSearchParams();
+    
+    if (searchParams.searchQuery) {
+      queryParams.append('searchQuery', searchParams.searchQuery);
+    }
+    
+    if (searchParams.departmentIds && searchParams.departmentIds.length > 0) {
+      searchParams.departmentIds.forEach(id => queryParams.append('departmentIds', id));
+    }
+    
+    if (searchParams.subdepartmentIds && searchParams.subdepartmentIds.length > 0) {
+      searchParams.subdepartmentIds.forEach(id => queryParams.append('subdepartmentIds', id));
+    }
+    
+    if (searchParams.page) {
+      queryParams.append('page', searchParams.page.toString());
+    }
+    
+    if (searchParams.limit) {
+      queryParams.append('limit', searchParams.limit.toString());
+    }
+
+    const response = await axios.get(`${API_URL}/api/users/search?${queryParams.toString()}`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+
+    return response.data;
+  } catch (error) {
+    console.error('Error searching users:', error);
+    throw error;
+  }
+};
+
+// Get search filters (departments and subdepartments for current user)
+export const getSearchFilters = async (): Promise<SearchFiltersResponse> => {
+  try {
+    const token = await AuthStorage.getToken();
+    if (!token) throw new Error('No authentication token');
+
+    const response = await axios.get(`${API_URL}/api/users/search-filters`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching search filters:', error);
+    throw error;
+  }
+};
+
+// Update user with subdepartment assignments
+export const updateUserWithSubdepartments = async (userId: string, userData: any) => {
+  try {
+    const token = await AuthStorage.getToken();
+    if (!token) throw new Error('No authentication token');
+
+    const response = await axios.put(
+      `${API_URL}/api/users/update-with-subdepartments/${userId}`, 
+      userData, 
+      {
+        headers: { 
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+
+    return response.data;
+  } catch (error) {
+    console.error('Error updating user with subdepartments:', error);
+    throw error;
   }
 };

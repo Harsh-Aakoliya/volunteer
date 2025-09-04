@@ -10,28 +10,9 @@ import {
   Dimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import axios from 'axios';
-import { API_URL } from '@/constants/api';
+import { pollCache, PollData, PollOption } from '@/utils/pollCache';
 
 const { width: screenWidth } = Dimensions.get('window');
-
-type PollOption = {
-  id: string;
-  text: string;
-};
-
-type PollData = {
-  id: number;
-  question: string;
-  options: PollOption[];
-  votes: { [optionId: string]: string[] } | null;
-  roomId: number;
-  isActive: boolean;
-  pollEndTime: string;
-  isMultipleChoiceAllowed: boolean;
-  createdBy: string;
-  createdAt: string;
-};
 
 type Props = {
   pollid: number;
@@ -43,28 +24,30 @@ type Props = {
 
 const RenderPoll = ({ pollid, setShowPollModel, currentUserId, visible,totalMembers }: Props) => {
   const [pollData, setPollData] = useState<PollData | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [selectedOptions, setSelectedOptions] = useState<string[]>([]);
   const [timeLeft, setTimeLeft] = useState('');
   const [refreshing, setRefreshing] = useState(false);
 
-  const fetchPollData = async () => {
+  const fetchPollData = async (force: boolean = false) => {
+    console.log('Fetching poll data:', pollid);
     try {
-      setLoading(true);
-      const response = await axios.get(`${API_URL}/api/poll/${pollid}`);
-      setPollData(response.data.polldata);
-      console.log('Poll data fetched:', response.data.polldata);
+      const data = await pollCache.fetchPollData(pollid, force);
+      if (data) {
+        setPollData(data);
+        console.log('Poll data fetched:', data);
+      } else {
+        Alert.alert('Error', 'Failed to fetch poll data');
+      }
     } catch (error) {
       console.log('Error fetching poll data:', error);
       Alert.alert('Error', 'Failed to fetch poll data');
-    } finally {
-      setLoading(false);
     }
   };
 
   const refreshPoll = async () => {
     setRefreshing(true);
-    await fetchPollData();
+    await fetchPollData(true); // Force refresh
     setRefreshing(false);
   };
 
@@ -98,40 +81,17 @@ const RenderPoll = ({ pollid, setShowPollModel, currentUserId, visible,totalMemb
     }
   };
 
-  // API Functions
+  // API Functions using poll cache
   const submitVoteAPI = async (pollId: number, userId: string, selectedOptions: string[]) => {
-    try {
-      const response = await axios.post(`${API_URL}/api/poll/${pollId}/vote`, {
-        userId,
-        selectedOptions
-      });
-      return response.data;
-    } catch (error) {
-      throw error;
-    }
+    return await pollCache.submitVote(pollId, userId, selectedOptions);
   };
 
   const togglePollStatusAPI = async (pollId: number, userId: string) => {
-    try {
-      const response = await axios.patch(`${API_URL}/api/poll/${pollId}/toggle`, {
-        userId
-      });
-      return response.data;
-    } catch (error) {
-      throw error;
-    }
+    return await pollCache.togglePollStatus(pollId, userId);
   };
 
   const updatePollAPI = async (pollId: number, userId: string, updateData: any) => {
-    try {
-      const response = await axios.put(`${API_URL}/api/poll/${pollId}`, {
-        userId,
-        ...updateData
-      });
-      return response.data;
-    } catch (error) {
-      throw error;
-    }
+    return await pollCache.updatePoll(pollId, userId, updateData);
   };
 
   const submitVote = async () => {
@@ -145,7 +105,7 @@ const RenderPoll = ({ pollid, setShowPollModel, currentUserId, visible,totalMemb
       console.log('Vote submitted successfully:', result);
       Alert.alert('Success', 'Your vote has been submitted!');
       setSelectedOptions([]); // Clear selections after successful vote
-      await refreshPoll();
+      // No need to manually refresh as poll cache handles this automatically
     } catch (error: any) {
       console.error('Error submitting vote:', error);
       const errorMessage = error.response?.data?.error || 'Failed to submit vote';
@@ -158,7 +118,7 @@ const RenderPoll = ({ pollid, setShowPollModel, currentUserId, visible,totalMemb
       const result = await togglePollStatusAPI(pollid, currentUserId);
       console.log('Poll status toggled:', result);
       Alert.alert('Success', `Poll ${pollData?.isActive ? 'deactivated' : 'activated'} successfully!`);
-      await refreshPoll();
+      // No need to manually refresh as poll cache handles this automatically
     } catch (error: any) {
       console.error('Error toggling poll status:', error);
       const errorMessage = error.response?.data?.error || 'Failed to update poll status';
@@ -187,9 +147,42 @@ const RenderPoll = ({ pollid, setShowPollModel, currentUserId, visible,totalMemb
 
   useEffect(() => {
     if (visible && pollid) {
+      // Check for cached data first
+      const cachedData = pollCache.getCachedData(pollid);
+      if (cachedData) {
+        setPollData(cachedData);
+      }
+      
+      // Set initial loading state based on cache status
+      setLoading(pollCache.isLoading(pollid));
+      
+      // Fetch data (will use cache if available)
       fetchPollData();
     }
   }, [visible, pollid]);
+
+  useEffect(() => {
+    if (!pollid) return;
+
+    // Subscribe to loading state changes
+    const unsubscribeLoading = pollCache.onLoadingChange((pollIdFromCache, isLoading) => {
+      if (pollIdFromCache === pollid) {
+        setLoading(isLoading);
+      }
+    });
+
+    // Subscribe to data changes
+    const unsubscribeData = pollCache.onDataChange((pollIdFromCache, data) => {
+      if (pollIdFromCache === pollid) {
+        setPollData(data);
+      }
+    });
+
+    return () => {
+      unsubscribeLoading();
+      unsubscribeData();
+    };
+  }, [pollid]);
 
   useEffect(() => {
     const timer = setInterval(() => {

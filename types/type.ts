@@ -41,6 +41,7 @@ export interface User {
   role?: string;
   department?: string;
   departmentId?: string;
+  subdepartmentIds?: string[];
   totalSabha?: number;
   presentCount?: number;
   absentCount?: number;
@@ -55,9 +56,21 @@ export interface Department {
   createdAt: string;
   adminList: string[];
   userList: string[];
+  hodUserId?: string;
   createdByName?: string;
+  hodName?: string;
   adminCount?: number;
   userCount?: number;
+}
+
+export interface Subdepartment {
+  subdepartmentId: string;
+  subdepartmentName: string;
+  departmentId: string;
+  createdBy: string;
+  createdAt: string;
+  userList: string[];
+  createdByName?: string;
 }
 
 export interface DepartmentUser {
@@ -67,6 +80,8 @@ export interface DepartmentUser {
   isAdmin: boolean;
   department?: string;
   departmentId?: string;
+  subdepartmentIds?: string[];
+  subdepartments?: Array<{id: string, name: string}>;
   xetra?: string;
   mandal?: string;
   role?: string;
@@ -76,6 +91,7 @@ export interface CreateDepartmentRequest {
   departmentName: string;
   adminList: string[];
   userList: string[];
+  hodUserId?: string;
 }
 
 export interface UpdateDepartmentRequest {
@@ -83,6 +99,45 @@ export interface UpdateDepartmentRequest {
   adminList?: string[];
   userList?: string[];
   departmentName?: string;
+  hodUserId?: string;
+}
+
+export interface CreateSubdepartmentRequest {
+  subdepartmentName: string;
+  userList: string[];
+}
+
+export interface UpdateSubdepartmentRequest {
+  subdepartmentId: string;
+  subdepartmentName?: string;
+  userList?: string[];
+}
+
+export interface SearchUsersRequest {
+  searchQuery?: string;
+  departmentIds?: string[];
+  subdepartmentIds?: string[];
+  page?: number;
+  limit?: number;
+}
+
+export interface SearchUsersResponse {
+  users: DepartmentUser[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    pages: number;
+  };
+}
+
+export interface SearchFiltersResponse {
+  departments: Array<{departmentId: string, departmentName: string}>;
+  subdepartments: Array<{subdepartmentId: string, subdepartmentName: string, departmentId: string}>;
+  userRole: {
+    isKaryalay: boolean;
+    isHOD: boolean;
+  };
 }
 
 // Media-related Types
@@ -106,6 +161,10 @@ export interface Message {
   mediaFilesId?: number; // Optional array of media files
   pollId?: number;
   tableId?:number;
+  replyMessageId?: number;
+  replyMessageText?: string;
+  replyMessageType?: string;
+  replySenderName?: string;
   isEdited?: boolean;
   editedAt?: string;
   editedBy?: string;

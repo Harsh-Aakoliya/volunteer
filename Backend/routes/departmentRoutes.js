@@ -8,7 +8,11 @@ import {
   updateDepartment,
   deleteDepartment,
   removeUserFromDepartment,
-  checkDepartmentNameExists
+  checkDepartmentNameExists,
+  getSubdepartments,
+  createSubdepartment,
+  updateSubdepartment,
+  deleteSubdepartment
 } from '../controllers/departmentController.js';
 import { authenticateToken } from '../middlewares/auth.js';
 
@@ -40,5 +44,11 @@ router.delete('/:departmentId', deleteDepartment);
 
 // Remove user from department
 router.delete('/:departmentId/users/:userId', removeUserFromDepartment);
+
+// Subdepartment routes
+router.get('/:departmentId/subdepartments', getSubdepartments);
+router.post('/:departmentId/subdepartments', createSubdepartment);
+router.put('/:departmentId/subdepartments/:subdepartmentId', updateSubdepartment);
+router.delete('/:departmentId/subdepartments/:subdepartmentId', deleteSubdepartment);
 
 export default router; 

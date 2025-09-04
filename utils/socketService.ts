@@ -36,6 +36,7 @@ interface NewMessageEvent {
   mediaFilesId?: number;
   pollId?: number;
   tableId?: number;
+  replyMessageId?: number;
   sender: {
     userId: string;
     userName: string;
@@ -49,6 +50,7 @@ interface LastMessageData {
   messageText: string;
   messageType: string;
   pollId: number | null;
+  replyMessageId: number | null;
   sender: {
     userId: string;
     userName: string;
@@ -255,7 +257,8 @@ class SocketService {
           messageType: message.messageType,
           mediaFilesId: message.mediaFilesId,
           pollId: message.pollId,
-          tableId: message.tableId
+          tableId: message.tableId,
+          replyMessageId: message.replyMessageId
         },
         sender,
       });

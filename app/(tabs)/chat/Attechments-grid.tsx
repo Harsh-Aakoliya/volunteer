@@ -18,7 +18,7 @@ export default function AttachmentsGrid({ roomId, userId, onOptionSelect }: Atta
     
     // Navigate to the selected option
     router.push({
-      pathname,
+      pathname: pathname as any,
       params
     });
   };
@@ -35,7 +35,7 @@ export default function AttachmentsGrid({ roomId, userId, onOptionSelect }: Atta
       <View className="w-1/3 items-center justify-center">
         <TouchableOpacity onPress={() => handleOptionPress("/chat/MediaUploader", { roomId, userId, vmMedia: "true" })}>
           <SVGComponent color="black" height={60} width={60} />
-          <Text className="text-center text-sm mt-2">VM Media</Text>
+          <Text className="text-center text-sm mt-2">Media</Text>
         </TouchableOpacity>
       </View>
       

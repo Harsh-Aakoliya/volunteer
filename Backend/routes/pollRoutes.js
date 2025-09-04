@@ -15,6 +15,9 @@ router.post("/:pollId/vote", pollController.submitVote);
 // Toggle poll status (activate/deactivate)
 router.patch("/:pollId/toggle", pollController.togglePollStatus);
 
+// Reactivate poll with new end time (for creators only)
+router.patch("/:pollId/reactivate", pollController.reactivatePoll);
+
 // Update poll (for creators only)
 router.put("/:pollId", pollController.updatePoll);
 

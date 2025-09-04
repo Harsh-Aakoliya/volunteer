@@ -129,6 +129,33 @@ const addEditColumnsIfNotExists = async (client) => {
   }
 };
 
+const addReplyColumnIfNotExists = async (client) => {
+  try {
+    // Check if replyMessageId column exists
+    const replyCheck = await client.query(`
+      SELECT column_name 
+      FROM information_schema.columns 
+      WHERE table_name = 'chatmessages' AND column_name = 'replyMessageId'
+    `);
+    
+    if (replyCheck.rows.length === 0) {
+      console.log("Adding reply column to chatmessages table...");
+      
+      await client.query(`
+        ALTER TABLE chatmessages 
+        ADD COLUMN "replyMessageId" INTEGER
+      `);
+      
+      console.log("Reply column added successfully");
+    } else {
+      console.log("Reply column already exists in chatmessages table");
+    }
+  } catch (error) {
+    console.error("Error adding reply column:", error);
+    throw error;
+  }
+};
+
 const initChatDB = async () => {
   const client = await pool.connect();
   try {
@@ -139,6 +166,9 @@ const initChatDB = async () => {
     
     // Add edit columns to existing tables
     await addEditColumnsIfNotExists(client);
+    
+    // Add reply column to existing tables
+    await addReplyColumnIfNotExists(client);
     
     console.log("All chat-related tables initialization completed");
   } catch (error) {

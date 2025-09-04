@@ -1,11 +1,19 @@
-import React, { useState, useCallback } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, RefreshControl, Alert } from 'react-native';
+import React, { useEffect, useState, useCallback } from 'react';
+import {
+  View,
+  Text,
+  ScrollView,
+  TouchableOpacity,
+  ActivityIndicator,
+  Alert,
+  RefreshControl
+} from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import CustomButton from '@/components/ui/CustomButton';
 import { Department } from '@/types/type';
-import { fetchMyDepartments } from '@/api/department';
+import { fetchMyDepartments, deleteDepartment } from '@/api/department';
 import { AuthStorage } from '@/utils/authStorage';
 
 export default function DepartmentsPage() {
@@ -13,7 +21,7 @@ export default function DepartmentsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [isKaryalay, setIsKaryalay] = useState(false);
 
   const loadDepartments = async (showLoader = true) => {
     try {
@@ -21,6 +29,7 @@ export default function DepartmentsPage() {
       setError(null);
       
       const data = await fetchMyDepartments();
+      console.log("data in loadDepartments", data);
       setDepartments(data);
     } catch (error) {
       console.error('Error loading departments:', error);
@@ -34,18 +43,19 @@ export default function DepartmentsPage() {
   useFocusEffect(
     useCallback(() => {
       loadDepartments();
-      checkAdminStatus();
+      checkUserRole();
     }, [])
   );
 
-  const checkAdminStatus = async () => {
+  const checkUserRole = async () => {
     try {
-      const userDataString = await AuthStorage.getUser();
-      console.log("userDataString", userDataString);
-      // console.log("userDataString", userDataString);
-      setIsAdmin(userDataString?.isAdmin || false);
+      const user = await AuthStorage.getUser();
+      console.log("user in checkUserRole", user);
+      const isKaryalayUser = Boolean(user?.isAdmin && user?.department === 'Karyalay');
+      setIsKaryalay(isKaryalayUser);
+      console.log("isKaryalay in checkUserRole", isKaryalayUser);
     } catch (error) {
-      console.error('Error checking admin status:', error);
+      console.error('Error checking user role:', error);
     }
   };
 
@@ -54,12 +64,35 @@ export default function DepartmentsPage() {
     loadDepartments(false);
   };
 
-  const handleViewDepartment = (departmentId: string) => {
-    router.push(`/departments/${departmentId}`);
-  };
-
   const handleCreateDepartment = () => {
     router.push('/(departments)/create');
+  };
+
+  const handleViewDepartment = (departmentId: string) => {
+    router.push(`/(departments)/${departmentId}`);
+  };
+
+  const handleDeleteDepartment = (department: Department) => {
+    Alert.alert(
+      'Delete Department',
+      `Are you sure you want to delete "${department.departmentName}"? This action cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteDepartment(department.departmentId);
+              await loadDepartments(false);
+              Alert.alert('Success', 'Department deleted successfully');
+            } catch (error) {
+              Alert.alert('Error', 'Failed to delete department');
+            }
+          },
+        },
+      ]
+    );
   };
 
   const DepartmentCard = ({ department }: { department: Department }) => (
@@ -75,8 +108,18 @@ export default function DepartmentsPage() {
           <Text className="text-gray-500 text-sm">
             Created on {new Date(department.createdAt).toLocaleDateString()}
           </Text>
+          {department.hodName && (
+            <Text className="text-blue-600 text-sm">
+              HOD: {department.hodName}
+            </Text>
+          )}
         </View>
-        <Ionicons name="chevron-forward" size={20} color="#6B7280" />
+        <TouchableOpacity
+          onPress={() => handleDeleteDepartment(department)}
+          className="p-2"
+        >
+          <Ionicons name="trash-outline" size={20} color="#EF4444" />
+        </TouchableOpacity>
       </View>
 
       <View className="flex-row justify-between items-center">
@@ -84,7 +127,7 @@ export default function DepartmentsPage() {
           <View className="flex-row items-center">
             <Ionicons name="people" size={16} color="#0286ff" />
             <Text className="text-gray-600 text-sm ml-1">
-              {department.userList?.length || 0} Members
+              {department.userList?.length || 0} Users
             </Text>
           </View>
           <View className="flex-row items-center">
@@ -94,6 +137,7 @@ export default function DepartmentsPage() {
             </Text>
           </View>
         </View>
+        <Ionicons name="chevron-forward" size={20} color="#6B7280" />
       </View>
     </TouchableOpacity>
   );
@@ -121,7 +165,7 @@ export default function DepartmentsPage() {
             </TouchableOpacity>
             <Text className="text-2xl font-bold text-white">Departments</Text>
           </View>
-          {isAdmin && (
+          {isKaryalay && (
             <TouchableOpacity
               onPress={handleCreateDepartment}
               className="w-10 h-10 bg-white/20 rounded-full items-center justify-center"
@@ -142,11 +186,11 @@ export default function DepartmentsPage() {
       >
         {error ? (
           <View className="bg-red-50 p-4 rounded-xl mb-4">
-            <Text className="text-red-600 text-center font-medium mb-2">Error Loading Departments</Text>
-            <Text className="text-red-500 text-center text-sm mb-3">{error}</Text>
+            <Text className="text-red-600 text-center">{error}</Text>
             <CustomButton
               title="Retry"
               onPress={() => loadDepartments()}
+              className="mt-3"
               bgVariant="danger"
             />
           </View>
@@ -156,19 +200,30 @@ export default function DepartmentsPage() {
               <Ionicons name="business" size={40} color="#0286ff" />
             </View>
             <Text className="text-xl font-bold text-gray-800 mb-2">
-              No Departments Available
+              No Departments Yet
             </Text>
             <Text className="text-gray-500 text-center mb-6 px-4">
-              You are not currently assigned to any departments or no departments have been created yet.
+              {isKaryalay 
+                ? "Create your first department to organize and manage your team members"
+                : "No departments assigned to you yet. Contact Karyalay for department assignment."
+              }
             </Text>
+            {isKaryalay && (
+              <CustomButton
+                title="Create Department"
+                onPress={handleCreateDepartment}
+                bgVariant="primary"
+                className="px-8"
+              />
+            )}
           </View>
         ) : (
           <>
             <View className="flex-row justify-between items-center mb-4">
               <Text className="text-lg font-bold text-gray-800">
-                Available Departments ({departments.length})
+                {isKaryalay ? `My Departments (${departments.length})` : `Assigned Departments (${departments.length})`}
               </Text>
-              {isAdmin && (
+              {isKaryalay && (
                 <CustomButton
                   title="Create New"
                   onPress={handleCreateDepartment}

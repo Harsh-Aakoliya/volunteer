@@ -7,7 +7,7 @@ import { AuthStorage } from "@/utils/authStorage";
 import { getPendingUsers, approveUser } from "@/api/admin";
 import Checkbox from "expo-checkbox";
 import { Ionicons } from '@expo/vector-icons';
-
+import React from "react";
 // Define a type for pending users
 interface PendingUser {
   fullName: string;

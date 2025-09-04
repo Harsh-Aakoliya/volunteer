@@ -15,24 +15,37 @@ import { LinearGradient } from 'expo-linear-gradient';
 import CustomButton from '@/components/ui/CustomButton';
 import { DepartmentUser } from '@/types/type';
 import { fetchAllUsers, createDepartment, checkDepartmentNameExists } from '@/api/department';
-
+import { AuthStorage } from '@/utils/authStorage';
 export default function CreateDepartmentPage() {
   const [departmentName, setDepartmentName] = useState('');
   const [allUsers, setAllUsers] = useState<DepartmentUser[]>([]);
   const [filteredUsers, setFilteredUsers] = useState<DepartmentUser[]>([]);
   const [selectedUsers, setSelectedUsers] = useState<DepartmentUser[]>([]);
+  const [selectedHOD, setSelectedHOD] = useState<DepartmentUser | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
   const [nameError, setNameError] = useState('');
+  const [isKaryalay, setIsKaryalay] = useState(false);
 
   useEffect(() => {
     loadUsers();
+    checkUserRole();
   }, []);
 
   useEffect(() => {
     filterUsers();
-  }, [searchQuery, allUsers, selectedUsers]);
+  }, [searchQuery, allUsers, selectedUsers, selectedHOD]);
+
+  const checkUserRole = async () => {
+    try {
+      const user = await AuthStorage.getUser();
+      console.log("user in checkUserRole", user);
+      setIsKaryalay(Boolean(user?.isAdmin && user?.department === 'Karyalay'));
+    } catch (error) {
+      console.error('Error checking user role:', error);
+    }
+  };
 
   const loadUsers = async () => {
     try {
@@ -48,7 +61,10 @@ export default function CreateDepartmentPage() {
 
   const filterUsers = () => {
     const selectedUserIds = selectedUsers.map(u => u.userId);
-    const availableUsers = allUsers.filter(user => !selectedUserIds.includes(user.userId));
+    const hodId = selectedHOD?.userId;
+    const excludeIds = hodId ? [...selectedUserIds, hodId] : selectedUserIds;
+    
+    const availableUsers = allUsers.filter(user => !excludeIds.includes(user.userId));
     
     if (!searchQuery.trim()) {
       setFilteredUsers(availableUsers);
@@ -57,9 +73,9 @@ export default function CreateDepartmentPage() {
 
     const query = searchQuery.toLowerCase();
     const filtered = availableUsers.filter(user =>
-      user?.fullName?.toLowerCase().includes(query) ||
-      user?.userId?.toLowerCase().includes(query) ||
-      user?.mobileNumber?.includes(query)
+      user.fullName.toLowerCase().includes(query) ||
+      user.userId.toLowerCase().includes(query) ||
+      user.mobileNumber.includes(query)
     );
     
     setFilteredUsers(filtered);
@@ -71,10 +87,10 @@ export default function CreateDepartmentPage() {
       return false;
     }
 
-    // if (name.trim().length < 3) {
-    //   setNameError('Department name must be at least 3 characters');
-    //   return false;
-    // }
+    if (name.trim().length < 3) {
+      setNameError('Department name must be at least 3 characters');
+      return false;
+    }
 
     try {
       const exists = await checkDepartmentNameExists(name.trim());
@@ -108,6 +124,25 @@ export default function CreateDepartmentPage() {
     setSelectedUsers(prev => prev.filter(user => user.userId !== userId));
   };
 
+  const handleSelectHOD = (user: DepartmentUser) => {
+    if (!isKaryalay) return;
+    
+    if (user.department && user.departmentId) {
+      Alert.alert(
+        'User Already Assigned',
+        `${user.fullName} is already assigned to "${user.department}" department.`,
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
+    setSelectedHOD(user);
+  };
+
+  const handleRemoveHOD = () => {
+    setSelectedHOD(null);
+  };
+
   const handleCreateDepartment = async () => {
     if (!await validateDepartmentName(departmentName)) {
       return;
@@ -115,6 +150,11 @@ export default function CreateDepartmentPage() {
 
     if (selectedUsers.length === 0) {
       Alert.alert('Error', 'Please select at least one user for the department');
+      return;
+    }
+
+    if (isKaryalay && !selectedHOD) {
+      Alert.alert('Error', 'Please select a HOD for the department');
       return;
     }
 
@@ -127,7 +167,8 @@ export default function CreateDepartmentPage() {
       await createDepartment({
         departmentName: departmentName.trim(),
         userList,
-        adminList
+        adminList,
+        hodUserId: selectedHOD?.userId
       });
 
       Alert.alert(
@@ -147,28 +188,36 @@ export default function CreateDepartmentPage() {
     }
   };
 
-  const UserItem = ({ user, isSelected = false, onPress }: {
+  const UserItem = ({ user, isSelected = false, onPress, showHODBadge = false }: {
     user: DepartmentUser;
     isSelected?: boolean;
     onPress: () => void;
+    showHODBadge?: boolean;
   }) => {
-    const isDisabled = !isSelected && !!(user.department && user.departmentId);
+    const isDisabled = !isSelected && user.department && user.departmentId;
     
     return (
       <TouchableOpacity
         onPress={onPress}
-        disabled={isDisabled || false}
+        disabled={Boolean(isDisabled)}
         className={`p-4 border-b border-gray-100 ${isDisabled ? 'opacity-50' : ''}`}
       >
         <View className="flex-row items-center">
           <View className="w-12 h-12 bg-blue-100 rounded-full items-center justify-center mr-3">
             <Text className="text-blue-600 font-semibold">
-              {user?.fullName?.charAt(0).toUpperCase()}
+              {user.fullName.charAt(0).toUpperCase()}
             </Text>
           </View>
           
           <View className="flex-1">
-            <Text className="font-semibold text-gray-800">{user.fullName}</Text>
+            <View className="flex-row items-center flex-wrap">
+              <Text className="font-semibold text-gray-800">{user.fullName}</Text>
+              {showHODBadge && (
+                <View className="bg-blue-100 px-2 py-1 rounded ml-2">
+                  <Text className="text-blue-600 text-xs font-medium">HOD</Text>
+                </View>
+              )}
+            </View>
             <Text className="text-gray-500 text-sm">{user.mobileNumber}</Text>
             {user.department && (
               <Text className="text-orange-500 text-xs">
@@ -240,6 +289,28 @@ export default function CreateDepartmentPage() {
           ) : null}
         </View>
 
+        {/* HOD Selection - Only for Karyalay users */}
+        {isKaryalay && (
+          <View className="bg-white p-6 mb-2">
+            <Text className="text-lg font-bold text-gray-800 mb-3">
+              Select HOD (Head of Department)
+            </Text>
+            {selectedHOD ? (
+              <UserItem
+                key={selectedHOD.userId}
+                user={selectedHOD}
+                isSelected={true}
+                onPress={handleRemoveHOD}
+                showHODBadge={true}
+              />
+            ) : (
+              <Text className="text-gray-500 text-sm">
+                Search and select a user below to assign as HOD
+              </Text>
+            )}
+          </View>
+        )}
+
         {/* Selected Users */}
         {selectedUsers.length > 0 && (
           <View className="bg-white p-6 mb-2">
@@ -279,11 +350,22 @@ export default function CreateDepartmentPage() {
               </Text>
             </View>
             {unassignedUsers.map((user) => (
-              <UserItem
-                key={user.userId}
-                user={user}
-                onPress={() => handleSelectUser(user)}
-              />
+              <View key={user.userId}>
+                <UserItem
+                  user={user}
+                  onPress={() => handleSelectUser(user)}
+                />
+                {isKaryalay && !selectedHOD && (
+                  <TouchableOpacity
+                    onPress={() => handleSelectHOD(user)}
+                    className="bg-blue-50 px-4 py-2 border-t border-blue-100"
+                  >
+                    <Text className="text-blue-600 text-sm font-medium text-center">
+                      Select as HOD
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
             ))}
           </View>
         )}
@@ -311,7 +393,7 @@ export default function CreateDepartmentPage() {
           <CustomButton
             title={isCreating ? 'Creating...' : 'Create Department'}
             onPress={handleCreateDepartment}
-            disabled={isCreating || selectedUsers.length === 0 || !departmentName.trim()}
+            disabled={isCreating || selectedUsers.length === 0 || !departmentName.trim() || (isKaryalay && !selectedHOD)}
             loading={isCreating}
             bgVariant="primary"
             className="h-14 rounded-xl"

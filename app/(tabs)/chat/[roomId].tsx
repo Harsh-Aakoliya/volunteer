@@ -15,7 +15,14 @@ import {
   BackHandler,
   Keyboard,
   ScrollView,
+  Animated,
 } from "react-native";
+import {
+  PanGestureHandler,
+  GestureHandlerRootView,
+  PanGestureHandlerGestureEvent,
+} from 'react-native-gesture-handler';
+import * as Haptics from 'expo-haptics';
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, router, useNavigation } from "expo-router";
 import { AuthStorage } from "@/utils/authStorage";
@@ -27,7 +34,7 @@ import socketService from "@/utils/socketService";
 import OnlineUsersIndicator from "@/components/chat/OnlineUsersIndicator";
 import MembersModal from "@/components/chat/MembersModal";
 import MessageStatus from "@/components/chat/MessageStatus";
-import RenderPoll from "@/components/chat/Attechments/RenderPoll";
+import GlobalPollModal from "@/components/chat/GlobalPollModal";
 import RenderDriveFiles from "@/components/chat/RenderDriveFiles";
 import RenderTable from "@/components/chat/Attechments/RenderTable";
 import MediaViewerModal from "@/components/chat/MediaViewerModal";
@@ -71,8 +78,8 @@ export default function ChatRoomScreen() {
   // Forward modal state
   const [showForwardModal, setShowForwardModal] = useState(false);
 
-  const [showPollModel, setShowPollModel]=useState(false);
-  const [pollId,setPollId]=useState<number |null>(null);
+  const [showPollModal, setShowPollModal] = useState(false);
+  const [activePollId, setActivePollId] = useState<number | null>(null);
 
   const [showTableModle,setShowTableModel] =useState(false);
   const [tableId,setTableId]=useState<number | null>(null);
@@ -80,6 +87,14 @@ export default function ChatRoomScreen() {
   // Media viewer modal states
   const [showMediaViewer, setShowMediaViewer] = useState(false);
   const [selectedMediaId, setSelectedMediaId] = useState<number | null>(null);
+
+  // Reply state
+  const [isReplying, setIsReplying] = useState(false);
+  const [replyToMessage, setReplyToMessage] = useState<Message | null>(null);
+  
+  // Animation refs for each message
+  const messageAnimations = useRef<Map<string | number, Animated.Value>>(new Map());
+  const hapticTriggered = useRef<Map<string | number, boolean>>(new Map());
 
   const flatListRef = useRef<FlatList>(null);
   const navigation = useNavigation();
@@ -368,6 +383,12 @@ export default function ChatRoomScreen() {
       return () => {
         // Clear message selection when navigating away
         setSelectedMessages([]);
+        // Clear reply state when navigating away
+        setIsReplying(false);
+        setReplyToMessage(null);
+        // Clear active poll state when navigating away
+        setActivePollId(null);
+        setShowPollModal(false);
       };
     }, [roomId])
   );
@@ -464,7 +485,8 @@ export default function ChatRoomScreen() {
     messageType: string, 
     mediaFilesId?: number,
     pollId?: number,
-    tableId?: number
+    tableId?: number,
+    replyMessageId?: number
   ) => {
     // Only allow group admins to send messages
     if (!isGroupAdmin) {
@@ -492,7 +514,8 @@ export default function ChatRoomScreen() {
         createdAt: new Date().toISOString(),
         mediaFilesId: mediaFilesId,
         pollId: pollId,
-        tableId: tableId
+        tableId: tableId,
+        replyMessageId: replyMessageId
       };
 
       // Add optimistic message to the list
@@ -516,7 +539,8 @@ export default function ChatRoomScreen() {
           mediaFilesId: mediaFilesId,
           pollId: pollId,
           messageType: messageType,
-          tableId: tableId
+          tableId: tableId,
+          replyMessageId: replyMessageId
         },
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -557,6 +581,11 @@ export default function ChatRoomScreen() {
           userName: currentUser.fullName || "Anonymous",
         });
       });
+
+      // Clear reply state after sending
+      if (isReplying) {
+        handleCancelReply();
+      }
     } catch (error) {
       console.error("Error sending message:", error);
       alert("Failed to send message");
@@ -618,6 +647,79 @@ export default function ChatRoomScreen() {
 
   const clearSelection = () => {
     setSelectedMessages([]);
+  };
+
+  // Reply handling functions
+  const handleStartReply = (message: Message) => {
+    setReplyToMessage(message);
+    setIsReplying(true);
+    // Clear any message selection when starting reply
+    setSelectedMessages([]);
+  };
+
+  const handleCancelReply = () => {
+    setReplyToMessage(null);
+    setIsReplying(false);
+  };
+
+  // Get or create animation value for a message
+  const getMessageAnimation = (messageId: string | number) => {
+    if (!messageAnimations.current.has(messageId)) {
+      messageAnimations.current.set(messageId, new Animated.Value(0));
+    }
+    return messageAnimations.current.get(messageId)!;
+  };
+
+  // Swipe gesture handlers
+  const handleGestureBegin = (messageId: string | number) => {
+    const animation = getMessageAnimation(messageId);
+    animation.setValue(0);
+    hapticTriggered.current.set(messageId, false);
+  };
+
+  const handleGestureUpdate = (event: any, messageId: string | number) => {
+    const { translationX } = event.nativeEvent;
+    const animation = getMessageAnimation(messageId);
+    
+    // Limit the translation to reasonable bounds
+    const maxTranslation = 80;
+    const limitedTranslation = Math.max(-maxTranslation, Math.min(maxTranslation, translationX));
+    
+    animation.setValue(limitedTranslation);
+    
+    // Trigger haptic feedback when threshold is reached
+    const threshold = 50;
+    if (Math.abs(limitedTranslation) > threshold && !hapticTriggered.current.get(messageId)) {
+      hapticTriggered.current.set(messageId, true);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+  };
+
+  const handleGestureEnd = (event: any, message: Message) => {
+    const { translationX, velocityX } = event.nativeEvent;
+    const animation = getMessageAnimation(message.id);
+    const threshold = 50; // Minimum swipe distance to trigger reply
+    
+    if (Math.abs(translationX) > threshold || Math.abs(velocityX) > 500) {
+      // Trigger reply
+      handleStartReply(message);
+      
+      // Animate back to original position
+      Animated.spring(animation, {
+        toValue: 0,
+        useNativeDriver: true,
+        tension: 300,
+        friction: 20,
+      }).start();
+    } else {
+      // Animate back to original position
+      Animated.spring(animation, {
+        toValue: 0,
+        useNativeDriver: true,
+        tension: 300,
+        friction: 20,
+      }).start();
+    }
   };
 
   // Handle message edit
@@ -734,14 +836,63 @@ export default function ChatRoomScreen() {
       }
     }
 
+    const messageAnimation = getMessageAnimation(item.id);
+
     return (
       <View className="relative">
-        <Pressable
-          onPress={() => handleMessagePress(item)}
-          onLongPress={() => handleMessageLongPress(item)}
-          delayLongPress={300}
-          className="relative"
+        {/* Reply icon background - shows during swipe */}
+        <Animated.View
+          className="absolute top-0 bottom-0 right-4 flex items-center justify-center"
+          style={{
+            opacity: messageAnimation.interpolate({
+              inputRange: [-80, -30, 0],
+              outputRange: [1, 0.5, 0],
+              extrapolate: 'clamp',
+            }),
+          }}
         >
+          <View className="bg-blue-500 rounded-full p-2">
+            <Ionicons name="arrow-undo" size={20} color="white" />
+          </View>
+        </Animated.View>
+
+        <Animated.View
+          className="absolute top-0 bottom-0 left-4 flex items-center justify-center"
+          style={{
+            opacity: messageAnimation.interpolate({
+              inputRange: [0, 30, 80],
+              outputRange: [0, 0.5, 1],
+              extrapolate: 'clamp',
+            }),
+          }}
+        >
+          <View className="bg-blue-500 rounded-full p-2">
+            <Ionicons name="arrow-undo" size={20} color="white" />
+          </View>
+        </Animated.View>
+
+        <PanGestureHandler
+          onBegan={() => handleGestureBegin(item.id)}
+          onGestureEvent={(event) => handleGestureUpdate(event, item.id)}
+          onEnded={(event) => handleGestureEnd(event, item)}
+          onCancelled={(event) => handleGestureEnd(event, item)}
+          onFailed={(event) => handleGestureEnd(event, item)}
+          enabled={!isMessageSelected(item.id)} // Disable swipe when message is selected
+          activeOffsetX={[-10, 10]} // Allow small movements before taking over
+          failOffsetY={[-50, 50]} // Fail gesture if moving too much vertically (preserves scroll)
+          shouldCancelWhenOutside={true}
+        >
+          <Animated.View
+            style={{
+              transform: [{ translateX: messageAnimation }],
+            }}
+          >
+            <Pressable
+              onPress={() => handleMessagePress(item)}
+              onLongPress={() => handleMessageLongPress(item)}
+              delayLongPress={300}
+              className="relative"
+            >
           {/* Selection overlay - covers full width */}
           {isSelected && (
             <View 
@@ -761,6 +912,29 @@ export default function ChatRoomScreen() {
             }`}
             style={{ zIndex: 2 }}
           >
+          {/* Reply preview - show if this message is replying to another */}
+          {item.replyMessageId && (
+            <View className={`mb-2 p-2 rounded border-l-2 ${
+              isOwnMessage 
+                ? 'bg-blue-400 border-blue-200' 
+                : 'bg-gray-300 border-gray-400'
+            }`}>
+              <Text className={`text-xs ${
+                isOwnMessage ? 'text-blue-100' : 'text-gray-600'
+              }`}>
+                {item.replySenderName}
+              </Text>
+              <Text 
+                className={`text-sm ${
+                  isOwnMessage ? 'text-white' : 'text-gray-800'
+                }`}
+                numberOfLines={1}
+                ellipsizeMode="tail"
+              >
+                {item.replyMessageText || 'Message'}
+              </Text>
+            </View>
+          )}
           {!isOwnMessage && (
             <Text className="text-xs font-bold text-gray-600">
               {item.senderName || "Unknown"}
@@ -829,24 +1003,39 @@ export default function ChatRoomScreen() {
             <TouchableOpacity
               onPress={() => {
                 if (typeof item.pollId === 'number') {
-                  setPollId(item.pollId);
-                  setShowPollModel(true);
+                  // Only allow one poll to be active at a time
+                  if (!showPollModal) {
+                    setActivePollId(item.pollId);
+                    setShowPollModal(true);
+                  }
                 }
               }}
+              disabled={showPollModal && activePollId !== item.pollId}
+              className={`p-3 rounded-lg ${
+                showPollModal && activePollId !== item.pollId
+                  ? 'bg-gray-200 opacity-50'
+                  : 'bg-blue-100'
+              }`}
             >
-              <Text>Vote Now</Text>
+              <Text className={`font-semibold ${
+                showPollModal && activePollId !== item.pollId
+                  ? 'text-gray-500'
+                  : 'text-blue-700'
+              }`}>
+                📊 Poll
+              </Text>
+              <Text className={`text-xs ${
+                showPollModal && activePollId !== item.pollId
+                  ? 'text-gray-400'
+                  : 'text-blue-600'
+              }`}>
+                {showPollModal && activePollId !== item.pollId
+                  ? 'Another poll is active'
+                  : 'Tap to vote'
+                }
+              </Text>
             </TouchableOpacity>
           ) : null}
-
-          {showPollModel && pollId !== null && currentUser?.userId && (
-            <RenderPoll
-              pollid={pollId} 
-              setShowPollModel={setShowPollModel} 
-              currentUserId={currentUser?.userId}
-              totalMembers={roomMembers.length}
-              visible={showPollModel}
-            />
-          )}
 
           <View className="flex-row justify-between items-center mt-1">
             <Text
@@ -864,8 +1053,10 @@ export default function ChatRoomScreen() {
             )}
           </View>
         </View>
-      </Pressable>
-    </View>
+            </Pressable>
+          </Animated.View>
+        </PanGestureHandler>
+      </View>
     );
   };
 
@@ -895,12 +1086,13 @@ export default function ChatRoomScreen() {
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-white">
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        className="flex-1"
-        keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
-      >
+    <GestureHandlerRootView className="flex-1">
+      <SafeAreaView className="flex-1 bg-white">
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          className="flex-1"
+          keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
+        >
         {/* Conditional header: Show ChatMessageOptions when messages are selected AND user is group admin */}
         {selectedMessages.length > 0 && isGroupAdmin ? (
           <ChatMessageOptions
@@ -958,12 +1150,43 @@ export default function ChatRoomScreen() {
           }
         />
 
+        {/* Reply preview - show above message input when replying */}
+        {isReplying && replyToMessage && (
+          <View className="bg-gray-100 border-t border-gray-200 px-4 py-3">
+            <View className="flex-row items-center justify-between">
+              <View className="flex-1">
+                <View className="flex-row items-center mb-1">
+                  <Ionicons name="arrow-undo" size={16} color="#6b7280" />
+                  <Text className="text-sm text-gray-600 ml-2">
+                    Replying to {replyToMessage.senderName}
+                  </Text>
+                </View>
+                <Text 
+                  className="text-sm text-gray-800 bg-white px-3 py-2 rounded-lg"
+                  numberOfLines={2}
+                  ellipsizeMode="tail"
+                >
+                  {replyToMessage.messageText}
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={handleCancelReply}
+                className="ml-3 p-2"
+              >
+                <Ionicons name="close" size={20} color="#6b7280" />
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+
         {/* Message input - Only show for group admins */}
         {isGroupAdmin && (
           <MessageInput
             messageText={messageText}
             onChangeText={setMessageText}
-            onSend={sendMessage}
+            onSend={(text: string, messageType: string, mediaFilesId?: number, pollId?: number, tableId?: number) => 
+              sendMessage(text, messageType, mediaFilesId, pollId, tableId, replyToMessage?.id as number)
+            }
             sending={sending}
             disabled={false}
             roomMembers={roomMembers}
@@ -1027,7 +1250,20 @@ export default function ChatRoomScreen() {
             onForward={handleForwardMessages}
           />
         )}
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+
+        {/* Global Poll Modal - Single instance for all polls */}
+        <GlobalPollModal
+          pollId={activePollId}
+          visible={showPollModal}
+          onClose={() => {
+            setShowPollModal(false);
+            setActivePollId(null);
+          }}
+          currentUserId={currentUser?.userId || ""}
+          totalMembers={roomMembers.length}
+        />
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    </GestureHandlerRootView>
   );
 }

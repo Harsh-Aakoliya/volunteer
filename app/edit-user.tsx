@@ -13,9 +13,11 @@ import {
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { AuthStorage } from '@/utils/authStorage';
-import { API_URL } from '@/constants/api';
+import { updateUserWithSubdepartments, getSearchFilters } from '@/api/user';
+import { SearchFiltersResponse } from '@/types/type';
 import CustomButton from '@/components/ui/CustomButton';
 import DobPicker from '@/components/chat/DobPicker';
+import { LinearGradient } from 'expo-linear-gradient';
 
 export default function EditUserScreen() {
   const { userData } = useLocalSearchParams();
@@ -24,6 +26,25 @@ export default function EditUserScreen() {
   const [formValidation, setFormValidation] = useState<any>({});
   const [hasChanges, setHasChanges] = useState(false);
   const [selectedDOB, setSelectedDOB] = useState<Date | null>(null);
+  
+  // New states for subdepartment functionality
+  const [filters, setFilters] = useState<SearchFiltersResponse | null>(null);
+  const [selectedDepartment, setSelectedDepartment] = useState<string>('');
+  const [selectedSubdepartments, setSelectedSubdepartments] = useState<string[]>([]);
+  const [isLoadingFilters, setIsLoadingFilters] = useState(true);
+
+  // Load search filters
+  const loadFilters = async () => {
+    try {
+      setIsLoadingFilters(true);
+      const filtersData = await getSearchFilters();
+      setFilters(filtersData);
+    } catch (error) {
+      console.error('Error loading filters:', error);
+    } finally {
+      setIsLoadingFilters(false);
+    }
+  };
 
   // Initialize form data
   useEffect(() => {
@@ -63,11 +84,18 @@ export default function EditUserScreen() {
       
       setEditFormData(formData);
       
+      // Set department and subdepartments
+      setSelectedDepartment(user.departmentId || '');
+      setSelectedSubdepartments(user.subdepartmentIds || []);
+      
       // Initialize validation - only for DOB
       setFormValidation({
         dateOfBirth: true,
       });
     }
+    
+    // Load filters
+    loadFilters();
   }, [userData]);
 
   // Check for changes whenever form data changes
@@ -89,10 +117,13 @@ export default function EditUserScreen() {
         address: originalUser.address || '',
       };
 
-      const hasChanges = JSON.stringify(originalFormData) !== JSON.stringify(editFormData);
-      setHasChanges(hasChanges);
+      const formChanges = JSON.stringify(originalFormData) !== JSON.stringify(editFormData);
+      const deptChanges = (originalUser.departmentId || '') !== selectedDepartment;
+      const subdeptChanges = JSON.stringify(originalUser.subdepartmentIds || []) !== JSON.stringify(selectedSubdepartments);
+      
+      setHasChanges(formChanges || deptChanges || subdeptChanges);
     }
-  }, [editFormData, originalUser]);
+  }, [editFormData, originalUser, selectedDepartment, selectedSubdepartments]);
 
   // Handle back button
   useEffect(() => {
@@ -139,31 +170,49 @@ export default function EditUserScreen() {
     }
   };
 
+  // Handle department selection
+  const handleDepartmentChange = (departmentId: string) => {
+    setSelectedDepartment(departmentId);
+    // Clear subdepartments when department changes
+    setSelectedSubdepartments([]);
+  };
+
+  // Handle subdepartment selection
+  const toggleSubdepartment = (subdepartmentId: string) => {
+    setSelectedSubdepartments(prev => 
+      prev.includes(subdepartmentId)
+        ? prev.filter(id => id !== subdepartmentId)
+        : [...prev, subdepartmentId]
+    );
+  };
+
+  // Get filtered subdepartments based on selected department
+  const getFilteredSubdepartments = () => {
+    if (!filters || !selectedDepartment) return [];
+    
+    return filters.subdepartments.filter(sub => 
+      sub.departmentId === selectedDepartment
+    );
+  };
+
   // Save user changes
   const handleSaveUser = async () => {
     try {
-      const token = await AuthStorage.getToken();
-      
-      const response = await fetch(`${API_URL}/api/users/update/${originalUser.userId}`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(editFormData),
-      });
+      // Prepare the data for the new API
+      const updateData = {
+        ...editFormData,
+        departmentId: selectedDepartment,
+        subdepartmentIds: selectedSubdepartments
+      };
 
-      if (response.ok) {
-        Alert.alert('Success', 'User updated successfully', [
-          {
-            text: 'OK',
-            onPress: () => router.back()
-          }
-        ]);
-      } else {
-        const errorData = await response.json();
-        Alert.alert('Error', errorData.message || 'Failed to update user');
-      }
+      await updateUserWithSubdepartments(originalUser.userId, updateData);
+      
+      Alert.alert('Success', 'User updated successfully', [
+        {
+          text: 'OK',
+          onPress: () => router.back()
+        }
+      ]);
     } catch (error) {
       console.error('Error updating user:', error);
       Alert.alert('Error', 'Failed to update user');
@@ -203,13 +252,22 @@ export default function EditUserScreen() {
   return (
     <SafeAreaView className="flex-1 bg-gray-50">
       {/* Header */}
-      <View className="flex-row items-center justify-between p-4 bg-white border-b border-gray-200">
-        <TouchableOpacity onPress={handleBackPress}>
-          <Ionicons name="arrow-back" size={24} color="#666" />
-        </TouchableOpacity>
-        <Text className="text-lg font-bold text-gray-800">Edit User</Text>
-        <View className="w-6" />
-      </View>
+      <LinearGradient colors={['#0286ff', '#0255ff']} className="pt-4 pb-6 px-6">
+        <View className="flex-row items-center justify-between">
+          <TouchableOpacity
+            onPress={handleBackPress}
+            className="w-10 h-10 bg-white/20 rounded-full items-center justify-center"
+          >
+            <Ionicons name="arrow-back" size={24} color="white" />
+          </TouchableOpacity>
+          <Text className="text-xl font-bold text-white">Edit User</Text>
+          <View className="w-10" />
+        </View>
+        
+        <Text className="text-white/80 text-center mt-2">
+          {editFormData.fullName || 'User Profile'}
+        </Text>
+      </LinearGradient>
       
       <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
         <View className="p-4">
@@ -250,6 +308,85 @@ export default function EditUserScreen() {
               </TouchableOpacity>
             </View>
           </View>
+
+          {/* Department Selection - Only for Karyalay users */}
+          {filters?.userRole.isKaryalay && (
+            <View className="mb-4">
+              <Text className="text-sm font-medium text-gray-700 mb-2">Department</Text>
+              <View className="bg-white rounded-lg border border-gray-200">
+                <TouchableOpacity
+                  onPress={() => {
+                    setSelectedDepartment('');
+                    setSelectedSubdepartments([]);
+                  }}
+                  className={`p-3 border-b border-gray-100 ${!selectedDepartment ? 'bg-blue-50' : ''}`}
+                >
+                  <Text className={`${!selectedDepartment ? 'text-blue-600 font-medium' : 'text-gray-700'}`}>
+                    No Department
+                  </Text>
+                </TouchableOpacity>
+                
+                {filters.departments.map((dept) => (
+                  <TouchableOpacity
+                    key={dept.departmentId}
+                    onPress={() => handleDepartmentChange(dept.departmentId)}
+                    className={`p-3 border-b border-gray-100 last:border-b-0 ${
+                      selectedDepartment === dept.departmentId ? 'bg-blue-50' : ''
+                    }`}
+                  >
+                    <Text className={`${
+                      selectedDepartment === dept.departmentId ? 'text-blue-600 font-medium' : 'text-gray-700'
+                    }`}>
+                      {dept.departmentName}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+          )}
+
+          {/* Subdepartment Selection */}
+          {getFilteredSubdepartments().length > 0 && (
+            <View className="mb-4">
+              <Text className="text-sm font-medium text-gray-700 mb-2">
+                Subdepartments {selectedSubdepartments.length > 0 && `(${selectedSubdepartments.length} selected)`}
+              </Text>
+              <View className="bg-white rounded-lg border border-gray-200 p-3">
+                {getFilteredSubdepartments().map((subdept) => {
+                  const isSelected = selectedSubdepartments.includes(subdept.subdepartmentId);
+                  return (
+                    <TouchableOpacity
+                      key={subdept.subdepartmentId}
+                      onPress={() => toggleSubdepartment(subdept.subdepartmentId)}
+                      className="flex-row items-center justify-between py-2"
+                    >
+                      <Text className={`flex-1 ${isSelected ? 'text-purple-600 font-medium' : 'text-gray-700'}`}>
+                        {subdept.subdepartmentName}
+                      </Text>
+                      <View className={`w-5 h-5 rounded border-2 items-center justify-center ${
+                        isSelected ? 'bg-purple-600 border-purple-600' : 'border-gray-300'
+                      }`}>
+                        {isSelected && (
+                          <Ionicons name="checkmark" size={12} color="white" />
+                        )}
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+              
+              {selectedSubdepartments.length > 0 && (
+                <View className="mt-2">
+                  <Text className="text-xs text-gray-500">
+                    Selected: {selectedSubdepartments.map(id => {
+                      const subdept = getFilteredSubdepartments().find(s => s.subdepartmentId === id);
+                      return subdept?.subdepartmentName;
+                    }).filter(Boolean).join(', ')}
+                  </Text>
+                </View>
+              )}
+            </View>
+          )}
 
           {/* Gender */}
           <View className="mb-4">

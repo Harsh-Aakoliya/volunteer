@@ -249,15 +249,19 @@ const chatController = {
         [roomIdInt]
       );
 
-      // Get recent messages with mediaFiles and edit information
+      // Get recent messages with mediaFiles, edit information, and reply information
       const messagesResult = await pool.query(
         `SELECT m."id", m."messageText", m."messageType", m."mediaFilesId", m."pollId", m."tableId", 
-                m."createdAt", m."isEdited", m."editedAt", m."editedBy",
+                m."createdAt", m."isEdited", m."editedAt", m."editedBy", m."replyMessageId",
                 u."userId" as "senderId", u."fullName" as "senderName",
-                e."fullName" as "editorName"
+                e."fullName" as "editorName",
+                rm."messageText" as "replyMessageText", rm."messageType" as "replyMessageType",
+                ru."fullName" as "replySenderName"
         FROM chatmessages m
         JOIN "users" u ON m."senderId" = u."userId"
         LEFT JOIN "users" e ON m."editedBy" = e."userId"
+        LEFT JOIN chatmessages rm ON m."replyMessageId" = rm."id"
+        LEFT JOIN "users" ru ON rm."senderId" = ru."userId"
         WHERE m."roomId" = $1
         ORDER BY m."createdAt" DESC
         LIMIT 20`,
@@ -757,16 +761,18 @@ const chatController = {
     try {
       const { roomId } = req.params;
       console.log("req body ",req.body);
-      let { messageText, mediaFiles, messageType, mediaFilesId,pollId,tableId } = req.body; // Also receive mediaFiles
+      let { messageText, mediaFiles, messageType, mediaFilesId,pollId,tableId, replyMessageId } = req.body; // Also receive mediaFiles and replyMessageId
       console.log("Message text",messageText);
       console.log("Media files",mediaFiles);
       console.log("Message type",messageType);
       console.log("Media files id",mediaFilesId);
       console.log("Poll id is ",pollId);
       console.log("Table id is ",tableId);
+      console.log("Reply message id is ",replyMessageId);
       if(!mediaFilesId) mediaFilesId=null;
       if(!pollId) pollId=null;
       if(!tableId) tableId=null;
+      if(!replyMessageId) replyMessageId=null;
       const senderId = req.user.userId;
 
       // Convert roomId to integer
@@ -885,10 +891,10 @@ const chatController = {
 
         //first insert the basic message
         let result = await pool.query(
-          `INSERT INTO chatmessages ("roomId", "senderId", "messageText","messageType")
-          VALUES ($1, $2, $3,$4)
+          `INSERT INTO chatmessages ("roomId", "senderId", "messageText","messageType", "replyMessageId")
+          VALUES ($1, $2, $3, $4, $5)
           RETURNING *`,
-          [roomIdInt, senderId, messageText,messageType]
+          [roomIdInt, senderId, messageText, messageType, replyMessageId]
         );
         let newMessage = result.rows[0];
 
@@ -953,6 +959,7 @@ const chatController = {
           mediaFilesId: mediaFilesId,
           pollId:pollId,
           tableId:tableId,
+          replyMessageId: replyMessageId,
           sender: {
             userId: senderId,
             userName: senderName
@@ -982,6 +989,7 @@ const chatController = {
             mediaFilesId: mediaFilesId,
             pollId:pollId,
             tableId:tableId,
+            replyMessageId: replyMessageId,
             createdAt: message.createdAt,
             sender: {
               userId: senderId,

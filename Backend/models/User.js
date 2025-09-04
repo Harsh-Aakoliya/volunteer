@@ -34,6 +34,7 @@ const createUsersTable = async () => {
                 "absentCount" INTEGER DEFAULT 0,
                 "department" VARCHAR(100),
                 "departmentId" UUID,
+                "subdepartmentIds" TEXT[] DEFAULT '{}',
                 "gender" VARCHAR(20),
                 "dateOfBirth" DATE,
                 "bloodGroup" VARCHAR(10),

@@ -48,6 +48,7 @@ const setupSocketIO = (io, app) => {
             mediaFilesId: lastMsg.mediaFilesId || null,
             pollId: lastMsg.pollId || null,
             tableId: lastMsg.tableId || null,
+            replyMessageId: lastMsg.replyMessageId || null,
             roomId: roomId
           };
         }
@@ -359,6 +360,7 @@ const setupSocketIO = (io, app) => {
           mediaFilesId: message.mediaFilesId || null,
           pollId: message.pollId || null,
           tableId: message.tableId || null,
+          replyMessageId: message.replyMessageId || null,
           roomId: roomId
         };
 

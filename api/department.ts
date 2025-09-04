@@ -6,7 +6,10 @@ import {
   Department, 
   DepartmentUser, 
   CreateDepartmentRequest, 
-  UpdateDepartmentRequest 
+  UpdateDepartmentRequest,
+  Subdepartment,
+  CreateSubdepartmentRequest,
+  UpdateSubdepartmentRequest
 } from '@/types/type';
 
 // Get all departments created by current admin
@@ -143,6 +146,95 @@ export const checkDepartmentNameExists = async (departmentName: string): Promise
     return response.data.exists;
   } catch (error) {
     console.error('Error checking department name:', error);
+    throw error;
+  }
+};
+
+// Subdepartment API functions
+
+// Get all subdepartments for a department
+export const fetchSubdepartments = async (departmentId: string): Promise<Subdepartment[]> => {
+  try {
+    const token = await AuthStorage.getToken();
+    if (!token) throw new Error('No authentication token');
+
+    const response = await axios.get(`${API_URL}/api/departments/${departmentId}/subdepartments`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching subdepartments:', error);
+    throw error;
+  }
+};
+
+// Create a new subdepartment
+export const createSubdepartment = async (
+  departmentId: string, 
+  subdepartmentData: CreateSubdepartmentRequest
+): Promise<Subdepartment> => {
+  try {
+    const token = await AuthStorage.getToken();
+    if (!token) throw new Error('No authentication token');
+
+    const response = await axios.post(
+      `${API_URL}/api/departments/${departmentId}/subdepartments`, 
+      subdepartmentData, 
+      {
+        headers: { 
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+
+    return response.data;
+  } catch (error) {
+    console.error('Error creating subdepartment:', error);
+    throw error;
+  }
+};
+
+// Update subdepartment
+export const updateSubdepartment = async (
+  departmentId: string,
+  subdepartmentId: string,
+  subdepartmentData: UpdateSubdepartmentRequest
+): Promise<Subdepartment> => {
+  try {
+    const token = await AuthStorage.getToken();
+    if (!token) throw new Error('No authentication token');
+
+    const response = await axios.put(
+      `${API_URL}/api/departments/${departmentId}/subdepartments/${subdepartmentId}`, 
+      subdepartmentData, 
+      {
+        headers: { 
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+
+    return response.data;
+  } catch (error) {
+    console.error('Error updating subdepartment:', error);
+    throw error;
+  }
+};
+
+// Delete subdepartment
+export const deleteSubdepartment = async (departmentId: string, subdepartmentId: string): Promise<void> => {
+  try {
+    const token = await AuthStorage.getToken();
+    if (!token) throw new Error('No authentication token');
+
+    await axios.delete(`${API_URL}/api/departments/${departmentId}/subdepartments/${subdepartmentId}`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+  } catch (error) {
+    console.error('Error deleting subdepartment:', error);
     throw error;
   }
 }; 
