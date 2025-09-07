@@ -39,8 +39,8 @@ export interface User {
   xetra?: string;
   mandal?: string;
   role?: string;
-  department?: string;
-  departmentId?: string;
+  departments?: string[];
+  departmentIds?: string[];
   subdepartmentIds?: string[];
   totalSabha?: number;
   presentCount?: number;
@@ -54,12 +54,11 @@ export interface Department {
   departmentName: string;
   createdBy: string;
   createdAt: string;
-  adminList: string[];
   userList: string[];
-  hodUserId?: string;
+  hodList: string[];
   createdByName?: string;
-  hodName?: string;
-  adminCount?: number;
+  hodNames?: string[];
+  hodCount?: number;
   userCount?: number;
 }
 
@@ -78,8 +77,8 @@ export interface DepartmentUser {
   fullName: string;
   mobileNumber: string;
   isAdmin: boolean;
-  department?: string;
-  departmentId?: string;
+  departments?: string[];
+  departmentIds?: string[];
   subdepartmentIds?: string[];
   subdepartments?: Array<{id: string, name: string}>;
   xetra?: string;
@@ -89,17 +88,15 @@ export interface DepartmentUser {
 
 export interface CreateDepartmentRequest {
   departmentName: string;
-  adminList: string[];
   userList: string[];
-  hodUserId?: string;
+  hodList: string[];
 }
 
 export interface UpdateDepartmentRequest {
   departmentId: string;
-  adminList?: string[];
   userList?: string[];
   departmentName?: string;
-  hodUserId?: string;
+  hodList?: string[];
 }
 
 export interface CreateSubdepartmentRequest {
@@ -108,7 +105,6 @@ export interface CreateSubdepartmentRequest {
 }
 
 export interface UpdateSubdepartmentRequest {
-  subdepartmentId: string;
   subdepartmentName?: string;
   userList?: string[];
 }
@@ -187,7 +183,7 @@ export interface ChatUser {
   userId: string;
   fullName?: string | null;
   mobileNumber?: string;
-  department?: string;
+  departments?: string[];
   isAdmin?: boolean;
   isOnline?: boolean;
 }

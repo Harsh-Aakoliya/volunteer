@@ -330,9 +330,31 @@ export default function ChatRooms() {
       const socketTimer = setTimeout(() => {
         initializeSocket();
       }, 1);
+
+      // Notify server that user entered chat tab
+      const notifyChatTabEntry = async () => {
+        const userData = await AuthStorage.getUser();
+        if (userData && socketService.socket?.connected) {
+          socketService.enterChatTab(userData.userId);
+        }
+      };
+      
+      const notifyTimer = setTimeout(notifyChatTabEntry, 1500);
+
       return () => {
         console.log("🧹 Chat routes unfocused, cleaning up");
         clearTimeout(socketTimer);
+        clearTimeout(notifyTimer);
+        
+        // Notify server that user left chat tab
+        const notifyChatTabExit = async () => {
+          const userData = await AuthStorage.getUser();
+          if (userData && socketService.socket?.connected) {
+            socketService.leaveChatTab(userData.userId);
+          }
+        };
+        notifyChatTabExit();
+        
         // Don't disconnect socket completely, just remove listeners
         if (socketService.socket) {
           socketService.socket.off("lastMessage");

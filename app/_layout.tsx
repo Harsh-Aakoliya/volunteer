@@ -5,6 +5,8 @@ import { AuthStorage } from '@/utils/authStorage';
 import "../global.css";
 import { Text } from 'react-native';
 import React from 'react';
+import { initializeNotifications } from '@/utils/notificationSetup';
+import { setupChatNotificationListeners, requestChatNotificationPermissions } from '@/utils/chatNotificationHandler';
 
 export default function RootLayout() {
   const [isReady, setIsReady] = useState(false);
@@ -13,10 +15,20 @@ export default function RootLayout() {
     // Preload any necessary data
     const bootstrap = async () => {
       try {
-        // Any initial setup can be done here
+        // Initialize notifications
+        await initializeNotifications();
+        
+        // Request chat notification permissions
+        await requestChatNotificationPermissions();
+        
+        // Setup chat notification listeners
+        setupChatNotificationListeners();
+        
+        // Any other initial setup can be done here
         setIsReady(true);
       } catch (error) {
         console.error('Bootstrap error', error);
+        setIsReady(true); // Still set ready even if notifications fail
       }
     };
 

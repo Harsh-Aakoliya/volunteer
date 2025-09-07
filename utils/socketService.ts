@@ -240,6 +240,26 @@ class SocketService {
     }
   }
 
+  // Notify server when user enters chat tab
+  enterChatTab(userId: string): void {
+    if (this.ensureConnection()) {
+      console.log("📱 Entering chat tab:", userId);
+      this.socket!.emit("enterChatTab", { userId });
+    } else {
+      console.error("❌ Cannot enter chat tab: Socket not connected");
+    }
+  }
+
+  // Notify server when user leaves chat tab
+  leaveChatTab(userId: string): void {
+    if (this.ensureConnection()) {
+      console.log("📱 Leaving chat tab:", userId);
+      this.socket!.emit("leaveChatTab", { userId });
+    } else {
+      console.error("❌ Cannot leave chat tab: Socket not connected");
+    }
+  }
+
   // Send a message to a room
   sendMessage(
     roomId: string,

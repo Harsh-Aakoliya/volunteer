@@ -21,14 +21,15 @@ import {
   getAnnouncementMediaController,
   deleteAnnouncementMediaController,
   getAllDepartmentsController,
-  getAnnouncementDetailsController
+  getAnnouncementDetailsController,
+  getUserAnnouncementsController
 } from '../controllers/announcementController.js';
 import { authenticateToken } from '../middlewares/auth.js';
 
 const router = express.Router();
 
 // Apply authentication middleware to all routes
-// router.use(authenticateToken);
+router.use(authenticateToken);
 
 // Announcement routes
 router.post('/', createAnnouncement);
@@ -62,6 +63,9 @@ router.delete('/draft/:id/empty', removeEmptyDraftController);
 
 // Get all departments
 router.get('/departments', getAllDepartmentsController);
+
+// Get user-specific announcements based on user type
+router.get('/user-announcements', getUserAnnouncementsController);
 
 // Get announcement details with recipients
 router.get('/:id/details', getAnnouncementDetailsController);

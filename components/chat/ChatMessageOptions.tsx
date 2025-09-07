@@ -173,26 +173,26 @@ const ChatMessageOptions: React.FC<ChatMessageOptionProps> = ({
                             {selectedCount} selected
                         </Text>
                     </View>
-                    <View className="flex-row items-center space-x-4">
+                    <View className="flex-row items-center space-x-6">
                         {/* Pin */}
-                        <TouchableOpacity onPress={handlePinPress} className="p-1">
-                            <Ionicons name="bookmark-outline" size={20} color="#1F2937" />
+                        <TouchableOpacity onPress={handlePinPress} className="p-2">
+                            <Ionicons name="bookmark-outline" size={24} color="#1F2937" />
                         </TouchableOpacity>
 
                         {/* Delete - Group admins can delete any message */}
-                        <TouchableOpacity onPress={handleDelete} className="p-1">
-                            <Ionicons name="trash-outline" size={20} color="#DC2626" />
+                        <TouchableOpacity onPress={handleDelete} className="p-2">
+                            <Ionicons name="trash-outline" size={24} color="#DC2626" />
                         </TouchableOpacity>
 
                         {/* Edit - Only for single text message and if user can edit */}
                         <TouchableOpacity 
                             onPress={handleEdit} 
                             disabled={!canEditMessage}
-                            className="p-1"
+                            className="p-2"
                         >
                             <Ionicons 
                                 name="create-outline" 
-                                size={20} 
+                                size={24} 
                                 color={!canEditMessage ? "#9CA3AF" : "#1F2937"} 
                             />
                         </TouchableOpacity>
@@ -201,42 +201,29 @@ const ChatMessageOptions: React.FC<ChatMessageOptionProps> = ({
                         <TouchableOpacity 
                             onPress={handleCopy} 
                             disabled={!isSingleSelection || !isTextMessage || !hasMessageText}
-                            className="p-1"
+                            className="p-2"
                         >
                             <Ionicons 
                                 name="copy-outline" 
-                                size={20} 
+                                size={24} 
                                 color={(!isSingleSelection || !isTextMessage || !hasMessageText) ? "#9CA3AF" : "#1F2937"} 
                             />
                         </TouchableOpacity>
 
                         {/* Forward */}
-                        <TouchableOpacity onPress={handleForward} className="p-1">
-                            <Ionicons name="arrow-redo-outline" size={20} color="#1F2937" />
-                        </TouchableOpacity>
-
-                        {/* Reply - Only for single message */}
-                        <TouchableOpacity 
-                            onPress={handleReply} 
-                            disabled={!isSingleSelection}
-                            className="p-1"
-                        >
-                            <Ionicons 
-                                name="arrow-undo-outline" 
-                                size={20} 
-                                color={!isSingleSelection ? "#9CA3AF" : "#1F2937"} 
-                            />
+                        <TouchableOpacity onPress={handleForward} className="p-2">
+                            <Ionicons name="arrow-redo-outline" size={24} color="#1F2937" />
                         </TouchableOpacity>
 
                         {/* Info - Only for single message */}
                         <TouchableOpacity 
                             onPress={handleInfo} 
                             disabled={!isSingleSelection}
-                            className="p-1"
+                            className="p-2"
                         >
                             <Ionicons 
                                 name="information-circle-outline" 
-                                size={20} 
+                                size={24} 
                                 color={!isSingleSelection ? "#9CA3AF" : "#1F2937"} 
                             />
                         </TouchableOpacity>

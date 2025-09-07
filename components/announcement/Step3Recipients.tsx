@@ -13,32 +13,28 @@ import Checkbox from 'expo-checkbox';
 import { AuthStorage } from '@/utils/authStorage';
 import { API_URL } from '@/constants/api';
 import axios from 'axios';
-import { ChatUser } from '@/types/type';
 
 interface Department {
   departmentName: string;
-  users: ChatUser[];
-  isExpanded: boolean;
+  isSelected: boolean;
 }
 
 interface Step3RecipientsProps {
-  selectedUserIds: string[];
-  lockedUserIds?: string[]; // Users who already received the announcement (but can still be unchecked)
-  onNext: (selectedUserIds: string[]) => void;
+  selectedDepartments: string[];
+  onNext: (selectedDepartments: string[]) => void;
   onBack: () => void;
   isEdit?: boolean;
 }
 
 export default function Step3Recipients({ 
-  selectedUserIds: initialSelectedUserIds,
-  lockedUserIds = [],
+  selectedDepartments: initialSelectedDepartments,
   onNext, 
   onBack,
   isEdit = false
 }: Step3RecipientsProps) {
-  const [selectedUserIds, setSelectedUserIds] = useState<string[]>(initialSelectedUserIds);
+  const [selectedDepartments, setSelectedDepartments] = useState<string[]>(initialSelectedDepartments);
   const [searchQuery, setSearchQuery] = useState('');
-  const [userDepartment, setUserDepartment] = useState('');
+  const [userDepartments, setUserDepartments] = useState<string[]>([]);
   const [isKaryalay, setIsKaryalay] = useState(false);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [filteredDepartments, setFilteredDepartments] = useState<Department[]>([]);
@@ -47,263 +43,176 @@ export default function Step3Recipients({
   useEffect(() => {
     const getCurrentUser = async () => {
       const userData = await AuthStorage.getUser();
+      console.log("User data in step3recipients" ,userData);
       if (userData) {
-        setUserDepartment(userData.department || '');
-        setIsKaryalay(userData.department === 'Karyalay');
+        const departments = userData.departments || [];
+        const isKaryalayUser = userData?.departments && userData?.departments.includes('Karyalay') || false;
+        
+        setUserDepartments(departments);
+        setIsKaryalay(isKaryalayUser);
+        
+        console.log("User departments" ,departments);
+        console.log("Is Karyalay user" ,isKaryalayUser);
+        
+        // Load departments after setting user data
+        await loadDepartments(departments, isKaryalayUser);
       }
     };
     getCurrentUser();
-    loadDepartmentsWithUsers();
   }, []);
 
-  // Update selected users when initial props change
+  // Update selected departments when initial props change
   useEffect(() => {
-    console.log('Step3Recipients: Updating selected users from props:', initialSelectedUserIds);
-    setSelectedUserIds(initialSelectedUserIds);
-  }, [initialSelectedUserIds]);
+    console.log('Step3Recipients: Updating selected departments from props:', initialSelectedDepartments);
+    setSelectedDepartments(initialSelectedDepartments);
+  }, [initialSelectedDepartments]);
 
   // Debug effect to log current state
   useEffect(() => {
     console.log('Step3Recipients: Current state:', {
-      selectedUserIds,
-      lockedUserIds,
+      selectedDepartments,
       isEdit,
-      initialSelectedUserIds
+      initialSelectedDepartments
     });
-  }, [selectedUserIds, lockedUserIds, isEdit, initialSelectedUserIds]);
+  }, [selectedDepartments, isEdit, initialSelectedDepartments]);
 
-  // Filter departments and users based on search query
+  // Filter departments based on search query
   useEffect(() => {
     if (searchQuery.trim() === '') {
       setFilteredDepartments(departments);
     } else {
-      const filtered = departments.map(dept => ({
-        ...dept,
-        users: dept.users.filter(user => 
-          (user.fullName?.toLowerCase().includes(searchQuery.toLowerCase()) || false) ||
-          (user.mobileNumber?.includes(searchQuery) || false)
-        )
-      })).filter(dept => dept.users.length > 0);
+      const filtered = departments.filter(dept => 
+        dept.departmentName.toLowerCase().includes(searchQuery.toLowerCase())
+      );
       setFilteredDepartments(filtered);
     }
   }, [searchQuery, departments]);
 
-  const loadDepartmentsWithUsers = async () => {
+  const loadDepartments = async (userDepts?: string[], isKaryalayUser?: boolean) => {
     try {
       setIsLoading(true);
       const token = await AuthStorage.getToken();
 
-      // Get all departments
-      const deptResponse = await axios.get(`${API_URL}/api/announcements/departments`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-
-      // Get all users with department information
-      const usersResponse = await axios.get(`${API_URL}/api/chat/users`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-
-      const allUsers = usersResponse.data;
-      const departmentNames = deptResponse.data;
-
-      // Group users by department
-      const departmentMap: { [key: string]: ChatUser[] } = {};
+      // Use passed parameters or state values
+      const currentUserDepartments = userDepts || userDepartments;
+      const currentIsKaryalay = isKaryalayUser !== undefined ? isKaryalayUser : isKaryalay;
       
-      // Initialize all departments
-      departmentNames.forEach((deptName: string) => {
-        departmentMap[deptName] = [];
-      });
-
-      // Group users by their department
-      allUsers.forEach((user: any) => {
-        if (user.department && departmentMap.hasOwnProperty(user.department)) {
-          departmentMap[user.department].push({
-            userId: user.userId,
-            fullName: user.fullName,
-            mobileNumber: user.mobileNumber,
-            department: user.department
-          });
-        }
-      });
-
-      // Convert to department array format and filter based on user access
-      let departmentList: Department[] = Object.entries(departmentMap)
-        .filter(([_, users]) => users.length > 0)
-        .map(([deptName, users]) => ({
-          departmentName: deptName,
-          users: users,
-          isExpanded: false
-        }));
-
       // Filter departments based on user access level
-      if (!isKaryalay && userDepartment) {
-        // HODs can only see their own department
-        departmentList = departmentList.filter(dept => dept.departmentName === userDepartment);
+      let availableDepartments: string[] = [];
+      
+      if (currentIsKaryalay) {
+        // Get all departments
+        const response = await axios.get(`${API_URL}/api/announcements/departments`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const allDepartments = response.data;
+        // Karyalay users can send to all departments
+        availableDepartments = allDepartments;
+      } else {
+        // HOD users can only send to their own departments
+        availableDepartments = currentUserDepartments;
+        
+        // If HOD has no departments, this might be a data issue
+        if (availableDepartments.length === 0) {
+          console.warn("HOD user has no departments assigned!");
+          alert("Warning: You don't have any departments assigned. Please contact administrator.");
+        }
       }
-      // Karyalay users can see all departments
+      console.log("Available departments" ,availableDepartments);
+      console.log("Current user departments" ,currentUserDepartments);
+      console.log("Current is Karyalay" ,currentIsKaryalay);
 
-      setDepartments(departmentList);
-      setFilteredDepartments(departmentList);
+      // Convert to department objects with selection state
+      const departmentObjects: Department[] = availableDepartments.map(deptName => ({
+        departmentName: deptName,
+        isSelected: selectedDepartments.includes(deptName)
+      }));
+
+      setDepartments(departmentObjects);
+      setFilteredDepartments(departmentObjects);
     } catch (error) {
-      console.error('Error loading departments with users:', error);
-      alert('Failed to load departments and users');
+      console.error('Error loading departments:', error);
+      alert('Failed to load departments');
     } finally {
       setIsLoading(false);
     }
   };
 
-  const toggleDepartmentExpansion = (departmentName: string) => {
-    setDepartments(prev => {
-      const updated = prev.map(dept => 
-        dept.departmentName === departmentName 
-          ? { ...dept, isExpanded: !dept.isExpanded }
-          : dept
-      );
-      
-      // Also update filtered departments to maintain expansion state
-      setFilteredDepartments(currentFiltered => 
-        currentFiltered.map(dept => 
-          dept.departmentName === departmentName 
-            ? { ...dept, isExpanded: !dept.isExpanded }
-            : dept
-        )
-      );
-      
-      return updated;
-    });
-  };
-
-  const toggleUserSelection = (userId: string) => {
-    // Allow toggling all users, including those who already received the announcement
-    setSelectedUserIds(prev => 
-      prev.includes(userId)
-        ? prev.filter(id => id !== userId)
-        : [...prev, userId]
-    );
-  };
-
   const toggleDepartmentSelection = (departmentName: string) => {
-    const department = departments.find(d => d.departmentName === departmentName);
-    if (!department) return;
+    setSelectedDepartments(prev => 
+      prev.includes(departmentName)
+        ? prev.filter(name => name !== departmentName)
+        : [...prev, departmentName]
+    );
 
-    const allUsers = department.users;
-    const allUsersSelected = allUsers.length > 0 && 
-      allUsers.every(user => selectedUserIds.includes(user.userId));
+    // Update the departments state
+    setDepartments(prev => prev.map(dept => 
+      dept.departmentName === departmentName 
+        ? { ...dept, isSelected: !dept.isSelected }
+        : dept
+    ));
+  };
 
-    if (allUsersSelected) {
-      // Deselect all users from this department
-      setSelectedUserIds(prev => prev.filter(id => 
-        !allUsers.some(user => user.userId === id)
-      ));
+  const selectAllDepartments = () => {
+    const allDepartmentNames = filteredDepartments.map(dept => dept.departmentName);
+    const allSelected = allDepartmentNames.every(name => selectedDepartments.includes(name));
+    
+    if (allSelected) {
+      // Deselect all filtered departments
+      setSelectedDepartments(prev => prev.filter(name => !allDepartmentNames.includes(name)));
     } else {
-      // Select all users from this department
-      const userIds = allUsers.map(user => user.userId);
-      setSelectedUserIds(prev => [...new Set([...prev, ...userIds])]);
+      // Select all filtered departments
+      setSelectedDepartments(prev => [...new Set([...prev, ...allDepartmentNames])]);
     }
+
+    // Update departments state
+    setDepartments(prev => prev.map(dept => ({
+      ...dept,
+      isSelected: allSelected ? false : (filteredDepartments.some(fd => fd.departmentName === dept.departmentName) ? true : dept.isSelected)
+    })));
   };
 
   const handleNext = () => {
-    onNext(selectedUserIds);
+    onNext(selectedDepartments);
   };
 
-  const renderDepartmentHeader = (department: Department) => {
-    const allUsers = department.users;
-    const allUsersSelected = allUsers.length > 0 && 
-      allUsers.every(user => selectedUserIds.includes(user.userId));
-    const someSelected = selectedUserIds.some(id => department.users.some(user => user.userId === id)) && !allUsersSelected;
-
-    return (
-      <View className="bg-gray-100 p-3 border-b border-gray-200">
-        <View className="flex-row items-center justify-between">
-          <View className="flex-row items-center flex-1">
-            <TouchableOpacity
-              onPress={() => toggleDepartmentExpansion(department.departmentName)}
-              className="mr-3 p-1"
-            >
-              <Ionicons 
-                name={department.isExpanded ? "chevron-down" : "chevron-forward"} 
-                size={20} 
-                color="#6b7280" 
-              />
-            </TouchableOpacity>
-            
-            <TouchableOpacity
-              onPress={() => toggleDepartmentExpansion(department.departmentName)}
-              className="flex-1"
-            >
-              <Text className="text-lg font-bold text-gray-800">
-                {department.departmentName}
-              </Text>
-              <Text className="text-sm text-gray-600">
-                {selectedUserIds.filter(id => department.users.some(user => user.userId === id)).length}/{department.users.length} selected
-              </Text>
-            </TouchableOpacity>
-          </View>
-          
-          <View className="flex-row items-center">
-            <Checkbox
-              value={allUsersSelected}
-              onValueChange={() => toggleDepartmentSelection(department.departmentName)}
-              color={allUsersSelected ? '#0284c7' : someSelected ? '#0284c7' : undefined}
-              style={{ 
-                transform: [{ scaleX: 1.2 }, { scaleY: 1.2 }],
-                opacity: someSelected ? 0.6 : 1
-              }}
-              disabled={allUsers.length === 0}
-            />
-          </View>
-        </View>
-      </View>
-    );
-  };
-
-  const renderUserItem = (user: ChatUser) => {
-    const isSelected = selectedUserIds.includes(user.userId);
-    const wasAlreadySent = lockedUserIds.includes(user.userId);
-    const firstLetter = user.fullName ? user.fullName.charAt(0).toUpperCase() : '?';
+  const renderDepartmentItem = (department: Department) => {
+    const isSelected = selectedDepartments.includes(department.departmentName);
 
     return (
       <TouchableOpacity
-        key={user.userId}
-        onPress={() => toggleUserSelection(user.userId)}
-        className={`flex-row items-center p-3 border-b border-gray-100 ${
+        key={department.departmentName}
+        onPress={() => toggleDepartmentSelection(department.departmentName)}
+        className={`flex-row items-center p-4 border-b border-gray-100 ${
           isSelected ? 'bg-blue-50' : 'bg-white'
         }`}
       >
         <Checkbox
           value={isSelected}
-          onValueChange={() => toggleUserSelection(user.userId)}
+          onValueChange={() => toggleDepartmentSelection(department.departmentName)}
           className="mr-3"
           color={isSelected ? '#0284c7' : undefined}
         />
         
-        <View className="w-10 h-10 rounded-full justify-center items-center mr-3 bg-blue-100">
-          <Text className="font-bold text-blue-500">
-            {firstLetter}
-          </Text>
+        <View className="w-12 h-12 rounded-full justify-center items-center mr-3 bg-blue-100">
+          <Ionicons name="business" size={24} color="#0284c7" />
         </View>
         
         <View className="flex-1">
-          <View className="flex-row items-center">
-            <Text className="text-base font-medium text-gray-800">
-              {user.fullName || 'Unknown User'}
-            </Text>
-            {wasAlreadySent && (
-              <View className="ml-2 flex-row items-center">
-                <Ionicons name="checkmark-circle" size={14} color="#10b981" />
-                <Text className="text-xs text-green-600 ml-1">Already sent</Text>
-              </View>
-            )}
-          </View>
+          <Text className="text-base font-medium text-gray-800">
+            {department.departmentName}
+          </Text>
           <Text className="text-sm text-gray-500">
-            {user.mobileNumber || 'No phone number'}
+            Department
           </Text>
         </View>
       </TouchableOpacity>
     );
   };
 
-  const isFormValid = selectedUserIds.length > 0;
+  const isFormValid = selectedDepartments.length > 0;
+  const allFilteredSelected = filteredDepartments.length > 0 && 
+    filteredDepartments.every(dept => selectedDepartments.includes(dept.departmentName));
 
   return (
     <View className="flex-1 bg-white">
@@ -314,7 +223,7 @@ export default function Step3Recipients({
         </TouchableOpacity>
         
         <Text className="text-lg font-semibold text-gray-900">
-          {isEdit ? 'Edit Recipients' : 'Select Recipients'}
+          {isEdit ? 'Edit Departments' : 'Select Departments'}
         </Text>
         
         <View className="w-8" />
@@ -325,24 +234,22 @@ export default function Step3Recipients({
         <Text className="text-blue-800 font-medium text-center">Step 3 of 4: Recipients</Text>
         <Text className="text-blue-600 text-sm text-center mt-1">
           {isEdit 
-            ? (isKaryalay 
-              ? 'Select users to receive this announcement. You can uncheck users who already received it.'
-              : 'Select users from your department. You can uncheck users who already received it.')
+            ? 'Select departments to receive this announcement'
             : (isKaryalay 
-              ? 'Select departments and users to receive this announcement'
-              : 'Select users from your department to receive this announcement')
+              ? 'Select departments to receive this announcement'
+              : 'Select departments from your access to receive this announcement')
           }
         </Text>
       </View>
 
       <View className="flex-1">
-        {/* Search Bar */}
+        {/* Search Bar and Select All */}
         <View className="p-4 bg-white border-b border-gray-200">
-          <View className="flex-row items-center bg-gray-100 rounded-lg px-3 py-2">
+          <View className="flex-row items-center bg-gray-100 rounded-lg px-3 py-2 mb-3">
             <Ionicons name="search" size={20} color="#6b7280" />
             <TextInput
               className="flex-1 ml-2 text-base"
-              placeholder="Search departments or users..."
+              placeholder="Search departments..."
               value={searchQuery}
               onChangeText={setSearchQuery}
             />
@@ -352,52 +259,47 @@ export default function Step3Recipients({
               </TouchableOpacity>
             )}
           </View>
+
+          {/* Select All Button */}
+          {filteredDepartments.length > 1 && (
+            <TouchableOpacity
+              onPress={selectAllDepartments}
+              className="flex-row items-center p-3 bg-gray-50 rounded-lg"
+            >
+              <Checkbox
+                value={allFilteredSelected}
+                onValueChange={selectAllDepartments}
+                className="mr-3"
+                color={allFilteredSelected ? '#0284c7' : undefined}
+              />
+              <Text className="text-gray-700 font-medium">
+                {allFilteredSelected ? 'Deselect All' : 'Select All'} 
+                {searchQuery ? ' (Filtered)' : ''}
+              </Text>
+            </TouchableOpacity>
+          )}
         </View>
 
-        {/* Department and User Selector */}
+        {/* Department Selector */}
         {isLoading ? (
           <View className="flex-1 justify-center items-center">
             <ActivityIndicator size="large" color="#0284c7" />
-            <Text className="text-gray-500 mt-2">Loading users...</Text>
+            <Text className="text-gray-500 mt-2">Loading departments...</Text>
           </View>
         ) : (
-          <ScrollView className="flex-1 px-4 py-2">
+          <ScrollView className="flex-1">
             {filteredDepartments.length === 0 ? (
-              <View className="justify-center items-center p-4">
-                <Ionicons name="people-outline" size={60} color="#d1d5db" />
+              <View className="justify-center items-center p-8">
+                <Ionicons name="business-outline" size={60} color="#d1d5db" />
                 <Text className="text-gray-500 mt-4 text-center">
                   {searchQuery.length > 0 
-                    ? "No users match your search" 
-                    : "No users available"}
+                    ? "No departments match your search" 
+                    : "No departments available"}
                 </Text>
               </View>
             ) : (
-              filteredDepartments.map((department) => (
-                <View key={department.departmentName} className="mb-2 bg-white rounded-lg shadow-sm overflow-hidden border border-gray-200">
-                  {renderDepartmentHeader(department)}
-                  
-                  {department.isExpanded && (
-                    <View>
-                      {department.users.map(user => renderUserItem(user))}
-                    </View>
-                  )}
-                </View>
-              ))
-            )}
-            
-            {/* Show info about previously sent users */}
-            {isEdit && lockedUserIds.length > 0 && (
-              <View className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg">
-                <View className="flex-row items-center mb-2">
-                  <Ionicons name="checkmark-circle" size={16} color="#10b981" />
-                  <Text className="text-green-800 font-medium ml-2">
-                    Previously Sent Users
-                  </Text>
-                </View>
-                <Text className="text-green-700 text-sm">
-                  {lockedUserIds.length} user{lockedUserIds.length !== 1 ? 's' : ''} already received this announcement. 
-                  You can uncheck them if you don't want them to see it anymore, or select additional users.
-                </Text>
+              <View>
+                {filteredDepartments.map(department => renderDepartmentItem(department))}
               </View>
             )}
           </ScrollView>
@@ -409,22 +311,17 @@ export default function Step3Recipients({
         {/* Selection Summary */}
         <View className="mb-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
           <View className="flex-row items-center mb-1">
-            <Ionicons name="people" size={16} color="#2563eb" />
+            <Ionicons name="business" size={16} color="#2563eb" />
             <Text className="text-blue-800 font-medium ml-2">
               Selection Summary
             </Text>
           </View>
           <Text className="text-blue-700 text-sm">
-            {selectedUserIds.length > 0 
-              ? `Selected ${selectedUserIds.length} user${selectedUserIds.length !== 1 ? 's' : ''}`
-              : 'No users selected'
+            {selectedDepartments.length > 0 
+              ? `Selected ${selectedDepartments.length} department${selectedDepartments.length !== 1 ? 's' : ''}: ${selectedDepartments.join(', ')}`
+              : 'No departments selected'
             }
           </Text>
-          {isEdit && lockedUserIds.length > 0 && (
-            <Text className="text-blue-600 text-xs mt-1">
-              ({lockedUserIds.filter(id => selectedUserIds.includes(id)).length}/{lockedUserIds.length} previously sent users still selected)
-            </Text>
-          )}
         </View>
 
         {/* Validation Notice */}
@@ -435,7 +332,7 @@ export default function Step3Recipients({
               <Text className="text-orange-800 font-medium ml-2">Selection required</Text>
             </View>
             <Text className="text-orange-700 text-sm mt-1">
-              You must select at least one user to continue.
+              You must select at least one department to continue.
             </Text>
           </View>
         )}

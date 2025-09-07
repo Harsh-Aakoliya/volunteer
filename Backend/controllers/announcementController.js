@@ -1,24 +1,25 @@
 // Announcement model and controller
 import pool from "../config/database.js";
 import path from "path";
+import { sendAnnouncementNotifications } from "./notificationController.js";
 const defaultCoverImage=path.join(process.cwd(), 'media',"defaultcoverimage.png");
 
 const Announcement = {
-  create: async (title, body, authorId, status = 'published', recipientUserIds = []) => {
+  create: async (title, body, authorId, status = 'published', departmentTags = []) => {
     // console.log("Body of announcement at backend", body);
     const result = await pool.query(
-      'INSERT INTO "announcements" ("title", "body", "authorId", "status", "updatedAt", "recipientUserIds") VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, $5) RETURNING *',
-      [title, body, authorId, status, recipientUserIds]
+      'INSERT INTO "announcements" ("title", "body", "authorId", "status", "updatedAt", "departmentTag") VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, $5) RETURNING *',
+      [title, body, authorId, status, departmentTags]
     );
     return result.rows[0];
   },
   
-  createDraft: async (authorId, recipientUserIds = []) => {
+  createDraft: async (authorId, departmentTags = []) => {
     // console.log(path.join(process.cwd()));
     // console.log("defaultCoverImage", defaultCoverImage);
     const result = await pool.query(
-      'INSERT INTO "announcements" ("title", "body", "authorId", "status", "updatedAt", "recipientUserIds") VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, $5) RETURNING *',
-      ['', '', authorId, 'draft', recipientUserIds]
+      'INSERT INTO "announcements" ("title", "body", "authorId", "status", "updatedAt", "departmentTag") VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, $5) RETURNING *',
+      ['', '', authorId, 'draft', departmentTags]
     );
     return result.rows[0];
   },
@@ -101,15 +102,15 @@ const Announcement = {
     }
 },
 
-  updateDraft: async (id, title, body, authorId, recipientUserIds = []) => {
+  updateDraft: async (id, title, body, authorId, departmentTags = []) => {
     const result = await pool.query(
-      'UPDATE "announcements" SET "title" = $1, "body" = $2, "recipientUserIds" = $3, "updatedAt" = CURRENT_TIMESTAMP WHERE "id" = $4 AND "authorId" = $5 AND "status" = $6 RETURNING *',
-      [title, body, recipientUserIds, id, authorId, 'draft']
+      'UPDATE "announcements" SET "title" = $1, "body" = $2, "departmentTag" = $3, "updatedAt" = CURRENT_TIMESTAMP WHERE "id" = $4 AND "authorId" = $5 AND "status" = $6 RETURNING *',
+      [title, body, departmentTags, id, authorId, 'draft']
     );
     return result.rows[0];
   },
 
-  publishDraft: async (id, title, body, authorId, recipientUserIds = []) => {
+  publishDraft: async (id, title, body, authorId, departmentTags = []) => {
     // First get the original createdAt timestamp
     const originalResult = await pool.query(
       'SELECT "createdAt" FROM "announcements" WHERE "id" = $1 AND "authorId" = $2',
@@ -124,8 +125,8 @@ const Announcement = {
     
     // Update the draft to published while preserving the original createdAt
     const result = await pool.query(
-      'UPDATE "announcements" SET "title" = $1, "body" = $2, "recipientUserIds" = $3, "status" = $4, "createdAt" = $5, "updatedAt" = CURRENT_TIMESTAMP WHERE "id" = $6 AND "authorId" = $7 RETURNING *',
-      [title, body, recipientUserIds, 'published', originalCreatedAt, id, authorId]
+      'UPDATE "announcements" SET "title" = $1, "body" = $2, "departmentTag" = $3, "status" = $4, "createdAt" = $5, "updatedAt" = CURRENT_TIMESTAMP WHERE "id" = $6 AND "authorId" = $7 RETURNING *',
+      [title, body, departmentTags, 'published', originalCreatedAt, id, authorId]
     );
     return result.rows[0];
   },
@@ -157,7 +158,7 @@ const Announcement = {
   getAll: async () => {
     try {
       const result = await pool.query(`
-        SELECT a.*, u."fullName" as "authorName" 
+        SELECT a.*, u."fullName" as "authorName", u."departments" as "authorDepartments"
         FROM "announcements" a
         LEFT JOIN "users" u ON a."authorId" = u."userId"
         WHERE a."status" = 'published'
@@ -174,18 +175,13 @@ const Announcement = {
 
   getByDepartment: async (departmentName) => {
     try {
-      // Get announcements for a department by finding all announcements 
-      // where any user from that department is in the recipient list
+      // Get announcements for a department by checking if department is in departmentTag array
       const result = await pool.query(`
-        SELECT DISTINCT a.*, u."fullName" as "authorName" 
+        SELECT DISTINCT a.*, u."fullName" as "authorName", u."departments" as "authorDepartments"
         FROM "announcements" a
         LEFT JOIN "users" u ON a."authorId" = u."userId"
         WHERE a."status" = 'published' 
-        AND EXISTS (
-          SELECT 1 FROM "users" dept_users 
-          WHERE dept_users."department" = $1 
-          AND dept_users."userId" = ANY(a."recipientUserIds")
-        )
+        AND $1 = ANY(a."departmentTag")
         ORDER BY a."createdAt" DESC
       `, [departmentName]);
       return result.rows;
@@ -197,13 +193,31 @@ const Announcement = {
 
   getByUserId: async (userId) => {
     try {
+      // Get user's departments first
+      const userResult = await pool.query(`
+        SELECT "departments", "isAdmin" FROM "users" WHERE "userId" = $1
+      `, [userId]);
+      
+      if (userResult.rows.length === 0) {
+        return [];
+      }
+      
+      const userDepartments = userResult.rows[0].departments || [];
+      const isAdmin = userResult.rows[0].isAdmin;
+      
+      if (userDepartments.length === 0) {
+        return [];
+      }
+      
+      // Get announcements where any of user's departments is in departmentTag
       const result = await pool.query(`
-        SELECT a.*, u."fullName" as "authorName" 
+        SELECT a.*, u."fullName" as "authorName", u."departments" as "authorDepartments"
         FROM "announcements" a
         LEFT JOIN "users" u ON a."authorId" = u."userId"
-        WHERE a."status" = 'published' AND $1 = ANY(a."recipientUserIds")
+        WHERE a."status" = 'published' 
+        AND (a."departmentTag" && $1)
         ORDER BY a."createdAt" DESC
-      `, [userId]);
+      `, [userDepartments]);
       return result.rows;
     } catch (error) {
       console.error("Database query failed:", error);
@@ -373,10 +387,10 @@ const Announcement = {
 
 export const createAnnouncement = async (req, res) => {
   try {
-    const { title, body, authorId, status = 'published', recipientUserIds = [] } = req.body;
+    const { title, body, authorId, status = 'published', departmentTags = [] } = req.body;
     
     // Check if user has permission to create announcements
-    const userResult = await pool.query('SELECT "isAdmin", "department" FROM "users" WHERE "userId" = $1', [authorId]);
+    const userResult = await pool.query('SELECT "isAdmin", "departments" FROM "users" WHERE "userId" = $1', [authorId]);
     if (userResult.rows.length === 0) {
       return res.status(404).json({ error: 'User not found' });
     }
@@ -386,7 +400,30 @@ export const createAnnouncement = async (req, res) => {
       return res.status(403).json({ error: 'Only HODs and Karyalay users can create announcements' });
     }
     
-    const announcement = await Announcement.create(title, body, authorId, status, recipientUserIds);
+    const announcement = await Announcement.create(title, body, authorId, status, departmentTags);
+    
+    // Send push notifications after creating announcement
+    if (status === 'published' && departmentTags.length > 0) {
+      try {
+        // Get author name for notifications
+        const authorResult = await pool.query('SELECT "fullName" FROM "users" WHERE "userId" = $1', [authorId]);
+        const authorName = authorResult.rows[0]?.fullName || 'Unknown User';
+        
+        // Send notifications asynchronously
+        sendAnnouncementNotifications(
+          announcement.id,
+          authorId,
+          authorName,
+          title,
+          departmentTags
+        ).catch(error => {
+          console.error('Error sending announcement notifications:', error);
+        });
+      } catch (error) {
+        console.error('Error preparing announcement notifications:', error);
+      }
+    }
+    
     res.status(201).json(announcement);
   } catch (error) {
     res.status(500).json({ error: 'Failed to create announcement' });
@@ -494,12 +531,12 @@ export const deleteAnnouncement = async (req, res) => {
 export const updateAnnouncementController = async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, body, recipientUserIds = [] } = req.body;
+    const { title, body, departmentTags = [] } = req.body;
     
     // Update the announcement
     const result = await pool.query(
-      'UPDATE "announcements" SET "title" = $1, "body" = $2, "recipientUserIds" = $3, "updatedAt" = CURRENT_TIMESTAMP WHERE "id" = $4 RETURNING *',
-      [title, body, recipientUserIds, id]
+      'UPDATE "announcements" SET "title" = $1, "body" = $2, "departmentTag" = $3, "updatedAt" = CURRENT_TIMESTAMP WHERE "id" = $4 RETURNING *',
+      [title, body, departmentTags, id]
     );
     
     if (result.rows.length === 0) {
@@ -516,10 +553,10 @@ export const updateAnnouncementController = async (req, res) => {
 // New draft-related controllers
 export const createDraftController = async (req, res) => {
   try {
-    const { authorId, recipientUserIds = [] } = req.body;
+    const { authorId, departmentTags = [] } = req.body;
     
     // Check if user has permission to create announcements
-    const userResult = await pool.query('SELECT "isAdmin", "department" FROM "users" WHERE "userId" = $1', [authorId]);
+    const userResult = await pool.query('SELECT "isAdmin", "departments" FROM "users" WHERE "userId" = $1', [authorId]);
     if (userResult.rows.length === 0) {
       return res.status(404).json({ error: 'User not found' });
     }
@@ -529,8 +566,8 @@ export const createDraftController = async (req, res) => {
       return res.status(403).json({ error: 'Only HODs and Karyalay users can create announcements' });
     }
     
-    // Start with empty recipient list - user will select recipients in Step 3
-    const draft = await Announcement.createDraft(authorId, recipientUserIds);
+    // Start with empty department tags - user will select departments in Step 3
+    const draft = await Announcement.createDraft(authorId, departmentTags);
     res.status(201).json(draft);
   } catch (error) {
     console.error('Error creating draft:', error);
@@ -541,8 +578,8 @@ export const createDraftController = async (req, res) => {
 export const updateDraftController = async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, body, authorId, recipientUserIds = [] } = req.body;
-    const draft = await Announcement.updateDraft(id, title, body, authorId, recipientUserIds);
+    const { title, body, authorId, departmentTags = [] } = req.body;
+    const draft = await Announcement.updateDraft(id, title, body, authorId, departmentTags);
     
     if (!draft) {
       return res.status(404).json({ error: 'Draft not found or not authorized' });
@@ -558,11 +595,33 @@ export const updateDraftController = async (req, res) => {
 export const publishDraftController = async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, body, authorId, recipientUserIds = [] } = req.body;
-    const announcement = await Announcement.publishDraft(id, title, body, authorId, recipientUserIds);
+    const { title, body, authorId, departmentTags = [] } = req.body;
+    const announcement = await Announcement.publishDraft(id, title, body, authorId, departmentTags);
     
     if (!announcement) {
       return res.status(404).json({ error: 'Draft not found or not authorized' });
+    }
+    
+    // Send push notifications after publishing draft
+    if (departmentTags.length > 0) {
+      try {
+        // Get author name for notifications
+        const authorResult = await pool.query('SELECT "fullName" FROM "users" WHERE "userId" = $1', [authorId]);
+        const authorName = authorResult.rows[0]?.fullName || 'Unknown User';
+        
+        // Send notifications asynchronously
+        sendAnnouncementNotifications(
+          announcement.id,
+          authorId,
+          authorName,
+          title,
+          departmentTags
+        ).catch(error => {
+          console.error('Error sending announcement notifications:', error);
+        });
+      } catch (error) {
+        console.error('Error preparing announcement notifications:', error);
+      }
     }
     
     res.status(200).json(announcement);
@@ -790,15 +849,15 @@ export const deleteAnnouncementMediaController = async (req, res) => {
   }
 };
 
-// Get announcement details with recipients for editing
+// Get announcement details for editing
 export const getAnnouncementDetailsController = async (req, res) => {
   try {
     const { id } = req.params;
     
-    // Get announcement with recipient details
+    // Get announcement details
     const result = await pool.query(`
-      SELECT a.*, u."fullName" as "authorName",
-             COALESCE(a."recipientUserIds", '{}') as "recipientUserIds"
+      SELECT a.*, u."fullName" as "authorName", u."departments" as "authorDepartments",
+             COALESCE(a."departmentTag", '{}') as "departmentTags"
       FROM "announcements" a
       LEFT JOIN "users" u ON a."authorId" = u."userId"
       WHERE a."id" = $1
@@ -810,24 +869,9 @@ export const getAnnouncementDetailsController = async (req, res) => {
     
     const announcement = result.rows[0];
     
-    // Get recipient user details
-    const recipientUserIds = announcement.recipientUserIds || [];
-    let recipients = [];
-    
-    if (recipientUserIds.length > 0) {
-      const recipientsResult = await pool.query(`
-        SELECT "userId", "fullName", "department"
-        FROM "users"
-        WHERE "userId" = ANY($1)
-      `, [recipientUserIds]);
-      recipients = recipientsResult.rows;
-    }
-    
     res.status(200).json({
       ...announcement,
-      recipients: recipients,
-      // For backward compatibility, derive department tags from recipients
-      departmentTags: [...new Set(recipients.map(r => r.department).filter(Boolean))]
+      departmentTags: announcement.departmentTags || []
     });
   } catch (error) {
     console.error('Error getting announcement details:', error);
@@ -844,5 +888,75 @@ export const getAllDepartmentsController = async (req, res) => {
   } catch (error) {
     console.error('Error getting departments:', error);
     res.status(500).json({ error: 'Failed to get departments' });
+  }
+};
+
+// Get user-specific announcements based on user type
+export const getUserAnnouncementsController = async (req, res) => {
+  try {
+    // Check if user is authenticated
+    if (!req.user || !req.user.userId) {
+      return res.status(401).json({ error: 'User not authenticated' });
+    }
+    
+    const userId = req.user.userId;
+    console.log("req.user", req.user);
+    console.log("userId", userId);
+    
+    // Get user details to determine user type
+    const userResult = await pool.query(`
+      SELECT "isAdmin", "departments" FROM "users" WHERE "userId" = $1
+    `, [userId]);
+    
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    const user = userResult.rows[0];
+    const userDepartments = user.departments || [];
+    const isKaryalay = user.isAdmin && userDepartments.includes('Karyalay');
+    const isHOD = user.isAdmin && !userDepartments.includes('Karyalay');
+    
+    let announcements;
+    
+    if (isKaryalay) {
+      // Karyalay users see announcements they created OR where department tag includes 'Karyalay'
+      const result = await pool.query(`
+        SELECT DISTINCT a.*, u."fullName" as "authorName", u."departments" as "authorDepartments"
+        FROM "announcements" a
+        LEFT JOIN "users" u ON a."authorId" = u."userId"
+        WHERE a."status" = 'published' 
+        AND (a."authorId" = $1 OR 'Karyalay' = ANY(a."departmentTag"))
+        ORDER BY a."createdAt" DESC
+      `, [userId]);
+      announcements = result.rows;
+    } else if (isHOD) {
+      // HOD users see announcements they created OR where department tag includes any of their departments
+      const result = await pool.query(`
+        SELECT DISTINCT a.*, u."fullName" as "authorName", u."departments" as "authorDepartments"
+        FROM "announcements" a
+        LEFT JOIN "users" u ON a."authorId" = u."userId"
+        WHERE a."status" = 'published' 
+        AND (a."authorId" = $1 OR (a."departmentTag" && $2))
+        ORDER BY a."createdAt" DESC
+      `, [userId, userDepartments]);
+      announcements = result.rows;
+    } else {
+      // Normal users see announcements where department tag includes any of their departments
+      const result = await pool.query(`
+        SELECT DISTINCT a.*, u."fullName" as "authorName", u."departments" as "authorDepartments"
+        FROM "announcements" a
+        LEFT JOIN "users" u ON a."authorId" = u."userId"
+        WHERE a."status" = 'published' 
+        AND (a."departmentTag" && $1)
+        ORDER BY a."createdAt" DESC
+      `, [userDepartments]);
+      announcements = result.rows;
+    }
+    
+    res.status(200).json(announcements);
+  } catch (error) {
+    console.error('Error fetching user announcements:', error);
+    res.status(500).json({ error: 'Failed to fetch user announcements' });
   }
 };

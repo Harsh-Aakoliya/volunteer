@@ -22,6 +22,7 @@ import {
   fetchAllUsers, 
   fetchSubdepartments,
   createSubdepartment,
+  updateSubdepartment,
   deleteSubdepartment
 } from '@/api/department';
 import { Subdepartment } from '@/types/type';
@@ -40,6 +41,8 @@ export default function DepartmentDetailPage() {
   const [selectedSubdeptUsers, setSelectedSubdeptUsers] = useState<DepartmentUser[]>([]);
   const [isCreatingSubdept, setIsCreatingSubdept] = useState(false);
   const [isHODOrKaryalay, setIsHODOrKaryalay] = useState(false);
+  const [expandedSubdepts, setExpandedSubdepts] = useState<Set<string>>(new Set());
+  const [editingSubdept, setEditingSubdept] = useState<Subdepartment | null>(null);
 
   useEffect(() => {
     if (id) {
@@ -52,7 +55,7 @@ export default function DepartmentDetailPage() {
     try {
       const user = await AuthStorage.getUser();
       console.log("user in checkUserPermissions", user);
-      const isKaryalay = Boolean(user?.isAdmin && user?.department === 'Karyalay');
+      const isKaryalay = Boolean(user?.isAdmin && user?.departments?.includes( 'Karyalay' ));
       // Check if user is HOD of this department (will be determined after department loads)
       setIsHODOrKaryalay(isKaryalay);
     } catch (error) {
@@ -77,7 +80,7 @@ export default function DepartmentDetailPage() {
       // Filter users that belong to this department
       const usersInDepartment = allUsers.filter(user => 
         departmentData.userList?.includes(user.userId) || 
-        departmentData.adminList?.includes(user.userId)
+        departmentData.hodList?.includes(user.userId)
       );
       
       setDepartmentUsers(usersInDepartment);
@@ -85,8 +88,8 @@ export default function DepartmentDetailPage() {
       // Update permission check if user is HOD of this department
       const user = await AuthStorage.getUser();
       console.log("user in loadDepartmentData", user);
-      const isKaryalay = Boolean(user?.isAdmin && user?.department === 'Karyalay');
-      const isHOD = departmentData.hodUserId === user?.userId;
+      const isKaryalay = Boolean(user?.isAdmin && user?.departments?.includes('Karyalay'));
+      const isHOD = departmentData.hodList?.includes(user?.userId || '');
       setIsHODOrKaryalay(isKaryalay || isHOD);
     } catch (error) {
       console.error('Error loading department:', error);
@@ -136,21 +139,43 @@ export default function DepartmentDetailPage() {
       return;
     }
 
+    // Check for duplicate names (excluding current subdepartment when editing)
+    const existingSubdept = subdepartments.find(subdept => 
+      subdept.subdepartmentName.toLowerCase() === newSubdeptName.trim().toLowerCase() &&
+      subdept.subdepartmentId !== editingSubdept?.subdepartmentId
+    );
+
+    if (existingSubdept) {
+      Alert.alert('Error', 'A subdepartment with this name already exists');
+      return;
+    }
+
     try {
       setIsCreatingSubdept(true);
       
-      await createSubdepartment(id, {
-        subdepartmentName: newSubdeptName.trim(),
-        userList: selectedSubdeptUsers.map(user => user.userId)
-      });
+      if (editingSubdept) {
+        // Update existing subdepartment
+        await updateSubdepartment(id, editingSubdept.subdepartmentId, {
+          subdepartmentName: newSubdeptName.trim(),
+          userList: selectedSubdeptUsers.map(user => user.userId)
+        });
+        Alert.alert('Success', 'Subdepartment updated successfully');
+      } else {
+        // Create new subdepartment
+        await createSubdepartment(id, {
+          subdepartmentName: newSubdeptName.trim(),
+          userList: selectedSubdeptUsers.map(user => user.userId)
+        });
+        Alert.alert('Success', 'Subdepartment created successfully');
+      }
 
       setShowCreateSubdeptModal(false);
       setNewSubdeptName('');
       setSelectedSubdeptUsers([]);
+      setEditingSubdept(null);
       await loadDepartmentData(false);
-      Alert.alert('Success', 'Subdepartment created successfully');
     } catch (error) {
-      Alert.alert('Error', 'Failed to create subdepartment');
+      Alert.alert('Error', editingSubdept ? 'Failed to update subdepartment' : 'Failed to create subdepartment');
     } finally {
       setIsCreatingSubdept(false);
     }
@@ -190,8 +215,31 @@ export default function DepartmentDetailPage() {
     });
   };
 
+  const toggleSubdepartmentExpansion = (subdeptId: string) => {
+    setExpandedSubdepts(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(subdeptId)) {
+        newSet.delete(subdeptId);
+      } else {
+        newSet.add(subdeptId);
+      }
+      return newSet;
+    });
+  };
+
+  const handleEditSubdepartment = (subdepartment: Subdepartment) => {
+    setEditingSubdept(subdepartment);
+    setNewSubdeptName(subdepartment.subdepartmentName);
+    // Set selected users for this subdepartment
+    const subdeptUsers = departmentUsers.filter(user => 
+      subdepartment.userList.includes(user.userId)
+    );
+    setSelectedSubdeptUsers(subdeptUsers);
+    setShowCreateSubdeptModal(true);
+  };
+
   const UserCard = ({ user }: { user: DepartmentUser }) => {
-    const isAdmin = department?.adminList?.includes(user.userId);
+    const isHOD = department?.hodList?.includes(user.userId);
     
     return (
       <View className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 mb-3">
@@ -207,9 +255,9 @@ export default function DepartmentDetailPage() {
               <Text className="font-semibold text-gray-800 text-lg">
                 {user.fullName}
               </Text>
-              {isAdmin && (
+              {isHOD && (
                 <View className="bg-green-100 px-2 py-1 rounded ml-2">
-                  <Text className="text-green-600 text-xs font-medium">Admin</Text>
+                  <Text className="text-green-600 text-xs font-medium">HOD</Text>
                 </View>
               )}
             </View>
@@ -258,9 +306,9 @@ export default function DepartmentDetailPage() {
     );
   }
 
-  const admins = departmentUsers.filter(user => department.adminList?.includes(user.userId));
+  const hods = departmentUsers.filter(user => department.hodList?.includes(user.userId));
   const users = departmentUsers.filter(user => 
-    department.userList?.includes(user.userId) && !department.adminList?.includes(user.userId)
+    department.userList?.includes(user.userId) && !department.hodList?.includes(user.userId)
   );
 
   return (
@@ -284,6 +332,15 @@ export default function DepartmentDetailPage() {
               </Text>
             </View>
           </View>
+          {/* Subdepartment creation button - Commented out as per requirements */}
+          {/* {isHODOrKaryalay && (
+            <TouchableOpacity
+              onPress={() => setShowCreateSubdeptModal(true)}
+              className="w-10 h-10 bg-white/20 rounded-full items-center justify-center"
+            >
+              <Ionicons name="add" size={24} color="white" />
+            </TouchableOpacity>
+          )} */}
         </View>
       </LinearGradient>
 
@@ -294,18 +351,10 @@ export default function DepartmentDetailPage() {
         }
         showsVerticalScrollIndicator={false}
       >
-        {/* Statistics */}
-        <View className="bg-white rounded-2xl p-6 shadow-sm mb-6">
+        {/* Statistics - Commented out as per requirements */}
+        {/* <View className="bg-white rounded-2xl p-6 shadow-sm mb-6">
           <View className="flex-row justify-between items-center mb-4">
             <Text className="text-lg font-bold text-gray-800">Department Statistics</Text>
-            {isHODOrKaryalay && (
-              <TouchableOpacity
-                onPress={() => setShowCreateSubdeptModal(true)}
-                className="bg-blue-600 px-3 py-1 rounded-lg"
-              >
-                <Text className="text-white text-sm font-medium">+ Subdepartment</Text>
-              </TouchableOpacity>
-            )}
           </View>
           <View className="flex-row justify-around">
             <View className="items-center">
@@ -314,18 +363,21 @@ export default function DepartmentDetailPage() {
               </Text>
               <Text className="text-gray-600 text-sm">Total Members</Text>
             </View>
+            <View className="w-px h-12 bg-gray-200" />
             <View className="items-center">
               <Text className="text-3xl font-bold text-green-600">
-                {admins.length}
+                {hods.length}
               </Text>
-              <Text className="text-gray-600 text-sm">Admins</Text>
+              <Text className="text-gray-600 text-sm">HODs</Text>
             </View>
+            <View className="w-px h-12 bg-gray-200" />
             <View className="items-center">
               <Text className="text-3xl font-bold text-orange-600">
                 {users.length}
               </Text>
               <Text className="text-gray-600 text-sm">Users</Text>
             </View>
+            <View className="w-px h-12 bg-gray-200" />
             <View className="items-center">
               <Text className="text-3xl font-bold text-purple-600">
                 {subdepartments.length}
@@ -333,18 +385,18 @@ export default function DepartmentDetailPage() {
               <Text className="text-gray-600 text-sm">Subdepartments</Text>
             </View>
           </View>
-        </View>
+        </View> */}
 
-        {/* Admins Section */}
-        {admins.length > 0 && (
+        {/* HODs Section */}
+        {hods.length > 0 && (
           <View className="mb-6">
             <View className="flex-row items-center mb-4">
               <Ionicons name="shield-checkmark" size={24} color="#10B981" />
               <Text className="text-lg font-bold text-gray-800 ml-2">
-                Admins ({admins.length})
+                HODs ({hods.length})
               </Text>
             </View>
-            {admins.map((user) => (
+            {hods.map((user) => (
               <UserCard key={user.userId} user={user} />
             ))}
           </View>
@@ -365,8 +417,8 @@ export default function DepartmentDetailPage() {
           </View>
         )}
 
-        {/* Subdepartments Section */}
-        {subdepartments.length > 0 && (
+        {/* Subdepartments Section - Commented out as per requirements */}
+        {/* {subdepartments.length > 0 && (
           <View className="mb-6">
             <View className="flex-row items-center mb-4">
               <Ionicons name="business" size={24} color="#8B5CF6" />
@@ -374,28 +426,80 @@ export default function DepartmentDetailPage() {
                 Subdepartments ({subdepartments.length})
               </Text>
             </View>
-            {subdepartments.map((subdept) => (
-              <View key={subdept.subdepartmentId} className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 mb-3">
-                <View className="flex-row items-center justify-between">
-                  <View className="flex-1">
-                    <Text className="text-lg font-semibold text-gray-800">{subdept.subdepartmentName}</Text>
-                    <Text className="text-gray-500 text-sm">
-                      {subdept.userList.length} members • Created {new Date(subdept.createdAt).toLocaleDateString()}
-                    </Text>
-                  </View>
-                  {isHODOrKaryalay && (
-                    <TouchableOpacity
-                      onPress={() => handleDeleteSubdepartment(subdept)}
-                      className="p-2"
-                    >
-                      <Ionicons name="trash-outline" size={20} color="#EF4444" />
-                    </TouchableOpacity>
+            {subdepartments.map((subdept) => {
+              const isExpanded = expandedSubdepts.has(subdept.subdepartmentId);
+              const subdeptUsers = departmentUsers.filter(user => 
+                subdept.userList.includes(user.userId)
+              );
+              
+              return (
+                <View key={subdept.subdepartmentId} className="bg-white rounded-2xl shadow-sm border border-gray-100 mb-3">
+                  <TouchableOpacity
+                    onPress={() => toggleSubdepartmentExpansion(subdept.subdepartmentId)}
+                    className="p-4"
+                  >
+                    <View className="flex-row items-center justify-between">
+                      <View className="flex-row items-center flex-1">
+                        <Ionicons 
+                          name={isExpanded ? "chevron-down" : "chevron-forward"} 
+                          size={20} 
+                          color="#6B7280" 
+                        />
+                        <View className="flex-1 ml-3">
+                          <Text className="text-lg font-semibold text-gray-800">{subdept.subdepartmentName}</Text>
+                          <Text className="text-gray-500 text-sm">
+                            {subdept.userList.length} members • Created {new Date(subdept.createdAt).toLocaleDateString()}
+                          </Text>
+                        </View>
+                      </View>
+                      {isHODOrKaryalay && (
+                        <View className="flex-row items-center">
+                          <TouchableOpacity
+                            onPress={(e) => {
+                              e.stopPropagation();
+                              handleEditSubdepartment(subdept);
+                            }}
+                            className="p-2 mr-1"
+                          >
+                            <Ionicons name="create-outline" size={20} color="#0286ff" />
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            onPress={(e) => {
+                              e.stopPropagation();
+                              handleDeleteSubdepartment(subdept);
+                            }}
+                            className="p-2"
+                          >
+                            <Ionicons name="trash-outline" size={20} color="#EF4444" />
+                          </TouchableOpacity>
+                        </View>
+                      )}
+                    </View>
+                  </TouchableOpacity>
+                  
+                  {isExpanded && (
+                    <View className="px-4 pb-4 border-t border-gray-100">
+                      <Text className="text-sm font-medium text-gray-600 mb-3 mt-3">Members:</Text>
+                      {subdeptUsers.map((user) => (
+                        <View key={user.userId} className="flex-row items-center py-2 px-3 bg-gray-50 rounded-lg mb-2">
+                          <View className="w-8 h-8 bg-blue-100 rounded-full items-center justify-center mr-3">
+                            <Text className="text-blue-600 font-semibold text-sm">
+                              {user.fullName?.charAt(0).toUpperCase()}
+                            </Text>
+                          </View>
+                          <View className="flex-1">
+                            <Text className="font-medium text-gray-800">{user.fullName}</Text>
+                            <Text className="text-gray-500 text-xs">{user.mobileNumber}</Text>
+                          </View>
+                        </View>
+                      ))}
+                    </View>
                   )}
                 </View>
-              </View>
-            ))}
+              );
+            })}
           </View>
-        )}
+        )} */}
 
         {/* Empty state */}
         {departmentUsers.length === 0 && (
@@ -413,8 +517,8 @@ export default function DepartmentDetailPage() {
         )}
       </ScrollView>
 
-      {/* Create Subdepartment Modal */}
-      <Modal
+      {/* Create Subdepartment Modal - Commented out as per requirements */}
+      {/* <Modal
         animationType="slide"
         transparent={true}
         visible={showCreateSubdeptModal}
@@ -423,12 +527,15 @@ export default function DepartmentDetailPage() {
         <View className="flex-1 bg-black/50 justify-end">
           <View className="bg-white rounded-t-3xl px-6 py-6 max-h-[80%]">
             <View className="flex-row justify-between items-center mb-6">
-              <Text className="text-xl font-bold text-gray-800">Create Subdepartment</Text>
+              <Text className="text-xl font-bold text-gray-800">
+                {editingSubdept ? 'Edit Subdepartment' : 'Create Subdepartment'}
+              </Text>
               <TouchableOpacity
                 onPress={() => {
                   setShowCreateSubdeptModal(false);
                   setNewSubdeptName('');
                   setSelectedSubdeptUsers([]);
+                  setEditingSubdept(null);
                 }}
                 className="p-2"
               >
@@ -437,7 +544,6 @@ export default function DepartmentDetailPage() {
             </View>
 
             <ScrollView showsVerticalScrollIndicator={false}>
-              {/* Subdepartment Name */}
               <View className="mb-6">
                 <Text className="text-lg font-semibold text-gray-800 mb-3">Subdepartment Name</Text>
                 <TextInput
@@ -448,7 +554,6 @@ export default function DepartmentDetailPage() {
                 />
               </View>
 
-              {/* User Selection */}
               <View className="mb-6">
                 <Text className="text-lg font-semibold text-gray-800 mb-3">
                   Select Users ({selectedSubdeptUsers.length} selected)
@@ -484,9 +589,11 @@ export default function DepartmentDetailPage() {
                 })}
               </View>
 
-              {/* Create Button */}
               <CustomButton
-                title={isCreatingSubdept ? 'Creating...' : 'Create Subdepartment'}
+                title={isCreatingSubdept ? 
+                  (editingSubdept ? 'Updating...' : 'Creating...') : 
+                  (editingSubdept ? 'Update Subdepartment' : 'Create Subdepartment')
+                }
                 onPress={handleCreateSubdepartment}
                 disabled={isCreatingSubdept || !newSubdeptName.trim() || selectedSubdeptUsers.length === 0}
                 loading={isCreatingSubdept}
@@ -496,7 +603,7 @@ export default function DepartmentDetailPage() {
             </ScrollView>
           </View>
         </View>
-      </Modal>
+      </Modal> */}
     </View>
   );
 } 

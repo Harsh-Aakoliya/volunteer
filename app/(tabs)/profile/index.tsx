@@ -442,7 +442,7 @@ export default function Profile() {
                   <Text className="ml-3 text-gray-800 font-medium">Dashboard</Text>
                 </TouchableOpacity>
                 {/* Show Departments and Search User only for Karyalay users and actual HODs */}
-                {(user?.department === 'Karyalay' || (isAdmin && user?.department !== 'Karyalay')) && (
+                {isAdmin && (
                   <>
                     <TouchableOpacity
                       onPress={handleDepartments}
@@ -451,13 +451,13 @@ export default function Profile() {
                       <Ionicons name="business" size={20} color="#0286ff" />
                       <Text className="ml-3 text-gray-800 font-medium">Departments</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity
+                    {/* <TouchableOpacity
                       onPress={handleSearchUser}
                       className="flex-row items-center px-4 py-4 border-b border-gray-100"
                     >
                       <Ionicons name="search" size={20} color="#0286ff" />
                       <Text className="ml-3 text-gray-800 font-medium">Search User</Text>
-                    </TouchableOpacity>
+                    </TouchableOpacity> */}
                   </>
                 )}
               </>

@@ -32,8 +32,8 @@ const createUsersTable = async () => {
                 "totalSabha" INTEGER DEFAULT 0,
                 "presentCount" INTEGER DEFAULT 0,
                 "absentCount" INTEGER DEFAULT 0,
-                "department" VARCHAR(100),
-                "departmentId" UUID,
+                "departments" TEXT[] DEFAULT '{}',
+                "departmentIds" UUID[] DEFAULT '{}',
                 "subdepartmentIds" TEXT[] DEFAULT '{}',
                 "gender" VARCHAR(20),
                 "dateOfBirth" DATE,
@@ -180,6 +180,85 @@ const addRecipientUserIdsColumnIfNotExists = async () => {
   }
 };
 
+const addHasCoverImageColumnIfNotExists = async () => {
+  const client = await pool.connect();
+  try {
+    // Check if hasCoverImage column exists in announcements table
+    const columnCheck = await client.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.columns 
+        WHERE table_name = 'announcements' AND column_name = 'hasCoverImage'
+      );
+    `);
+    
+    if (columnCheck.rows[0].exists) {
+      console.log("HasCoverImage column already exists in announcements table");
+      return;
+    }
+
+    // Add hasCoverImage column if it doesn't exist
+    await client.query(`
+      ALTER TABLE announcements 
+      ADD COLUMN "hasCoverImage" BOOLEAN DEFAULT FALSE;
+    `);
+    console.log("HasCoverImage column added to announcements table successfully");
+  } catch (error) {
+    console.error("Error while adding hasCoverImage column to announcements table:", error);
+  } finally {
+    client.release();
+  }
+};
+
+const migrateDepartmentToArrays = async () => {
+  const client = await pool.connect();
+  try {
+    // Check if departments column already exists
+    const departmentsColumnCheck = await client.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.columns 
+        WHERE table_name = 'users' AND column_name = 'departments'
+      );
+    `);
+    
+    if (departmentsColumnCheck.rows[0].exists) {
+      console.log("Departments array column already exists in users table");
+      return;
+    }
+
+    // Add new array columns
+    await client.query(`
+      ALTER TABLE users 
+      ADD COLUMN "departments" TEXT[] DEFAULT '{}',
+      ADD COLUMN "departmentIds" UUID[] DEFAULT '{}';
+    `);
+
+    // Migrate existing data from department/departmentId to departments/departmentIds arrays
+    const usersWithDepartments = await client.query(`
+      SELECT "userId", "department", "departmentId" 
+      FROM users 
+      WHERE "department" IS NOT NULL AND "department" != ''
+    `);
+
+    for (const user of usersWithDepartments.rows) {
+      const departments = [user.department];
+      const departmentIds = user.departmentId ? [user.departmentId] : [];
+      
+      await client.query(`
+        UPDATE users 
+        SET "departments" = $1, "departmentIds" = $2 
+        WHERE "userId" = $3
+      `, [departments, departmentIds, user.userId]);
+    }
+
+    console.log("Successfully migrated departments to array format");
+    console.log(`Migrated ${usersWithDepartments.rows.length} user records`);
+  } catch (error) {
+    console.error("Error while migrating departments to arrays:", error);
+  } finally {
+    client.release();
+  }
+};
+
 const createSabhaAttendanceTable = async () => {
   const client = await pool.connect();
   try {
@@ -228,6 +307,8 @@ const initDB = async () => {
   await addThumbnailColumnIfNotExists();
   await addDepartmentTagColumnIfNotExists();
   await addRecipientUserIdsColumnIfNotExists();
+  await addHasCoverImageColumnIfNotExists();
+  await migrateDepartmentToArrays();
 };
 
 export default initDB;

@@ -21,7 +21,7 @@ export default function CreateDepartmentPage() {
   const [allUsers, setAllUsers] = useState<DepartmentUser[]>([]);
   const [filteredUsers, setFilteredUsers] = useState<DepartmentUser[]>([]);
   const [selectedUsers, setSelectedUsers] = useState<DepartmentUser[]>([]);
-  const [selectedHOD, setSelectedHOD] = useState<DepartmentUser | null>(null);
+  // const [selectedHODs, setSelectedHODs] = useState<DepartmentUser[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
@@ -35,13 +35,14 @@ export default function CreateDepartmentPage() {
 
   useEffect(() => {
     filterUsers();
-  }, [searchQuery, allUsers, selectedUsers, selectedHOD]);
+  }, [searchQuery, allUsers, selectedUsers]);
 
   const checkUserRole = async () => {
     try {
       const user = await AuthStorage.getUser();
       console.log("user in checkUserRole", user);
-      setIsKaryalay(Boolean(user?.isAdmin && user?.department === 'Karyalay'));
+      const userDepartments = user?.departments || [user?.department].filter(Boolean);
+      setIsKaryalay(Boolean(user?.isAdmin && userDepartments.includes('Karyalay')));
     } catch (error) {
       console.error('Error checking user role:', error);
     }
@@ -61,8 +62,7 @@ export default function CreateDepartmentPage() {
 
   const filterUsers = () => {
     const selectedUserIds = selectedUsers.map(u => u.userId);
-    const hodId = selectedHOD?.userId;
-    const excludeIds = hodId ? [...selectedUserIds, hodId] : selectedUserIds;
+    const excludeIds = selectedUserIds;
     
     const availableUsers = allUsers.filter(user => !excludeIds.includes(user.userId));
     
@@ -108,10 +108,18 @@ export default function CreateDepartmentPage() {
   };
 
   const handleSelectUser = (user: DepartmentUser) => {
-    if (user.department && user.departmentId) {
+    // Check if user has any departments assigned (either old format or new array format)
+    const hasAssignedDepartments = (user.departments && user.departments.length > 0) || 
+                                   (user.department && user.departmentId);
+    
+    if (hasAssignedDepartments) {
+      const departmentNames = user.departments && user.departments.length > 0 
+        ? user.departments.join(', ') 
+        : user.department;
+      
       Alert.alert(
         'User Already Assigned',
-        `${user.fullName} is already assigned to "${user.department}" department.`,
+        `${user.fullName} is already assigned to "${departmentNames}" department(s).`,
         [{ text: 'OK' }]
       );
       return;
@@ -124,24 +132,24 @@ export default function CreateDepartmentPage() {
     setSelectedUsers(prev => prev.filter(user => user.userId !== userId));
   };
 
-  const handleSelectHOD = (user: DepartmentUser) => {
-    if (!isKaryalay) return;
+  // const handleSelectHOD = (user: DepartmentUser) => {
+  //   if (!isKaryalay) return;
     
-    if (user.department && user.departmentId) {
-      Alert.alert(
-        'User Already Assigned',
-        `${user.fullName} is already assigned to "${user.department}" department.`,
-        [{ text: 'OK' }]
-      );
-      return;
-    }
+  //   if (user.department && user.departmentId) {
+  //     Alert.alert(
+  //       'User Already Assigned',
+  //       `${user.fullName} is already assigned to "${user.department}" department.`,
+  //       [{ text: 'OK' }]
+  //     );
+  //     return;
+  //   }
 
-    setSelectedHOD(user);
-  };
+  //   setSelectedHODs(prev => [...prev, user]);
+  // };
 
-  const handleRemoveHOD = () => {
-    setSelectedHOD(null);
-  };
+  // const handleRemoveHOD = (userId: string) => {
+  //   setSelectedHODs(prev => prev.filter(hod => hod.userId !== userId));
+  // };
 
   const handleCreateDepartment = async () => {
     if (!await validateDepartmentName(departmentName)) {
@@ -153,22 +161,16 @@ export default function CreateDepartmentPage() {
       return;
     }
 
-    if (isKaryalay && !selectedHOD) {
-      Alert.alert('Error', 'Please select a HOD for the department');
-      return;
-    }
-
     try {
       setIsCreating(true);
       
       const userList = selectedUsers.map(user => user.userId);
-      const adminList = selectedUsers.filter(user => user.isAdmin).map(user => user.userId);
+      const hodList: string[] = []; // Empty HOD list initially
 
       await createDepartment({
         departmentName: departmentName.trim(),
         userList,
-        adminList,
-        hodUserId: selectedHOD?.userId
+        hodList
       });
 
       Alert.alert(
@@ -194,7 +196,7 @@ export default function CreateDepartmentPage() {
     onPress: () => void;
     showHODBadge?: boolean;
   }) => {
-    const isDisabled = !isSelected && user.department && user.departmentId;
+    const isDisabled = !isSelected && ((user.departments && user.departments.length > 0) || (user.department && user.departmentId));
     
     return (
       <TouchableOpacity
@@ -205,9 +207,9 @@ export default function CreateDepartmentPage() {
         <View className="flex-row items-center">
           <View className="w-12 h-12 bg-blue-100 rounded-full items-center justify-center mr-3">
             <Text className="text-blue-600 font-semibold">
-              {user.fullName.charAt(0).toUpperCase()}
+              {user.fullName?.charAt(0).toUpperCase()}
             </Text>
-          </View>
+          </View>r
           
           <View className="flex-1">
             <View className="flex-row items-center flex-wrap">
@@ -219,9 +221,11 @@ export default function CreateDepartmentPage() {
               )}
             </View>
             <Text className="text-gray-500 text-sm">{user.mobileNumber}</Text>
-            {user.department && (
+            {((user.departments && user.departments.length > 0) || user.department) && (
               <Text className="text-orange-500 text-xs">
-                Department: {user.department}
+                Department: {user.departments && user.departments.length > 0 
+                  ? user.departments.join(', ') 
+                  : user.department}
               </Text>
             )}
           </View>
@@ -229,7 +233,7 @@ export default function CreateDepartmentPage() {
           <View className="items-end">
             {user.isAdmin && (
               <View className="bg-green-100 px-2 py-1 rounded mb-1">
-                <Text className="text-green-600 text-xs font-medium">Admin</Text>
+                <Text className="text-green-600 text-xs font-medium">HOD</Text>
               </View>
             )}
             
@@ -255,8 +259,12 @@ export default function CreateDepartmentPage() {
     );
   }
 
-  const unassignedUsers = filteredUsers.filter(user => !user.department);
-  const assignedUsers = filteredUsers.filter(user => user.department);
+  const unassignedUsers = filteredUsers.filter(user => 
+    !(user.departments && user.departments.length > 0) && !user.department
+  );
+  const assignedUsers = filteredUsers.filter(user => 
+    (user.departments && user.departments.length > 0) || user.department
+  );
 
   return (
     <View className="flex-1 bg-gray-50">
@@ -289,27 +297,6 @@ export default function CreateDepartmentPage() {
           ) : null}
         </View>
 
-        {/* HOD Selection - Only for Karyalay users */}
-        {isKaryalay && (
-          <View className="bg-white p-6 mb-2">
-            <Text className="text-lg font-bold text-gray-800 mb-3">
-              Select HOD (Head of Department)
-            </Text>
-            {selectedHOD ? (
-              <UserItem
-                key={selectedHOD.userId}
-                user={selectedHOD}
-                isSelected={true}
-                onPress={handleRemoveHOD}
-                showHODBadge={true}
-              />
-            ) : (
-              <Text className="text-gray-500 text-sm">
-                Search and select a user below to assign as HOD
-              </Text>
-            )}
-          </View>
-        )}
 
         {/* Selected Users */}
         {selectedUsers.length > 0 && (
@@ -355,16 +342,6 @@ export default function CreateDepartmentPage() {
                   user={user}
                   onPress={() => handleSelectUser(user)}
                 />
-                {isKaryalay && !selectedHOD && (
-                  <TouchableOpacity
-                    onPress={() => handleSelectHOD(user)}
-                    className="bg-blue-50 px-4 py-2 border-t border-blue-100"
-                  >
-                    <Text className="text-blue-600 text-sm font-medium text-center">
-                      Select as HOD
-                    </Text>
-                  </TouchableOpacity>
-                )}
               </View>
             ))}
           </View>
@@ -393,7 +370,7 @@ export default function CreateDepartmentPage() {
           <CustomButton
             title={isCreating ? 'Creating...' : 'Create Department'}
             onPress={handleCreateDepartment}
-            disabled={isCreating || selectedUsers.length === 0 || !departmentName.trim() || (isKaryalay && !selectedHOD)}
+            disabled={isCreating || selectedUsers.length === 0 || !departmentName.trim()}
             loading={isCreating}
             bgVariant="primary"
             className="h-14 rounded-xl"

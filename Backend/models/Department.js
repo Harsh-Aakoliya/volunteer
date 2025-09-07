@@ -23,9 +23,8 @@ const createDepartmentTable = async () => {
           "departmentName" VARCHAR(255) UNIQUE NOT NULL,
           "createdBy" VARCHAR(50),
           "createdAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-          "adminList" TEXT[] DEFAULT '{}',
           "userList" TEXT[] DEFAULT '{}',
-          "hodUserId" VARCHAR(50)
+          "hodList" TEXT[] DEFAULT '{}'
       );
     `);
     console.log("Departments table created successfully");
@@ -72,9 +71,77 @@ const createSubdepartmentsTable = async () => {
   }
 };
 
+const migrateDepartmentSchema = async () => {
+  const client = await pool.connect();
+  try {
+    // Check if migration is needed (if hodList column doesn't exist or adminList/hodUserId still exist)
+    const columnCheck = await client.query(`
+      SELECT column_name FROM information_schema.columns 
+      WHERE table_name = 'departments' AND column_name IN ('hodList', 'adminList', 'hodUserId')
+    `);
+    
+    const columns = columnCheck.rows.map(row => row.column_name);
+    const hasHodList = columns.includes('hodList');
+    const hasAdminList = columns.includes('adminList');
+    const hasHodUserId = columns.includes('hodUserId');
+    
+    if (!hasHodList && (hasAdminList || hasHodUserId)) {
+      console.log("Migrating departments table schema...");
+      
+      // Add hodList column
+      await client.query(`
+        ALTER TABLE "departments" ADD COLUMN IF NOT EXISTS "hodList" TEXT[] DEFAULT '{}'
+      `);
+      
+      // Migrate data from adminList and hodUserId to hodList
+      await client.query(`
+        UPDATE "departments" 
+        SET "hodList" = CASE 
+          WHEN "hodUserId" IS NOT NULL AND "adminList" IS NOT NULL THEN 
+            array_append("adminList", "hodUserId")
+          WHEN "hodUserId" IS NOT NULL AND "adminList" IS NULL THEN 
+            ARRAY["hodUserId"]
+          WHEN "hodUserId" IS NULL AND "adminList" IS NOT NULL THEN 
+            "adminList"
+          ELSE 
+            '{}'
+        END
+        WHERE "hodList" = '{}'
+      `);
+      
+      // Remove duplicates from hodList
+      await client.query(`
+        UPDATE "departments" 
+        SET "hodList" = (
+          SELECT array_agg(DISTINCT unnest_val) 
+          FROM unnest("hodList") AS unnest_val
+        )
+        WHERE array_length("hodList", 1) > 0
+      `);
+      
+      // Drop old columns
+      if (hasAdminList) {
+        await client.query(`ALTER TABLE "departments" DROP COLUMN IF EXISTS "adminList"`);
+      }
+      if (hasHodUserId) {
+        await client.query(`ALTER TABLE "departments" DROP COLUMN IF EXISTS "hodUserId"`);
+      }
+      
+      console.log("Departments table schema migration completed successfully");
+    } else if (hasHodList) {
+      console.log("Departments table schema is already up to date");
+    }
+  } catch (error) {
+    console.error("Error during departments table schema migration:", error);
+  } finally {
+    client.release();
+  }
+};
+
 const initDepartmentDB = async () => {
   await createDepartmentTable();
   await createSubdepartmentsTable();
+  await migrateDepartmentSchema();
 };
 
 export default initDepartmentDB;

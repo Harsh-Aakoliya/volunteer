@@ -42,6 +42,7 @@ import ChatMessageOptions from "@/components/chat/ChatMessageOptions";
 import ForwardMessagesModal from "@/components/chat/ForwardMessagesModal";
 import AttachmentsGrid from "./Attechments-grid";
 import MessageInput from "@/components/chat/MessageInput";
+import { clearRoomNotifications } from "@/utils/chatNotificationHandler";
 
 interface RoomDetails extends ChatRoom {
   members: ChatUser[];
@@ -91,16 +92,80 @@ export default function ChatRoomScreen() {
   // Reply state
   const [isReplying, setIsReplying] = useState(false);
   const [replyToMessage, setReplyToMessage] = useState<Message | null>(null);
+
+  // Scroll to bottom state
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
+  const [isNearBottom, setIsNearBottom] = useState(true);
   
   // Animation refs for each message
   const messageAnimations = useRef<Map<string | number, Animated.Value>>(new Map());
   const hapticTriggered = useRef<Map<string | number, boolean>>(new Map());
+  const blinkAnimations = useRef<Map<string | number, Animated.Value>>(new Map());
 
   const flatListRef = useRef<FlatList>(null);
   const navigation = useNavigation();
 
   // Use a Set to track received message IDs to prevent duplicates
   const receivedMessageIds = new Set<string | number>();
+
+  // Scroll to bottom function
+  const scrollToBottom = () => {
+    if (flatListRef.current && messages.length > 0) {
+      flatListRef.current.scrollToEnd({ animated: true });
+      setShowScrollToBottom(false);
+      setIsNearBottom(true);
+    }
+  };
+
+  // Handle scroll events
+  const handleScroll = (event: any) => {
+    const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+    const isAtBottom = contentOffset.y + layoutMeasurement.height >= contentSize.height - 100;
+    
+    setIsNearBottom(isAtBottom);
+    setShowScrollToBottom(!isAtBottom && messages.length > 10);
+  };
+
+  // Scroll to specific message with blink effect
+  const scrollToMessage = (messageId: string | number) => {
+    const messageIndex = messages.findIndex(msg => msg.id === messageId);
+    if (messageIndex !== -1 && flatListRef.current) {
+      flatListRef.current.scrollToIndex({ 
+        index: messageIndex, 
+        animated: true,
+        viewPosition: 0.5
+      });
+      
+      // Add blink effect
+      const blinkAnimation = new Animated.Value(0);
+      blinkAnimations.current.set(messageId, blinkAnimation);
+      
+      Animated.sequence([
+        Animated.timing(blinkAnimation, {
+          toValue: 1,
+          duration: 200,
+          useNativeDriver: false,
+        }),
+        Animated.timing(blinkAnimation, {
+          toValue: 0,
+          duration: 200,
+          useNativeDriver: false,
+        }),
+        Animated.timing(blinkAnimation, {
+          toValue: 1,
+          duration: 200,
+          useNativeDriver: false,
+        }),
+        Animated.timing(blinkAnimation, {
+          toValue: 0,
+          duration: 200,
+          useNativeDriver: false,
+        }),
+      ]).start(() => {
+        blinkAnimations.current.delete(messageId);
+      });
+    }
+  };
 
 
 
@@ -169,7 +234,7 @@ export default function ChatRoomScreen() {
             className={
               segment.isMention
                 ? segment.isCurrentUser
-                  ? "text-blue-600 bg-blue-100"
+                  ? "text-blue-600 bg-blue-100 px-1 rounded"
                   : "text-blue-600"
                 : ""
             }
@@ -460,6 +525,9 @@ export default function ChatRoomScreen() {
           userData.userId,
           userData.fullName || "Anonymous"
         );
+        
+        // Clear notifications for this room when user enters
+        clearRoomNotifications(roomId as string);
       }
 
       // Scroll to end after messages are loaded (with proper delay for FlatList to mount)
@@ -501,6 +569,7 @@ export default function ChatRoomScreen() {
 
     try {
       setSending(true);
+      setIsReplying(false);
       setMessageText(""); // Clear input immediately for better UX
 
       // Create optimistic message to show immediately
@@ -584,7 +653,8 @@ export default function ChatRoomScreen() {
 
       // Clear reply state after sending
       if (isReplying) {
-        handleCancelReply();
+        setIsReplying(false);
+        setReplyToMessage(null);
       }
     } catch (error) {
       console.error("Error sending message:", error);
@@ -819,6 +889,53 @@ export default function ChatRoomScreen() {
     }
   };
 
+  // Group messages by date
+  const groupMessagesByDate = (messages: Message[]) => {
+    const grouped: { [key: string]: Message[] } = {};
+    
+    messages.forEach(message => {
+      const date = new Date(message.createdAt).toDateString();
+      if (!grouped[date]) {
+        grouped[date] = [];
+      }
+      grouped[date].push(message);
+    });
+    
+    return grouped;
+  };
+
+  // Format date for display
+  const formatDateForDisplay = (dateString: string) => {
+    const date = new Date(dateString);
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    
+    if (date.toDateString() === today.toDateString()) {
+      return 'Today';
+    } else if (date.toDateString() === yesterday.toDateString()) {
+      return 'Yesterday';
+    } else {
+      return date.toLocaleDateString('en-US', { 
+        weekday: 'long', 
+        year: 'numeric', 
+        month: 'long', 
+        day: 'numeric' 
+      });
+    }
+  };
+
+  // Render date separator
+  const renderDateSeparator = (dateString: string) => (
+    <View className="flex-row items-center my-4 px-4">
+      <View className="flex-1 h-px bg-gray-300" />
+      <Text className="mx-3 text-gray-500 text-sm font-medium">
+        {formatDateForDisplay(dateString)}
+      </Text>
+      <View className="flex-1 h-px bg-gray-300" />
+    </View>
+  );
+
   // Render message function to support media files
   const renderMessage = ({ item }: { item: Message }) => {
     const isOwnMessage = item.senderId === currentUser?.userId;
@@ -906,63 +1023,61 @@ export default function ChatRoomScreen() {
             />
           )}
           
-          <View
-            className={`p-2 max-w-[80%] rounded-lg my-1 relative ${
-              isOwnMessage ? "bg-blue-500 self-end" : "bg-gray-200 self-start"
+          <Animated.View
+            className={`px-3 py-2 mx-4 my-1 rounded-2xl relative ${
+              isOwnMessage ? "bg-blue-100 ml-16" : "bg-gray-100 mr-16"
             }`}
-            style={{ zIndex: 2 }}
+            style={{ 
+              zIndex: 2,
+              maxWidth: '85%',
+              alignSelf: isOwnMessage ? 'flex-end' : 'flex-start',
+              backgroundColor: blinkAnimations.current.get(item.id) ? 
+                blinkAnimations.current.get(item.id)!.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [isOwnMessage ? '#dbeafe' : '#f3f4f6', '#fbbf24']
+                }) : 
+                (isOwnMessage ? '#dbeafe' : '#f3f4f6')
+            }}
           >
           {/* Reply preview - show if this message is replying to another */}
           {item.replyMessageId && (
-            <View className={`mb-2 p-2 rounded border-l-2 ${
-              isOwnMessage 
-                ? 'bg-blue-400 border-blue-200' 
-                : 'bg-gray-300 border-gray-400'
-            }`}>
+            <TouchableOpacity 
+              className={`mb-2 p-2 rounded-lg border-l-2 ${
+                isOwnMessage 
+                  ? 'bg-blue-50 border-blue-300' 
+                  : 'bg-gray-50 border-gray-400'
+              }`}
+              onPress={() => scrollToMessage(item.replyMessageId!)}
+            >
               <Text className={`text-xs ${
-                isOwnMessage ? 'text-blue-100' : 'text-gray-600'
+                isOwnMessage ? 'text-blue-600' : 'text-gray-600'
               }`}>
                 {item.replySenderName}
               </Text>
               <Text 
                 className={`text-sm ${
-                  isOwnMessage ? 'text-white' : 'text-gray-800'
+                  isOwnMessage ? 'text-blue-800' : 'text-gray-800'
                 }`}
                 numberOfLines={1}
                 ellipsizeMode="tail"
               >
                 {item.replyMessageText || 'Message'}
               </Text>
-            </View>
+            </TouchableOpacity>
           )}
           {!isOwnMessage && (
-            <Text className="text-xs font-bold text-gray-600">
+            <Text className="text-xs font-semibold text-blue-600 mb-1">
               {item.senderName || "Unknown"}
             </Text>
           )}
           
           {item.messageText && (
             <View>
-              <View className={isOwnMessage ? "text-white" : "text-black"}>
+              <Text className={`text-base leading-5 ${
+                isOwnMessage ? "text-gray-900" : "text-gray-800"
+              }`}>
                 {renderMessageTextWithMentions(item.messageText)}
-              </View>
-              {/* Show edit indicator */}
-              {item.isEdited && (
-                <Text className={`text-xs italic mt-1 ${
-                  isOwnMessage ? "text-blue-200" : "text-gray-500"
-                }`}>
-                  edited
-                  {item.editedBy !== item.senderId && item.editorName && 
-                    ` by ${item.editorName}`
-                  }
-                  {item.editedAt && 
-                    ` • ${new Date(item.editedAt).toLocaleTimeString([], {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}`
-                  }
-                </Text>
-              )}
+              </Text>
             </View>
           )}
           
@@ -970,10 +1085,16 @@ export default function ChatRoomScreen() {
           {item.mediaFilesId ? (
             <TouchableOpacity 
               onPress={() => item.mediaFilesId && openMediaViewer(item.mediaFilesId)}
-              className="bg-blue-100 p-2 rounded-lg mt-1"
+              className={`p-2 rounded-lg mt-1 ${
+                isOwnMessage ? 'bg-blue-200' : 'bg-gray-200'
+              }`}
             >
-              <Text className="text-blue-700 font-semibold">📁 Media Files</Text>
-              <Text className="text-blue-600 text-xs">Tap to view media</Text>
+              <Text className={`font-semibold ${
+                isOwnMessage ? 'text-blue-800' : 'text-gray-700'
+              }`}>📁 Media Files</Text>
+              <Text className={`text-xs ${
+                isOwnMessage ? 'text-blue-600' : 'text-gray-600'
+              }`}>Tap to view media</Text>
             </TouchableOpacity>
           ) : null}
 
@@ -985,8 +1106,17 @@ export default function ChatRoomScreen() {
                   setTableId(item.tableId);
                   setShowTableModel(true);
                 }
-              }}>
-              <Text>Show table</Text>
+              }}
+              className={`p-2 rounded-lg mt-1 ${
+                isOwnMessage ? 'bg-blue-200' : 'bg-gray-200'
+              }`}
+            >
+              <Text className={`font-semibold ${
+                isOwnMessage ? 'text-blue-800' : 'text-gray-700'
+              }`}>📊 Table</Text>
+              <Text className={`text-xs ${
+                isOwnMessage ? 'text-blue-600' : 'text-gray-600'
+              }`}>Tap to view table</Text>
             </TouchableOpacity>
           ) : null}
 
@@ -1011,23 +1141,23 @@ export default function ChatRoomScreen() {
                 }
               }}
               disabled={showPollModal && activePollId !== item.pollId}
-              className={`p-3 rounded-lg ${
+              className={`p-3 rounded-lg mt-1 ${
                 showPollModal && activePollId !== item.pollId
                   ? 'bg-gray-200 opacity-50'
-                  : 'bg-blue-100'
+                  : isOwnMessage ? 'bg-blue-200' : 'bg-gray-200'
               }`}
             >
               <Text className={`font-semibold ${
                 showPollModal && activePollId !== item.pollId
                   ? 'text-gray-500'
-                  : 'text-blue-700'
+                  : isOwnMessage ? 'text-blue-800' : 'text-gray-700'
               }`}>
                 📊 Poll
               </Text>
               <Text className={`text-xs ${
                 showPollModal && activePollId !== item.pollId
                   ? 'text-gray-400'
-                  : 'text-blue-600'
+                  : isOwnMessage ? 'text-blue-600' : 'text-gray-600'
               }`}>
                 {showPollModal && activePollId !== item.pollId
                   ? 'Another poll is active'
@@ -1037,22 +1167,34 @@ export default function ChatRoomScreen() {
             </TouchableOpacity>
           ) : null}
 
-          <View className="flex-row justify-between items-center mt-1">
+          {/* Time and status - aligned to right */}
+          <View className="flex-row justify-end items-center mt-1">
             <Text
               className={`text-xs ${
-                isOwnMessage ? "text-blue-100" : "text-gray-500"
+                isOwnMessage ? "text-gray-600" : "text-gray-500"
               }`}
             >
-              {new Date(item.createdAt).toLocaleTimeString([], {
+              {new Date(item.createdAt).toLocaleTimeString('en-IN', {
                 hour: "2-digit",
                 minute: "2-digit",
+                timeZone: 'Asia/Kolkata'
               })}
             </Text>
             {isOwnMessage && (
-              <MessageStatus status={messageStatus} className="ml-1" />
+              <View className="ml-1">
+                <MessageStatus status={messageStatus} />
+              </View>
+            )}
+            {/* Show edit indicator only once */}
+            {item.isEdited && (
+              <Text className={`text-xs italic ml-1 ${
+                isOwnMessage ? "text-gray-600" : "text-gray-500"
+              }`}>
+                edited
+              </Text>
             )}
           </View>
-        </View>
+          </Animated.View>
             </Pressable>
           </Animated.View>
         </PanGestureHandler>
@@ -1118,10 +1260,29 @@ export default function ChatRoomScreen() {
         {/* Messages list */}
         <FlatList
           ref={flatListRef}
-          data={messages}
-          keyExtractor={(item) => item.id.toString()}
-          renderItem={renderMessage}
-          contentContainerStyle={{ paddingVertical: 10, paddingHorizontal: 16 }}
+          data={(() => {
+            const grouped = groupMessagesByDate(messages);
+            const flatData: (Message | { type: 'date', date: string })[] = [];
+            
+            Object.keys(grouped).sort().forEach(date => {
+              flatData.push({ type: 'date', date } as any);
+              flatData.push(...grouped[date]);
+            });
+            
+            return flatData;
+          })()}
+          keyExtractor={(item, index) => 
+            item.type === 'date' ? `date-${item.date}` : item.id.toString()
+          }
+          renderItem={({ item }) => {
+            if (item.type === 'date') {
+              return renderDateSeparator(item.date);
+            }
+            return renderMessage({ item: item as Message });
+          }}
+          contentContainerStyle={{ paddingVertical: 10 }}
+          onScroll={handleScroll}
+          scrollEventThrottle={16}
           onLayout={() => {
             // Ensure scroll to end after FlatList is laid out
             setTimeout(() => {
@@ -1132,13 +1293,15 @@ export default function ChatRoomScreen() {
             }, 100);
           }}
           onContentSizeChange={() => {
-            // Scroll to end when content size changes (new messages)
-            setTimeout(() => {
-              if (flatListRef.current && messages.length > 0) {
-                // console.log("FlatList content size changed - scrolling to end");
-                flatListRef.current.scrollToEnd({ animated: true });
-              }
-            }, 100);
+            // Scroll to end when content size changes (new messages) only if near bottom
+            if (isNearBottom) {
+              setTimeout(() => {
+                if (flatListRef.current && messages.length > 0) {
+                  // console.log("FlatList content size changed - scrolling to end");
+                  flatListRef.current.scrollToEnd({ animated: true });
+                }
+              }, 100);
+            }
           }}
           ListEmptyComponent={
             <View className="flex-1 justify-center items-center p-4 mt-10">
@@ -1149,6 +1312,17 @@ export default function ChatRoomScreen() {
             </View>
           }
         />
+
+        {/* Scroll to bottom button */}
+        {showScrollToBottom && (
+          <TouchableOpacity
+            onPress={scrollToBottom}
+            className="absolute bottom-20 right-4 bg-blue-500 rounded-full p-3 shadow-lg"
+            style={{ zIndex: 1000 }}
+          >
+            <Ionicons name="arrow-down" size={20} color="white" />
+          </TouchableOpacity>
+        )}
 
         {/* Reply preview - show above message input when replying */}
         {isReplying && replyToMessage && (
@@ -1181,29 +1355,36 @@ export default function ChatRoomScreen() {
 
         {/* Message input - Only show for group admins */}
         {isGroupAdmin && (
-          <MessageInput
-            messageText={messageText}
-            onChangeText={setMessageText}
-            onSend={(text: string, messageType: string, mediaFilesId?: number, pollId?: number, tableId?: number) => 
-              sendMessage(text, messageType, mediaFilesId, pollId, tableId, replyToMessage?.id as number)
-            }
-            sending={sending}
-            disabled={false}
-            roomMembers={roomMembers}
-            currentUser={currentUser}
-            roomId={roomId as string}
-            showAttachments={true}
-            onFocus={() => {
-              // When input is focused, scroll to end to ensure last messages are visible
-              setTimeout(() => {
-                if (flatListRef.current && messages.length > 0) {
-                  console.log("MessageInput focused - scrolling to end");
-                  flatListRef.current.scrollToEnd({ animated: true });
-                }
-              }, 300);
-            }}
-            style={{ borderTopWidth: 1, borderTopColor: '#e5e7eb', backgroundColor: 'white' }}
-          />
+          <View className="px-4 py-2 bg-white border-t border-gray-200">
+            <MessageInput
+              messageText={messageText}
+              onChangeText={setMessageText}
+              onSend={(text: string, messageType: string, mediaFilesId?: number, pollId?: number, tableId?: number) => 
+                sendMessage(text, messageType, mediaFilesId, pollId, tableId, replyToMessage?.id as number)
+              }
+              sending={sending}
+              disabled={false}
+              roomMembers={roomMembers}
+              currentUser={currentUser}
+              roomId={roomId as string}
+              showAttachments={true}
+              onFocus={() => {
+                // When input is focused, scroll to end to ensure last messages are visible
+                setTimeout(() => {
+                  if (flatListRef.current && messages.length > 0) {
+                    console.log("MessageInput focused - scrolling to end");
+                    flatListRef.current.scrollToEnd({ animated: true });
+                  }
+                }, 300);
+              }}
+              style={{ 
+                borderTopWidth: 0, 
+                borderTopColor: 'transparent', 
+                backgroundColor: 'transparent',
+                paddingHorizontal: 0
+              }}
+            />
+          </View>
         )}
 
         {/* Non-admin message - Show for non-group admins */}

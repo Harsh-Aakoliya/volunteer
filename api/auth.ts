@@ -4,6 +4,77 @@ import { API_URL } from "../constants/api";
 import { AuthStorage } from "@/utils/authStorage";
 import { User } from "@/types/type";
 import { router } from "expo-router";
+import * as Notifications from "expo-notifications";
+import Constants from "expo-constants";
+
+// Generate and store notification token
+const generateAndStoreNotificationToken = async (userId: string) => {
+  try {
+    // Request notification permissions
+    const { status } = await Notifications.requestPermissionsAsync();
+    if (status !== 'granted') {
+      console.log('Notification permission not granted');
+      return;
+    }
+
+    // FCM token
+    const { data: rawFcm } = await Notifications.getDevicePushTokenAsync();
+    console.log("FCM token:", rawFcm);
+
+    // Get Expo push token
+    const expoPushToken = (
+      await Notifications.getExpoPushTokenAsync({
+        projectId: Constants?.expoConfig?.extra?.eas?.projectId,
+      })
+    ).data;
+
+    if (!expoPushToken) {
+      console.log('Failed to get Expo push token');
+      return;
+    }
+
+    console.log('Generated Expo push token:', expoPushToken);
+
+    // Store token in backend
+    const token = await AuthStorage.getToken();
+    if (token) {
+      const response = await axios.post(`${API_URL}/api/notifications/store-token`, {
+        userId,
+        token: rawFcm,
+        tokenType: 'fcm',
+        deviceInfo: {
+          platform: Constants.platform?.ios ? 'ios' : 'android',
+          deviceId: Constants.deviceId,
+          appVersion: Constants.expoConfig?.version
+        }
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      console.log('Token stored successfully:', response.data);
+    }
+  } catch (error) {
+    console.error('Error generating/storing notification token:', error);
+  }
+};
+
+// Remove notification token on logout
+const removeNotificationToken = async (userId: string) => {
+  try {
+    const token = await AuthStorage.getToken();
+    if (token) {
+      await axios.post(`${API_URL}/api/notifications/delete-token`, {
+        userId,
+        tokenType: 'fcm'
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      console.log('Notification token removed successfully');
+    }
+  } catch (error) {
+    console.error('Error removing notification token:', error);
+  }
+};
 
 export const login = async (mobileNumber: string, password: string) => {
   try {
@@ -46,6 +117,11 @@ export const login = async (mobileNumber: string, password: string) => {
       // Store admin status
       console.log("response.data.isAdmin", userData.isAdmin);
       await AuthStorage.storeAdminStatus(userData.isAdmin);
+
+      // Generate and store notification token after successful login
+      generateAndStoreNotificationToken(userData.userId).catch(error => {
+        console.error('Error handling notification token after login:', error);
+      });
 
       // Redirect to announcement page on successful login
       router.replace("/announcement");
@@ -97,5 +173,47 @@ export const register = async (mobileNumber: string, userId: string, fullName: s
     return response.data;
   } catch (error: any) {
     console.error("Registration error", error);
+  }
+};
+
+export const logout = async () => {
+  try {
+    // Get current user data before clearing storage
+    const userData = await AuthStorage.getUser();
+    
+    if (userData?.userId) {
+      // Remove notification token from backend
+      await removeNotificationToken(userData.userId);
+    }
+
+    // Clear local storage
+    await AuthStorage.clear();
+    
+    // Redirect to login page
+    router.replace("/login");
+    
+    console.log('Logout successful');
+  } catch (error) {
+    console.error('Error during logout:', error);
+    // Clear storage anyway in case of error
+    await AuthStorage.clear();
+    router.replace("/login");
+  }
+};
+
+// Function to handle token generation when app starts and user is already logged in
+export const handleAppStartNotificationToken = async () => {
+  try {
+    const userData = await AuthStorage.getUser();
+    const token = await AuthStorage.getToken();
+    
+    if (userData?.userId && token) {
+      // User is already logged in, generate and store notification token
+      generateAndStoreNotificationToken(userData.userId).catch(error => {
+        console.error('Error handling notification token on app start:', error);
+      });
+    }
+  } catch (error) {
+    console.error('Error checking login status for notification token:', error);
   }
 };

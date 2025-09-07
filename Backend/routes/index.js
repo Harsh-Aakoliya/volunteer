@@ -10,6 +10,7 @@ import tableRoutes from "./tableRoutes.js";
 import departmentRoutes from './departmentRoutes.js';
 import vmMediaRoutes from './vmMediaRoutes.js';
 import versionRoutes from './versionRoutes.js';
+import notificationRoutes from './notificationRoutes.js';
 const router = express.Router();
 
 // Test route
@@ -36,4 +37,5 @@ router.use('/poll', pollRoutes);
 router.use('/table',tableRoutes);
 router.use('/departments', departmentRoutes);
 router.use('/vm-media', vmMediaRoutes);
+router.use('/notifications', notificationRoutes);
 export default router; 

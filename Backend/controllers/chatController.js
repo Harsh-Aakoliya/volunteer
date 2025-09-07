@@ -8,7 +8,7 @@ const chatController = {
 
       // Get current user's information to check department and admin status
       const currentUserResult = await pool.query(
-        `SELECT "isAdmin", "department" FROM "users" WHERE "userId" = $1`,
+        `SELECT "isAdmin", "departments" FROM "users" WHERE "userId" = $1`,
         [authenticatedUserId]
       );
 
@@ -20,23 +20,23 @@ const chatController = {
       let query;
       let params;
 
-      if (currentUser.isAdmin && currentUser.department === "Karyalay") {
+      if (currentUser.isAdmin && currentUser.departments.includes("Karyalay")) {
         // Karyalay admin can see all users from all departments
-        query = `SELECT "userId", "fullName", "mobileNumber", "department" 
+        query = `SELECT "userId", "fullName", "mobileNumber", "departments" 
                  FROM "users" 
                  WHERE "isApproved" = TRUE AND "userId" != $1 
-                 ORDER BY "department", "fullName"`;
-        params = [authenticatedUserId];
-      } else if (currentUser.isAdmin && currentUser.department !== "Karyalay") {
-        // HOD can only see users from their own department
-        query = `SELECT "userId", "fullName", "mobileNumber", "department" 
-                 FROM "users" 
-                 WHERE "isApproved" = TRUE AND "userId" != $1 AND "department" = $2 
                  ORDER BY "fullName"`;
-        params = [authenticatedUserId, currentUser.department];
+        params = [authenticatedUserId];
+      } else if (currentUser.isAdmin && !currentUser.departments.includes("Karyalay")) {
+        // HOD can only see users from their own department
+        query = `SELECT "userId", "fullName", "mobileNumber", "departments" 
+                 FROM "users" 
+                 WHERE "isApproved" = TRUE AND "userId" != $1 AND "departments" && $2 
+                 ORDER BY "fullName"`;
+        params = [authenticatedUserId, currentUser.departments];
       } else {
         // Regular users can see all users (existing behavior for non-admin users)
-        query = `SELECT "userId", "fullName", "mobileNumber", "department" 
+        query = `SELECT "userId", "fullName", "mobileNumber", "departments" 
                  FROM "users" 
                  WHERE "isApproved" = TRUE AND "userId" != $1 
                  ORDER BY "fullName"`;
@@ -109,7 +109,7 @@ const chatController = {
 
       // Get current user's department and admin status for access control
       const currentUserResult = await client.query(
-        `SELECT "isAdmin", "department" FROM "users" WHERE "userId" = $1`,
+        `SELECT "isAdmin", "departments" FROM "users" WHERE "userId" = $1`,
         [createdBy]
       );
 
@@ -123,17 +123,17 @@ const chatController = {
       let userCheckQuery;
       let userCheckParams;
 
-      if (currentUser.isAdmin && currentUser.department === "Karyalay") {
+      if (currentUser.isAdmin && currentUser.departments.includes("Karyalay")) {
         // Karyalay admin can add users from any department
-        userCheckQuery = `SELECT "userId", "department" FROM "users" WHERE "userId" = ANY($1)`;
+        userCheckQuery = `SELECT "userId", "departments" FROM "users" WHERE "userId" = ANY($1)`;
         userCheckParams = [validUserIds];
-      } else if (currentUser.isAdmin && currentUser.department !== "Karyalay") {
+      } else if (currentUser.isAdmin && !currentUser.departments.includes("Karyalay")) {
         // HOD can only add users from their own department
-        userCheckQuery = `SELECT "userId", "department" FROM "users" WHERE "userId" = ANY($1) AND "department" = $2`;
-        userCheckParams = [validUserIds, currentUser.department];
+        userCheckQuery = `SELECT "userId", "departments" FROM "users" WHERE "userId" = ANY($1) AND "departments" && $2`;
+        userCheckParams = [validUserIds, currentUser.departments];
       } else {
         // Regular users can add any user (existing behavior)
-        userCheckQuery = `SELECT "userId", "department" FROM "users" WHERE "userId" = ANY($1)`;
+        userCheckQuery = `SELECT "userId", "departments" FROM "users" WHERE "userId" = ANY($1)`;
         userCheckParams = [validUserIds];
       }
 
@@ -144,8 +144,8 @@ const chatController = {
 
       if (missingUserIds.length > 0) {
         // Provide specific error message for department access restrictions
-        if (currentUser.isAdmin && currentUser.department !== "Karyalay") {
-          throw new Error(`You can only add users from your department (${currentUser.department}). Some selected users are not from your department or don't exist: ${missingUserIds.join(', ')}`);
+          if (currentUser.isAdmin && !currentUser.departments.includes("Karyalay")) {
+          throw new Error(`You can only add users from your department (${currentUser.departments}). Some selected users are not from your department or don't exist: ${missingUserIds.join(', ')}`);
         }
         throw new Error(`Some user IDs do not exist: ${missingUserIds.join(', ')}`);
       }
@@ -390,7 +390,7 @@ const chatController = {
 
       // Get current user's department and admin status for access control
       const currentUserResult = await client.query(
-        `SELECT "isAdmin", "department" FROM "users" WHERE "userId" = $1`,
+        `SELECT "isAdmin", "departments" FROM "users" WHERE "userId" = $1`,
         [userId]
       );
 
@@ -404,17 +404,17 @@ const chatController = {
       let userCheckQuery;
       let userCheckParams;
 
-      if (currentUser.isAdmin && currentUser.department === "Karyalay") {
+      if (currentUser.isAdmin && currentUser.departments.includes("Karyalay")) {
         // Karyalay admin can add users from any department
-        userCheckQuery = `SELECT "userId", "department" FROM "users" WHERE "userId" = ANY($1)`;
+        userCheckQuery = `SELECT "userId", "departments" FROM "users" WHERE "userId" = ANY($1)`;
         userCheckParams = [userIds];
-      } else if (currentUser.isAdmin && currentUser.department !== "Karyalay") {
+      } else if (currentUser.isAdmin && !currentUser.departments.includes("Karyalay")) {
         // HOD can only add users from their own department
-        userCheckQuery = `SELECT "userId", "department" FROM "users" WHERE "userId" = ANY($1) AND "department" = $2`;
+        userCheckQuery = `SELECT "userId", "departments" FROM "users" WHERE "userId" = ANY($1) AND "departments" && $2`;
         userCheckParams = [userIds, currentUser.department];
       } else {
         // Regular users can add any user (existing behavior)
-        userCheckQuery = `SELECT "userId", "department" FROM "users" WHERE "userId" = ANY($1)`;
+        userCheckQuery = `SELECT "userId", "departments" FROM "users" WHERE "userId" = ANY($1)`;
         userCheckParams = [userIds];
       }
 
@@ -425,9 +425,9 @@ const chatController = {
 
       if (missingUserIds.length > 0) {
         // Provide specific error message for department access restrictions
-        if (currentUser.isAdmin && currentUser.department !== "Karyalay") {
+        if (currentUser.isAdmin && !currentUser.departments.includes("Karyalay")) {
           return res.status(403).json({ 
-            message: `You can only add users from your department (${currentUser.department}). Some selected users are not from your department or don't exist.`,
+            message: `You can only add users from your department (${currentUser.departments.join(', ')}). Some selected users are not from your department or don't exist.`,
             invalidUserIds: missingUserIds
           });
         }

@@ -17,7 +17,9 @@ import { API_URL } from '@/constants/api';
 import ImageViewer from '@/components/texteditor/ImageViewer';
 import VideoViewer from '@/components/texteditor/VideoViewer';
 import AudioViewer from '@/components/texteditor/AudioViewer';
-import LottieView from 'lottie-react-native';
+import { sendTestNotification } from '@/api/notification';
+import { AuthStorage } from '@/utils/authStorage';
+// import LottieView from 'lottie-react-native';
 
 const StyledWebView = cssInterop(WebView, {
   className: "style",
@@ -27,7 +29,7 @@ interface Step4PreviewProps {
   title: string;
   content: string;
   announcementId: number;
-  selectedUserIds: string[];
+  selectedDepartments: string[];
   attachedMediaFiles: any[];
   onPublish: () => Promise<void>;
   onBack: () => void;
@@ -38,7 +40,7 @@ export default function Step4Preview({
   title,
   content,
   announcementId,
-  selectedUserIds,
+  selectedDepartments,
   attachedMediaFiles,
   onPublish, 
   onBack,
@@ -54,6 +56,7 @@ export default function Step4Preview({
   const [selectedAudioFile, setSelectedAudioFile] = useState<any>(null);
   const [showVideoViewer, setShowVideoViewer] = useState(false);
   const [selectedVideoFile, setSelectedVideoFile] = useState<any>(null);
+  const [isSendingTestNotification, setIsSendingTestNotification] = useState(false);
 
   // Handle media file clicks
   const handleImageClick = (file: any) => {
@@ -159,6 +162,31 @@ export default function Step4Preview({
     `;
   }, [title, content]);
 
+  const handleTestNotification = async () => {
+    try {
+      setIsSendingTestNotification(true);
+      const userData = await AuthStorage.getUser();
+      
+      if (!userData?.userId) {
+        Alert.alert('Error', 'User not found');
+        return;
+      }
+
+      await sendTestNotification(
+        userData.userId,
+        'Test Notification',
+        `Testing notification for announcement: "${title}"`
+      );
+      
+      Alert.alert('Success', 'Test notification sent successfully!');
+    } catch (error) {
+      console.error('Error sending test notification:', error);
+      Alert.alert('Error', 'Failed to send test notification');
+    } finally {
+      setIsSendingTestNotification(false);
+    }
+  };
+
   const handlePublish = async () => {
     Alert.alert(
       isEdit ? "Update Announcement" : "Publish Announcement",
@@ -218,12 +246,23 @@ export default function Step4Preview({
       <ScrollView className="flex-1 bg-white">
         {/* Recipients Summary */}
         <View className="p-4 bg-green-50 border-b border-green-100">
-          <View className="flex-row items-center mb-2">
-            <Ionicons name="people" size={16} color="#059669" />
-            <Text className="text-green-800 font-medium ml-2">Recipients</Text>
+          <View className="flex-row items-center justify-between mb-2">
+            <View className="flex-row items-center">
+              <Ionicons name="people" size={16} color="#059669" />
+              <Text className="text-green-800 font-medium ml-2">Recipients</Text>
+            </View>
+            <TouchableOpacity
+              onPress={handleTestNotification}
+              disabled={isSendingTestNotification}
+              className={`py-2 px-3 rounded-lg ${isSendingTestNotification ? 'bg-gray-400' : 'bg-blue-600'}`}
+            >
+              <Text className="text-white text-xs font-medium">
+                {isSendingTestNotification ? 'Sending...' : 'Test Notification'}
+              </Text>
+            </TouchableOpacity>
           </View>
           <Text className="text-green-700 text-sm">
-            This announcement will be sent to {selectedUserIds.length} selected user{selectedUserIds.length !== 1 ? 's' : ''}
+            This announcement will be sent to {selectedDepartments.length} selected department{selectedDepartments.length !== 1 ? 's' : ''}: {selectedDepartments.join(', ')}
           </Text>
         </View>
 

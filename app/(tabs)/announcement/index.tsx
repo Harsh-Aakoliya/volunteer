@@ -17,6 +17,7 @@ import {
 } from "react-native";
 import {
   fetchAnnouncements,
+  fetchUserAnnouncements,
   deleteAnnouncement,
   toggleLike,
   markAsRead,
@@ -45,6 +46,8 @@ interface Announcement {
   body: string;
   authorId: string;
   authorName: string;
+  authorDepartments?: string[];
+  departmentTag?: string[];
   thumbnail: string;
   hasCoverImage?: boolean;
   createdAt: string;
@@ -83,15 +86,19 @@ import VideoViewer from "@/components/texteditor/VideoViewer";
 
 const Announcements = () => {
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+  const [allAnnouncements, setAllAnnouncements] = useState<Announcement[]>([]); // Store all fetched announcements
+  const [filteredAnnouncements, setFilteredAnnouncements] = useState<Announcement[]>([]); // Filtered announcements for display
   const [selectedAnnouncement, setSelectedAnnouncement] = useState<Announcement | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string>("");
-  const [userDepartment, setUserDepartment] = useState<string>("");
+  const [userDepartments, setUserDepartments] = useState<string[]>([]);
   const [isKaryalay, setIsKaryalay] = useState(false);
+  const [isHOD, setIsHOD] = useState(false);
   const [allDepartments, setAllDepartments] = useState<string[]>([]);
-  const [selectedDepartment, setSelectedDepartment] = useState<string>("Karyalay");
+  const [selectedTab, setSelectedTab] = useState<string>("ALL");
+  const [availableTabs, setAvailableTabs] = useState<string[]>([]);
   
   // New states for like and read functionality
   const [likedUsers, setLikedUsers] = useState<LikedUser[]>([]);
@@ -119,23 +126,36 @@ const Announcements = () => {
   const announcementHeight = screenHeight / 4; // Each announcement takes 1/4 of screen height
   
   useEffect(() => {
-    loadAnnouncements();
     getCurrentUser();
     loadDepartments();
   }, []);
 
   useEffect(() => {
-    // Reload announcements when department changes
-    loadAnnouncements();
-  }, [selectedDepartment]);
+    // Set up tabs based on user type
+    setupTabs();
+  }, [isKaryalay, isHOD, userDepartments, allDepartments]);
+
+  useEffect(() => {
+    // Load announcements when user type is determined
+    if (currentUserId) {
+      loadAnnouncements();
+    }
+  }, [currentUserId]);
+
+  useEffect(() => {
+    // Filter announcements when tab changes
+    filterAnnouncements();
+  }, [selectedTab, allAnnouncements]);
 
   const getCurrentUser = async () => {
     const userData = await AuthStorage.getUser();
+    console.log("User data in announcement page",userData);
     if (userData) {
       setCurrentUserId(userData.userId);
       setIsAdmin(userData.isAdmin || false);
-      setUserDepartment(userData.department || '');
-      setIsKaryalay(userData.department === 'Karyalay');
+      setUserDepartments(userData.departments || []);
+      setIsKaryalay(userData?.departments && userData?.departments?.includes('Karyalay') || false);
+      setIsHOD(userData?.isAdmin && userData?.departments && !userData?.departments?.includes('Karyalay') || false);
     }
   };
 
@@ -148,20 +168,43 @@ const Announcements = () => {
     }
   };
 
+  const setupTabs = () => {
+    let tabs: string[] = ['ALL'];
+    
+    if (isKaryalay) {
+      // Karyalay users see: ALL, Your announcements, and their departments
+      tabs = ['ALL', 'Your announcements'];
+      tabs.push(...userDepartments);
+    } else if (isHOD) {
+      // HOD users see: ALL, Your announcements, Karyalay, and their departments
+      tabs = ['ALL', 'Your announcements', 'Karyalay'];
+      tabs.push(...userDepartments);
+    } else {
+      // Normal users see: ALL, Karyalay, and their departments
+      tabs = ['ALL', 'Karyalay'];
+      tabs.push(...userDepartments);
+    }
+    
+    setAvailableTabs(tabs);
+    setSelectedTab('ALL');
+  };
+
   const router = useRouter();
   const { newAnnouncement } = useLocalSearchParams();
 
   useEffect(() => {
     if (typeof newAnnouncement === "string") {
-      setAnnouncements((prev) => [JSON.parse(newAnnouncement), ...prev]);
+      const newAnn = JSON.parse(newAnnouncement);
+      setAllAnnouncements((prev) => [newAnn, ...prev]);
+      setAnnouncements((prev) => [newAnn, ...prev]);
     }
   }, [newAnnouncement]);
 
   const loadAnnouncements = async () => {
     try {
-      // setIsRefreshing(true);
-      const data: Announcement[] = await fetchAnnouncements(selectedDepartment);
-      // console.log("data",data);
+      setIsRefreshing(true);
+      const data: Announcement[] = await fetchUserAnnouncements();
+      setAllAnnouncements(data);
       setAnnouncements(data);
       setIsRefreshing(false);
     } catch (error) {
@@ -174,6 +217,34 @@ const Announcements = () => {
     setIsRefreshing(true);
     loadAnnouncements();
   }, []);
+
+  const filterAnnouncements = () => {
+    if (selectedTab === 'ALL') {
+      setFilteredAnnouncements(allAnnouncements);
+      setAnnouncements(allAnnouncements);
+      return;
+    }
+
+    let filtered: Announcement[] = [];
+
+    if (selectedTab === 'Your announcements') {
+      // Show only announcements created by current user
+      filtered = allAnnouncements.filter(announcement => announcement.authorId === currentUserId);
+    } else if (selectedTab === 'Karyalay') {
+      // Show announcements where author is from Karyalay department
+      filtered = allAnnouncements.filter(announcement => 
+        announcement.authorDepartments && announcement.authorDepartments.includes('Karyalay')
+      );
+    } else {
+      // Filter by specific department in departmentTag
+      filtered = allAnnouncements.filter(announcement => 
+        announcement.departmentTag && announcement.departmentTag.includes(selectedTab)
+      );
+    }
+
+    setFilteredAnnouncements(filtered);
+    setAnnouncements(filtered);
+  };
 
   const handleToggleLike = async (id: number) => {
     // Prevent multiple rapid clicks
@@ -399,12 +470,12 @@ const Announcements = () => {
       
       // Determine department tags based on user type
       let departmentTags: string[] = [];
-      if (userDepartment === 'Karyalay') {
+      if (isKaryalay) {
         // Karyalay users will select departments in the editor
         departmentTags = [];
       } else {
-        // HOD users auto-tag with their department
-        departmentTags = [userDepartment];
+        // HOD users will select from their departments in the editor
+        departmentTags = [];
       }
       
       // Create a new draft entry in DB
@@ -489,30 +560,15 @@ const Announcements = () => {
     }
   };
 
-  // Get tabs based on user type
-  const getDepartmentTabs = () => {
-    const tabs = ['Karyalay']; // Always show Karyalay first
-    
-    if (isKaryalay) {
-      // Karyalay users see all other departments
-      const otherDepartments = allDepartments.filter(dept => dept !== 'Karyalay');
-      tabs.push(...otherDepartments);
-    } else {
-      // HODs and Sevaks see only their department (if not Karyalay)
-      if (userDepartment && userDepartment !== 'Karyalay') {
-        tabs.push(userDepartment);
-      }
-    }
-    
-    return tabs;
+  // Handle tab selection
+  const handleTabSelect = (tab: string) => {
+    setSelectedTab(tab);
   };
-
-  const tabs = getDepartmentTabs();
 
   return (
     <View className="flex-1 bg-gray-50">
       {/* Department Tabs */}
-      {tabs.length > 1 && (
+      {availableTabs.length > 1 && (
         <View className="bg-white border-b border-gray-200">
           <ScrollView 
             horizontal 
@@ -520,22 +576,22 @@ const Announcements = () => {
             className="px-4 py-3"
             contentContainerStyle={{ paddingRight: 20 }}
           >
-            {tabs.map((department) => (
+            {availableTabs.map((tab) => (
               <TouchableOpacity
-                key={department}
-                onPress={() => setSelectedDepartment(department)}
+                key={tab}
+                onPress={() => handleTabSelect(tab)}
                 className={`mr-4 px-4 py-2 rounded-full border ${
-                  selectedDepartment === department
+                  selectedTab === tab
                     ? 'bg-blue-500 border-blue-500'
                     : 'bg-white border-gray-300'
                 }`}
               >
                 <Text
                   className={`font-medium ${
-                    selectedDepartment === department ? 'text-white' : 'text-gray-700'
+                    selectedTab === tab ? 'text-white' : 'text-gray-700'
                   }`}
                 >
-                  {department}
+                  {tab}
                 </Text>
               </TouchableOpacity>
             ))}

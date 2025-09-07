@@ -39,13 +39,15 @@
     "owner": "harsh123890",
     "android": {
       "package": "com.harsh123890.Sevak",
+      "googleServicesFile": "./google-services.json",
       "permissions": [
         "INTERNET",
         "ACCESS_NETWORK_STATE",
         "WRITE_EXTERNAL_STORAGE",
         "READ_EXTERNAL_STORAGE",
         "MANAGE_EXTERNAL_STORAGE",
-        "REQUEST_INSTALL_PACKAGES"
+        "REQUEST_INSTALL_PACKAGES",
+        "POST_NOTIFICATIONS"
       ]
     }
   }

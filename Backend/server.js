@@ -10,6 +10,8 @@ import initPollDB from "./models/Poll.js";
 import initMediaDB from "./models/Media.js";
 import initTableDB from "./models/Table.js";
 import initDepartmentDB from "./models/Department.js"; 
+import initNotificationTokenDB from "./models/NotificationToken.js";
+import { initializeFirebase } from "./config/firebase.js";
 import initializeForeignKeyConstraints from "./models/ForeignKeyConstraints.js"
 import errorHandling from "./middlewares/errorHandler.js";
 import apiRoutes from "./routes/index.js";
@@ -45,7 +47,11 @@ initPollDB();
 initMediaDB();
 initTableDB();
 initDepartmentDB();
+initNotificationTokenDB();
 initializeForeignKeyConstraints();
+
+// Initialize Firebase for FCM notifications
+initializeFirebase();
 
 const UPLOAD_DIR = path.join(process.cwd(), 'media');
 console.log("UPLOAD_DIR",UPLOAD_DIR);
@@ -184,3 +190,7 @@ httpServer.listen(PORT, "0.0.0.0", () => {
   console.log("Available on:");
   addresses.forEach((addr) => console.log(`http://${addr}:${PORT}`));
 });
+
+
+
+

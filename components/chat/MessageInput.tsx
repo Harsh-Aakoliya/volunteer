@@ -299,7 +299,7 @@ export default function MessageInput({
         {/* Input Bar */}
         <TextInput
           ref={textInputRef}
-          className="flex-1 bg-gray-100 rounded-full px-4 py-2 mr-2"
+          className="flex-1 bg-gray-100 rounded-lg px-4 py-2 mr-2"
           placeholder={placeholder}
           value={messageText}
           onChangeText={handleTextChange}

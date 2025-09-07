@@ -19,7 +19,7 @@ export const fetchChatUsers = async (): Promise<ChatUser[]> => {
       userId: user.userId,
       fullName: user.fullName,
       mobileNumber: user.mobileNumber,
-      department: user.department
+      departments: user.departments
     }));
   } catch (error) {
     console.error("Error fetching chat users:", error);

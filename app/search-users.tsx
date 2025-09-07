@@ -14,84 +14,92 @@ import {
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { searchUsers, getSearchFilters } from '@/api/user';
+import { getAllSearchData } from '@/api/user';
 import { 
-  DepartmentUser, 
-  SearchUsersResponse, 
-  SearchFiltersResponse 
+  DepartmentUser
 } from '@/types/type';
 
 export default function SearchUsersScreen() {
-  const [users, setUsers] = useState<DepartmentUser[]>([]);
+  const [allUsers, setAllUsers] = useState<DepartmentUser[]>([]);
+  const [filteredUsers, setFilteredUsers] = useState<DepartmentUser[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(true);
-  const [isSearching, setIsSearching] = useState(false);
   
   // Filter states
-  const [filters, setFilters] = useState<SearchFiltersResponse | null>(null);
+  const [allDepartments, setAllDepartments] = useState<Array<{departmentId: string, departmentName: string}>>([]);
+  const [allSubdepartments, setAllSubdepartments] = useState<Array<{subdepartmentId: string, subdepartmentName: string, departmentId: string}>>([]);
+  const [userRole, setUserRole] = useState<{isKaryalay: boolean, isHOD: boolean}>({isKaryalay: false, isHOD: false});
   const [selectedDepartments, setSelectedDepartments] = useState<string[]>([]);
   const [selectedSubdepartments, setSelectedSubdepartments] = useState<string[]>([]);
   const [showNoSelection, setShowNoSelection] = useState(true);
-  
-  // Pagination
-  const [pagination, setPagination] = useState({
-    page: 1,
-    limit: 20,
-    total: 0,
-    pages: 0
-  });
+  const [allDepartmentsActive, setAllDepartmentsActive] = useState(false);
+  const [allSubdepartmentsActive, setAllSubdepartmentsActive] = useState(false);
 
-  // Load search filters on component mount
-  const loadSearchFilters = async () => {
+  // Load all data on component mount
+  const loadAllData = async () => {
     try {
       setIsLoading(true);
-      const filtersData = await getSearchFilters();
-      setFilters(filtersData);
+      const data = await getAllSearchData();
+      setAllUsers(data.users);
+      setAllDepartments(data.departments);
+      setAllSubdepartments(data.subdepartments);
+      setUserRole(data.userRole);
+      setFilteredUsers(data.users); // Initially show all users
     } catch (error) {
-      console.error('Error loading search filters:', error);
-      Alert.alert('Error', 'Failed to load search filters');
+      console.error('Error loading search data:', error);
+      Alert.alert('Error', 'Failed to load search data');
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Perform user search with filters
-  const performSearch = async (resetPage = true) => {
-    // Check if any filters are selected
-    if (selectedDepartments.length === 0 && selectedSubdepartments.length === 0) {
+  // Filter users locally based on selected filters
+  const filterUsers = () => {
+    // For HOD: Check if any filters are selected
+    if (!userRole.isKaryalay && selectedSubdepartments.length === 0) {
       setShowNoSelection(true);
-      setUsers([]);
+      setFilteredUsers([]);
+      return;
+    }
+
+    // For Karyalay: Check if any filters are selected (unless ALL is active)
+    if (userRole.isKaryalay && !allDepartmentsActive && selectedDepartments.length === 0 && selectedSubdepartments.length === 0) {
+      setShowNoSelection(true);
+      setFilteredUsers([]);
       return;
     }
 
     setShowNoSelection(false);
     
-    try {
-      setIsSearching(true);
-      const page = resetPage ? 1 : pagination.page;
-      
-      const response = await searchUsers({
-        searchQuery: searchQuery.trim(),
-        departmentIds: selectedDepartments,
-        subdepartmentIds: selectedSubdepartments,
-        page,
-        limit: pagination.limit
-      });
+    let filtered = [...allUsers];
 
-      if (resetPage) {
-        setUsers(response.users);
-        setPagination(response.pagination);
-      } else {
-        // Append for pagination
-        setUsers(prev => [...prev, ...response.users]);
-        setPagination(response.pagination);
-      }
-    } catch (error) {
-      console.error('Error searching users:', error);
-      Alert.alert('Error', 'Failed to search users');
-    } finally {
-      setIsSearching(false);
+    // Filter by departments (only for Karyalay)
+    if (userRole.isKaryalay && !allDepartmentsActive && selectedDepartments.length > 0) {
+      filtered = filtered.filter(user => 
+        user.departmentId && selectedDepartments.includes(user.departmentId)
+      );
     }
+
+    // Filter by subdepartments
+    if (!allSubdepartmentsActive && selectedSubdepartments.length > 0) {
+      filtered = filtered.filter(user => 
+        user.subdepartmentIds && user.subdepartmentIds.some(id => 
+          selectedSubdepartments.includes(id)
+        )
+      );
+    }
+
+    // Filter by search query
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(user =>
+        user.fullName.toLowerCase().includes(query) ||
+        user.userId.toLowerCase().includes(query) ||
+        user.mobileNumber.includes(query)
+      );
+    }
+
+    setFilteredUsers(filtered);
   };
 
   // Handle text search
@@ -99,15 +107,25 @@ export default function SearchUsersScreen() {
     setSearchQuery(query);
   };
 
-  // Trigger search when filters change
+  // Trigger filtering when filters change
   useEffect(() => {
-    if (filters) {
-      performSearch(true);
+    if (allUsers.length > 0) {
+      filterUsers();
     }
-  }, [selectedDepartments, selectedSubdepartments]);
+  }, [selectedDepartments, selectedSubdepartments, allDepartmentsActive, allSubdepartmentsActive, searchQuery, allUsers, userRole]);
+
+  // Handle ALL departments selection
+  const handleAllDepartments = () => {
+    setAllDepartmentsActive(true);
+    setSelectedDepartments([]);
+    setSelectedSubdepartments([]);
+  };
 
   // Handle department selection
   const toggleDepartment = (departmentId: string) => {
+    // Deactivate ALL when selecting specific departments
+    setAllDepartmentsActive(false);
+    
     setSelectedDepartments(prev => {
       const newSelection = prev.includes(departmentId)
         ? prev.filter(id => id !== departmentId)
@@ -115,9 +133,9 @@ export default function SearchUsersScreen() {
       
       // If deselecting a department, also deselect its subdepartments
       if (prev.includes(departmentId)) {
-        const deptSubdepartments = filters?.subdepartments
+        const deptSubdepartments = allSubdepartments
           .filter(sub => sub.departmentId === departmentId)
-          .map(sub => sub.subdepartmentId) || [];
+          .map(sub => sub.subdepartmentId);
         
         setSelectedSubdepartments(prevSub => 
           prevSub.filter(id => !deptSubdepartments.includes(id))
@@ -128,8 +146,17 @@ export default function SearchUsersScreen() {
     });
   };
 
+  // Handle ALL subdepartments selection
+  const handleAllSubdepartments = () => {
+    setAllSubdepartmentsActive(true);
+    setSelectedSubdepartments([]);
+  };
+
   // Handle subdepartment selection
   const toggleSubdepartment = (subdepartmentId: string) => {
+    // Deactivate ALL when selecting specific subdepartments
+    setAllSubdepartmentsActive(false);
+    
     setSelectedSubdepartments(prev => 
       prev.includes(subdepartmentId)
         ? prev.filter(id => id !== subdepartmentId)
@@ -139,13 +166,11 @@ export default function SearchUsersScreen() {
 
   // Get filtered subdepartments based on selected departments
   const getFilteredSubdepartments = () => {
-    if (!filters) return [];
-    
     if (selectedDepartments.length === 0) {
-      return filters.subdepartments;
+      return allSubdepartments;
     }
     
-    return filters.subdepartments.filter(sub => 
+    return allSubdepartments.filter(sub => 
       selectedDepartments.includes(sub.departmentId)
     );
   };
@@ -172,7 +197,8 @@ export default function SearchUsersScreen() {
             try {
               // Implement delete user API call here
               Alert.alert('Success', 'User deleted successfully');
-              performSearch(true); // Refresh the list
+              // Would need to refresh data after delete
+              loadAllData(); // Refresh the list
             } catch (error) {
               Alert.alert('Error', 'Failed to delete user');
             }
@@ -182,28 +208,9 @@ export default function SearchUsersScreen() {
     );
   };
 
-  // Load more users (pagination)
-  const loadMore = () => {
-    if (pagination.page < pagination.pages && !isSearching) {
-      setPagination(prev => ({ ...prev, page: prev.page + 1 }));
-      performSearch(false);
-    }
-  };
-
   useEffect(() => {
-    loadSearchFilters();
+    loadAllData();
   }, []);
-
-  // Trigger search when search text changes (debounced)
-  useEffect(() => {
-    const timeoutId = setTimeout(() => {
-      if (filters && (selectedDepartments.length > 0 || selectedSubdepartments.length > 0)) {
-        performSearch(true);
-      }
-    }, 500);
-
-    return () => clearTimeout(timeoutId);
-  }, [searchQuery]);
 
   // Render department tab
   const DepartmentTab = ({ department, isSelected, onPress }: {
@@ -304,7 +311,7 @@ export default function SearchUsersScreen() {
             <Ionicons name="create-outline" size={18} color="#0286ff" />
           </TouchableOpacity>
           
-          {filters?.userRole.isKaryalay && (
+          {userRole.isKaryalay && (
             <TouchableOpacity
               onPress={() => handleDeleteUser(item)}
               className="w-9 h-9 bg-red-100 rounded-full items-center justify-center"
@@ -342,33 +349,35 @@ export default function SearchUsersScreen() {
         </View>
         
         <Text className="text-white/80 text-center mt-2">
-          {filters?.userRole.isKaryalay ? 'Search across all departments' : 'Search in your department'}
+          {userRole.isKaryalay ? 'Search across all departments' : 'Search in your department'}
         </Text>
       </LinearGradient>
 
       <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
-        {/* Department Filters */}
-        {filters?.userRole.isKaryalay && filters.departments.length > 0 && (
+        {/* Department Filters - Only show for Karyalay */}
+        {userRole.isKaryalay && allDepartments && allDepartments.length > 0 && (
           <View className="bg-white p-4 mb-2">
             <Text className="text-lg font-bold text-gray-800 mb-3">Departments</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false}>
               <View className="flex-row">
                 <TouchableOpacity
-                  onPress={() => setSelectedDepartments([])}
+                  onPress={handleAllDepartments}
                   className={`px-4 py-2 mx-1 rounded-full border ${
-                    selectedDepartments.length === 0 
+                    allDepartmentsActive
                       ? 'bg-gray-600 border-gray-600' 
                       : 'bg-white border-gray-300'
                   }`}
+                  disabled={!allDepartmentsActive && selectedDepartments.length === 0}
                 >
                   <Text className={`text-sm font-medium ${
-                    selectedDepartments.length === 0 ? 'text-white' : 'text-gray-700'
+                    allDepartmentsActive ? 'text-white' : 
+                    (!allDepartmentsActive && selectedDepartments.length === 0) ? 'text-gray-400' : 'text-gray-700'
                   }`}>
-                    All
+                    ALL
                   </Text>
                 </TouchableOpacity>
                 
-                {filters.departments.map((dept) => (
+                {allDepartments.map((dept) => (
                   <DepartmentTab
                     key={dept.departmentId}
                     department={dept}
@@ -387,17 +396,19 @@ export default function SearchUsersScreen() {
             <Text className="text-lg font-bold text-gray-800 mb-3">Subdepartments</Text>
             <View className="flex-row flex-wrap">
               <TouchableOpacity
-                onPress={() => setSelectedSubdepartments([])}
+                onPress={handleAllSubdepartments}
                 className={`px-3 py-1 mx-1 mb-2 rounded-full border ${
-                  selectedSubdepartments.length === 0 
+                  allSubdepartmentsActive
                     ? 'bg-gray-600 border-gray-600' 
                     : 'bg-white border-gray-300'
                 }`}
+                disabled={!allSubdepartmentsActive && selectedSubdepartments.length === 0}
               >
                 <Text className={`text-xs font-medium ${
-                  selectedSubdepartments.length === 0 ? 'text-white' : 'text-gray-700'
+                  allSubdepartmentsActive ? 'text-white' : 
+                  (!allSubdepartmentsActive && selectedSubdepartments.length === 0) ? 'text-gray-400' : 'text-gray-700'
                 }`}>
-                  All
+                  ALL
                 </Text>
               </TouchableOpacity>
               
@@ -438,7 +449,10 @@ export default function SearchUsersScreen() {
             <View className="flex-row items-center">
               <Ionicons name="information-circle" size={24} color="#F59E0B" />
               <Text className="text-yellow-800 font-medium ml-2 flex-1">
-                Select one or more {filters?.userRole.isKaryalay ? 'departments or ' : ''}subdepartments to view users
+                {userRole.isKaryalay 
+                  ? "Click 'ALL' in departments to view all users or select specific departments"
+                  : "Click 'ALL' in subdepartments to view all users or select specific subdepartments"
+                }
               </Text>
             </View>
           </View>
@@ -449,11 +463,12 @@ export default function SearchUsersScreen() {
           <View className="bg-white mx-4 mb-2 rounded-xl p-4">
             <View className="flex-row items-center justify-between">
               <Text className="text-gray-600">
-                Found {pagination.total} users
-                {selectedDepartments.length > 0 && ` in ${selectedDepartments.length} department${selectedDepartments.length > 1 ? 's' : ''}`}
-                {selectedSubdepartments.length > 0 && ` • ${selectedSubdepartments.length} subdepartment${selectedSubdepartments.length > 1 ? 's' : ''}`}
+                Found {filteredUsers.length} users
+                {allDepartmentsActive && ' across all departments'}
+                {allSubdepartmentsActive && ' across all subdepartments'}
+                {selectedDepartments.length > 0 && !allDepartmentsActive && ` in ${selectedDepartments.length} department${selectedDepartments.length > 1 ? 's' : ''}`}
+                {selectedSubdepartments.length > 0 && !allSubdepartmentsActive && ` • ${selectedSubdepartments.length} subdepartment${selectedSubdepartments.length > 1 ? 's' : ''}`}
               </Text>
-              {isSearching && <ActivityIndicator size="small" color="#0286ff" />}
             </View>
           </View>
         )}
@@ -461,32 +476,13 @@ export default function SearchUsersScreen() {
         {/* Users List */}
         {!showNoSelection && (
           <FlatList
-            data={users}
+            data={filteredUsers}
             keyExtractor={(item) => item.userId}
             renderItem={renderUserItem}
             showsVerticalScrollIndicator={false}
             scrollEnabled={false}
-            onEndReached={loadMore}
-            onEndReachedThreshold={0.1}
-            ListFooterComponent={
-              pagination.page < pagination.pages ? (
-                <View className="p-4">
-                  <TouchableOpacity
-                    onPress={loadMore}
-                    disabled={isSearching}
-                    className="bg-blue-100 py-3 rounded-xl items-center"
-                  >
-                    {isSearching ? (
-                      <ActivityIndicator size="small" color="#0286ff" />
-                    ) : (
-                      <Text className="text-blue-600 font-medium">Load More Users</Text>
-                    )}
-                  </TouchableOpacity>
-                </View>
-              ) : null
-            }
             ListEmptyComponent={
-              !isSearching && !showNoSelection ? (
+              !showNoSelection ? (
                 <View className="items-center justify-center p-8">
                   <Ionicons name="person-outline" size={60} color="#d1d5db" />
                   <Text className="text-gray-500 mt-4 text-center text-lg">

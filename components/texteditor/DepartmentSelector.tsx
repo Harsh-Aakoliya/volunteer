@@ -123,7 +123,7 @@ export default function DepartmentSelector({
               userId: user.userId,
               fullName: user.fullName,
               mobileNumber: user.mobileNumber,
-              department: user.department
+              departments: user.departments
             });
           }
         }

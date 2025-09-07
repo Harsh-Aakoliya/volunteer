@@ -1,10 +1,9 @@
-// app/index.tsx
-import React, { useState, useEffect } from 'react';
-import { View, Button, Alert } from 'react-native';
-import * as Notifications from 'expo-notifications';
-import axios from 'axios';
+import React, { useEffect, useState } from "react";
+import { View, Button, Alert } from "react-native";
+import * as Notifications from "expo-notifications";
+import Constants from "expo-constants";
+import axios from "axios";
 
-// Configure notification handling
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
@@ -14,55 +13,64 @@ Notifications.setNotificationHandler({
 });
 
 export default function App() {
-  const [expoPushToken, setExpoPushToken] = useState('');
+  const [expoToken, setExpoToken] = useState("");
+  const [fcmToken, setFcmToken] = useState("");
 
-  // Register for push notifications on component mount
   useEffect(() => {
-    registerForPushNotificationsAsync().then((token:any) => {
-      setExpoPushToken(token);
-    });
+    registerForPush();
   }, []);
 
-  // Function to register for push notifications
-  async function registerForPushNotificationsAsync() {
-    const { status: existingStatus } = await Notifications.getPermissionsAsync();
-    let finalStatus = existingStatus;
-    
-    if (existingStatus !== 'granted') {
-      const { status } = await Notifications.requestPermissionsAsync();
-      finalStatus = status;
-    }
-    
-    if (finalStatus !== 'granted') {
-      Alert.alert('Failed to get push token');
-      return;
-    }
-    
-    const token = (await Notifications.getExpoPushTokenAsync()).data;
-    return token;
+  async function registerForPush() {
+    const { status } = await Notifications.requestPermissionsAsync();
+    if (status !== "granted") return;
+
+    // Expo push token
+    const expoPushToken = (
+      await Notifications.getExpoPushTokenAsync({
+        projectId: Constants?.expoConfig?.extra?.eas?.projectId,
+      })
+    ).data;
+    setExpoToken(expoPushToken);
+    console.log("Expo token:", expoPushToken);
+
+    // FCM token
+    const { data: rawFcm } = await Notifications.getDevicePushTokenAsync();
+    setFcmToken(rawFcm);
+    console.log("FCM token:", rawFcm);
   }
 
-  // Handler for button press
-  const handleButtonPress = async () => {
-    try {
-      // Send request to backend
-      const response = await axios.post('http://172.22.64.1:3000/trigger-notification', {
-        token: expoPushToken
-      });
-      
-      Alert.alert('Success', 'Notification request sent!');
-    } catch (error) {
-      console.error('Error sending notification request:', error);
-      Alert.alert('Error', 'Failed to send notification');
-    }
+  const storeToken = async () => {
+    await axios.post("http://192.168.64.33:3000/store-token", {
+      expoToken,
+      fcmToken,
+    });
+    Alert.alert("Tokens stored successfully");
+  };
+
+  const deleteToken = async () => {
+    await axios.post("http://192.168.64.33:3000/delete-token", {
+      expoToken,
+      fcmToken,
+    });
+    Alert.alert("Tokens deleted successfully");
+  };
+
+  const sendExpo = async () => {
+    await axios.post("http://192.168.64.33:3000/trigger-expo");
+    Alert.alert("Expo push request sent to all tokens");
+  };
+
+  const sendFcm = async () => {
+    await axios.post("http://192.168.64.33:3000/trigger-fcm");
+    Alert.alert("FCM push request sent to all tokens");
   };
 
   return (
-    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-      <Button 
-        title="Send Notification" 
-        onPress={handleButtonPress} 
-      />
+    <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+      <Button title="Store Token" onPress={storeToken} />
+      <Button title="Delete Token" onPress={deleteToken} />
+      <Button title="Send Expo Push (All)" onPress={sendExpo} />
+      <Button title="Send FCM Push (All)" onPress={sendFcm} />
     </View>
   );
 }

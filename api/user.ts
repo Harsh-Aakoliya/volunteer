@@ -133,6 +133,28 @@ export const getSearchFilters = async (): Promise<SearchFiltersResponse> => {
   }
 };
 
+// Get all search data (users, departments, subdepartments) in one call
+export const getAllSearchData = async (): Promise<{
+  users: DepartmentUser[];
+  departments: Array<{departmentId: string, departmentName: string}>;
+  subdepartments: Array<{subdepartmentId: string, subdepartmentName: string, departmentId: string}>;
+  userRole: {isKaryalay: boolean, isHOD: boolean};
+}> => {
+  try {
+    const token = await AuthStorage.getToken();
+    if (!token) throw new Error('No authentication token');
+
+    const response = await axios.get(`${API_URL}/api/users/all-search-data`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching all search data:', error);
+    throw error;
+  }
+};
+
 // Update user with subdepartment assignments
 export const updateUserWithSubdepartments = async (userId: string, userData: any) => {
   try {

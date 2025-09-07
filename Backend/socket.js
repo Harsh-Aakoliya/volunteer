@@ -1,5 +1,6 @@
 // socket.js
 // This file contains all socket.io connection handling
+import { sendChatNotifications } from "./controllers/chatNotificationController.js";
 
 const setupSocketIO = (io, app) => {
   // Get the shared data from the Express app
@@ -8,7 +9,7 @@ const setupSocketIO = (io, app) => {
   const lastMessageByRoom = app.get('lastMessageByRoom') || {};
   
   // Track socket to user mapping
-  const socketToUser = new Map(); // socketId -> {userId, userName, currentRooms}
+  const socketToUser = new Map(); // socketId -> {userId, userName, currentRooms, isOnChatTab}
   const userToSockets = new Map(); // userId -> Set of socketIds
 
   // Initialize unread counts and last messages from database
@@ -159,7 +160,7 @@ const setupSocketIO = (io, app) => {
         }
 
         // Store user info with socket
-        socketToUser.set(socket.id, { userId, userName: '', currentRooms: [] });
+        socketToUser.set(socket.id, { userId, userName: '', currentRooms: [], isOnChatTab: false });
         
         // Track user's sockets
         if (!userToSockets.has(userId)) {
@@ -231,8 +232,9 @@ const setupSocketIO = (io, app) => {
         }
 
         // Update socket user info
-        const userInfo = socketToUser.get(socket.id) || { userId, userName, currentRooms: [] };
+        const userInfo = socketToUser.get(socket.id) || { userId, userName, currentRooms: [], isOnChatTab: false };
         userInfo.userName = userName;
+        userInfo.isOnChatTab = true; // User is on chat tab when joining a room
         if (!userInfo.currentRooms.includes(roomId)) {
           userInfo.currentRooms.push(roomId);
         }
@@ -307,6 +309,8 @@ const setupSocketIO = (io, app) => {
         const userInfo = socketToUser.get(socket.id);
         if (userInfo) {
           userInfo.currentRooms = userInfo.currentRooms.filter(r => r !== roomId);
+          // If user has no more rooms, they might still be on chat tab (main screen)
+          // We'll let the frontend tell us when they leave chat tab completely
           socketToUser.set(socket.id, userInfo);
         }
 
@@ -403,9 +407,76 @@ const setupSocketIO = (io, app) => {
         // Send room updates to all members (including those not in the room)
         await sendRoomUpdateToMembers(roomId, messageObj);
 
+        // Send chat notifications to users who need them
+        try {
+          // Get room information for notifications
+          const pool = await import("./config/database.js").then((m) => m.default);
+          const roomResult = await pool.query(
+            'SELECT "roomName" FROM chatrooms WHERE "roomId" = $1',
+            [roomId]
+          );
+          
+          if (roomResult.rows.length > 0) {
+            const roomInfo = {
+              roomId: roomId,
+              roomName: roomResult.rows[0].roomName
+            };
+            
+            await sendChatNotifications(
+              message, 
+              sender, 
+              roomInfo, 
+              io, 
+              socketToUser, 
+              userToSockets
+            );
+          }
+        } catch (notificationError) {
+          console.error('Error sending chat notifications:', notificationError);
+        }
+
         console.log(`Message sent to room ${roomId}, online users: ${onlineUsersInRoom.size}`);
       } catch (error) {
         console.error("Error in sendMessage event:", error);
+      }
+    });
+
+    // Handle user entering chat tab
+    socket.on("enterChatTab", ({ userId }) => {
+      try {
+        if (!userId) {
+          console.error("Invalid enterChatTab parameters:", { userId });
+          return;
+        }
+
+        const userInfo = socketToUser.get(socket.id);
+        if (userInfo && userInfo.userId === userId) {
+          userInfo.isOnChatTab = true;
+          socketToUser.set(socket.id, userInfo);
+          console.log(`User ${userId} entered chat tab`);
+        }
+      } catch (error) {
+        console.error("Error in enterChatTab event:", error);
+      }
+    });
+
+    // Handle user leaving chat tab
+    socket.on("leaveChatTab", ({ userId }) => {
+      try {
+        if (!userId) {
+          console.error("Invalid leaveChatTab parameters:", { userId });
+          return;
+        }
+
+        const userInfo = socketToUser.get(socket.id);
+        if (userInfo && userInfo.userId === userId) {
+          userInfo.isOnChatTab = false;
+          userInfo.currentRooms = []; // Clear current rooms when leaving chat tab
+          socketToUser.set(socket.id, userInfo);
+          console.log(`User ${userId} left chat tab`);
+        }
+      } catch (error) {
+        console.error("Error in leaveChatTab event:", error);
       }
     });
 

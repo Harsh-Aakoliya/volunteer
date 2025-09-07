@@ -83,6 +83,27 @@ export const fetchAnnouncements = async (department?: string) => {
   }
 };
 
+// New function to fetch announcements based on user type
+export const fetchUserAnnouncements = async () => {
+  try {
+    const token = await AuthStorage.getToken();
+    if (!token) {
+      throw new Error('No authentication token');
+    }
+    
+    const response = await axios.get(`${API_URL}/api/announcements/user-announcements`, {
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    });
+    
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching user announcements:', error);
+    throw error;
+  }
+};
+
 export const fetchAnnouncementsDebug = async () => {
   try {
     const token = await AuthStorage.getToken();
@@ -126,7 +147,7 @@ export const createAnnouncement = async (title: any, body: any, authorId: any, s
   }
 };
 
-export const updateAnnouncement = async (id: any, title: any, body: any, recipientUserIds: string[] = []) => {
+export const updateAnnouncement = async (id: any, title: any, body: any, departmentTags: string[] = []) => {
   try {
     const token = await AuthStorage.getToken();
     if (!token) {
@@ -134,7 +155,7 @@ export const updateAnnouncement = async (id: any, title: any, body: any, recipie
     }
     
     const response = await axios.put(`${API_URL}/api/announcements/${id}`, 
-      { title, body, recipientUserIds },
+      { title, body, departmentTags },
       {
         headers: {
           Authorization: `Bearer ${token}`
@@ -271,7 +292,7 @@ export const getReadUsers = async (id: number) => {
   }
 };
 
-export const createDraft = async (authorId: string, recipientUserIds: string[] = []) => {
+export const createDraft = async (authorId: string, departmentTags: string[] = []) => {
   try {
     const token = await AuthStorage.getToken();
     if (!token) {
@@ -279,7 +300,7 @@ export const createDraft = async (authorId: string, recipientUserIds: string[] =
     }
     
     const response = await axios.post(`${API_URL}/api/announcements/draft`, 
-      { authorId, recipientUserIds },
+      { authorId, departmentTags },
       {
         headers: {
           Authorization: `Bearer ${token}`
@@ -293,7 +314,7 @@ export const createDraft = async (authorId: string, recipientUserIds: string[] =
   }
 };
 
-export const updateDraft = async (id: number, title: string, body: string, authorId: string, recipientUserIds: string[] = []) => {
+export const updateDraft = async (id: number, title: string, body: string, authorId: string, departmentTags: string[] = []) => {
   try {
     const token = await AuthStorage.getToken();
     if (!token) {
@@ -301,7 +322,7 @@ export const updateDraft = async (id: number, title: string, body: string, autho
     }
     
     const response = await axios.put(`${API_URL}/api/announcements/draft/${id}`, 
-      { title, body, authorId, recipientUserIds },
+      { title, body, authorId, departmentTags },
       {
         headers: {
           Authorization: `Bearer ${token}`
@@ -315,7 +336,7 @@ export const updateDraft = async (id: number, title: string, body: string, autho
   }
 };
 
-export const publishDraft = async (id: number, title: string, body: string, authorId: string, recipientUserIds: string[] = []) => {
+export const publishDraft = async (id: number, title: string, body: string, authorId: string, departmentTags: string[] = []) => {
   try {
     const token = await AuthStorage.getToken();
     if (!token) {
@@ -323,7 +344,7 @@ export const publishDraft = async (id: number, title: string, body: string, auth
     }
     
     const response = await axios.put(`${API_URL}/api/announcements/draft/${id}/publish`, 
-      { title, body, authorId, recipientUserIds },
+      { title, body, authorId, departmentTags },
       {
         headers: {
           Authorization: `Bearer ${token}`

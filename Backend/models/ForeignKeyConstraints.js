@@ -26,22 +26,22 @@ const addForeignKeyConstraints = async () => {
         };
 
         // Users foreign keys
-        await safeAddConstraint(
-            'users',
-            'fk_users_department',
-            `ALTER TABLE "users" 
-             ADD CONSTRAINT fk_users_department 
-             FOREIGN KEY ("departmentId") REFERENCES departments("departmentId")`
-        );
+        // await safeAddConstraint(
+        //     'users',
+        //     'fk_users_department',
+        //     `ALTER TABLE "users" 
+        //      ADD CONSTRAINT fk_users_department 
+        //      FOREIGN KEY ("departmentId") REFERENCES departments("departmentId")`
+        // );
 
         // Departments foreign keys
-        await safeAddConstraint(
-            'departments',
-            'fk_departments_users',
-            `ALTER TABLE departments 
-             ADD CONSTRAINT fk_departments_users 
-             FOREIGN KEY ("createdBy") REFERENCES users("userId")`
-        );
+        // await safeAddConstraint(
+        //     'departments',
+        //     'fk_departments_users',
+        //     `ALTER TABLE departments 
+        //      ADD CONSTRAINT fk_departments_users 
+        //      FOREIGN KEY ("createdBy") REFERENCES users("userId")`
+        // );
 
         // Chatroomusers foreign keys and unique constraint
         await safeAddConstraint(

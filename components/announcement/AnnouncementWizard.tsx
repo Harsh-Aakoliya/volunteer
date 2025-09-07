@@ -47,8 +47,7 @@ export default function AnnouncementWizard({
   const [attachedMediaFiles, setAttachedMediaFiles] = useState<any[]>([]);
   
   // Step 3 data
-  const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
-  const [lockedUserIds, setLockedUserIds] = useState<string[]>([]);
+  const [selectedDepartments, setSelectedDepartments] = useState<string[]>([]);
   
   // States
   const [isLoadingAnnouncementData, setIsLoadingAnnouncementData] = useState(false);
@@ -84,29 +83,17 @@ export default function AnnouncementWizard({
       const announcementDetails = await getAnnouncementDetails(announcementId);
       
       if (announcementDetails) {
-        // Set existing selected users (from recipients)
-        const recipients = announcementDetails.recipients || [];
-        const recipientIds = recipients.map((recipient: any) => recipient.userId);
+        // Set existing selected departments
+        const departmentTags = announcementDetails.departmentTags || [];
         
         console.log('AnnouncementWizard: Loaded announcement details:', {
           announcementId,
-          recipients,
-          recipientIds,
+          departmentTags,
           isEdit,
           isDraft
         });
         
-        setSelectedUserIds(recipientIds);
-        
-        // For published announcements, track who already received it
-        // For drafts, no one has received it yet
-        if (isEdit) {
-          setLockedUserIds(recipientIds);
-          console.log('AnnouncementWizard: Previously sent users for published announcement:', recipientIds);
-        } else {
-          setLockedUserIds([]); // Drafts have no previously sent users
-          console.log('AnnouncementWizard: No previously sent users for draft');
-        }
+        setSelectedDepartments(departmentTags);
       }
     } catch (error) {
       console.error('Error loading existing announcement data:', error);
@@ -254,7 +241,7 @@ export default function AnnouncementWizard({
     if (!announcementId || !currentUserId) return;
     
     try {
-      await updateDraft(announcementId, title, content, currentUserId, selectedUserIds);
+      await updateDraft(announcementId, title, content, currentUserId, selectedDepartments);
     } catch (error) {
       console.error('Error saving draft:', error);
       Alert.alert('Error', 'Failed to save draft. Please try again.');
@@ -269,7 +256,7 @@ export default function AnnouncementWizard({
     // Auto-save progress
     if (announcementId && currentUserId) {
       try {
-        await updateDraft(announcementId, newTitle, newContent, currentUserId, selectedUserIds);
+        await updateDraft(announcementId, newTitle, newContent, currentUserId, selectedDepartments);
       } catch (error) {
         console.error('Error auto-saving:', error);
       }
@@ -292,8 +279,8 @@ export default function AnnouncementWizard({
     setCurrentStep(1);
   };
 
-  const handleStep3Next = (newSelectedUserIds: string[]) => {
-    setSelectedUserIds(newSelectedUserIds);
+  const handleStep3Next = (newSelectedDepartments: string[]) => {
+    setSelectedDepartments(newSelectedDepartments);
     setCurrentStep(4);
   };
 
@@ -311,10 +298,10 @@ export default function AnnouncementWizard({
     try {
       if (isFresh || isDraft) {
         // Publish draft
-        await publishDraft(announcementId as number, title, content, currentUserId, selectedUserIds);
+        await publishDraft(announcementId as number, title, content, currentUserId, selectedDepartments);
       } else if (isEdit) {
         // Update existing published announcement
-        await updateAnnouncement(announcementId, title, content, selectedUserIds);
+        await updateAnnouncement(announcementId, title, content, selectedDepartments);
       }
       
       // Navigate back to announcement screen
@@ -362,8 +349,7 @@ export default function AnnouncementWizard({
     case 3:
       return (
         <Step3Recipients
-          selectedUserIds={selectedUserIds}
-          lockedUserIds={isEdit ? lockedUserIds : []}
+          selectedDepartments={selectedDepartments}
           onNext={handleStep3Next}
           onBack={handleStep3Back}
           isEdit={isEdit}
@@ -376,7 +362,7 @@ export default function AnnouncementWizard({
           title={title}
           content={content}
           announcementId={announcementId!}
-          selectedUserIds={selectedUserIds}
+          selectedDepartments={selectedDepartments}
           attachedMediaFiles={attachedMediaFiles}
           onPublish={handlePublish}
           onBack={handleStep4Back}

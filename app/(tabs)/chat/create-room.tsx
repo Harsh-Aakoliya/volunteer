@@ -26,7 +26,6 @@ export default function CreateRoomUserSelection() {
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [isKaryalayAdmin, setIsKaryalayAdmin] = useState(false);
   const [selectedUsersFromDept, setSelectedUsersFromDept] = useState<ChatUser[]>([]);
-console.log("all users",users);
   useEffect(() => {
     const fetchCurrentLoggedUser = async () => {
       try {
@@ -35,7 +34,7 @@ console.log("all users",users);
         setCurrentUser(currentUserData);
         
         // Check if user is Karyalay admin
-        const isKaryalay = currentUserData?.isAdmin && currentUserData?.department === "Karyalay";
+        const isKaryalay = currentUserData?.isAdmin && currentUserData?.departments?.includes("Karyalay");
         setIsKaryalayAdmin(isKaryalay || false);
       } catch (error) {
         console.log("Error fetching current user:", error);
@@ -51,6 +50,7 @@ console.log("all users",users);
         // Karyalay admins will use the department selector
         if (currentUser && !isKaryalayAdmin) {
           const fetchedUsers = await fetchChatUsers();//{userId, fullName, mobileNumber, department}
+          console.log("fetched users",fetchedUsers);
           setUsers(fetchedUsers);
           setFilteredUsers(fetchedUsers);
         }
@@ -128,12 +128,12 @@ console.log("all users",users);
     );
   };
 
-// app/chat/create-room.tsx - Updated handleNextStep function
-const handleNextStep = () => {
-  if (selectedUsers.size === 0) {
-    alert("Please select at least one user");
-    return;
-  }
+  // app/chat/create-room.tsx - Updated handleNextStep function
+  const handleNextStep = () => {
+    if (selectedUsers.size === 0) {
+      alert("Please select at least one user");
+      return;
+    }
   
   // Convert the Set to an array of valid user IDs
   const selectedUserArray = Array.from(selectedUsers).filter(id => id && id.trim() !== '');
@@ -209,11 +209,11 @@ const handleNextStep = () => {
     <View className="flex-1 bg-gray-50">
       <View className="p-4 bg-white border-b border-gray-200">
         <Text className="text-lg font-bold mb-2">
-          Select Users {currentUser.isAdmin ? `from ${currentUser.department}` : ''}
+          Select Users {currentUser.isAdmin ? `from ${currentUser.departments.join(', ')}` : ''}
         </Text>
         <Text className="text-gray-600 mb-4">
           {currentUser.isAdmin 
-            ? `As a department admin, you can only add users from your department (${currentUser.department}).`
+            ? `As a department admin, you can only add users from your department (${currentUser.departments.join(', ')}).`
             : 'Select users to add to your chat room.'}
         </Text>
         

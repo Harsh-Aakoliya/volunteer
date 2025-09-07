@@ -29,6 +29,9 @@ router.get('/search', userController.searchUsers);
 // Get search filters (departments/subdepartments)
 router.get('/search-filters', userController.getSearchFilters);
 
+// Get all search data (users, departments, subdepartments) in one call
+router.get('/all-search-data', userController.getAllSearchData);
+
 // Update user with subdepartments
 router.put('/update-with-subdepartments/:userId', userController.updateUserWithSubdepartments);
 

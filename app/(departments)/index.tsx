@@ -6,7 +6,9 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
-  RefreshControl
+  RefreshControl,
+  TextInput,
+  Modal
 } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -22,6 +24,9 @@ export default function DepartmentsPage() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isKaryalay, setIsKaryalay] = useState(false);
+  const [showSearchModal, setShowSearchModal] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filteredDepartments, setFilteredDepartments] = useState<Department[]>([]);
 
   const loadDepartments = async (showLoader = true) => {
     try {
@@ -31,6 +36,7 @@ export default function DepartmentsPage() {
       const data = await fetchMyDepartments();
       console.log("data in loadDepartments", data);
       setDepartments(data);
+      setFilteredDepartments(data);
     } catch (error) {
       console.error('Error loading departments:', error);
       setError(error instanceof Error ? error.message : 'Failed to load departments');
@@ -51,7 +57,7 @@ export default function DepartmentsPage() {
     try {
       const user = await AuthStorage.getUser();
       console.log("user in checkUserRole", user);
-      const isKaryalayUser = Boolean(user?.isAdmin && user?.department === 'Karyalay');
+      const isKaryalayUser = Boolean(user?.isAdmin && user?.departments?.includes('Karyalay'));
       setIsKaryalay(isKaryalayUser);
       console.log("isKaryalay in checkUserRole", isKaryalayUser);
     } catch (error) {
@@ -62,6 +68,20 @@ export default function DepartmentsPage() {
   const handleRefresh = () => {
     setIsRefreshing(true);
     loadDepartments(false);
+  };
+
+  const handleSearch = (query: string) => {
+    setSearchQuery(query);
+    if (!query.trim()) {
+      setFilteredDepartments(departments);
+      return;
+    }
+
+    const filtered = departments.filter(dept =>
+      dept.departmentName.toLowerCase().includes(query.toLowerCase()) ||
+      dept.createdByName?.toLowerCase().includes(query.toLowerCase())
+    );
+    setFilteredDepartments(filtered);
   };
 
   const handleCreateDepartment = () => {
@@ -108,9 +128,9 @@ export default function DepartmentsPage() {
           <Text className="text-gray-500 text-sm">
             Created on {new Date(department.createdAt).toLocaleDateString()}
           </Text>
-          {department.hodName && (
+          {department.hodNames && department.hodNames.length > 0 && (
             <Text className="text-blue-600 text-sm">
-              HOD: {department.hodName}
+              HODs: {department.hodNames.join(', ')}
             </Text>
           )}
         </View>
@@ -133,7 +153,7 @@ export default function DepartmentsPage() {
           <View className="flex-row items-center">
             <Ionicons name="shield-checkmark" size={16} color="#10B981" />
             <Text className="text-gray-600 text-sm ml-1">
-              {department.adminList?.length || 0} Admins
+              {department.hodList?.length || 0} HODs
             </Text>
           </View>
         </View>
@@ -165,14 +185,24 @@ export default function DepartmentsPage() {
             </TouchableOpacity>
             <Text className="text-2xl font-bold text-white">Departments</Text>
           </View>
-          {isKaryalay && (
-            <TouchableOpacity
-              onPress={handleCreateDepartment}
-              className="w-10 h-10 bg-white/20 rounded-full items-center justify-center"
-            >
-              <Ionicons name="add" size={24} color="white" />
-            </TouchableOpacity>
-          )}
+          <View className="flex-row items-center space-x-2">
+            {departments.length > 5 && (
+              <TouchableOpacity
+                onPress={() => setShowSearchModal(true)}
+                className="w-10 h-10 bg-white/20 rounded-full items-center justify-center"
+              >
+                <Ionicons name="search" size={24} color="white" />
+              </TouchableOpacity>
+            )}
+            {isKaryalay && (
+              <TouchableOpacity
+                onPress={handleCreateDepartment}
+                className="w-10 h-10 bg-white/20 rounded-full items-center justify-center"
+              >
+                <Ionicons name="add" size={24} color="white" />
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
       </LinearGradient>
 
@@ -194,7 +224,7 @@ export default function DepartmentsPage() {
               bgVariant="danger"
             />
           </View>
-        ) : departments.length === 0 ? (
+        ) : filteredDepartments.length === 0 ? (
           <View className="items-center justify-center py-12">
             <View className="w-20 h-20 bg-blue-100 rounded-full items-center justify-center mb-4">
               <Ionicons name="business" size={40} color="#0286ff" />
@@ -221,25 +251,71 @@ export default function DepartmentsPage() {
           <>
             <View className="flex-row justify-between items-center mb-4">
               <Text className="text-lg font-bold text-gray-800">
-                {isKaryalay ? `My Departments (${departments.length})` : `Assigned Departments (${departments.length})`}
+                Total Departments ({departments.length})
               </Text>
-              {isKaryalay && (
-                <CustomButton
-                  title="Create New"
-                  onPress={handleCreateDepartment}
-                  bgVariant="primary"
-                  className="px-4 py-2 h-auto"
-                  IconLeft={() => <Ionicons name="add" size={16} color="white" />}
-                />
-              )}
             </View>
 
-            {departments.map((department) => (
+            {filteredDepartments.map((department) => (
               <DepartmentCard key={department.departmentId} department={department} />
             ))}
           </>
         )}
       </ScrollView>
+
+      {/* Search Modal */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={showSearchModal}
+        onRequestClose={() => setShowSearchModal(false)}
+      >
+        <View className="flex-1 bg-black/50 justify-center">
+          <View className="bg-white mx-6 rounded-2xl p-6">
+            <View className="flex-row justify-between items-center mb-4">
+              <Text className="text-xl font-bold text-gray-800">Search Departments</Text>
+              <TouchableOpacity
+                onPress={() => {
+                  setShowSearchModal(false);
+                  setSearchQuery('');
+                  setFilteredDepartments(departments);
+                }}
+                className="p-2"
+              >
+                <Ionicons name="close" size={24} color="#6B7280" />
+              </TouchableOpacity>
+            </View>
+
+            <View className="flex-row items-center border border-gray-200 rounded-xl px-4 py-3 mb-6">
+              <Ionicons name="search" size={20} color="#6B7280" />
+              <TextInput
+                value={searchQuery}
+                onChangeText={handleSearch}
+                placeholder="Search by department name or creator"
+                className="flex-1 ml-3 text-gray-800"
+                autoFocus
+              />
+            </View>
+
+            <ScrollView className="max-h-96">
+              {filteredDepartments.map((department) => (
+                <TouchableOpacity
+                  key={department.departmentId}
+                  onPress={() => {
+                    setShowSearchModal(false);
+                    handleViewDepartment(department.departmentId);
+                  }}
+                  className="p-4 border-b border-gray-100"
+                >
+                  <Text className="font-semibold text-gray-800">{department.departmentName}</Text>
+                  <Text className="text-gray-500 text-sm mt-1">
+                    {department.userList?.length || 0} Users • {department.hodList?.length || 0} HODs
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 } 
