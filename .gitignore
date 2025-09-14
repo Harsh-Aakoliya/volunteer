@@ -36,7 +36,8 @@ yarn-error.*
 *.tsbuildinfo
 
 # Backend files
-Backend/
+Backend/media/
+Backend/node_modules/
 demo/
 management/
 VM file media upload demo/
