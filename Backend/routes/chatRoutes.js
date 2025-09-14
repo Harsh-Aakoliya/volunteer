@@ -34,4 +34,8 @@ router.delete('/rooms/:roomId/messages', chatController.deleteMessages);
 // Room online users
 router.get('/rooms/:roomId/online-users', chatController.getRoomOnlineUsers);
 
+// Message read status
+router.get('/messages/:messageId/read-status', chatController.getMessageReadStatus);
+router.post('/messages/:messageId/mark-read', chatController.markMessageAsRead);
+
 export default router;

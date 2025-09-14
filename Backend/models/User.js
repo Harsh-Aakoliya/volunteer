@@ -36,7 +36,7 @@ const createUsersTable = async () => {
                 "departmentIds" UUID[] DEFAULT '{}',
                 "subdepartmentIds" TEXT[] DEFAULT '{}',
                 "gender" VARCHAR(20),
-                "dateOfBirth" DATE,
+                "dateOfBirth" VARCHAR(50),
                 "bloodGroup" VARCHAR(10),
                 "maritalStatus" VARCHAR(20),
                 "education" VARCHAR(100),
@@ -312,3 +312,10 @@ const initDB = async () => {
 };
 
 export default initDB;
+
+
+// hod    department
+// change notchange
+// notchange///////// change
+// change change
+// notchange change

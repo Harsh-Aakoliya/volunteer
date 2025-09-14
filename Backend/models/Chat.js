@@ -156,6 +156,39 @@ const addReplyColumnIfNotExists = async (client) => {
   }
 };
 
+const createMessageReadStatusTable = async (client) => {
+  try {
+    const tableCheck = await client.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables 
+        WHERE table_name = 'messagereadstatus'
+      );
+    `);
+    
+    if (tableCheck.rows[0].exists) {
+      console.log("Messagereadstatus table already exists");
+      return;
+    }
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS messagereadstatus (
+          "id" SERIAL PRIMARY KEY,
+          "messageId" INTEGER NOT NULL,
+          "userId" VARCHAR(50) NOT NULL,
+          "readAt" TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+          "roomId" INTEGER NOT NULL,
+          UNIQUE("messageId", "userId"),
+          FOREIGN KEY ("messageId") REFERENCES chatmessages("id") ON DELETE CASCADE,
+          FOREIGN KEY ("roomId") REFERENCES chatrooms("roomId") ON DELETE CASCADE
+      );
+    `);
+    console.log("Messagereadstatus table created successfully");
+  } catch (error) {
+    console.error("Error while creating messagereadstatus table:", error);
+    throw error;
+  }
+};
+
 const initChatDB = async () => {
   const client = await pool.connect();
   try {
@@ -163,6 +196,7 @@ const initChatDB = async () => {
     await createChatRoomsTable(client);
     await createChatRoomUsersTable(client);
     await createChatMessagesTable(client);
+    await createMessageReadStatusTable(client);
     
     // Add edit columns to existing tables
     await addEditColumnsIfNotExists(client);

@@ -16,7 +16,7 @@ export const getMyDepartments = async (req, res) => {
     }
 
     const user = userResult.rows[0];
-    const userDepartments = user.departments || [user.department].filter(Boolean);
+    const userDepartments = user.departments || [];
     const isKaryalay = user.isAdmin && userDepartments.includes('Karyalay');
     // console.log("isKaryalay in getMyDepartments", isKaryalay);
     let query;
@@ -98,15 +98,11 @@ export const createDepartment = async (req, res) => {
   const client = await pool.connect();
   
   try {
-    const { departmentName, userList, hodList } = req.body;
+    const { departmentName, userList, hodList = [] } = req.body;
     const createdBy = req.user.userId;
 
     if (!departmentName || !userList || userList.length === 0) {
       return res.status(400).json({ message: 'Department name and user list are required' });
-    }
-
-    if (!hodList || hodList.length === 0) {
-      return res.status(400).json({ message: 'At least one HOD is required' });
     }
 
     // Verify the creator is Karyalay
@@ -119,7 +115,7 @@ export const createDepartment = async (req, res) => {
     }
 
     const creator = creatorCheck.rows[0];
-    const creatorDepartments = creator.departments || [creator.department].filter(Boolean);
+    const creatorDepartments = creator.departments || [];
     const isCreatorKaryalay = creatorDepartments.includes('Karyalay');
     
     if (!isCreatorKaryalay) {
@@ -138,7 +134,33 @@ export const createDepartment = async (req, res) => {
       return res.status(400).json({ message: 'Department name already exists' });
     }
 
-    // Create the department
+    // Verify all users exist and are not already assigned to any department
+    const userCheckResult = await client.query(`
+      SELECT "userId", "departments", "departmentIds" 
+      FROM "users" 
+      WHERE "userId" = ANY($1) AND "isApproved" = TRUE
+    `, [userList]);
+
+    if (userCheckResult.rows.length !== userList.length) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ message: 'Some users not found or not approved' });
+    }
+
+    // Check if any users are already assigned to departments
+    const assignedUsers = userCheckResult.rows.filter(user => 
+      (user.departments && user.departments.length > 0) || 
+      (user.departmentIds && user.departmentIds.length > 0)
+    );
+
+    if (assignedUsers.length > 0) {
+      await client.query('ROLLBACK');
+      const assignedUserIds = assignedUsers.map(u => u.userId).join(', ');
+      return res.status(400).json({ 
+        message: `Users already assigned to departments: ${assignedUserIds}` 
+      });
+    }
+
+    // Create the department (UUID will be auto-generated)
     const departmentResult = await client.query(`
       INSERT INTO "departments" ("departmentName", "createdBy", "userList", "hodList")
       VALUES ($1, $2, $3, $4)
@@ -146,21 +168,31 @@ export const createDepartment = async (req, res) => {
     `, [departmentName, createdBy, userList, hodList]);
 
     const department = departmentResult.rows[0];
+    console.log('Created department:', department);
 
     // Update users table with department information
+    // Since we verified users have no departments, we can safely set new arrays
     await client.query(`
       UPDATE "users" 
-      SET "department" = $1, "departmentId" = $2, "departments" = ARRAY[$1], "departmentIds" = ARRAY[$2]
+      SET "departments" = ARRAY[$1], "departmentIds" = ARRAY[$2::uuid]
       WHERE "userId" = ANY($3)
     `, [departmentName, department.departmentId, userList]);
 
     await client.query('COMMIT');
 
-    res.status(201).json(department);
+    res.status(201).json({
+      success: true,
+      message: 'Department created successfully',
+      department: department
+    });
   } catch (error) {
     await client.query('ROLLBACK');
     console.error('Error creating department:', error);
-    res.status(500).json({ message: 'Failed to create department' });
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to create department',
+      error: error.message 
+    });
   } finally {
     client.release();
   }
@@ -182,7 +214,7 @@ export const getDepartmentById = async (req, res) => {
     }
 
     const user = userResult.rows[0];
-    const userDepartments = user.departments || [user.department].filter(Boolean);
+    const userDepartments = user.departments || [];
     const isKaryalay = user.isAdmin && userDepartments.includes('Karyalay');
 
     let query;
@@ -235,6 +267,70 @@ export const getDepartmentById = async (req, res) => {
   }
 };
 
+// Get users for a specific department
+export const getDepartmentUsers = async (req, res) => {
+  try {
+    const { departmentId } = req.params;
+    const userId = req.user.userId;
+
+    // Check if user is Karyalay (admin in Karyalay department)
+    const userResult = await pool.query(`
+      SELECT "isAdmin", "departments", "departmentIds" FROM "users" WHERE "userId" = $1
+    `, [userId]);
+
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    const user = userResult.rows[0];
+    const userDepartments = user.departments || [];
+    const isKaryalay = user.isAdmin && userDepartments.includes('Karyalay');
+
+    // Check if user has access to this department
+    let accessQuery;
+    let accessParams;
+
+    if (isKaryalay) {
+      // Karyalay users can access any department
+      accessQuery = `SELECT "departmentId" FROM "departments" WHERE "departmentId" = $1`;
+      accessParams = [departmentId];
+    } else {
+      // HODs can only access departments where they are designated as HOD
+      accessQuery = `SELECT "departmentId" FROM "departments" WHERE "departmentId" = $1 AND $2 = ANY("hodList")`;
+      accessParams = [departmentId, userId];
+    }
+
+    const accessResult = await pool.query(accessQuery, accessParams);
+
+    if (accessResult.rows.length === 0) {
+      return res.status(404).json({ message: 'Department not found or access denied' });
+    }
+
+    // Get users belonging to this department
+    const usersResult = await pool.query(`
+      SELECT 
+        u."userId",
+        u."fullName",
+        u."mobileNumber",
+        u."isAdmin",
+        u."xetra",
+        u."mandal",
+        u."role",
+        u."departments",
+        u."departmentIds"
+      FROM "users" u
+      WHERE u."isApproved" = true 
+      AND $1 = ANY(u."departmentIds")
+      ORDER BY u."fullName" ASC
+    `, [departmentId]);
+
+    res.json(usersResult.rows);
+  } catch (error) {
+    console.error('Error fetching department users:', error);
+    res.status(500).json({ message: 'Failed to fetch department users' });
+  }
+};
+
 // Update department
 export const updateDepartment = async (req, res) => {
   const client = await pool.connect();
@@ -257,7 +353,7 @@ export const updateDepartment = async (req, res) => {
     }
 
     const user = userResult.rows[0];
-    const userDepartments = user.departments || [user.department].filter(Boolean);
+    const userDepartments = user.departments || [];
     const isKaryalay = user.isAdmin && userDepartments.includes('Karyalay');
 
     // Verify permissions
@@ -329,14 +425,14 @@ export const updateDepartment = async (req, res) => {
         // Remove department from users no longer in the list
         await client.query(`
           UPDATE "users" 
-          SET "department" = NULL, "departmentId" = NULL, "departments" = '{}', "departmentIds" = '{}'
-          WHERE "departmentId" = $1 AND "userId" != ALL($2)
+          SET "departments" = '{}', "departmentIds" = '{}'
+          WHERE $1 = ANY("departmentIds") AND "userId" != ALL($2)
         `, [departmentId, userList]);
 
         // Add department to new users
         await client.query(`
           UPDATE "users" 
-          SET "department" = $1, "departmentId" = $2, "departments" = ARRAY[$1], "departmentIds" = ARRAY[$2]
+          SET "departments" = ARRAY[$1], "departmentIds" = ARRAY[$2]
           WHERE "userId" = ANY($3)
         `, [updatedDept.departmentName, departmentId, userList]);
       }
@@ -368,7 +464,7 @@ export const deleteDepartment = async (req, res) => {
 
     // Check user permissions
     const userResult = await client.query(`
-      SELECT "isAdmin", "department", "departments" FROM "users" WHERE "userId" = $1
+      SELECT "isAdmin", "departments", "departmentIds" FROM "users" WHERE "userId" = $1
     `, [userId]);
 
     if (userResult.rows.length === 0) {
@@ -377,7 +473,7 @@ export const deleteDepartment = async (req, res) => {
     }
 
     const user = userResult.rows[0];
-    const userDepartments = user.departments || [user.department].filter(Boolean);
+    const userDepartments = user.departments || [];
     const isKaryalay = user.isAdmin && userDepartments.includes('Karyalay');
 
     // Only Karyalay users can delete departments
@@ -399,8 +495,9 @@ export const deleteDepartment = async (req, res) => {
     // Remove department from all users
     await client.query(`
       UPDATE "users" 
-      SET "department" = NULL, "departmentId" = NULL
-      WHERE "departmentId" = $1
+      SET "departments" = array_remove("departments", (SELECT "departmentName" FROM "departments" WHERE "departmentId" = $1)),
+          "departmentIds" = array_remove("departmentIds", $1)
+      WHERE $1 = ANY("departmentIds")
     `, [departmentId]);
 
     // Delete the department
@@ -453,11 +550,13 @@ export const removeUserFromDepartment = async (req, res) => {
     `, [newUserList, newHodList, departmentId]);
 
     // Remove department from user
+    const deptName = department.departmentName;
     await client.query(`
       UPDATE "users" 
-      SET "department" = NULL, "departmentId" = NULL
-      WHERE "userId" = $1
-    `, [userId]);
+      SET "departments" = array_remove("departments", $1),
+          "departmentIds" = array_remove("departmentIds", $2)
+      WHERE "userId" = $3
+    `, [deptName, departmentId, userId]);
 
     await client.query('COMMIT');
     res.json({ message: 'User removed from department successfully' });
@@ -504,7 +603,7 @@ export const getSubdepartments = async (req, res) => {
     }
 
     const user = userResult.rows[0];
-    const userDepartments = user.departments || [user.department].filter(Boolean);
+    const userDepartments = user.departments || [];
     const isKaryalay = user.isAdmin && userDepartments.includes('Karyalay');
 
     // Verify user has access to this department
@@ -571,7 +670,7 @@ export const createSubdepartment = async (req, res) => {
     }
 
     const user = userResult.rows[0];
-    const userDepartments = user.departments || [user.department].filter(Boolean);
+    const userDepartments = user.departments || [];
     const isKaryalay = user.isAdmin && userDepartments.includes('Karyalay');
 
     // Verify user has permission to create subdepartments in this department
@@ -666,7 +765,7 @@ export const updateSubdepartment = async (req, res) => {
     }
 
     const user = userResult.rows[0];
-    const userDepartments = user.departments || [user.department].filter(Boolean);
+    const userDepartments = user.departments || [];
     const isKaryalay = user.isAdmin && userDepartments.includes('Karyalay');
 
     // Verify permissions and get current subdepartment
@@ -786,7 +885,7 @@ export const deleteSubdepartment = async (req, res) => {
     }
 
     const user = userResult.rows[0];
-    const userDepartments = user.departments || [user.department].filter(Boolean);
+    const userDepartments = user.departments || [];
     const isKaryalay = user.isAdmin && userDepartments.includes('Karyalay');
 
     // Verify permissions

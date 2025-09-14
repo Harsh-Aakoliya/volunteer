@@ -8,7 +8,7 @@ const chatController = {
 
       // Get current user's information to check department and admin status
       const currentUserResult = await pool.query(
-        `SELECT "isAdmin", "departments" FROM "users" WHERE "userId" = $1`,
+        `SELECT "isAdmin", "departments", "departmentIds" FROM "users" WHERE "userId" = $1`,
         [authenticatedUserId]
       );
 
@@ -17,23 +17,40 @@ const chatController = {
       }
 
       const currentUser = currentUserResult.rows[0];
+      const isKaryalay = currentUser.isAdmin && currentUser.departments && currentUser.departments.includes("Karyalay");
+      
       let query;
       let params;
 
-      if (currentUser.isAdmin && currentUser.departments.includes("Karyalay")) {
+      if (isKaryalay) {
         // Karyalay admin can see all users from all departments
         query = `SELECT "userId", "fullName", "mobileNumber", "departments" 
                  FROM "users" 
                  WHERE "isApproved" = TRUE AND "userId" != $1 
                  ORDER BY "fullName"`;
         params = [authenticatedUserId];
-      } else if (currentUser.isAdmin && !currentUser.departments.includes("Karyalay")) {
-        // HOD can only see users from their own department
+      } else if (currentUser.isAdmin) {
+        // HOD can see users from departments they are HOD of
+        const hodDepartmentsResult = await pool.query(`
+          SELECT "departmentId" FROM "departments" WHERE $1 = ANY("hodList")
+        `, [authenticatedUserId]);
+        
+        if (hodDepartmentsResult.rows.length === 0) {
+          return res.status(403).json({ message: 'User is not HOD of any department' });
+        }
+        
+        const hodDepartmentIds = hodDepartmentsResult.rows.map(row => row.departmentId);
+        
         query = `SELECT "userId", "fullName", "mobileNumber", "departments" 
                  FROM "users" 
-                 WHERE "isApproved" = TRUE AND "userId" != $1 AND "departments" && $2 
+                 WHERE "isApproved" = TRUE AND "userId" != $1 
+                 AND ("departmentIds" && $2 OR EXISTS (
+                   SELECT 1 FROM "departments" d 
+                   WHERE d."departmentId" = ANY($2) 
+                   AND $1 = ANY(d."userList")
+                 ))
                  ORDER BY "fullName"`;
-        params = [authenticatedUserId, currentUser.departments];
+        params = [authenticatedUserId, hodDepartmentIds];
       } else {
         // Regular users can see all users (existing behavior for non-admin users)
         query = `SELECT "userId", "fullName", "mobileNumber", "departments" 
@@ -977,32 +994,8 @@ const chatController = {
       
       // Note: Unread count is now handled by socket.js to avoid double counting
       
-      // Emit all messages to all users in the room
-      if (io) {
-        // Emit each message individually
-        for (const message of messagesWithSender) {
-          io.to(`room-${roomIdInt}`).emit('newMessage', {
-            id: message.id,
-            roomId: roomIdInt.toString(),
-            messageText: message.messageText,
-            messageType: messageType,
-            mediaFilesId: mediaFilesId,
-            pollId:pollId,
-            tableId:tableId,
-            replyMessageId: replyMessageId,
-            createdAt: message.createdAt,
-            sender: {
-              userId: senderId,
-              userName: senderName
-            }
-          });
-          setTimeout(() => {
-            console.log("message sent");
-          }, 3000);
-        }
-        
-        // Note: roomUpdate is now handled by socket.js to ensure proper unread count management
-      }
+      // Note: Message emission is now handled by socket.js to avoid duplicates
+      // The socket.js file handles the newMessage emission when sendMessage event is received
       console.log("Message with sender",messagesWithSender);
       // Return all created messages or just the last message
       // Depending on the use case, you might want to return all or just the last one
@@ -1471,6 +1464,170 @@ const chatController = {
       res.status(500).json({ message: "Server error", error: error.message });
     } finally {
       client.release();
+    }
+  },
+
+  // Get message read status
+  async getMessageReadStatus(req, res) {
+    try {
+      const { messageId } = req.params;
+      const userId = req.user.userId;
+      
+      // Convert messageId to integer
+      const messageIdInt = parseInt(messageId, 10);
+      
+      if (isNaN(messageIdInt)) {
+        return res.status(400).json({ 
+          message: "Invalid message ID" 
+        });
+      }
+
+      // Get message details and room information
+      const messageResult = await pool.query(
+        `SELECT m."id", m."roomId", m."senderId", m."messageText", m."createdAt"
+         FROM chatmessages m
+         WHERE m."id" = $1`,
+        [messageIdInt]
+      );
+
+      if (messageResult.rows.length === 0) {
+        return res.status(404).json({ 
+          message: "Message not found" 
+        });
+      }
+
+      const message = messageResult.rows[0];
+      const roomId = message.roomId;
+
+      // Check if user is a member of this room
+      const memberCheck = await pool.query(
+        `SELECT 1 FROM chatroomusers 
+        WHERE "roomId" = $1 AND "userId" = $2`,
+        [roomId, userId]
+      );
+
+      if (memberCheck.rows.length === 0) {
+        return res.status(403).json({ 
+          message: "You are not a member of this chat room" 
+        });
+      }
+
+      // Get all room members
+      const membersResult = await pool.query(
+        `SELECT u."userId", u."fullName"
+         FROM chatroomusers cru
+         JOIN "users" u ON cru."userId" = u."userId"
+         WHERE cru."roomId" = $1 AND cru."userId" != $2`,
+        [roomId, message.senderId] // Exclude sender from read status
+      );
+
+      // Get read status for each member
+      const readStatusResult = await pool.query(
+        `SELECT mrs."userId", mrs."readAt", u."fullName"
+         FROM messagereadstatus mrs
+         JOIN "users" u ON mrs."userId" = u."userId"
+         WHERE mrs."messageId" = $1`,
+        [messageIdInt]
+      );
+
+      const readBy = readStatusResult.rows.map(row => ({
+        userId: row.userId,
+        fullName: row.fullName,
+        readAt: row.readAt
+      }));
+
+      // Find unread members
+      const readUserIds = readStatusResult.rows.map(row => row.userId);
+      const unreadBy = membersResult.rows
+        .filter(member => !readUserIds.includes(member.userId))
+        .map(member => ({
+          userId: member.userId,
+          fullName: member.fullName
+        }));
+
+      res.json({
+        success: true,
+        data: {
+          readBy,
+          unreadBy
+        }
+      });
+
+    } catch (error) {
+      console.error('Error fetching message read status:', error);
+      res.status(500).json({ message: "Server error", error: error.message });
+    }
+  },
+
+  // Mark message as read
+  async markMessageAsRead(req, res) {
+    try {
+      const { messageId } = req.params;
+      const userId = req.user.userId;
+      
+      // Convert messageId to integer
+      const messageIdInt = parseInt(messageId, 10);
+      
+      if (isNaN(messageIdInt)) {
+        return res.status(400).json({ 
+          message: "Invalid message ID" 
+        });
+      }
+
+      // Get message details
+      const messageResult = await pool.query(
+        `SELECT m."id", m."roomId", m."senderId"
+         FROM chatmessages m
+         WHERE m."id" = $1`,
+        [messageIdInt]
+      );
+
+      if (messageResult.rows.length === 0) {
+        return res.status(404).json({ 
+          message: "Message not found" 
+        });
+      }
+
+      const message = messageResult.rows[0];
+      const roomId = message.roomId;
+
+      // Check if user is a member of this room
+      const memberCheck = await pool.query(
+        `SELECT 1 FROM chatroomusers 
+        WHERE "roomId" = $1 AND "userId" = $2`,
+        [roomId, userId]
+      );
+
+      if (memberCheck.rows.length === 0) {
+        return res.status(403).json({ 
+          message: "You are not a member of this chat room" 
+        });
+      }
+
+      // Don't allow sender to mark their own message as read
+      if (message.senderId === userId) {
+        return res.status(400).json({ 
+          message: "You cannot mark your own message as read" 
+        });
+      }
+
+      // Insert or update read status
+      await pool.query(
+        `INSERT INTO messagereadstatus ("messageId", "userId", "roomId", "readAt")
+         VALUES ($1, $2, $3, NOW())
+         ON CONFLICT ("messageId", "userId") 
+         DO UPDATE SET "readAt" = NOW()`,
+        [messageIdInt, userId, roomId]
+      );
+
+      res.json({
+        success: true,
+        message: "Message marked as read"
+      });
+
+    } catch (error) {
+      console.error('Error marking message as read:', error);
+      res.status(500).json({ message: "Server error", error: error.message });
     }
   }
 };

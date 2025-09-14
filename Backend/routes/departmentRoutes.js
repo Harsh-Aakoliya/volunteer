@@ -5,6 +5,7 @@ import {
   getAllUsers,
   createDepartment,
   getDepartmentById,
+  getDepartmentUsers,
   updateDepartment,
   deleteDepartment,
   removeUserFromDepartment,
@@ -32,6 +33,9 @@ router.get('/check-name/:departmentName', checkDepartmentNameExists);
 
 // Get department by ID
 router.get('/:departmentId', getDepartmentById);
+
+// Get users for a specific department
+router.get('/:departmentId/users', getDepartmentUsers);
 
 // Create new department
 router.post('/', createDepartment);
