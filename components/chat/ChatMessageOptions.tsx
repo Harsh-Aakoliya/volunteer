@@ -17,6 +17,7 @@ type ChatMessageOptionProps = {
     onClose: () => void;
     onForwardPress: () => void;
     onDeletePress: (messageIds: (string | number)[]) => Promise<void>;
+    onInfoPress?: (message: Message) => void; // Add info press handler
     roomId?: string | number; // Add roomId prop
     roomMembers?: ChatUser[];
     currentUser?: {
@@ -33,6 +34,7 @@ const ChatMessageOptions: React.FC<ChatMessageOptionProps> = ({
     onClose = ()=>console.log("closed calling"),
     onForwardPress,
     onDeletePress,
+    onInfoPress,
     roomId,
     roomMembers = [],
     currentUser = null,
@@ -46,11 +48,17 @@ const ChatMessageOptions: React.FC<ChatMessageOptionProps> = ({
     const isTextMessage = selectedMessage?.messageType === 'text';
     const hasMessageText = selectedMessage?.messageText && selectedMessage.messageText.trim() !== '';
     
-    // Check if user can edit the selected message
+    // Check if user can edit the selected message (only message sender)
     const canEditMessage = isSingleSelection && isTextMessage && hasMessageText && 
-        (selectedMessage?.senderId === currentUser?.userId || isAdmin) &&
+        selectedMessage?.senderId === currentUser?.userId &&
         // Don't allow editing temporary messages
         !(typeof selectedMessage?.id === 'string' && selectedMessage?.id.startsWith('temp-'));
+
+    // Check if user can delete the selected messages (only message sender)
+    const canDeleteMessages = selectedMessages.every(msg => msg.senderId === currentUser?.userId);
+
+    // Check if user can see info for the selected message (only message sender)
+    const canShowInfo = isSingleSelection && selectedMessage?.senderId === currentUser?.userId;
 
     // Only show this component if user is a group admin
     if (!isAdmin) {
@@ -139,11 +147,9 @@ const ChatMessageOptions: React.FC<ChatMessageOptionProps> = ({
 
     // Info functionality
     const handleInfo = () => {
-        if (selectedMessage) {
+        if (selectedMessage && onInfoPress) {
             console.log('Showing info for message:', selectedMessage.id);
-            // TODO: Implement info functionality - show message details modal
-            const info = `Message ID: ${selectedMessage.id}\nType: ${selectedMessage.messageType}\nSender: ${selectedMessage.senderName}\nCreated: ${new Date(selectedMessage.createdAt).toLocaleString()}`;
-            Alert.alert('Message Info', info);
+            onInfoPress(selectedMessage);
             onClose();
         }
     };
@@ -180,8 +186,16 @@ const ChatMessageOptions: React.FC<ChatMessageOptionProps> = ({
                         </TouchableOpacity>
 
                         {/* Delete - Group admins can delete any message */}
-                        <TouchableOpacity onPress={handleDelete} className="p-2">
-                            <Ionicons name="trash-outline" size={24} color="#DC2626" />
+                        <TouchableOpacity 
+                            onPress={handleDelete} 
+                            disabled={!canDeleteMessages}
+                            className="p-2"
+                        >
+                            <Ionicons 
+                                name="trash-outline" 
+                                size={24} 
+                                color={!canDeleteMessages ? "#9CA3AF" : "#DC2626"} 
+                            />
                         </TouchableOpacity>
 
                         {/* Edit - Only for single text message and if user can edit */}
@@ -215,16 +229,16 @@ const ChatMessageOptions: React.FC<ChatMessageOptionProps> = ({
                             <Ionicons name="arrow-redo-outline" size={24} color="#1F2937" />
                         </TouchableOpacity>
 
-                        {/* Info - Only for single message */}
+                        {/* Info - Only for message sender */}
                         <TouchableOpacity 
                             onPress={handleInfo} 
-                            disabled={!isSingleSelection}
+                            disabled={!canShowInfo}
                             className="p-2"
                         >
                             <Ionicons 
                                 name="information-circle-outline" 
                                 size={24} 
-                                color={!isSingleSelection ? "#9CA3AF" : "#1F2937"} 
+                                color={!canShowInfo ? "#9CA3AF" : "#1F2937"} 
                             />
                         </TouchableOpacity>
 

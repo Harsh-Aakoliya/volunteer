@@ -65,7 +65,9 @@ const DobPicker: React.FC<DobPickerProps> = ({
 
   const handleDateSelect = (day: Date) => {
     // Only allow dates that are today or in the past
-    if (!isAfter(day, today)) {
+    const todayStart = new Date(today);
+    todayStart.setHours(0, 0, 0, 0);
+    if (!isAfter(day, todayStart)) {
       setTempSelectedDate(day);
     }
   };
@@ -74,7 +76,9 @@ const DobPicker: React.FC<DobPickerProps> = ({
     const nextMonth = new Date(currentDate);
     nextMonth.setMonth(nextMonth.getMonth() + 1);
     const startOfNextMonth = startOfMonth(nextMonth);
-    return !isAfter(startOfNextMonth, today);
+    const todayStart = new Date(today);
+    todayStart.setHours(0, 0, 0, 0);
+    return !isAfter(startOfNextMonth, todayStart);
   };
 
   const handlePreviousMonth = () => {
@@ -121,6 +125,35 @@ const DobPicker: React.FC<DobPickerProps> = ({
     setShowDatePicker(false);
   };
 
+  // Format date to DD/MM/YYYY
+  const formatDateToDDMMYYYY = (date: Date): string => {
+    const day = date.getDate().toString().padStart(2, '0');
+    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+    const year = date.getFullYear();
+    return `${day}/${month}/${year}`;
+  };
+
+  // Parse DD/MM/YYYY string to Date
+  const parseDDMMYYYYToDate = (dateString: string): Date | null => {
+    if (!dateString) return null;
+    const parts = dateString.split('/');
+    if (parts.length !== 3) return null;
+    
+    const day = parseInt(parts[0], 10);
+    const month = parseInt(parts[1], 10) - 1; // Month is 0-indexed
+    const year = parseInt(parts[2], 10);
+    
+    if (isNaN(day) || isNaN(month) || isNaN(year)) return null;
+    
+    const date = new Date(year, month, day);
+    // Check if the date is valid
+    if (date.getDate() !== day || date.getMonth() !== month || date.getFullYear() !== year) {
+      return null;
+    }
+    
+    return date;
+  };
+
   return (
     <View className={`${containerClassName}`}>
       {/* Date Picker Button */}
@@ -128,7 +161,7 @@ const DobPicker: React.FC<DobPickerProps> = ({
         onPress={() => setShowDatePicker(!showDatePicker)}
         className={`border border-gray-300 p-3 rounded-lg items-center ${dateButtonClassName}`}>
         <Text className={`text-gray-700 ${dateButtonTextClassName}`}>
-          {selectedDate ? format(selectedDate, 'dd-MM-yyyy') : 'Select Date of Birth'}
+          {selectedDate ? formatDateToDDMMYYYY(selectedDate) : 'Select Date of Birth'}
         </Text>
       </TouchableOpacity>
 
@@ -191,7 +224,9 @@ const DobPicker: React.FC<DobPickerProps> = ({
                     }
                     renderItem={({ item }) => {
                       if (!item) return <View className="w-10 h-10 m-1" />;
-                      const disabled = isAfter(item, today);
+                      const todayStart = new Date(today);
+                      todayStart.setHours(0, 0, 0, 0);
+                      const disabled = isAfter(item, todayStart);
                       const isSelected = tempSelectedDate && isSameDay(item, tempSelectedDate);
                       const isCurrentlySelected = selectedDate && isSameDay(item, selectedDate);
                       return (

@@ -78,8 +78,8 @@ export default function DepartmentsPage() {
     }
 
     const filtered = departments.filter(dept =>
-      dept.departmentName.toLowerCase().includes(query.toLowerCase()) ||
-      dept.createdByName?.toLowerCase().includes(query.toLowerCase())
+      (dept.departmentName?.toLowerCase() || '').includes(query.toLowerCase()) ||
+      (dept.createdByName?.toLowerCase() || '').includes(query.toLowerCase())
     );
     setFilteredDepartments(filtered);
   };

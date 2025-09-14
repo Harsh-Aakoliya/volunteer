@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   Modal,
   ScrollView,
   SafeAreaView,
+  ActivityIndicator,
 } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 import Checkbox from "expo-checkbox";
@@ -38,6 +39,9 @@ export default function Poling() {
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [sendingPoll, setSendingPoll] = useState(false);
+  
+  const optionInputRef = useRef<TextInput>(null);
 
   // Option manipulation functions
   const moveOptionUp = (optionId: string) => {
@@ -69,9 +73,16 @@ export default function Poling() {
         { id: `${Date.now()}-${Math.random()}`, text: optionText.trim() },
       ]);
       setOptionText("");
+      // Keep the input focused to prevent keyboard from hiding
+      setTimeout(() => {
+        optionInputRef.current?.focus();
+      }, 100);
     }
   };
   const sendPoll = async () => {
+    if (sendingPoll) return null; // Prevent multiple calls
+    
+    setSendingPoll(true);
     try {
       const response = await axios.post(`${API_URL}/api/poll`, {
         question: question,
@@ -89,6 +100,8 @@ export default function Poling() {
       console.error("Error creating poll:", error);
       Alert.alert("Failed to create poll");
       return null;
+    } finally {
+      setSendingPoll(false);
     }
   };
   
@@ -231,11 +244,13 @@ export default function Poling() {
         <View className="mb-6">
           <View className="flex-row space-x-3">
             <TextInput
+              ref={optionInputRef}
               placeholder="Add a new option..."
               className="flex-1 bg-white border border-gray-300 rounded-lg p-4 text-gray-800"
               value={optionText}
               onChangeText={setOptionText}
               style={{ fontSize: 16 }}
+              blurOnSubmit={false}
             />
             <TouchableOpacity
               className={`px-6 py-4 rounded-lg justify-center ${
@@ -299,7 +314,8 @@ export default function Poling() {
             
             <View className="mt-6 space-y-3">
               <TouchableOpacity
-                className="bg-blue-500 py-4 rounded-lg"
+                className={`py-4 rounded-lg ${sendingPoll ? 'bg-gray-400' : 'bg-blue-500'}`}
+                disabled={sendingPoll}
                 onPress={async () => {
                   const createdPollId = await sendPoll();
                   if (createdPollId) {
@@ -308,9 +324,12 @@ export default function Poling() {
                   setShowScheduleModal(false);
                 }}
               >
-                <Text className="text-white text-center font-semibold text-lg">
-                  Send Poll
-                </Text>
+                <View className="flex-row items-center justify-center">
+                  {sendingPoll && <ActivityIndicator size="small" color="white" style={{ marginRight: 8 }} />}
+                  <Text className="text-white text-center font-semibold text-lg">
+                    {sendingPoll ? 'Sending...' : 'Send Poll'}
+                  </Text>
+                </View>
               </TouchableOpacity>
               
               <TouchableOpacity 
@@ -354,7 +373,8 @@ export default function Poling() {
 
             <View className="space-y-3">
               <TouchableOpacity
-                className="bg-blue-500 py-3 rounded-lg"
+                className={`py-3 rounded-lg ${sendingPoll ? 'bg-gray-400' : 'bg-blue-500'}`}
+                disabled={sendingPoll}
                 onPress={async () => {
                   const createdPollId = await sendPoll();
                   if (createdPollId) {
@@ -363,9 +383,12 @@ export default function Poling() {
                   setShowModal(false);
                 }}
               >
-                <Text className="text-white text-center font-semibold">
-                  Confirm & Send Poll
-                </Text>
+                <View className="flex-row items-center justify-center">
+                  {sendingPoll && <ActivityIndicator size="small" color="white" style={{ marginRight: 8 }} />}
+                  <Text className="text-white text-center font-semibold">
+                    {sendingPoll ? 'Sending...' : 'Confirm & Send Poll'}
+                  </Text>
+                </View>
               </TouchableOpacity>
               
               <TouchableOpacity onPress={() => setShowModal(false)}>

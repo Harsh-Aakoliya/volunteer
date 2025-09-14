@@ -434,6 +434,7 @@ export default function Profile() {
           <View className="bg-white rounded-2xl shadow-lg min-w-[180px] overflow-hidden">
             {isAdmin && (
               <>
+              {isAdmin && userProfile?.departments?.includes('Karyalay') && (
                 <TouchableOpacity
                   onPress={handleDashboard}
                   className="flex-row items-center px-4 py-4 border-b border-gray-100"
@@ -441,8 +442,9 @@ export default function Profile() {
                   <Ionicons name="stats-chart" size={20} color="#0286ff" />
                   <Text className="ml-3 text-gray-800 font-medium">Dashboard</Text>
                 </TouchableOpacity>
+              )}
                 {/* Show Departments and Search User only for Karyalay users and actual HODs */}
-                {isAdmin && (
+                {isAdmin &&(
                   <>
                     <TouchableOpacity
                       onPress={handleDepartments}
@@ -505,7 +507,7 @@ export default function Profile() {
         <View className="bg-white">
           <LinearGradient
             colors={["#00ace4","#00ace4"]}
-            className="pt-16 pb-6 px-6"
+            className="pt-6 pb-6 px-6"
           >
             <View className="flex-row items-center justify-center">
               {/* Left side - Profile Info */}
@@ -520,7 +522,7 @@ export default function Profile() {
                     {userProfile?.fullName || userProfile?.full_name || 'User Name'}
                   </Text>
                   <Text className="text-white/80 text-sm" numberOfLines={1}>
-                    {userProfile?.department || 'No Department Alloted'} ({isAdmin? "Admin" : "Sevak"})
+                    {isAdmin? "HOD" : "Sevak"} ({userProfile?.departments?.join(', ') || 'No Department Alloted'})
                   </Text>
                 </View>
               </View>

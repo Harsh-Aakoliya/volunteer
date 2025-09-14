@@ -53,6 +53,10 @@ const GlobalPollModal = ({ pollId, visible, onClose, currentUserId, totalMembers
   const [showReactivateModal, setShowReactivateModal] = useState(false);
   const [reactivateDate, setReactivateDate] = useState<Date | null>(null);
   const [reactivateTime, setReactivateTime] = useState<string | null>(null);
+  
+  // Loading states for buttons
+  const [toggleStatusLoading, setToggleStatusLoading] = useState(false);
+  const [reactivateLoading, setReactivateLoading] = useState(false);
 
   const initializeVotingStates = (pollData: PollData) => {
     // Find user's existing votes and set voting states accordingly
@@ -113,9 +117,14 @@ const GlobalPollModal = ({ pollId, visible, onClose, currentUserId, totalMembers
   const calculateTimeLeft = () => {
     if (!pollData?.pollEndTime) return '';
 
+    // Get current time in IST
     const now = new Date();
+    const istOffset = 5.5 * 60 * 60 * 1000; // IST is UTC+5:30
+    const istNow = new Date(now.getTime() + istOffset);
+    
+    // Poll end time is already in IST from backend
     const endTime = new Date(pollData.pollEndTime);
-    const timeDiff = endTime.getTime() - now.getTime();
+    const timeDiff = endTime.getTime() - istNow.getTime();
 
     if (timeDiff <= 0) return 'Poll Ended';
 
@@ -196,7 +205,7 @@ const GlobalPollModal = ({ pollId, visible, onClose, currentUserId, totalMembers
 
 
   const togglePollStatus = async () => {
-    if (!pollId) return;
+    if (!pollId || toggleStatusLoading) return;
 
     // If poll is inactive and we want to activate, show date picker
     if (!pollData?.isActive) {
@@ -205,6 +214,7 @@ const GlobalPollModal = ({ pollId, visible, onClose, currentUserId, totalMembers
     }
 
     // If poll is active, deactivate immediately
+    setToggleStatusLoading(true);
     try {
       const response = await axios.patch(`${API_URL}/api/poll/${pollId}/toggle`, {
         userId: currentUserId
@@ -219,15 +229,20 @@ const GlobalPollModal = ({ pollId, visible, onClose, currentUserId, totalMembers
       console.error('Error deactivating poll:', error);
       const errorMessage = error.response?.data?.error || 'Failed to deactivate poll';
       Alert.alert('Error', errorMessage);
+    } finally {
+      setToggleStatusLoading(false);
     }
   };
 
   const handleReactivatePoll = async () => {
-    if (!pollId || !reactivateDate || !reactivateTime) {
-      Alert.alert('Error', 'Please select end date and time');
+    if (!pollId || !reactivateDate || !reactivateTime || reactivateLoading) {
+      if (!reactivateDate || !reactivateTime) {
+        Alert.alert('Error', 'Please select end date and time');
+      }
       return;
     }
 
+    setReactivateLoading(true);
     try {
       // Combine date and time
       const [hours, minutes] = reactivateTime.split(':');
@@ -251,6 +266,8 @@ const GlobalPollModal = ({ pollId, visible, onClose, currentUserId, totalMembers
       console.error('Error reactivating poll:', error);
       const errorMessage = error.response?.data?.error || 'Failed to reactivate poll';
       Alert.alert('Error', errorMessage);
+    } finally {
+      setReactivateLoading(false);
     }
   };
 
@@ -302,8 +319,10 @@ const GlobalPollModal = ({ pollId, visible, onClose, currentUserId, totalMembers
 
   const isCreator = pollData?.createdBy === currentUserId;
   const canVote = pollData?.isActive && timeLeft !== 'Poll Ended';
-  const totalVotes = pollData?.votes 
-    ? Object.values(pollData.votes).reduce((sum, votes) => sum + votes.length, 0) 
+  
+  // Calculate unique voters across all options
+  const uniqueVoters = pollData?.votes 
+    ? new Set(Object.values(pollData.votes).flat()).size
     : 0;
 
   const getVoteCount = (optionId: string) => {
@@ -415,37 +434,20 @@ const GlobalPollModal = ({ pollId, visible, onClose, currentUserId, totalMembers
                 {pollData.question}
               </Text>
 
-              {/* Poll Info - Simplified for non-authors */}
-              {!isCreator ? (
-                <View className="bg-blue-50 rounded-lg p-3 mb-4">
+              {/* Poll Info - Simplified for all users */}
+              <View className="bg-blue-50 rounded-lg p-3 mb-4">
+                <View className="flex-row justify-between items-center">
+                  <Text className="text-sm text-blue-700 font-medium">
+                    Time Left: {timeLeft}
+                  </Text>
                   <Text className="text-sm text-blue-700 font-medium">
                     {pollData.isMultipleChoiceAllowed ? 'Multiple Choice' : 'Single Choice'}
                   </Text>
                 </View>
-              ) : (
-                <View className="bg-blue-50 rounded-lg p-3 mb-4">
-                  <View className="flex-row justify-between items-center mb-2">
-                    <Text className="text-sm text-blue-700 font-medium">
-                      Time Left: {timeLeft}
-                    </Text>
-                    <Text className="text-sm text-blue-700">
-                      Total Votes: {totalVotes}
-                    </Text>
-                  </View>
-                  
-                  <View className="flex-row justify-between items-center">
-                    <Text className="text-xs text-blue-600">
-                      {pollData.isMultipleChoiceAllowed ? 'Multiple Choice' : 'Single Choice'}
-                    </Text>
-                    <Text className="text-xs text-blue-600">
-                      Total Members: {totalMembers}
-                    </Text>
-                  </View>
-                </View>
-              )}
+              </View>
 
               {/* Options */}
-              <View className="space-y-3">
+              <View className="space-y-4">
                 {pollData.options.map((option, index) => {
                   const voteCount = getVoteCount(option.id);
                   const percentage = getVotePercentage(option.id);
@@ -563,16 +565,16 @@ const GlobalPollModal = ({ pollId, visible, onClose, currentUserId, totalMembers
               {isCreator && (
                 <View className="mt-4 p-3 bg-gray-50 rounded-lg">
                   <Text className="text-sm font-medium text-gray-700 text-center">
-                    {totalVotes} out of {totalMembers} members have voted
+                    {uniqueVoters} out of {totalMembers} members have voted
                   </Text>
                   <View className="mt-2 h-2 bg-gray-200 rounded-full overflow-hidden">
                     <View 
                       className="h-full bg-green-500 rounded-full"
-                      style={{ width: `${totalMembers > 0 ? (totalVotes / totalMembers) * 100 : 0}%` }}
+                      style={{ width: `${totalMembers > 0 ? (uniqueVoters / totalMembers) * 100 : 0}%` }}
                     />
                   </View>
                   <Text className="text-xs text-gray-500 text-center mt-1">
-                    {totalMembers > 0 ? Math.round((totalVotes / totalMembers) * 100) : 0}% participation
+                    {totalMembers > 0 ? Math.round((uniqueVoters / totalMembers) * 100) : 0}% participation
                   </Text>
                 </View>
               )}
@@ -582,15 +584,29 @@ const GlobalPollModal = ({ pollId, visible, onClose, currentUserId, totalMembers
                 <View className="flex-row mt-6 space-x-2">
                   <TouchableOpacity
                     onPress={togglePollStatus}
+                    disabled={toggleStatusLoading}
                     className={`flex-1 py-3 px-4 rounded-lg ${
-                      pollData.isActive ? 'bg-red-100' : 'bg-green-100'
+                      toggleStatusLoading 
+                        ? 'bg-gray-100' 
+                        : pollData.isActive 
+                          ? 'bg-red-100' 
+                          : 'bg-green-100'
                     }`}
                   >
-                    <Text className={`text-center text-sm font-medium ${
-                      pollData.isActive ? 'text-red-700' : 'text-green-700'
-                    }`}>
-                      {pollData.isActive ? 'Deactivate' : 'Activate'}
-                    </Text>
+                    <View className="flex-row items-center justify-center">
+                      {toggleStatusLoading && <ActivityIndicator size="small" color="#6B7280" style={{ marginRight: 4 }} />}
+                      <Text className={`text-center text-sm font-medium ${
+                        toggleStatusLoading 
+                          ? 'text-gray-500'
+                          : pollData.isActive 
+                            ? 'text-red-700' 
+                            : 'text-green-700'
+                      }`}>
+                        {toggleStatusLoading 
+                          ? (pollData.isActive ? 'Deactivating...' : 'Activating...') 
+                          : (pollData.isActive ? 'Deactivate' : 'Activate')}
+                      </Text>
+                    </View>
                   </TouchableOpacity>
                   
                   <TouchableOpacity
@@ -627,12 +643,16 @@ const GlobalPollModal = ({ pollId, visible, onClose, currentUserId, totalMembers
                   
                   <View className="mt-6 space-y-3">
                     <TouchableOpacity
-                      className="bg-green-500 py-4 rounded-lg"
+                      className={`py-4 rounded-lg ${reactivateLoading ? 'bg-gray-400' : 'bg-green-500'}`}
+                      disabled={reactivateLoading}
                       onPress={handleReactivatePoll}
                     >
-                      <Text className="text-white text-center font-semibold text-lg">
-                        Activate Poll
-                      </Text>
+                      <View className="flex-row items-center justify-center">
+                        {reactivateLoading && <ActivityIndicator size="small" color="white" style={{ marginRight: 8 }} />}
+                        <Text className="text-white text-center font-semibold text-lg">
+                          {reactivateLoading ? 'Activating...' : 'Activate Poll'}
+                        </Text>
+                      </View>
                     </TouchableOpacity>
                     
                     <TouchableOpacity 

@@ -22,7 +22,8 @@ interface Department {
 interface Step3RecipientsProps {
   selectedDepartments: string[];
   onNext: (selectedDepartments: string[]) => void;
-  onBack: () => void;
+  onBack: () => void; // header/hardware back -> alert in wizard
+  onPrevious: () => void; // bottom Previous -> no alert
   isEdit?: boolean;
 }
 
@@ -30,6 +31,7 @@ export default function Step3Recipients({
   selectedDepartments: initialSelectedDepartments,
   onNext, 
   onBack,
+  onPrevious,
   isEdit = false
 }: Step3RecipientsProps) {
   const [selectedDepartments, setSelectedDepartments] = useState<string[]>(initialSelectedDepartments);
@@ -39,6 +41,7 @@ export default function Step3Recipients({
   const [departments, setDepartments] = useState<Department[]>([]);
   const [filteredDepartments, setFilteredDepartments] = useState<Department[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isNavigating, setIsNavigating] = useState(false);
 
   useEffect(() => {
     const getCurrentUser = async () => {
@@ -173,6 +176,8 @@ export default function Step3Recipients({
   };
 
   const handleNext = () => {
+    if (isNavigating) return;
+    setIsNavigating(true);
     onNext(selectedDepartments);
   };
 
@@ -229,18 +234,7 @@ export default function Step3Recipients({
         <View className="w-8" />
       </View>
 
-      {/* Step indicator */}
-      <View className="px-4 py-3 bg-blue-50 border-b border-blue-100">
-        <Text className="text-blue-800 font-medium text-center">Step 3 of 4: Recipients</Text>
-        <Text className="text-blue-600 text-sm text-center mt-1">
-          {isEdit 
-            ? 'Select departments to receive this announcement'
-            : (isKaryalay 
-              ? 'Select departments to receive this announcement'
-              : 'Select departments from your access to receive this announcement')
-          }
-        </Text>
-      </View>
+      {/* Removed step indicator */}
 
       <View className="flex-1">
         {/* Search Bar and Select All */}
@@ -266,12 +260,13 @@ export default function Step3Recipients({
               onPress={selectAllDepartments}
               className="flex-row items-center p-3 bg-gray-50 rounded-lg"
             >
-              <Checkbox
-                value={allFilteredSelected}
-                onValueChange={selectAllDepartments}
-                className="mr-3"
-                color={allFilteredSelected ? '#0284c7' : undefined}
-              />
+              <View className="mr-3">
+                <Checkbox
+                  value={allFilteredSelected}
+                  onValueChange={selectAllDepartments}
+                  color={allFilteredSelected ? '#0284c7' : undefined}
+                />
+              </View>
               <Text className="text-gray-700 font-medium">
                 {allFilteredSelected ? 'Deselect All' : 'Select All'} 
                 {searchQuery ? ' (Filtered)' : ''}
@@ -306,41 +301,13 @@ export default function Step3Recipients({
         )}
       </View>
 
-      {/* Validation Notice and Navigation */}
+      {/* Navigation */}
       <View className="p-4 bg-white border-t border-gray-200">
-        {/* Selection Summary */}
-        <View className="mb-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-          <View className="flex-row items-center mb-1">
-            <Ionicons name="business" size={16} color="#2563eb" />
-            <Text className="text-blue-800 font-medium ml-2">
-              Selection Summary
-            </Text>
-          </View>
-          <Text className="text-blue-700 text-sm">
-            {selectedDepartments.length > 0 
-              ? `Selected ${selectedDepartments.length} department${selectedDepartments.length !== 1 ? 's' : ''}: ${selectedDepartments.join(', ')}`
-              : 'No departments selected'
-            }
-          </Text>
-        </View>
-
-        {/* Validation Notice */}
-        {!isFormValid && (
-          <View className="mb-3 p-3 bg-orange-50 border border-orange-200 rounded-lg">
-            <View className="flex-row items-center">
-              <Ionicons name="warning" size={16} color="#ea580c" />
-              <Text className="text-orange-800 font-medium ml-2">Selection required</Text>
-            </View>
-            <Text className="text-orange-700 text-sm mt-1">
-              You must select at least one department to continue.
-            </Text>
-          </View>
-        )}
-        
         {/* Navigation Buttons */}
-        <View className="flex-row space-x-3">
+        <View className="flex-row space-x-4">
           <TouchableOpacity
-            onPress={onBack}
+            onPress={onPrevious}
+            disabled={isNavigating}
             className="flex-1 py-3 px-6 rounded-lg border border-gray-300"
           >
             <Text className="text-gray-700 text-center font-semibold">Previous</Text>
@@ -348,19 +315,19 @@ export default function Step3Recipients({
           
           <TouchableOpacity
             onPress={handleNext}
-            disabled={!isFormValid}
+            disabled={!isFormValid || isNavigating}
             className={`flex-1 py-3 px-6 rounded-lg ${
-              isFormValid 
-                ? 'bg-blue-600' 
+              isFormValid && !isNavigating
+                ? 'bg-blue-600'
                 : 'bg-gray-300'
             }`}
           >
             <Text className={`text-center font-semibold ${
-              isFormValid 
-                ? 'text-white' 
+              isFormValid && !isNavigating
+                ? 'text-white'
                 : 'text-gray-500'
             }`}>
-              Next: Preview
+              {isNavigating ? 'Loading...' : 'Next: Preview'}
             </Text>
           </TouchableOpacity>
         </View>

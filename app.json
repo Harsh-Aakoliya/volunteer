@@ -2,8 +2,9 @@
   "expo": {
     "name": "Sevak",
     "slug": "Sevak",
-    "version": "1.0.8",
+    "version": "1.0.11",
     "userInterfaceStyle": "automatic",
+    "icon": "./assets/images/appicon.png",
     "newArchEnabled": true,
     "web": {
       "bundler": "metro",

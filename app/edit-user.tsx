@@ -8,30 +8,114 @@ import {
   ScrollView, 
   SafeAreaView,
   Alert,
-  BackHandler
+  BackHandler,
+  ActivityIndicator
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { AuthStorage } from '@/utils/authStorage';
-import { updateUserWithSubdepartments, getSearchFilters } from '@/api/user';
+import { updateUserWithSubdepartments, getUserProfileById, getSearchFilters } from '@/api/user';
 import { SearchFiltersResponse } from '@/types/type';
 import CustomButton from '@/components/ui/CustomButton';
-import DobPicker from '@/components/chat/DobPicker';
+import ModernDatePicker from '@/components/ui/ModernDatePicker';
 import { LinearGradient } from 'expo-linear-gradient';
 
 export default function EditUserScreen() {
   const { userData } = useLocalSearchParams();
+  
+  // State for original and edited data
   const [originalUser, setOriginalUser] = useState<any>(null);
-  const [editFormData, setEditFormData] = useState<any>({});
-  const [formValidation, setFormValidation] = useState<any>({});
+  const [editedUser, setEditedUser] = useState<any>({});
   const [hasChanges, setHasChanges] = useState(false);
   const [selectedDOB, setSelectedDOB] = useState<Date | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   
-  // New states for subdepartment functionality
+  // Department management states
   const [filters, setFilters] = useState<SearchFiltersResponse | null>(null);
-  const [selectedDepartment, setSelectedDepartment] = useState<string>('');
-  const [selectedSubdepartments, setSelectedSubdepartments] = useState<string[]>([]);
+  const [selectedDepartments, setSelectedDepartments] = useState<string[]>([]);
   const [isLoadingFilters, setIsLoadingFilters] = useState(true);
+  const [isKaryalay, setIsKaryalay] = useState(false);
+  
+
+
+  // Parse DD/MM/YYYY string to Date
+  const parseDDMMYYYYToDate = (dateString: string): Date | null => {
+    if (!dateString) return null;
+    const parts = dateString.split('/');
+    if (parts.length !== 3) return null;
+    
+    const day = parseInt(parts[0], 10);
+    const month = parseInt(parts[1], 10) - 1; // Month is 0-indexed
+    const year = parseInt(parts[2], 10);
+    
+    if (isNaN(day) || isNaN(month) || isNaN(year)) return null;
+    
+    const date = new Date(year, month, day);
+    // Check if the date is valid
+    if (date.getDate() !== day || date.getMonth() !== month || date.getFullYear() !== year) {
+      return null;
+    }
+    
+    return date;
+  };
+
+  // Format Date to DD/MM/YYYY string
+  const formatDateToDDMMYYYY = (date: Date | null): string => {
+    if (!date) return '';
+    const day = date.getDate().toString().padStart(2, '0');
+    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+    const year = date.getFullYear();
+    return `${day}/${month}/${year}`;
+  };
+
+  // Load user data from database
+  const loadUserData = async () => {
+    try {
+      setIsLoading(true);
+      const user = JSON.parse(userData as string);
+      const freshUserData = await getUserProfileById(user.userId);
+      console.log("freshUserData", freshUserData);
+      
+      // Store original user data (deep copy)
+      setOriginalUser(JSON.parse(JSON.stringify(freshUserData)));
+      
+      // Set DOB date object for picker
+      let dobDate = null;
+      if (freshUserData.dateOfBirth) {
+        dobDate = parseDDMMYYYYToDate(freshUserData.dateOfBirth);
+      }
+      setSelectedDOB(dobDate);
+      
+      // Initialize edited user data (this will be manipulated by UI)
+      const initialEditData = {
+        userId: freshUserData.userId || '',
+        mobileNumber: freshUserData.mobileNumber || '',
+        fullName: freshUserData.fullName || '',
+        isAdmin: freshUserData.isAdmin || false,
+        gender: freshUserData.gender || '',
+        dateOfBirth: freshUserData.dateOfBirth || '',
+        bloodGroup: freshUserData.bloodGroup || '',
+        maritalStatus: freshUserData.maritalStatus || '',
+        education: freshUserData.education || '',
+        whatsappNumber: freshUserData.whatsappNumber || '',
+        emergencyContact: freshUserData.emergencyContact || '',
+        email: freshUserData.email || '',
+        address: freshUserData.address || '',
+      };
+      
+      setEditedUser(initialEditData);
+      
+      // Set selected departments for HOD management
+      setSelectedDepartments(freshUserData.departmentIds || []);
+      
+    } catch (error) {
+      console.error('Error loading user data:', error);
+      Alert.alert('Error', 'Failed to load user data');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   // Load search filters
   const loadFilters = async () => {
@@ -39,6 +123,7 @@ export default function EditUserScreen() {
       setIsLoadingFilters(true);
       const filtersData = await getSearchFilters();
       setFilters(filtersData);
+      setIsKaryalay(filtersData.userRole.isKaryalay);
     } catch (error) {
       console.error('Error loading filters:', error);
     } finally {
@@ -49,81 +134,38 @@ export default function EditUserScreen() {
   // Initialize form data
   useEffect(() => {
     if (userData) {
-      const user = JSON.parse(userData as string);
-      setOriginalUser(user);
-      
-      // Set DOB date object for picker
-      let dobDate = null;
-      if (user.dateOfBirth) {
-        dobDate = new Date(user.dateOfBirth);
-        // If invalid date, set to current date
-        if (isNaN(dobDate.getTime())) {
-          dobDate = new Date();
-        }
-      } else {
-        // If no DOB, set to current date
-        dobDate = new Date();
-      }
-      setSelectedDOB(dobDate);
-      
-      const formData = {
-        userId: user.userId || '',
-        mobileNumber: user.mobileNumber || '',
-        fullName: user.fullName || '',
-        isAdmin: user.isAdmin || false,
-        gender: user.gender || '',
-        dateOfBirth: user.dateOfBirth || '',
-        bloodGroup: user.bloodGroup || '',
-        maritalStatus: user.maritalStatus || '',
-        education: user.education || '',
-        whatsappNumber: user.whatsappNumber || '',
-        emergencyContact: user.emergencyContact || '',
-        email: user.email || '',
-        address: user.address || '',
-      };
-      
-      setEditFormData(formData);
-      
-      // Set department and subdepartments
-      setSelectedDepartment(user.departmentId || '');
-      setSelectedSubdepartments(user.subdepartmentIds || []);
-      
-      // Initialize validation - only for DOB
-      setFormValidation({
-        dateOfBirth: true,
-      });
+      loadUserData();
+      loadFilters();
     }
-    
-    // Load filters
-    loadFilters();
   }, [userData]);
 
   // Check for changes whenever form data changes
   useEffect(() => {
-    if (originalUser) {
-      const originalFormData = {
-        userId: originalUser.userId || '',
-        mobileNumber: originalUser.mobileNumber || '',
-        fullName: originalUser.fullName || '',
-        isAdmin: originalUser.isAdmin || false,
-        gender: originalUser.gender || '',
-        dateOfBirth: originalUser.dateOfBirth || '',
-        bloodGroup: originalUser.bloodGroup || '',
-        maritalStatus: originalUser.maritalStatus || '',
-        education: originalUser.education || '',
-        whatsappNumber: originalUser.whatsappNumber || '',
-        emergencyContact: originalUser.emergencyContact || '',
-        email: originalUser.email || '',
-        address: originalUser.address || '',
-      };
-
-      const formChanges = JSON.stringify(originalFormData) !== JSON.stringify(editFormData);
-      const deptChanges = (originalUser.departmentId || '') !== selectedDepartment;
-      const subdeptChanges = JSON.stringify(originalUser.subdepartmentIds || []) !== JSON.stringify(selectedSubdepartments);
+    if (originalUser && editedUser) {
+      // Compare all form fields
+      const formChanges = (
+        originalUser.mobileNumber !== editedUser.mobileNumber ||
+        originalUser.fullName !== editedUser.fullName ||
+        originalUser.isAdmin !== editedUser.isAdmin ||
+        originalUser.gender !== editedUser.gender ||
+        originalUser.dateOfBirth !== editedUser.dateOfBirth ||
+        originalUser.bloodGroup !== editedUser.bloodGroup ||
+        originalUser.maritalStatus !== editedUser.maritalStatus ||
+        originalUser.education !== editedUser.education ||
+        originalUser.whatsappNumber !== editedUser.whatsappNumber ||
+        originalUser.emergencyContact !== editedUser.emergencyContact ||
+        originalUser.email !== editedUser.email ||
+        originalUser.address !== editedUser.address
+      );
       
-      setHasChanges(formChanges || deptChanges || subdeptChanges);
+      // Compare department changes
+      const originalDepts = originalUser.departmentIds || [];
+      const selectedDepts = selectedDepartments || [];
+      const deptChanges = JSON.stringify(originalDepts.sort()) !== JSON.stringify(selectedDepts.sort());
+      
+      setHasChanges(formChanges || deptChanges);
     }
-  }, [editFormData, originalUser, selectedDepartment, selectedSubdepartments]);
+  }, [editedUser, originalUser, selectedDepartments]);
 
   // Handle back button
   useEffect(() => {
@@ -163,46 +205,45 @@ export default function EditUserScreen() {
   // Handle DOB picker change
   const handleDOBChange = (date: Date | null) => {
     setSelectedDOB(date);
-    if (date) {
-      // Format date as YYYY-MM-DD for storage
-      const formattedDate = date.toISOString().split('T')[0];
-      setEditFormData((prev: any) => ({ ...prev, dateOfBirth: formattedDate }));
+    const formattedDate = formatDateToDDMMYYYY(date);
+    setEditedUser((prev: any) => ({ ...prev, dateOfBirth: formattedDate }));
+  };
+
+  // Handle field changes
+  const handleFieldChange = (field: string, value: any) => {
+    setEditedUser((prev: any) => ({ ...prev, [field]: value }));
+  };
+
+  // Handle department selection for HOD management
+  const toggleDepartment = (departmentId: string) => {
+    setSelectedDepartments(prev => 
+      prev.includes(departmentId)
+        ? prev.filter(id => id !== departmentId)
+        : [...prev, departmentId]
+    );
+  };
+
+  // Handle HOD toggle - clear departments when HOD is turned off
+  const handleHODToggle = () => {
+    const newIsAdmin = !editedUser.isAdmin;
+    setEditedUser((prev: any) => ({ ...prev, isAdmin: newIsAdmin }));
+    
+    // Clear department selections when HOD is turned off
+    if (!newIsAdmin) {
+      setSelectedDepartments([]);
     }
   };
 
-  // Handle department selection
-  const handleDepartmentChange = (departmentId: string) => {
-    setSelectedDepartment(departmentId);
-    // Clear subdepartments when department changes
-    setSelectedSubdepartments([]);
-  };
-
-  // Handle subdepartment selection
-  const toggleSubdepartment = (subdepartmentId: string) => {
-    setSelectedSubdepartments(prev => 
-      prev.includes(subdepartmentId)
-        ? prev.filter(id => id !== subdepartmentId)
-        : [...prev, subdepartmentId]
-    );
-  };
-
-  // Get filtered subdepartments based on selected department
-  const getFilteredSubdepartments = () => {
-    if (!filters || !selectedDepartment) return [];
-    
-    return filters.subdepartments.filter(sub => 
-      sub.departmentId === selectedDepartment
-    );
-  };
 
   // Save user changes
   const handleSaveUser = async () => {
     try {
-      // Prepare the data for the new API
+      setIsSaving(true);
+      
+      // Prepare the data for the API
       const updateData = {
-        ...editFormData,
-        departmentId: selectedDepartment,
-        subdepartmentIds: selectedSubdepartments
+        ...editedUser,
+        departmentIds: selectedDepartments
       };
 
       await updateUserWithSubdepartments(originalUser.userId, updateData);
@@ -216,6 +257,8 @@ export default function EditUserScreen() {
     } catch (error) {
       console.error('Error updating user:', error);
       Alert.alert('Error', 'Failed to update user');
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -249,6 +292,29 @@ export default function EditUserScreen() {
     }
   };
 
+  if (isLoading) {
+    return (
+      <SafeAreaView className="flex-1 bg-gray-50">
+        <LinearGradient colors={['#0286ff', '#0255ff']} className="pt-4 pb-6 px-6">
+          <View className="flex-row items-center justify-between">
+            <TouchableOpacity
+              onPress={handleBackPress}
+              className="w-10 h-10 bg-white/20 rounded-full items-center justify-center"
+            >
+              <Ionicons name="arrow-back" size={24} color="white" />
+            </TouchableOpacity>
+            <Text className="text-xl font-bold text-white">Edit User</Text>
+            <View className="w-10" />
+          </View>
+        </LinearGradient>
+        <View className="flex-1 items-center justify-center">
+          <ActivityIndicator size="large" color="#0286ff" />
+          <Text className="text-gray-600 mt-2">Loading user data...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView className="flex-1 bg-gray-50">
       {/* Header */}
@@ -265,7 +331,7 @@ export default function EditUserScreen() {
         </View>
         
         <Text className="text-white/80 text-center mt-2">
-          {editFormData.fullName || 'User Profile'}
+          {editedUser.fullName || 'User Profile'}
         </Text>
       </LinearGradient>
       
@@ -275,10 +341,8 @@ export default function EditUserScreen() {
           <View className="mb-4">
             <Text className="text-sm font-medium text-gray-700 mb-2">Mobile Number</Text>
             <TextInput
-              value={editFormData.mobileNumber}
-              onChangeText={(text) => {
-                setEditFormData((prev: any) => ({ ...prev, mobileNumber: text }));
-              }}
+              value={editedUser.mobileNumber}
+              onChangeText={(text) => handleFieldChange('mobileNumber', text)}
               className="bg-white p-3 rounded-lg border border-gray-200"
               placeholder="Enter mobile number"
               keyboardType="phone-pad"
@@ -289,140 +353,100 @@ export default function EditUserScreen() {
           <View className="mb-4">
             <Text className="text-sm font-medium text-gray-700 mb-2">Full Name</Text>
             <TextInput
-              value={editFormData.fullName}
-              onChangeText={(text) => setEditFormData((prev: any) => ({ ...prev, fullName: text }))}
+              value={editedUser.fullName}
+              onChangeText={(text) => handleFieldChange('fullName', text)}
               className="bg-white p-3 rounded-lg border border-gray-200"
               placeholder="Enter full name"
             />
           </View>
 
-          {/* Admin Toggle */}
-          <View className="mb-4">
-            <View className="flex-row items-center justify-between bg-white p-3 rounded-lg border border-gray-200">
-              <Text className="text-sm font-medium text-gray-700">Make Admin</Text>
-              <TouchableOpacity
-                onPress={() => setEditFormData((prev: any) => ({ ...prev, isAdmin: !prev.isAdmin }))}
-                className={`w-12 h-6 rounded-full ${editFormData.isAdmin ? 'bg-blue-500' : 'bg-gray-300'}`}
-              >
-                <View className={`w-5 h-5 rounded-full bg-white mt-0.5 ${editFormData.isAdmin ? 'ml-6' : 'ml-1'}`} />
-              </TouchableOpacity>
-            </View>
-          </View>
+           {/* Admin Toggle */}
+           <View className="mb-4">
+             <View className="flex-row items-center justify-between bg-white p-3 rounded-lg border border-gray-200">
+               <Text className="text-sm font-medium text-gray-700">Make HOD</Text>
+               <TouchableOpacity
+                 onPress={handleHODToggle}
+                 className={`w-12 h-6 rounded-full ${editedUser.isAdmin ? 'bg-blue-500' : 'bg-gray-300'}`}
+               >
+                 <View className={`w-5 h-5 rounded-full bg-white mt-0.5 ${editedUser.isAdmin ? 'ml-6' : 'ml-1'}`} />
+               </TouchableOpacity>
+             </View>
+           </View>
 
-          {/* Department Selection - Only for Karyalay users */}
-          {filters?.userRole.isKaryalay && (
-            <View className="mb-4">
-              <Text className="text-sm font-medium text-gray-700 mb-2">Department</Text>
-              <View className="bg-white rounded-lg border border-gray-200">
-                <TouchableOpacity
-                  onPress={() => {
-                    setSelectedDepartment('');
-                    setSelectedSubdepartments([]);
-                  }}
-                  className={`p-3 border-b border-gray-100 ${!selectedDepartment ? 'bg-blue-50' : ''}`}
-                >
-                  <Text className={`${!selectedDepartment ? 'text-blue-600 font-medium' : 'text-gray-700'}`}>
-                    No Department
-                  </Text>
-                </TouchableOpacity>
-                
-                {filters.departments.map((dept) => (
-                  <TouchableOpacity
-                    key={dept.departmentId}
-                    onPress={() => handleDepartmentChange(dept.departmentId)}
-                    className={`p-3 border-b border-gray-100 last:border-b-0 ${
-                      selectedDepartment === dept.departmentId ? 'bg-blue-50' : ''
-                    }`}
-                  >
-                    <Text className={`${
-                      selectedDepartment === dept.departmentId ? 'text-blue-600 font-medium' : 'text-gray-700'
-                    }`}>
-                      {dept.departmentName}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
-          )}
+           {/* Department Management - Only for Karyalay users */}
+           {isKaryalay && (
+             <View className="mb-4">
+               <Text className="text-sm font-medium text-gray-700 mb-2">
+                 Department Management {selectedDepartments.length > 0 && `(${selectedDepartments.length} selected)`}
+               </Text>
+               <Text className="text-xs text-gray-500 mb-3">
+                 Select departments this user belongs to. {editedUser.isAdmin ? 'As HOD, user will be in both user list and HOD list.' : 'User will be added to user list only.'}
+               </Text>
+               <View className="bg-white rounded-lg border border-gray-200 p-3">
+                 {filters?.departments.map((dept) => {
+                   const isSelected = selectedDepartments.includes(dept.departmentId);
+                   return (
+                     <TouchableOpacity
+                       key={dept.departmentId}
+                       onPress={() => toggleDepartment(dept.departmentId)}
+                       className="flex-row items-center justify-between py-2"
+                     >
+                       <Text className={`flex-1 ${isSelected ? 'text-blue-600 font-medium' : 'text-gray-700'}`}>
+                         {dept.departmentName}
+                       </Text>
+                       <View className={`w-5 h-5 rounded border-2 items-center justify-center ${
+                         isSelected ? 'bg-blue-600 border-blue-600' : 'border-gray-300'
+                       }`}>
+                         {isSelected && (
+                           <Ionicons name="checkmark" size={12} color="white" />
+                         )}
+                       </View>
+                     </TouchableOpacity>
+                   );
+                 })}
+               </View>
+               
+               {selectedDepartments.length > 0 && (
+                 <View className="mt-2">
+                   <Text className="text-xs text-gray-500">
+                     Selected: {selectedDepartments.map(id => {
+                       const dept = filters?.departments.find(d => d.departmentId === id);
+                       return dept?.departmentName;
+                     }).filter(Boolean).join(', ')}
+                   </Text>
+                 </View>
+               )}
+             </View>
+           )}
 
-          {/* Subdepartment Selection */}
-          {getFilteredSubdepartments().length > 0 && (
-            <View className="mb-4">
-              <Text className="text-sm font-medium text-gray-700 mb-2">
-                Subdepartments {selectedSubdepartments.length > 0 && `(${selectedSubdepartments.length} selected)`}
-              </Text>
-              <View className="bg-white rounded-lg border border-gray-200 p-3">
-                {getFilteredSubdepartments().map((subdept) => {
-                  const isSelected = selectedSubdepartments.includes(subdept.subdepartmentId);
-                  return (
-                    <TouchableOpacity
-                      key={subdept.subdepartmentId}
-                      onPress={() => toggleSubdepartment(subdept.subdepartmentId)}
-                      className="flex-row items-center justify-between py-2"
-                    >
-                      <Text className={`flex-1 ${isSelected ? 'text-purple-600 font-medium' : 'text-gray-700'}`}>
-                        {subdept.subdepartmentName}
-                      </Text>
-                      <View className={`w-5 h-5 rounded border-2 items-center justify-center ${
-                        isSelected ? 'bg-purple-600 border-purple-600' : 'border-gray-300'
-                      }`}>
-                        {isSelected && (
-                          <Ionicons name="checkmark" size={12} color="white" />
-                        )}
-                      </View>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-              
-              {selectedSubdepartments.length > 0 && (
-                <View className="mt-2">
-                  <Text className="text-xs text-gray-500">
-                    Selected: {selectedSubdepartments.map(id => {
-                      const subdept = getFilteredSubdepartments().find(s => s.subdepartmentId === id);
-                      return subdept?.subdepartmentName;
-                    }).filter(Boolean).join(', ')}
-                  </Text>
-                </View>
-              )}
-            </View>
-          )}
 
           {/* Gender */}
           <View className="mb-4">
             <Text className="text-sm font-medium text-gray-700 mb-2">Gender</Text>
             <View className="flex-row">
               <TouchableOpacity
-                onPress={() => setEditFormData((prev: any) => ({ ...prev, gender: 'male' }))}
-                className={`flex-1 p-3 rounded-lg border mr-2 ${editFormData.gender === 'male' ? 'bg-blue-100 border-blue-500' : 'bg-white border-gray-200'}`}
+                onPress={() => handleFieldChange('gender', 'male')}
+                className={`flex-1 p-3 rounded-lg border mr-2 ${editedUser.gender === 'male' ? 'bg-blue-100 border-blue-500' : 'bg-white border-gray-200'}`}
               >
-                <Text className={`text-center ${editFormData.gender === 'male' ? 'text-blue-600 font-medium' : 'text-gray-700'}`}>Male</Text>
+                <Text className={`text-center ${editedUser.gender === 'male' ? 'text-blue-600 font-medium' : 'text-gray-700'}`}>Male</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                onPress={() => setEditFormData((prev: any) => ({ ...prev, gender: 'female' }))}
-                className={`flex-1 p-3 rounded-lg border ml-2 ${editFormData.gender === 'female' ? 'bg-blue-100 border-blue-500' : 'bg-white border-gray-200'}`}
+                onPress={() => handleFieldChange('gender', 'female')}
+                className={`flex-1 p-3 rounded-lg border ml-2 ${editedUser.gender === 'female' ? 'bg-blue-100 border-blue-500' : 'bg-white border-gray-200'}`}
               >
-                <Text className={`text-center ${editFormData.gender === 'female' ? 'text-blue-600 font-medium' : 'text-gray-700'}`}>Female</Text>
+                <Text className={`text-center ${editedUser.gender === 'female' ? 'text-blue-600 font-medium' : 'text-gray-700'}`}>Female</Text>
               </TouchableOpacity>
             </View>
           </View>
 
           {/* Date of Birth */}
-          <View className="mb-4">
-            <Text className="text-sm font-medium text-gray-700 mb-2">Date of Birth</Text>
-            <View className="flex-row items-center">
-              <View className="flex-1">
-                <DobPicker
-                  selectedDate={selectedDOB}
-                  setSelectedDate={handleDOBChange}
-                  dateButtonClassName="bg-white"
-                />
-              </View>
-              <TouchableOpacity className="ml-3 p-2">
-                <Ionicons name="calendar-outline" size={20} color="#6b7280" />
-              </TouchableOpacity>
-            </View>
-          </View>
+          <ModernDatePicker
+            selectedDate={selectedDOB}
+            onDateChange={handleDOBChange}
+            label="Date of Birth"
+            placeholder="No DOB selected"
+            className="mb-4"
+          />
 
           {/* Blood Group */}
           <View className="mb-4">
@@ -431,10 +455,10 @@ export default function EditUserScreen() {
               {['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'].map((group) => (
                 <TouchableOpacity
                   key={group}
-                  onPress={() => setEditFormData((prev: any) => ({ ...prev, bloodGroup: group }))}
-                  className={`px-3 py-2 rounded-lg border mr-2 mb-2 ${editFormData.bloodGroup === group ? 'bg-blue-100 border-blue-500' : 'bg-white border-gray-200'}`}
+                  onPress={() => handleFieldChange('bloodGroup', group)}
+                  className={`px-3 py-2 rounded-lg border mr-2 mb-2 ${editedUser.bloodGroup === group ? 'bg-blue-100 border-blue-500' : 'bg-white border-gray-200'}`}
                 >
-                  <Text className={`${editFormData.bloodGroup === group ? 'text-blue-600 font-medium' : 'text-gray-700'}`}>{group}</Text>
+                  <Text className={`${editedUser.bloodGroup === group ? 'text-blue-600 font-medium' : 'text-gray-700'}`}>{group}</Text>
                 </TouchableOpacity>
               ))}
             </View>
@@ -445,16 +469,16 @@ export default function EditUserScreen() {
             <Text className="text-sm font-medium text-gray-700 mb-2">Marital Status</Text>
             <View className="flex-row">
               <TouchableOpacity
-                onPress={() => setEditFormData((prev: any) => ({ ...prev, maritalStatus: 'single' }))}
-                className={`flex-1 p-3 rounded-lg border mr-2 ${editFormData.maritalStatus === 'single' ? 'bg-blue-100 border-blue-500' : 'bg-white border-gray-200'}`}
+                onPress={() => handleFieldChange('maritalStatus', 'single')}
+                className={`flex-1 p-3 rounded-lg border mr-2 ${editedUser.maritalStatus === 'single' ? 'bg-blue-100 border-blue-500' : 'bg-white border-gray-200'}`}
               >
-                <Text className={`text-center ${editFormData.maritalStatus === 'single' ? 'text-blue-600 font-medium' : 'text-gray-700'}`}>Single</Text>
+                <Text className={`text-center ${editedUser.maritalStatus === 'single' ? 'text-blue-600 font-medium' : 'text-gray-700'}`}>Single</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                onPress={() => setEditFormData((prev: any) => ({ ...prev, maritalStatus: 'married' }))}
-                className={`flex-1 p-3 rounded-lg border ml-2 ${editFormData.maritalStatus === 'married' ? 'bg-blue-100 border-blue-500' : 'bg-white border-gray-200'}`}
+                onPress={() => handleFieldChange('maritalStatus', 'married')}
+                className={`flex-1 p-3 rounded-lg border ml-2 ${editedUser.maritalStatus === 'married' ? 'bg-blue-100 border-blue-500' : 'bg-white border-gray-200'}`}
               >
-                <Text className={`text-center ${editFormData.maritalStatus === 'married' ? 'text-blue-600 font-medium' : 'text-gray-700'}`}>Married</Text>
+                <Text className={`text-center ${editedUser.maritalStatus === 'married' ? 'text-blue-600 font-medium' : 'text-gray-700'}`}>Married</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -463,8 +487,8 @@ export default function EditUserScreen() {
           <View className="mb-4">
             <Text className="text-sm font-medium text-gray-700 mb-2">Education</Text>
             <TextInput
-              value={editFormData.education}
-              onChangeText={(text) => setEditFormData((prev: any) => ({ ...prev, education: text }))}
+              value={editedUser.education}
+              onChangeText={(text) => handleFieldChange('education', text)}
               className="bg-white p-3 rounded-lg border border-gray-200"
               placeholder="Enter education details"
             />
@@ -474,10 +498,8 @@ export default function EditUserScreen() {
           <View className="mb-4">
             <Text className="text-sm font-medium text-gray-700 mb-2">WhatsApp Number</Text>
             <TextInput
-              value={editFormData.whatsappNumber}
-              onChangeText={(text) => {
-                setEditFormData((prev: any) => ({ ...prev, whatsappNumber: text }));
-              }}
+              value={editedUser.whatsappNumber}
+              onChangeText={(text) => handleFieldChange('whatsappNumber', text)}
               className="bg-white p-3 rounded-lg border border-gray-200"
               placeholder="Enter WhatsApp number"
               keyboardType="phone-pad"
@@ -488,10 +510,8 @@ export default function EditUserScreen() {
           <View className="mb-4">
             <Text className="text-sm font-medium text-gray-700 mb-2">Emergency Contact</Text>
             <TextInput
-              value={editFormData.emergencyContact}
-              onChangeText={(text) => {
-                setEditFormData((prev: any) => ({ ...prev, emergencyContact: text }));
-              }}
+              value={editedUser.emergencyContact}
+              onChangeText={(text) => handleFieldChange('emergencyContact', text)}
               className="bg-white p-3 rounded-lg border border-gray-200"
               placeholder="Enter emergency contact"
               keyboardType="phone-pad"
@@ -502,10 +522,8 @@ export default function EditUserScreen() {
           <View className="mb-4">
             <Text className="text-sm font-medium text-gray-700 mb-2">Email</Text>
             <TextInput
-              value={editFormData.email}
-              onChangeText={(text) => {
-                setEditFormData((prev: any) => ({ ...prev, email: text }));
-              }}
+              value={editedUser.email}
+              onChangeText={(text) => handleFieldChange('email', text)}
               className="bg-white p-3 rounded-lg border border-gray-200"
               placeholder="Enter email address"
               keyboardType="email-address"
@@ -516,8 +534,8 @@ export default function EditUserScreen() {
           <View className="mb-6">
             <Text className="text-sm font-medium text-gray-700 mb-2">Address</Text>
             <TextInput
-              value={editFormData.address}
-              onChangeText={(text) => setEditFormData((prev: any) => ({ ...prev, address: text }))}
+              value={editedUser.address}
+              onChangeText={(text) => handleFieldChange('address', text)}
               className="bg-white p-3 rounded-lg border border-gray-200"
               placeholder="Enter address"
               multiline
@@ -525,13 +543,14 @@ export default function EditUserScreen() {
             />
           </View>
 
-          {/* Save Button */}
-          <CustomButton
-            title="Save Changes"
-            onPress={handleSaveUser}
-            className="mb-6"
-            disabled={!hasChanges}
-          />
+           {/* Save Button */}
+           <CustomButton
+             title={isSaving ? "Saving..." : "Save Changes"}
+             onPress={handleSaveUser}
+             className="mb-6"
+             disabled={!hasChanges || isSaving}
+             loading={isSaving}
+           />
         </View>
       </ScrollView>
     </SafeAreaView>

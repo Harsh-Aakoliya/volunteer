@@ -16,12 +16,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { getAllSearchData } from '@/api/user';
 import { 
-  DepartmentUser
+  DepartmentUser,
+  User
 } from '@/types/type';
 
 export default function SearchUsersScreen() {
-  const [allUsers, setAllUsers] = useState<DepartmentUser[]>([]);
-  const [filteredUsers, setFilteredUsers] = useState<DepartmentUser[]>([]);
+  const [allUsers, setAllUsers] = useState<User[]>([]);
+  const [filteredUsers, setFilteredUsers] = useState<User[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   
@@ -74,11 +75,11 @@ export default function SearchUsersScreen() {
     let filtered = [...allUsers];
 
     // Filter by departments (only for Karyalay)
-    if (userRole.isKaryalay && !allDepartmentsActive && selectedDepartments.length > 0) {
-      filtered = filtered.filter(user => 
-        user.departmentId && selectedDepartments.includes(user.departmentId)
-      );
-    }
+    // if (userRole.isKaryalay && !allDepartmentsActive && selectedDepartments.length > 0) {
+    //   filtered = filtered.filter(user => 
+    //     user.departmentIds && selectedDepartments.includes(user.departmentIds)
+    //   );
+    // }
 
     // Filter by subdepartments
     if (!allSubdepartmentsActive && selectedSubdepartments.length > 0) {
@@ -93,7 +94,7 @@ export default function SearchUsersScreen() {
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
       filtered = filtered.filter(user =>
-        user.fullName.toLowerCase().includes(query) ||
+        user?.fullName?.toLowerCase().includes(query) ||
         user.userId.toLowerCase().includes(query) ||
         user.mobileNumber.includes(query)
       );
@@ -176,7 +177,7 @@ export default function SearchUsersScreen() {
   };
 
   // Handle edit user
-  const handleEditUser = (user: DepartmentUser) => {
+  const handleEditUser = (user: User) => {
     router.push({
       pathname: '/edit-user',
       params: { userData: JSON.stringify(user) }
@@ -184,7 +185,7 @@ export default function SearchUsersScreen() {
   };
 
   // Handle delete user
-  const handleDeleteUser = (user: DepartmentUser) => {
+  const handleDeleteUser = (user: User) => {
     Alert.alert(
       'Delete User',
       `Are you sure you want to delete ${user.fullName}? This action cannot be undone.`,
@@ -256,7 +257,7 @@ export default function SearchUsersScreen() {
     </TouchableOpacity>
   );
 
-  const renderUserItem = ({ item }: { item: DepartmentUser }) => (
+  const renderUserItem = ({ item }: { item: User }) => (
     <View className="bg-white mx-4 mb-3 rounded-xl p-4 shadow-sm border border-gray-100">
       <View className="flex-row justify-between items-start">
         <View className="flex-1">
@@ -282,10 +283,10 @@ export default function SearchUsersScreen() {
             
             <View className="flex-row items-center">
               <Ionicons name="business-outline" size={14} color="#6B7280" />
-              <Text className="text-gray-600 text-sm ml-2">{item.department || 'No Department'}</Text>
+              <Text className="text-gray-600 text-sm ml-2">{item.departments?.join(', ') || 'No Department'}</Text>
             </View>
 
-            {item.subdepartments && item.subdepartments.length > 0 && (
+            {/* {item.subdepartments && item.subdepartments.length > 0 && (
               <View className="flex-row items-start mt-2">
                 <Ionicons name="layers-outline" size={14} color="#8B5CF6" />
                 <View className="flex-1 ml-2">
@@ -299,7 +300,7 @@ export default function SearchUsersScreen() {
                   </View>
                 </View>
               </View>
-            )}
+            )} */}
           </View>
         </View>
         

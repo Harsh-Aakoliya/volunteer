@@ -111,13 +111,8 @@ export default function AnnouncementWizard({
   useFocusEffect(
     useCallback(() => {
       const onBackPress = () => {
-        if (currentStep > 1) {
-          setCurrentStep(currentStep - 1);
-          return true;
-        } else {
-          handleExitWizard();
-          return true;
-        }
+        handleExitWizard();
+        return true;
       };
 
       BackHandler.addEventListener('hardwareBackPress', onBackPress);
@@ -125,7 +120,7 @@ export default function AnnouncementWizard({
       return () => {
         BackHandler.removeEventListener('hardwareBackPress', onBackPress);
       };
-    }, [currentStep])
+    }, [currentStep, title, content])
   );
 
   const handleExitWizard = async () => {
@@ -276,6 +271,9 @@ export default function AnnouncementWizard({
   };
 
   const handleStep2Back = () => {
+    handleExitWizard();
+  };
+  const handleStep2Previous = () => {
     setCurrentStep(1);
   };
 
@@ -285,11 +283,14 @@ export default function AnnouncementWizard({
   };
 
   const handleStep3Back = () => {
+    handleExitWizard();
+  };
+  const handleStep3Previous = () => {
     setCurrentStep(2);
   };
 
   const handleStep4Back = () => {
-    setCurrentStep(3);
+    handleExitWizard();
   };
 
   const handlePublish = async () => {
@@ -342,6 +343,7 @@ export default function AnnouncementWizard({
           hasCoverImage={hasCoverImage}
           onNext={handleStep2Next}
           onBack={handleStep2Back}
+          onPrevious={handleStep2Previous}
           isEdit={isEdit}
         />
       );
@@ -352,6 +354,7 @@ export default function AnnouncementWizard({
           selectedDepartments={selectedDepartments}
           onNext={handleStep3Next}
           onBack={handleStep3Back}
+          onPrevious={handleStep3Previous}
           isEdit={isEdit}
         />
       );

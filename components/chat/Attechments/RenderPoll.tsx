@@ -28,6 +28,7 @@ const RenderPoll = ({ pollid, setShowPollModel, currentUserId, visible,totalMemb
   const [selectedOptions, setSelectedOptions] = useState<string[]>([]);
   const [timeLeft, setTimeLeft] = useState('');
   const [refreshing, setRefreshing] = useState(false);
+  const [toggleStatusLoading, setToggleStatusLoading] = useState(false);
 
   const fetchPollData = async (force: boolean = false) => {
     console.log('Fetching poll data:', pollid);
@@ -54,9 +55,14 @@ const RenderPoll = ({ pollid, setShowPollModel, currentUserId, visible,totalMemb
   const calculateTimeLeft = () => {
     if (!pollData?.pollEndTime) return '';
 
+    // Get current time in IST
     const now = new Date();
+    const istOffset = 5.5 * 60 * 60 * 1000; // IST is UTC+5:30
+    const istNow = new Date(now.getTime() + istOffset);
+    
+    // Poll end time is already in IST from backend
     const endTime = new Date(pollData.pollEndTime);
-    const timeDiff = endTime.getTime() - now.getTime();
+    const timeDiff = endTime.getTime() - istNow.getTime();
 
     if (timeDiff <= 0) return 'Poll Ended';
 
@@ -114,6 +120,9 @@ const RenderPoll = ({ pollid, setShowPollModel, currentUserId, visible,totalMemb
   };
 
   const togglePollStatus = async () => {
+    if (toggleStatusLoading) return;
+
+    setToggleStatusLoading(true);
     try {
       const result = await togglePollStatusAPI(pollid, currentUserId);
       console.log('Poll status toggled:', result);
@@ -123,6 +132,8 @@ const RenderPoll = ({ pollid, setShowPollModel, currentUserId, visible,totalMemb
       console.error('Error toggling poll status:', error);
       const errorMessage = error.response?.data?.error || 'Failed to update poll status';
       Alert.alert('Error', errorMessage);
+    } finally {
+      setToggleStatusLoading(false);
     }
   };
 
@@ -195,8 +206,10 @@ const RenderPoll = ({ pollid, setShowPollModel, currentUserId, visible,totalMemb
 
   const isCreator = pollData?.createdBy === currentUserId;
   const canVote = pollData?.isActive && timeLeft !== 'Poll Ended';
-  const totalVotes = pollData?.votes 
-    ? Object.values(pollData.votes).reduce((sum, votes) => sum + votes.length, 0) 
+  
+  // Calculate unique voters across all options
+  const uniqueVoters = pollData?.votes 
+    ? new Set(Object.values(pollData.votes).flat()).size
     : 0;
 
   const getVoteCount = (optionId: string) => {
@@ -204,7 +217,7 @@ const RenderPoll = ({ pollid, setShowPollModel, currentUserId, visible,totalMemb
   };
 
   const getVotePercentage = (optionId: string) => {
-    if (totalVotes === 0) return 0;
+    if (totalMembers === 0) return 0;
     return Math.round((getVoteCount(optionId) / totalMembers) * 100);
   };
 
@@ -295,7 +308,7 @@ const RenderPoll = ({ pollid, setShowPollModel, currentUserId, visible,totalMemb
                     Time Left: {timeLeft}
                   </Text>
                   <Text className="text-sm text-blue-700">
-                    Total Votes: {totalVotes}
+                    Voters: {uniqueVoters}
                   </Text>
                 </View>
                 
@@ -337,8 +350,8 @@ const RenderPoll = ({ pollid, setShowPollModel, currentUserId, visible,totalMemb
               )}
 
               {/* Options */}
-              <View className="space-y-3">
-                {pollData.options.map((option, index) => {
+              <View className="space-y-4">
+                {pollData.options.map((option: PollOption, index: number) => {
                   const voteCount = getVoteCount(option.id);
                   const percentage = getVotePercentage(option.id);
                   const isSelected = selectedOptions.includes(option.id);
@@ -380,7 +393,7 @@ const RenderPoll = ({ pollid, setShowPollModel, currentUserId, visible,totalMemb
                           </Text>
                         </View>
 
-                        {(isCreator || totalVotes > 0) && (
+                        {(isCreator || uniqueVoters > 0) && (
                           <View className="items-end">
                             <Text className="text-sm font-bold text-gray-800">
                               {voteCount} {voteCount === 1 ? 'vote' : 'votes'}
@@ -393,7 +406,7 @@ const RenderPoll = ({ pollid, setShowPollModel, currentUserId, visible,totalMemb
                       </View>
 
                       {/* Progress Bar */}
-                      {(isCreator || totalVotes > 0) && (
+                      {(isCreator || uniqueVoters > 0) && (
                         <View className="h-2 bg-gray-200 rounded-full overflow-hidden">
                           <View 
                             className="h-full bg-blue-500 rounded-full"

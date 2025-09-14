@@ -41,8 +41,8 @@ export default function CreateDepartmentPage() {
     try {
       const user = await AuthStorage.getUser();
       console.log("user in checkUserRole", user);
-      const userDepartments = user?.departments || [user?.department].filter(Boolean);
-      setIsKaryalay(Boolean(user?.isAdmin && userDepartments.includes('Karyalay')));
+      const userDepartments = user?.departments?.filter(Boolean);
+      setIsKaryalay(Boolean(user?.isAdmin && userDepartments?.includes('Karyalay')));
     } catch (error) {
       console.error('Error checking user role:', error);
     }
@@ -62,9 +62,14 @@ export default function CreateDepartmentPage() {
 
   const filterUsers = () => {
     const selectedUserIds = selectedUsers.map(u => u.userId);
-    const excludeIds = selectedUserIds;
     
-    const availableUsers = allUsers.filter(user => !excludeIds.includes(user.userId));
+    // Only show users who don't have any department assignments and are not already selected
+    const availableUsers = allUsers.filter(user => {
+      const isAlreadySelected = selectedUserIds.includes(user.userId);
+      const hasNoDepartments = (!user.departments || user.departments.length === 0) && 
+                              (!user.departmentIds || user.departmentIds.length === 0);
+      return !isAlreadySelected && hasNoDepartments;
+    });
     
     if (!searchQuery.trim()) {
       setFilteredUsers(availableUsers);
@@ -73,9 +78,9 @@ export default function CreateDepartmentPage() {
 
     const query = searchQuery.toLowerCase();
     const filtered = availableUsers.filter(user =>
-      user.fullName.toLowerCase().includes(query) ||
-      user.userId.toLowerCase().includes(query) ||
-      user.mobileNumber.includes(query)
+      (user.fullName?.toLowerCase() || '').includes(query) ||
+      (user.userId?.toLowerCase() || '').includes(query) ||
+      (user.mobileNumber || '').includes(query)
     );
     
     setFilteredUsers(filtered);
@@ -108,23 +113,7 @@ export default function CreateDepartmentPage() {
   };
 
   const handleSelectUser = (user: DepartmentUser) => {
-    // Check if user has any departments assigned (either old format or new array format)
-    const hasAssignedDepartments = (user.departments && user.departments.length > 0) || 
-                                   (user.department && user.departmentId);
-    
-    if (hasAssignedDepartments) {
-      const departmentNames = user.departments && user.departments.length > 0 
-        ? user.departments.join(', ') 
-        : user.department;
-      
-      Alert.alert(
-        'User Already Assigned',
-        `${user.fullName} is already assigned to "${departmentNames}" department(s).`,
-        [{ text: 'OK' }]
-      );
-      return;
-    }
-
+    // Since we're only showing unassigned users, we can directly add them
     setSelectedUsers(prev => [...prev, user]);
   };
 
@@ -167,15 +156,23 @@ export default function CreateDepartmentPage() {
       const userList = selectedUsers.map(user => user.userId);
       const hodList: string[] = []; // Empty HOD list initially
 
-      await createDepartment({
+      console.log('Creating department with:', {
         departmentName: departmentName.trim(),
         userList,
         hodList
       });
 
+      const response = await createDepartment({
+        departmentName: departmentName.trim(),
+        userList,
+        hodList
+      });
+
+      console.log('Department creation response:', response);
+
       Alert.alert(
         'Success',
-        'Department created successfully!',
+        `Department "${departmentName.trim()}" created successfully with ${selectedUsers.length} users!`,
         [
           {
             text: 'OK',
@@ -183,51 +180,35 @@ export default function CreateDepartmentPage() {
           }
         ]
       );
-    } catch (error) {
-      Alert.alert('Error', 'Failed to create department');
+    } catch (error: any) {
+      console.error('Error creating department:', error);
+      const errorMessage = error?.response?.data?.message || error?.message || 'Failed to create department';
+      Alert.alert('Error', errorMessage);
     } finally {
       setIsCreating(false);
     }
   };
 
-  const UserItem = ({ user, isSelected = false, onPress, showHODBadge = false }: {
+  const UserItem = ({ user, isSelected = false, onPress }: {
     user: DepartmentUser;
     isSelected?: boolean;
     onPress: () => void;
-    showHODBadge?: boolean;
   }) => {
-    const isDisabled = !isSelected && ((user.departments && user.departments.length > 0) || (user.department && user.departmentId));
-    
     return (
       <TouchableOpacity
         onPress={onPress}
-        disabled={Boolean(isDisabled)}
-        className={`p-4 border-b border-gray-100 ${isDisabled ? 'opacity-50' : ''}`}
+        className="p-4 border-b border-gray-100"
       >
         <View className="flex-row items-center">
           <View className="w-12 h-12 bg-blue-100 rounded-full items-center justify-center mr-3">
             <Text className="text-blue-600 font-semibold">
-              {user.fullName?.charAt(0).toUpperCase()}
+              {user.fullName?.charAt(0).toUpperCase() || 'U'}
             </Text>
-          </View>r
+          </View>
           
           <View className="flex-1">
-            <View className="flex-row items-center flex-wrap">
-              <Text className="font-semibold text-gray-800">{user.fullName}</Text>
-              {showHODBadge && (
-                <View className="bg-blue-100 px-2 py-1 rounded ml-2">
-                  <Text className="text-blue-600 text-xs font-medium">HOD</Text>
-                </View>
-              )}
-            </View>
-            <Text className="text-gray-500 text-sm">{user.mobileNumber}</Text>
-            {((user.departments && user.departments.length > 0) || user.department) && (
-              <Text className="text-orange-500 text-xs">
-                Department: {user.departments && user.departments.length > 0 
-                  ? user.departments.join(', ') 
-                  : user.department}
-              </Text>
-            )}
+            <Text className="font-semibold text-gray-800">{user.fullName || 'Unknown User'}</Text>
+            <Text className="text-gray-500 text-sm">{user.mobileNumber || 'No mobile'}</Text>
           </View>
 
           <View className="items-end">
@@ -239,8 +220,6 @@ export default function CreateDepartmentPage() {
             
             {isSelected ? (
               <Ionicons name="checkmark-circle" size={24} color="#10B981" />
-            ) : isDisabled ? (
-              <Ionicons name="lock-closed" size={20} color="#6B7280" />
             ) : (
               <Ionicons name="add-circle-outline" size={24} color="#0286ff" />
             )}
@@ -259,12 +238,8 @@ export default function CreateDepartmentPage() {
     );
   }
 
-  const unassignedUsers = filteredUsers.filter(user => 
-    !(user.departments && user.departments.length > 0) && !user.department
-  );
-  const assignedUsers = filteredUsers.filter(user => 
-    (user.departments && user.departments.length > 0) || user.department
-  );
+  // filteredUsers already contains only unassigned users
+  const availableUsers = filteredUsers;
 
   return (
     <View className="flex-1 bg-gray-50">
@@ -329,52 +304,55 @@ export default function CreateDepartmentPage() {
         </View>
 
         {/* Available Users */}
-        {unassignedUsers.length > 0 && (
+        {availableUsers.length > 0 && (
           <View className="bg-white mb-2">
             <View className="p-6 pb-3">
               <Text className="text-lg font-bold text-gray-800">
-                Available Users ({unassignedUsers.length})
+                Available Users ({availableUsers.length})
+              </Text>
+              <Text className="text-gray-500 text-sm">
+                Only users not assigned to any department are shown
               </Text>
             </View>
-            {unassignedUsers.map((user) => (
-              <View key={user.userId}>
-                <UserItem
-                  user={user}
-                  onPress={() => handleSelectUser(user)}
-                />
-              </View>
+            {availableUsers.map((user) => (
+              <UserItem
+                key={user.userId}
+                user={user}
+                onPress={() => handleSelectUser(user)}
+              />
             ))}
           </View>
         )}
 
-        {/* Assigned Users */}
-        {assignedUsers.length > 0 && (
-          <View className="bg-white mb-2">
-            <View className="p-6 pb-3">
-              <Text className="text-lg font-bold text-gray-800">
-                Already Assigned ({assignedUsers.length})
+        {/* No Users Available */}
+        {availableUsers.length === 0 && (
+          <View className="bg-white mb-2 p-6">
+            <View className="items-center py-8">
+              <Ionicons name="people-outline" size={48} color="#9CA3AF" />
+              <Text className="text-gray-500 text-center mt-4">
+                {searchQuery ? 'No users found matching your search' : 'All users are already assigned to departments'}
               </Text>
             </View>
-            {assignedUsers.map((user) => (
-              <UserItem
-                key={user.userId}
-                user={user}
-                onPress={() => {}}
-              />
-            ))}
           </View>
         )}
 
         {/* Create Button */}
         <View className="p-6">
           <CustomButton
-            title={isCreating ? 'Creating...' : 'Create Department'}
+            title={isCreating ? 'Creating Department...' : 'Create Department'}
             onPress={handleCreateDepartment}
-            disabled={isCreating || selectedUsers.length === 0 || !departmentName.trim()}
+            disabled={isCreating || selectedUsers.length === 0 || !departmentName.trim() || nameError !== ''}
             loading={isCreating}
             bgVariant="primary"
             className="h-14 rounded-xl"
           />
+          {isCreating && (
+            <View className="flex-row items-center justify-center mt-3">
+              <Text className="text-gray-600 text-sm">
+                Adding {selectedUsers.length} users to "{departmentName.trim()}" department...
+              </Text>
+            </View>
+          )}
         </View>
       </ScrollView>
     </View>

@@ -1,6 +1,6 @@
 1) change isDevMode=false in index.tsx file
 2) make sure internal and external ips are correct
-3) version updation in app.json or build.gradle file 
+3) version updation in app.json or app/build.gradle file 
 4) make sure you have set "usesCleartextTraffic": true, in app.json file
 5) make sure you have right permissions set in app.json file
 6) write some desctiption in version.json file of backend

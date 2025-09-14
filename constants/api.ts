@@ -14,6 +14,12 @@ export const setApiUrl = (newUrl: string): void => {
   console.log('🌐 SOCKET_URL configured as:', currentApiUrl);
 };
 
+// Function to update dev IP and set it as current API URL
+export const updateDevIP = (newDevIP: string): void => {
+  setApiUrl(newDevIP);
+  console.log('🔧 Dev IP updated and set as API URL:', newDevIP);
+};
+
 // Create a proxy object that behaves like a string but returns dynamic value
 const createDynamicString = () => {
   return new Proxy({}, {

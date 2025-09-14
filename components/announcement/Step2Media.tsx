@@ -23,7 +23,8 @@ interface Step2MediaProps {
   announcementId: number;
   hasCoverImage: boolean;
   onNext: (hasCoverImage: boolean, mediaFiles: any[]) => void;
-  onBack: () => void;
+  onBack: () => void; // header/hardware back -> show alert in wizard
+  onPrevious: () => void; // bottom Previous -> no alert, just navigate
   isEdit?: boolean;
 }
 
@@ -32,6 +33,7 @@ export default function Step2Media({
   hasCoverImage: initialHasCoverImage,
   onNext, 
   onBack,
+  onPrevious,
   isEdit = false
 }: Step2MediaProps) {
   const [isUploadingCover, setIsUploadingCover] = useState(false);
@@ -39,6 +41,7 @@ export default function Step2Media({
   const [coverImageUri, setCoverImageUri] = useState('');
   const [hasCoverImage, setHasCoverImage] = useState(initialHasCoverImage);
   const [attachedMediaFiles, setAttachedMediaFiles] = useState<any[]>([]);
+  const [isNavigating, setIsNavigating] = useState(false);
   
   // Media viewer states
   const [imageViewerVisible, setImageViewerVisible] = useState(false);
@@ -247,6 +250,8 @@ export default function Step2Media({
   };
 
   const handleNext = () => {
+    if (isNavigating) return;
+    setIsNavigating(true);
     onNext(hasCoverImage, attachedMediaFiles);
   };
 
@@ -265,16 +270,12 @@ export default function Step2Media({
         <View className="w-8" />
       </View>
 
-      {/* Step indicator */}
-      <View className="px-4 py-3 bg-blue-50 border-b border-blue-100">
-        <Text className="text-blue-800 font-medium text-center">Step 2 of 4: Media</Text>
-        <Text className="text-blue-600 text-sm text-center mt-1">Add cover image and media files (optional)</Text>
-      </View>
+      {/* Removed step indicator */}
 
       <ScrollView className="flex-1 px-4 py-4">
         {/* Cover Image Section */}
         <View className="mb-6">
-          <Text className="text-lg font-semibold text-gray-900 mb-3">Cover Image</Text>
+          <Text className="text-lg font-semibold text-gray-900 mb-3">Cover Image <Text className="text-gray-500 font-normal">(optional)</Text></Text>
           <View className="items-center">
             <TouchableOpacity
               onPress={handleSelectCoverImage}
@@ -315,7 +316,7 @@ export default function Step2Media({
 
         {/* Media Files Section */}
         <View className="mb-6">
-          <Text className="text-lg font-semibold text-gray-900 mb-3">Media Files</Text>
+          <Text className="text-lg font-semibold text-gray-900 mb-3">Attach Media Files <Text className="text-gray-500 font-normal">(optional)</Text></Text>
           
           {/* Media Uploader Component */}
           <AnnouncementMediaUploader 
@@ -332,9 +333,10 @@ export default function Step2Media({
 
       {/* Navigation Buttons */}
       <View className="p-4 bg-white border-t border-gray-200">
-        <View className="flex-row space-x-3">
+        <View className="flex-row space-x-4">
           <TouchableOpacity
-            onPress={onBack}
+            onPress={onPrevious}
+            disabled={isNavigating}
             className="flex-1 py-3 px-6 rounded-lg border border-gray-300"
           >
             <Text className="text-gray-700 text-center font-semibold">Previous</Text>
@@ -342,9 +344,10 @@ export default function Step2Media({
           
           <TouchableOpacity
             onPress={handleNext}
-            className="flex-1 py-3 px-6 rounded-lg bg-blue-600"
+            disabled={isNavigating}
+            className={`flex-1 py-3 px-6 rounded-lg ${isNavigating ? 'bg-gray-300' : 'bg-blue-600'}`}
           >
-            <Text className="text-white text-center font-semibold">Next: Recipients</Text>
+            <Text className="text-white text-center font-semibold">{isNavigating ? 'Loading...' : 'Next: Recipients'}</Text>
           </TouchableOpacity>
         </View>
       </View>

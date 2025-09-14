@@ -16,6 +16,7 @@ import {
   Keyboard,
   ScrollView,
   Animated,
+  Modal,
 } from "react-native";
 import {
   PanGestureHandler,
@@ -60,6 +61,7 @@ export default function ChatRoomScreen() {
   const { roomId } = useLocalSearchParams();
   const [room, setRoom] = useState<RoomDetails | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [messagesSet, setMessagesSet] = useState<Set<string | number>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [messageText, setMessageText] = useState("");
@@ -93,6 +95,15 @@ export default function ChatRoomScreen() {
   const [isReplying, setIsReplying] = useState(false);
   const [replyToMessage, setReplyToMessage] = useState<Message | null>(null);
 
+  // Read status state
+  const [showReadStatus, setShowReadStatus] = useState(false);
+  const [selectedMessageForReadStatus, setSelectedMessageForReadStatus] = useState<Message | null>(null);
+  const [readStatusData, setReadStatusData] = useState<{
+    readBy: Array<{userId: string, fullName: string, readAt: string}>;
+    unreadBy: Array<{userId: string, fullName: string}>;
+  } | null>(null);
+  const [isLoadingReadStatus, setIsLoadingReadStatus] = useState(false);
+
   // Scroll to bottom state
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const [isNearBottom, setIsNearBottom] = useState(true);
@@ -105,8 +116,28 @@ export default function ChatRoomScreen() {
   const flatListRef = useRef<FlatList>(null);
   const navigation = useNavigation();
 
-  // Use a Set to track received message IDs to prevent duplicates
-  const receivedMessageIds = new Set<string | number>();
+  // Helper function to add message to both array and set
+  const addMessage = (message: Message) => {
+    if (!messagesSet.has(message.id)) {
+      setMessagesSet(prev => new Set(prev).add(message.id));
+      setMessages(prev => [...prev, message]);
+    }
+  };
+
+  // Helper function to remove message from both array and set
+  const removeMessage = (messageId: string | number) => {
+    setMessagesSet(prev => {
+      const newSet = new Set(prev);
+      newSet.delete(messageId);
+      return newSet;
+    });
+    setMessages(prev => prev.filter(msg => msg.id !== messageId));
+  };
+
+  // Helper function to update message in array
+  const updateMessage = (messageId: string | number, updatedMessage: Message) => {
+    setMessages(prev => prev.map(msg => msg.id === messageId ? updatedMessage : msg));
+  };
 
   // Scroll to bottom function
   const scrollToBottom = () => {
@@ -332,9 +363,6 @@ export default function ChatRoomScreen() {
   // Join room and set up socket event listeners
   useEffect(() => {
     if (roomId && currentUser) {
-      // Keep track of received message IDs to prevent duplicates
-      const receivedMessageIds = new Set();
-
       // Join the room
       socketService.joinRoom(
         roomId as string,
@@ -363,18 +391,9 @@ export default function ChatRoomScreen() {
         if (data.roomId === roomId) {
           console.log("New message received:", data);
 
-          // Check if we've already received this message
-          if (receivedMessageIds.has(data.id)) {
-            console.log("Duplicate message detected, ignoring:", data.id);
-            return;
-          }
-
-          // Add message ID to our set
-          receivedMessageIds.add(data.id);
-
           // Only add messages from other users
           if (data.sender.userId !== currentUser.userId) {
-            // Add the new message to the list
+            // Create the new message
             const newMessage: Message = {
               id: data.id,
               roomId: parseInt(data.roomId),
@@ -387,17 +406,16 @@ export default function ChatRoomScreen() {
               pollId: data?.pollId,
               tableId: data?.tableId
             };
-            setMessages((prev) => {
-              const updatedMessages = [...prev, newMessage];
-              // Scroll to bottom when new message arrives with proper timing
-              setTimeout(() => { 
-                // console.log("flatlistref on new message", flatListRef.current);
-                if (flatListRef.current) {
-                  flatListRef.current.scrollToEnd({ animated: true });
-                }
-              }, 200);
-              return updatedMessages;
-            });
+            
+            // Add message using helper function (prevents duplicates)
+            addMessage(newMessage);
+            
+            // Scroll to bottom when new message arrives with proper timing
+            setTimeout(() => { 
+              if (flatListRef.current) {
+                flatListRef.current.scrollToEnd({ animated: true });
+              }
+            }, 200);
           }
         }
       });
@@ -407,8 +425,10 @@ export default function ChatRoomScreen() {
         if (data.roomId === roomId) {
           console.log("Messages deleted:", data);
           
-          // Remove deleted messages from the list
-          setMessages((prev) => prev.filter(msg => !data.messageIds.includes(msg.id)));
+          // Remove deleted messages using helper function
+          data.messageIds.forEach((messageId: string | number) => {
+            removeMessage(messageId);
+          });
         }
       });
 
@@ -417,19 +437,20 @@ export default function ChatRoomScreen() {
         if (data.roomId === roomId) {
           console.log("Message edited:", data);
           
-          // Update the edited message in the list
-          setMessages((prev) => prev.map(msg => 
-            msg.id === data.messageId 
-              ? {
-                  ...msg,
-                  messageText: data.messageText,
-                  isEdited: data.isEdited,
-                  editedAt: data.editedAt,
-                  editedBy: data.editedBy,
-                  editorName: data.editorName
-                }
-              : msg
-          ));
+          // Update the edited message using helper function
+          // First get the existing message to preserve other properties
+          const existingMessage = messages.find(msg => msg.id === data.messageId);
+          if (existingMessage) {
+            const updatedMessage = {
+              ...existingMessage,
+              messageText: data.messageText,
+              isEdited: data.isEdited,
+              editedAt: data.editedAt,
+              editedBy: data.editedBy,
+              editorName: data.editorName
+            };
+            updateMessage(data.messageId, updatedMessage);
+          }
         }
       });
 
@@ -460,9 +481,10 @@ export default function ChatRoomScreen() {
 
   useEffect(() => {
     if (room) {
-      // Set header options
+      // Set header options and hide tabs
       navigation.setOptions({
         title: room.roomName,
+        tabBarStyle: { display: 'none' }, // Hide tabs
         headerRight: () =>
           isGroupAdmin ? ( // Only show room settings icon if user is group admin
             <TouchableOpacity
@@ -479,8 +501,30 @@ export default function ChatRoomScreen() {
             </TouchableOpacity>
           ):<></>
       });
+    } else if (isLoading) {
+      // Show connecting state while loading and hide tabs
+      navigation.setOptions({
+        title: "Connecting...",
+        tabBarStyle: { display: 'none' }, // Hide tabs
+        headerRight: () => <></>
+      });
     }
-  }, [room, isGroupAdmin, navigation]); // Changed isAdmin to isGroupAdmin
+  }, [room, isGroupAdmin, navigation, isLoading]); // Added isLoading dependency
+
+  // Cleanup effect to restore tabs when leaving the room
+  useEffect(() => {
+    return () => {
+      // Restore tabs when component unmounts
+      navigation.setOptions({
+        tabBarStyle: {
+          borderTopWidth: 1,
+          borderTopColor: '#e5e7eb',
+          height: 60,
+          paddingBottom: 5,
+        }
+      });
+    };
+  }, [navigation]);
 
   const loadRoomDetails = async () => {
     try {
@@ -502,7 +546,9 @@ export default function ChatRoomScreen() {
       });
 
       setRoom(response.data);
-      setMessages(response.data.messages || []);
+      const initialMessages = response.data.messages || [];
+      setMessages(initialMessages);
+      setMessagesSet(new Set(initialMessages.map((msg: Message) => msg.id)));
 
       // Check if current user is admin of this room (group admin)
       const isUserGroupAdmin = response.data.members.some(
@@ -587,17 +633,15 @@ export default function ChatRoomScreen() {
         replyMessageId: replyMessageId
       };
 
-      // Add optimistic message to the list
-      setMessages((prev) => {
-        const updatedMessages = [...prev, optimisticMessage];
-        // Scroll to the bottom immediately for user's own messages
-        setTimeout(() => {
-          if (flatListRef.current) {
-            flatListRef.current.scrollToEnd({ animated: true });
-          }
-        }, 100);
-        return updatedMessages;
-      });
+      // Add optimistic message using helper function
+      addMessage(optimisticMessage);
+      
+      // Scroll to the bottom immediately for user's own messages
+      setTimeout(() => {
+        if (flatListRef.current) {
+          flatListRef.current.scrollToEnd({ animated: true });
+        }
+      }, 100);
 
       // Send the message via API
       const token = await AuthStorage.getToken();
@@ -626,22 +670,34 @@ export default function ChatRoomScreen() {
       }));
 
       // Replace optimistic messages with real ones from the server
+      // Remove temp messages and add real ones
       setMessages((prev) => {
-        // Filter out all temp messages
         const filteredMessages = prev.filter(
           msg => !(typeof msg.id === 'string' && msg.id.includes('temp'))
         );
-        // Add the new messages from the server
-        const updatedMessages = [...filteredMessages, ...messagesWithSenderName];
-        // Ensure scroll position is maintained after server response
-        setTimeout(() => {
-          // console.log("flatlistref on send message", flatListRef.current);
-          if (flatListRef.current) {
-            flatListRef.current.scrollToEnd({ animated: false });
-          }
-        }, 150);
-        return updatedMessages;
+        return [...filteredMessages, ...messagesWithSenderName];
       });
+      
+      // Update messages set
+      setMessagesSet((prev) => {
+        const newSet = new Set(prev);
+        // Remove temp message IDs
+        Array.from(newSet).forEach(id => {
+          if (typeof id === 'string' && id.includes('temp')) {
+            newSet.delete(id);
+          }
+        });
+        // Add real message IDs
+        messagesWithSenderName.forEach(msg => newSet.add(msg.id));
+        return newSet;
+      });
+      
+      // Ensure scroll position is maintained after server response
+      setTimeout(() => {
+        if (flatListRef.current) {
+          flatListRef.current.scrollToEnd({ animated: false });
+        }
+      }, 150);
 
       // Send the messages via socket for real-time delivery
       messagesWithSenderName.forEach(newMessage => {
@@ -665,6 +721,15 @@ export default function ChatRoomScreen() {
 
       // Remove the optimistic message
       setMessages((prev) => prev.filter((msg) => typeof msg.id === "number" || (typeof msg.id === 'string' && !msg.id.includes('temp'))));
+      setMessagesSet((prev) => {
+        const newSet = new Set(prev);
+        Array.from(newSet).forEach(id => {
+          if (typeof id === 'string' && id.includes('temp')) {
+            newSet.delete(id);
+          }
+        });
+        return newSet;
+      });
     } finally {
       setSending(false);
     }
@@ -794,9 +859,73 @@ export default function ChatRoomScreen() {
 
   // Handle message edit
   const handleMessageEdited = (editedMessage: Message) => {
-    setMessages((prev) => prev.map(msg => 
-      msg.id === editedMessage.id ? editedMessage : msg
-    ));
+    updateMessage(editedMessage.id, editedMessage);
+  };
+
+  // Mark message as read
+  const markMessageAsRead = async (messageId: string | number) => {
+    try {
+      const token = await AuthStorage.getToken();
+      await axios.post(
+        `${API_URL}/api/chat/messages/${messageId}/mark-read`,
+        {},
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+    } catch (error) {
+      console.error('Error marking message as read:', error);
+    }
+  };
+
+  // Fetch read status for a message
+  const fetchReadStatus = async (messageId: string | number) => {
+    try {
+      setIsLoadingReadStatus(true);
+      const token = await AuthStorage.getToken();
+      const response = await axios.get(
+        `${API_URL}/api/chat/messages/${messageId}/read-status`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      
+      if (response.data.success) {
+        setReadStatusData(response.data.data);
+      }
+    } catch (error) {
+      console.error('Error fetching read status:', error);
+      alert('Failed to load read status');
+    } finally {
+      setIsLoadingReadStatus(false);
+    }
+  };
+
+  // Handle info icon press
+  const handleInfoPress = (message: Message) => {
+    setSelectedMessageForReadStatus(message);
+    setShowReadStatus(true);
+    fetchReadStatus(message.id);
+  };
+
+  // Refresh read status
+  const refreshReadStatus = () => {
+    if (selectedMessageForReadStatus) {
+      fetchReadStatus(selectedMessageForReadStatus.id);
+    }
+  };
+
+  // Handle viewable items change to mark messages as read
+  const onViewableItemsChanged = useCallback(({ viewableItems }: any) => {
+    if (currentUser) {
+      viewableItems.forEach((item: any) => {
+        const message = item.item;
+        // Only mark messages as read if they're not from the current user
+        if (message && message.senderId !== currentUser.userId && typeof message.id === 'number') {
+          markMessageAsRead(message.id);
+        }
+      });
+    }
+  }, [currentUser]);
+
+  const viewabilityConfig = {
+    itemVisiblePercentThreshold: 50, // Mark as read when 50% of message is visible
   };
 
   // Forward messages with delay and progress tracking
@@ -940,6 +1069,7 @@ export default function ChatRoomScreen() {
   const renderMessage = ({ item }: { item: Message }) => {
     const isOwnMessage = item.senderId === currentUser?.userId;
     const isSelected = isMessageSelected(item.id);
+    const canPerformActions = isOwnMessage && isGroupAdmin; // Only message sender who is group admin can perform actions
 
     // Determine message status
     let messageStatus: "sending" | "sent" | "delivered" | "read" | "error" =
@@ -1244,6 +1374,7 @@ export default function ChatRoomScreen() {
             onClose={clearSelection}
             onForwardPress={() => setShowForwardModal(true)}
             onDeletePress={handleDeleteMessages}
+            onInfoPress={handleInfoPress}
             roomId={Array.isArray(roomId) ? roomId[0] : roomId}
             roomMembers={roomMembers}
             currentUser={currentUser}
@@ -1283,6 +1414,8 @@ export default function ChatRoomScreen() {
           contentContainerStyle={{ paddingVertical: 10 }}
           onScroll={handleScroll}
           scrollEventThrottle={16}
+          onViewableItemsChanged={onViewableItemsChanged}
+          viewabilityConfig={viewabilityConfig}
           onLayout={() => {
             // Ensure scroll to end after FlatList is laid out
             setTimeout(() => {
@@ -1443,6 +1576,105 @@ export default function ChatRoomScreen() {
           currentUserId={currentUser?.userId || ""}
           totalMembers={roomMembers.length}
         />
+
+        {/* Read Status Modal */}
+        <Modal
+          visible={showReadStatus}
+          animationType="slide"
+          transparent={false}
+          onRequestClose={() => setShowReadStatus(false)}
+        >
+          <SafeAreaView className="flex-1 bg-white">
+            <View className="flex-row items-center justify-between px-4 py-3 border-b border-gray-200">
+              <TouchableOpacity
+                onPress={() => setShowReadStatus(false)}
+                className="p-2"
+              >
+                <Ionicons name="arrow-back" size={24} color="#374151" />
+              </TouchableOpacity>
+              
+              <Text className="text-lg font-semibold text-gray-900">Message Info</Text>
+              
+              <TouchableOpacity
+                onPress={refreshReadStatus}
+                disabled={isLoadingReadStatus}
+                className="p-2"
+              >
+                <Ionicons 
+                  name="refresh" 
+                  size={24} 
+                  color={isLoadingReadStatus ? "#9ca3af" : "#374151"} 
+                />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView className="flex-1 px-4 py-4">
+              {/* Message Preview */}
+              {selectedMessageForReadStatus && (
+                <View className="mb-6 p-4 bg-gray-50 rounded-lg">
+                  <Text className="text-sm text-gray-600 mb-2">
+                    {selectedMessageForReadStatus.senderName} • {new Date(selectedMessageForReadStatus.createdAt).toLocaleString()}
+                  </Text>
+                  <Text className="text-base text-gray-900" numberOfLines={3}>
+                    {selectedMessageForReadStatus.messageText}
+                  </Text>
+                </View>
+              )}
+
+              {/* Read Status */}
+              {isLoadingReadStatus ? (
+                <View className="items-center py-8">
+                  <ActivityIndicator size="large" color="#0284c7" />
+                  <Text className="text-gray-500 mt-2">Loading read status...</Text>
+                </View>
+              ) : readStatusData ? (
+                <View>
+                  {/* Read by section */}
+                  {readStatusData.readBy.length > 0 && (
+                    <View className="mb-6">
+                      <Text className="text-lg font-semibold text-gray-900 mb-3">
+                        Read by ({readStatusData.readBy.length})
+                      </Text>
+                      {readStatusData.readBy.map((user, index) => (
+                        <View key={index} className="flex-row items-center justify-between py-2 border-b border-gray-100">
+                          <Text className="text-gray-900">{user.fullName}</Text>
+                          <Text className="text-sm text-gray-500">
+                            {new Date(user.readAt).toLocaleString()}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+
+                  {/* Unread by section */}
+                  {readStatusData.unreadBy.length > 0 && (
+                    <View>
+                      <Text className="text-lg font-semibold text-gray-900 mb-3">
+                        Unread by ({readStatusData.unreadBy.length})
+                      </Text>
+                      {readStatusData.unreadBy.map((user, index) => (
+                        <View key={index} className="flex-row items-center py-2 border-b border-gray-100">
+                          <Text className="text-gray-500">{user.fullName}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+
+                  {readStatusData.readBy.length === 0 && readStatusData.unreadBy.length === 0 && (
+                    <View className="items-center py-8">
+                      <Ionicons name="information-circle-outline" size={48} color="#d1d5db" />
+                      <Text className="text-gray-500 mt-2">No read status available</Text>
+                    </View>
+                  )}
+                </View>
+              ) : (
+                <View className="items-center py-8">
+                  <Text className="text-gray-500">Failed to load read status</Text>
+                </View>
+              )}
+            </ScrollView>
+          </SafeAreaView>
+        </Modal>
         </KeyboardAvoidingView>
       </SafeAreaView>
     </GestureHandlerRootView>

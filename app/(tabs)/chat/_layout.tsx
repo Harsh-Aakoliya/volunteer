@@ -22,12 +22,18 @@ export default function ChatLayout() {
           title: 'Select Users' 
         }} 
       />
-      <Stack.Screen 
-        name="create-room-metadata" 
-        options={{ 
-          title: 'Room Details' 
-        }} 
-      />
+        <Stack.Screen 
+          name="room-settings" 
+          options={{ 
+            title: 'Room Settings' 
+          }} 
+        />
+        <Stack.Screen 
+          name="add-members" 
+          options={{ 
+            title: 'Add Members' 
+          }} 
+        />
     </Stack>
   );
 }

@@ -10,7 +10,7 @@ import { setupChatNotificationListeners, requestChatNotificationPermissions } fr
 
 export default function RootLayout() {
   const [isReady, setIsReady] = useState(false);
-
+  // console.log = () => {};
   useEffect(() => {
     // Preload any necessary data
     const bootstrap = async () => {

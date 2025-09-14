@@ -57,6 +57,7 @@ export default function Step4Preview({
   const [showVideoViewer, setShowVideoViewer] = useState(false);
   const [selectedVideoFile, setSelectedVideoFile] = useState<any>(null);
   const [isSendingTestNotification, setIsSendingTestNotification] = useState(false);
+  const [isNavigating, setIsNavigating] = useState(false);
 
   // Handle media file clicks
   const handleImageClick = (file: any) => {
@@ -200,6 +201,7 @@ export default function Step4Preview({
           style: "default",
           onPress: async () => {
             try {
+              if (isPublishing) return;
               setIsPublishing(true);
               setShowPublishingAnimation(true);
               
@@ -237,34 +239,10 @@ export default function Step4Preview({
         <View className="w-8" />
       </View>
 
-      {/* Step indicator */}
-      <View className="px-4 py-3 bg-blue-50 border-b border-blue-100">
-        <Text className="text-blue-800 font-medium text-center">Step 4 of 4: Preview</Text>
-        <Text className="text-blue-600 text-sm text-center mt-1">Review and publish your announcement</Text>
-      </View>
+      {/* Removed step indicator */}
 
       <ScrollView className="flex-1 bg-white">
-        {/* Recipients Summary */}
-        <View className="p-4 bg-green-50 border-b border-green-100">
-          <View className="flex-row items-center justify-between mb-2">
-            <View className="flex-row items-center">
-              <Ionicons name="people" size={16} color="#059669" />
-              <Text className="text-green-800 font-medium ml-2">Recipients</Text>
-            </View>
-            <TouchableOpacity
-              onPress={handleTestNotification}
-              disabled={isSendingTestNotification}
-              className={`py-2 px-3 rounded-lg ${isSendingTestNotification ? 'bg-gray-400' : 'bg-blue-600'}`}
-            >
-              <Text className="text-white text-xs font-medium">
-                {isSendingTestNotification ? 'Sending...' : 'Test Notification'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-          <Text className="text-green-700 text-sm">
-            This announcement will be sent to {selectedDepartments.length} selected department{selectedDepartments.length !== 1 ? 's' : ''}: {selectedDepartments.join(', ')}
-          </Text>
-        </View>
+        {/* Removed recipients summary and test notification */}
 
         {/* HTML Content Preview */}
         {Platform.OS === "ios" || Platform.OS === "android" ? (

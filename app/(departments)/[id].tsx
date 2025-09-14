@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -11,7 +11,7 @@ import {
   TextInput,
   Pressable
 } from 'react-native';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import CustomButton from '@/components/ui/CustomButton';
@@ -238,6 +238,22 @@ export default function DepartmentDetailPage() {
     setShowCreateSubdeptModal(true);
   };
 
+  const handleViewUser = (user: DepartmentUser) => {
+    router.push({
+      pathname: '/user-profile',
+      params: {
+        userData: JSON.stringify(user)
+      }
+    });
+  };
+
+  // Refresh data when returning from user profile
+  useFocusEffect(
+    useCallback(() => {
+      loadDepartmentData(false);
+    }, [])
+  );
+
   const UserCard = ({ user }: { user: DepartmentUser }) => {
     const isHOD = department?.hodList?.includes(user.userId);
     
@@ -272,10 +288,10 @@ export default function DepartmentDetailPage() {
           </View>
 
           <TouchableOpacity
-            onPress={() => handleRemoveUser(user)}
+            onPress={() => handleViewUser(user)}
             className="p-2"
           >
-            <Ionicons name="close-circle" size={24} color="#EF4444" />
+            <Ionicons name="eye-outline" size={24} color="#0286ff" />
           </TouchableOpacity>
         </View>
       </View>

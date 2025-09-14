@@ -42,7 +42,7 @@ export const fetchUserProfile = async () => {
   }
 };
 
-// Fetch Sabha attendance records
+// Fetch Sabha attendance records for current user
 export const fetchSabhaAttendance = async () => {
   try {
     const token = await AuthStorage.getToken();
@@ -65,6 +65,28 @@ export const fetchSabhaAttendance = async () => {
     return response.data;
   } catch (error) {
     console.error('Error fetching sabha attendance:', error);
+    throw error;
+  }
+};
+
+// Fetch Sabha attendance records for specific user
+export const fetchSabhaAttendanceForUser = async (userId: string) => {
+  try {
+    const token = await AuthStorage.getToken();
+    
+    if (!token) {
+      throw new Error('No authentication token');
+    }
+
+    const response = await axios.get(`${API_URL}/api/users/${userId}/attendance`, {
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    });
+
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching sabha attendance for user:', error);
     throw error;
   }
 };
@@ -135,7 +157,7 @@ export const getSearchFilters = async (): Promise<SearchFiltersResponse> => {
 
 // Get all search data (users, departments, subdepartments) in one call
 export const getAllSearchData = async (): Promise<{
-  users: DepartmentUser[];
+  users: User[];
   departments: Array<{departmentId: string, departmentName: string}>;
   subdepartments: Array<{subdepartmentId: string, subdepartmentName: string, departmentId: string}>;
   userRole: {isKaryalay: boolean, isHOD: boolean};
@@ -151,6 +173,23 @@ export const getAllSearchData = async (): Promise<{
     return response.data;
   } catch (error) {
     console.error('Error fetching all search data:', error);
+    throw error;
+  }
+};
+
+// Get specific user profile by ID
+export const getUserProfileById = async (userId: string) => {
+  try {
+    const token = await AuthStorage.getToken();
+    if (!token) throw new Error('No authentication token');
+
+    const response = await axios.get(`${API_URL}/api/users/${userId}/profile`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching user profile by ID:', error);
     throw error;
   }
 };

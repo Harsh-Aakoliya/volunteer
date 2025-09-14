@@ -17,10 +17,11 @@ import CustomInput from "../ui/CustomInput";
 import { login } from "@/api/auth";
 import { ScrollView } from "react-native";
 import * as Application from 'expo-application';
-import { API_URL, setApiUrl } from "@/constants/api";
+import { API_URL, setApiUrl, updateDevIP } from "@/constants/api";
 import axios from "axios";
 import { Updater } from "../Updater";
 import AppInfo from "./AppInfo";
+import { getDevModeStatus, getDefaultDevIP } from "@/app/index";
 
 
 export default function LoginForm() {
@@ -28,33 +29,34 @@ export default function LoginForm() {
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [touched, setTouched] = useState({ mobile: false, password: false, backendUrl: false });
-  const [backendUrl, setBackendUrl] = useState(String(API_URL)); // Initialize with current API URL
-  const [showBackendUrlInput, setShowBackendUrlInput] = useState(false);
+  const [touched, setTouched] = useState({ mobile: false, password: false, devIP: false });
+  const [devIP, setDevIP] = useState(getDefaultDevIP()); // Initialize with default dev IP
   const [showAppInfo, setShowAppInfo] = useState(false);
+  
+  // Check if dev mode is enabled
+  const isDevMode = getDevModeStatus();
 
 
 
-  const handleBackendUrlUpdate = () => {
-    if (backendUrl.trim()) {
+  const handleSetDevIP = () => {
+    if (devIP.trim()) {
       // Ensure URL has proper format
-      let formattedUrl = backendUrl.trim();
+      let formattedUrl = devIP.trim();
       if (!formattedUrl.startsWith('http://') && !formattedUrl.startsWith('https://')) {
         formattedUrl = 'http://' + formattedUrl;
       }
       
-      setApiUrl(formattedUrl);
-      setBackendUrl(formattedUrl);
-      Alert.alert("Success", "Backend URL updated successfully!");
-      setShowBackendUrlInput(false);
+      updateDevIP(formattedUrl);
+      setDevIP(formattedUrl);
+      Alert.alert("Success", "Development IP updated successfully!");
     } else {
-      Alert.alert("Error", "Please enter a valid backend URL");
+      Alert.alert("Error", "Please enter a valid IP address");
     }
   };
 
   //chekcing for changes
   const handleLogin = async () => {
-    setTouched({ mobile: true, password: true, backendUrl: true });
+    setTouched({ mobile: true, password: true, devIP: true });
 
     if (!mobileNumber || !password) {
       Alert.alert("Error", "Please fill in all fields");
@@ -109,45 +111,41 @@ export default function LoginForm() {
         </View>
 
         <View className="p-6 space-y-5">
-          {/* Backend URL Configuration */}
-          {/* <View className="mb-4">
-            <View className="flex-row justify-between items-center mb-2">
-                             <Text className="text-gray-700 font-JakartaMedium">
-                 Backend URL: {API_URL}
-               </Text>
-              <TouchableOpacity 
-                onPress={() => setShowBackendUrlInput(!showBackendUrlInput)}
-                className="bg-blue-100 px-3 py-1 rounded-md"
-              >
-                <Text className="text-blue-600 font-JakartaMedium text-sm">
-                  {showBackendUrlInput ? 'Cancel' : 'Change'}
+          {/* Development IP Configuration */}
+          {isDevMode && (
+            <View className="mb-4">
+              <View className="mb-2">
+                <Text className="text-gray-700 font-JakartaMedium">
+                  🔧 Development Mode - Current API: {String(API_URL)}
                 </Text>
-              </TouchableOpacity>
-            </View>
-            
-            {showBackendUrlInput && (
+              </View>
+              
               <View className="space-y-3">
                 <CustomInput
-                  label="Backend URL"
-                  placeholder="Enter backend URL (e.g., http://192.168.1.100:3000)"
-                  value={backendUrl}
-                  onChangeText={setBackendUrl}
+                  label="Development IP Address"
+                  placeholder="Enter dev IP (e.g., http://192.168.1.100:3000)"
+                  value={devIP}
+                  onChangeText={setDevIP}
                   keyboardType="url"
                   leftIcon={
                     <Ionicons name="server-outline" size={20} color="#6B7280" />
                   }
-                  error={touched.backendUrl && !backendUrl ? "Backend URL is required" : ""}
-                  touched={touched.backendUrl}
-                  onBlur={() => setTouched((prev) => ({ ...prev, backendUrl: true }))}
+                  error={touched.devIP && !devIP ? "Development IP is required" : ""}
+                  touched={touched.devIP}
+                  onBlur={() => setTouched((prev) => ({ ...prev, devIP: true }))}
                 />
                 <CustomButton
-                  title="Update Backend URL"
-                  onPress={handleBackendUrlUpdate}
+                  title="Set IP"
+                  onPress={handleSetDevIP}
                   bgVariant="success"
+                  disabled={!devIP.trim()}
+                  IconRight={() => (
+                    <Ionicons name="settings-outline" size={16} color="white" />
+                  )}
                 />
               </View>
-            )}
-          </View> */}
+            </View>
+          )}
 
           <CustomInput
             label="Mobile Number"

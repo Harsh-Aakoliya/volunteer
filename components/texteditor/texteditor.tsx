@@ -85,8 +85,9 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
   const [isUploadingCover, setIsUploadingCover] = useState<boolean>(false);
   const [coverImageUri, setCoverImageUri] = useState<string>('');
   const [hasCoverImage, setHasCoverImage] = useState<boolean>(false);
-  const [userDepartment, setUserDepartment] = useState<string>('');
+  const [userDepartments, setUserDepartments] = useState<string[]>([]);
   const [selectedDepartments, setSelectedDepartments] = useState<string[]>([]);
+  const [isTitleFocused, setIsTitleFocused] = useState<boolean>(false);
   const [lockedUserIds, setLockedUserIds] = useState<string[]>([]);
   const [isLoadingAnnouncementData, setIsLoadingAnnouncementData] = useState(false);
   console.log("coverImage", coverImage);
@@ -184,12 +185,13 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
       const user = await AuthStorage.getUser();
       if (user) {
         setCurrentUserId(user.userId);
-        setUserDepartment(user.department || '');
-        
+        const departments = user.departments || [];
+        setUserDepartments(departments);
+        const isKaryalay = departments.includes('Karyalay');
         // Auto-tag for HODs (non-Karyalay departments)
-        if (user.department && user.department !== 'Karyalay') {
-          setSelectedDepartments([user.department]);
-        } else if (user.department === 'Karyalay') {
+        if (!isKaryalay && departments.length > 0) {
+          setSelectedDepartments(departments);
+        } else {
           // Karyalay users start with no departments selected
           setSelectedDepartments([]);
         }
@@ -784,6 +786,10 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
             onChangeText={handleTitleChange}
             placeholder="Enter announcement title..."
             className="text-3xl font-semibold text-gray-900 py-3 placeholder:text-gray-400"
+            multiline={false}
+            numberOfLines={1}
+            onFocus={() => setIsTitleFocused(true)}
+            onBlur={() => setIsTitleFocused(false)}
           />
           
           {/* Editor - now without toolbar, matching title padding */}
@@ -844,7 +850,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
 
         {/* Cover Image Section */}
         <View className="mb-6">
-          <Text className="text-lg font-semibold text-gray-900 mb-3">Cover Image</Text>
+          <Text className="text-lg font-semibold text-gray-900 mb-3">Cover Image <Text className="text-gray-500 font-normal">(optional)</Text></Text>
           <View className="items-center">
             <TouchableOpacity
               onPress={handleSelectCoverImage}
@@ -895,7 +901,6 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
             <DepartmentSelector
               selectedDepartments={selectedDepartments}
               onDepartmentsChange={setSelectedDepartments}
-              userDepartment={userDepartment}
               lockedUserIds={isEdit ? lockedUserIds : []}
             />
             
@@ -987,7 +992,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
         </ScrollView>
 
         {/* Floating Toolbar - only visible when keyboard is shown */}
-        {isKeyboardVisible && (
+        {isKeyboardVisible && !isTitleFocused && (
           <View 
             className="left-0 right-0 bg-white border-t border-gray-300 shadow-lg"
             style={{ bottom: 0 }}

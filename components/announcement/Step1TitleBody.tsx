@@ -51,6 +51,8 @@ export default function Step1TitleBody({
   const [draftTitle, setDraftTitle] = useState<string>(initialTitle);
   const [isEditorReady, setIsEditorReady] = useState<boolean>(false);
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
+  const [isTitleFocused, setIsTitleFocused] = useState(false);
+  const [isNavigating, setIsNavigating] = useState(false);
 
   // Initialize state and user ID (matching original texteditor.tsx)
   useEffect(() => {
@@ -150,6 +152,8 @@ export default function Step1TitleBody({
   };
 
   const handleNext = async () => {
+    if (isNavigating) return;
+    setIsNavigating(true);
     const { currentTitle, currentContent } = await getCurrentContent();
     onNext(currentTitle.trim(), currentContent.trim());
   };
@@ -171,11 +175,7 @@ export default function Step1TitleBody({
         <View className="w-8" />
       </View>
 
-      {/* Step indicator */}
-      <View className="px-4 py-3 bg-blue-50 border-b border-blue-100">
-        <Text className="text-blue-800 font-medium text-center">Step 1 of 4: Content</Text>
-        <Text className="text-blue-600 text-sm text-center mt-1">Write your announcement title and body</Text>
-      </View>
+      {/* Removed step indicator */}
 
       <KeyboardAvoidingView 
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -191,7 +191,10 @@ export default function Step1TitleBody({
             placeholder="Enter announcement title..."
             className="text-3xl font-semibold text-gray-900 py-3"
             placeholderTextColor="#9ca3af"
-            multiline
+            multiline={false}
+            numberOfLines={1}
+            onFocus={() => setIsTitleFocused(true)}
+            onBlur={() => setIsTitleFocused(false)}
           />
           
           {/* Editor - matching original texteditor style */}
@@ -249,8 +252,8 @@ export default function Step1TitleBody({
           )}
         </ScrollView>
 
-        {/* Floating Toolbar - only visible when keyboard is shown (matching original) */}
-        {isKeyboardVisible && (
+        {/* Floating Toolbar - visible only when typing in body (hide while title focused) */}
+        {isKeyboardVisible && !isTitleFocused && (
           <View 
             className="left-0 right-0 bg-white border-t border-gray-300 shadow-lg"
             style={{ bottom: 0 }}
@@ -283,35 +286,24 @@ export default function Step1TitleBody({
           </View>
         )}
 
-        {/* Validation Notice and Next Button */}
+        {/* Navigation Button */}
         <View className="p-4 bg-white border-t border-gray-200">
-          {!isFormValid && (
-            <View className="mb-3 p-3 bg-orange-50 border border-orange-200 rounded-lg">
-              <View className="flex-row items-center">
-                <Ionicons name="warning" size={16} color="#ea580c" />
-                <Text className="text-orange-800 font-medium ml-2">Required fields</Text>
-              </View>
-              <Text className="text-orange-700 text-sm mt-1">
-                Both title and content are required to continue.
-              </Text>
-            </View>
-          )}
           
           <TouchableOpacity
             onPress={handleNext}
-            disabled={!isFormValid}
+            disabled={!isFormValid || isNavigating}
             className={`py-3 px-6 rounded-lg ${
-              isFormValid 
-                ? 'bg-blue-600' 
+              isFormValid && !isNavigating
+                ? 'bg-blue-600'
                 : 'bg-gray-300'
             }`}
           >
             <Text className={`text-center font-semibold ${
-              isFormValid 
-                ? 'text-white' 
+              isFormValid && !isNavigating
+                ? 'text-white'
                 : 'text-gray-500'
             }`}>
-              Next: Media & Cover
+              {isNavigating ? 'Loading...' : 'Next: Media & Cover'}
             </Text>
           </TouchableOpacity>
         </View>

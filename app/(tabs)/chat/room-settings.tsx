@@ -28,6 +28,8 @@ export default function RoomSettings() {
   const [roomDescription, setRoomDescription] = useState('');
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [isGroupAdmin, setIsGroupAdmin] = useState(false); // Add group admin check
+  const [loadingToggle, setLoadingToggle] = useState<string | null>(null);
+  const [loadingDelete, setLoadingDelete] = useState<string | null>(null);
 
   console.log("here in room setting page",roomId);
 // Inside your component, add this effect
@@ -119,6 +121,7 @@ const loadRoomSettings = async () => {
 
   const toggleMemberAdmin = async (memberId: string, isCurrentlyAdmin: boolean) => {
     try {
+      setLoadingToggle(memberId);
       const token = await AuthStorage.getToken();
       await axios.put(
         `${API_URL}/api/chat/rooms/${roomId}/members/${memberId}`,
@@ -137,6 +140,8 @@ const loadRoomSettings = async () => {
     } catch (error) {
       console.error('Error updating member permissions:', error);
       alert('Failed to update member permissions');
+    } finally {
+      setLoadingToggle(null);
     }
   };
 
@@ -151,6 +156,7 @@ const loadRoomSettings = async () => {
           style: 'destructive',
           onPress: async () => {
             try {
+              setLoadingDelete(memberId);
               const token = await AuthStorage.getToken();
               await axios.delete(
                 `${API_URL}/api/chat/rooms/${roomId}/members/${memberId}`,
@@ -162,6 +168,8 @@ const loadRoomSettings = async () => {
             } catch (error) {
               console.error('Error removing member:', error);
               alert('Failed to remove member');
+            } finally {
+              setLoadingDelete(null);
             }
           }
         }
@@ -190,17 +198,27 @@ const loadRoomSettings = async () => {
         
         {!isCurrentUser && (
           <View className="flex-row items-center">
-            <Switch
-              value={item.isAdmin}
-              onValueChange={() => toggleMemberAdmin(item.userId, item.isAdmin)}
-              trackColor={{ false: "#d1d5db", true: "#93c5fd" }}
-              thumbColor={item.isAdmin ? "#0284c7" : "#f4f3f4"}
-            />
+            {loadingToggle === item.userId ? (
+              <ActivityIndicator size="small" color="#0284c7" className="mr-4" />
+            ) : (
+              <Switch
+                value={item.isAdmin}
+                onValueChange={() => toggleMemberAdmin(item.userId, item.isAdmin)}
+                trackColor={{ false: "#d1d5db", true: "#93c5fd" }}
+                thumbColor={item.isAdmin ? "#0284c7" : "#f4f3f4"}
+                disabled={loadingToggle === item.userId}
+              />
+            )}
             <TouchableOpacity 
               className="ml-4"
               onPress={() => removeMember(item.userId)}
+              disabled={loadingDelete === item.userId}
             >
-              <Ionicons name="trash-outline" size={24} color="#ef4444" />
+              {loadingDelete === item.userId ? (
+                <ActivityIndicator size="small" color="#ef4444" />
+              ) : (
+                <Ionicons name="trash-outline" size={24} color="#ef4444" />
+              )}
             </TouchableOpacity>
           </View>
         )}
@@ -268,7 +286,7 @@ const loadRoomSettings = async () => {
   return (
     <View className="flex-1 bg-gray-50">
       <View className="p-4 bg-white mb-4">
-        <Text className="text-xl font-bold mb-4">Room Settings</Text>
+        {/* <Text className="text-xl font-bold mb-4">Room Settings</Text> */}
         
         <CustomInput
           label="Room Name"
@@ -296,7 +314,15 @@ const loadRoomSettings = async () => {
       </View>
       
       <View className="flex-1">
-        <Text className="px-4 py-2 text-lg font-bold bg-gray-100">Members ({members.length})</Text>
+        <View className="flex-row items-center justify-between px-4 py-2 bg-gray-100">
+          <Text className="text-lg font-bold">Members ({members.length})</Text>
+          <TouchableOpacity
+            onPress={() => router.push(`/chat/add-members?roomId=${roomId}`)}
+            className="bg-blue-500 px-3 py-1 rounded-lg"
+          >
+            <Text className="text-white text-sm font-medium">Add Members</Text>
+          </TouchableOpacity>
+        </View>
         <FlatList
           data={members}
           keyExtractor={(item) => item.userId}
@@ -310,13 +336,6 @@ const loadRoomSettings = async () => {
       </View>
       
       <View className="p-4 bg-white border-t border-gray-200">
-        <CustomButton
-          title="Add Members"
-          onPress={() => router.push(`/chat/add-members?roomId=${roomId}`)}
-          bgVariant="secondary"
-          className="mb-3"
-        />
-        
         {roomDetails?.isCreator && (
           <CustomButton
             title="Delete Room"

@@ -204,7 +204,6 @@ export default function AnnouncementMediaUploader({
 
   return (
     <View className="mb-6">
-      <Text className="text-lg font-semibold text-gray-900 mb-3">Attach Media Files</Text>
       
       <TouchableOpacity 
         onPress={handleSelectFiles}

@@ -22,18 +22,18 @@ const generateAndStoreNotificationToken = async (userId: string) => {
     console.log("FCM token:", rawFcm);
 
     // Get Expo push token
-    const expoPushToken = (
-      await Notifications.getExpoPushTokenAsync({
-        projectId: Constants?.expoConfig?.extra?.eas?.projectId,
-      })
-    ).data;
+    // const expoPushToken = (
+    //   await Notifications.getExpoPushTokenAsync({
+    //     projectId: Constants?.expoConfig?.extra?.eas?.projectId,
+    //   })
+    // ).data;
 
-    if (!expoPushToken) {
-      console.log('Failed to get Expo push token');
-      return;
-    }
+    // if (!expoPushToken) {
+    //   console.log('Failed to get Expo push token');
+    //   return;
+    // }
 
-    console.log('Generated Expo push token:', expoPushToken);
+    // console.log('Generated Expo push token:', expoPushToken);
 
     // Store token in backend
     const token = await AuthStorage.getToken();

@@ -6,7 +6,8 @@ import {
   FlatList, 
   TouchableOpacity, 
   ActivityIndicator,
-  TextInput
+  TextInput,
+  ScrollView
 } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -14,20 +15,17 @@ import axios from 'axios';
 import { API_URL } from '@/constants/api';
 import { AuthStorage } from '@/utils/authStorage';
 import CustomButton from '@/components/ui/CustomButton';
-import DepartmentSelector from '@/components/texteditor/DepartmentSelector';
-import { ChatUser } from '@/types/type';
 
 export default function AddMembers() {
   const { roomId } = useLocalSearchParams();
-  const [users, setUsers] = useState<any[]>([]);
-  const [filteredUsers, setFilteredUsers] = useState<any[]>([]);
+  const [departments, setDepartments] = useState<any[]>([]);
   const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [existingMembers, setExistingMembers] = useState<string[]>([]);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [isKaryalayAdmin, setIsKaryalayAdmin] = useState(false);
-  const [selectedUsersFromDept, setSelectedUsersFromDept] = useState<ChatUser[]>([]);
+  const [expandedDepartments, setExpandedDepartments] = useState<Set<string>>(new Set());
 
   console.log("Here in add members page", roomId);
 
@@ -38,8 +36,10 @@ export default function AddMembers() {
         setCurrentUser(userData);
         
         // Check if user is Karyalay admin
-        const isKaryalay = userData.isAdmin && userData.department === "Karyalay";
-        setIsKaryalayAdmin(isKaryalay);
+        const isKaryalay = userData?.isAdmin && userData?.departments?.includes("Karyalay");
+        setIsKaryalayAdmin(isKaryalay || false);
+        console.log("isKaryalayAdmin", isKaryalayAdmin);
+        console.log("userData in add members page", userData);
       } catch (error) {
         console.error('Error fetching current user:', error);
       }
@@ -48,7 +48,7 @@ export default function AddMembers() {
   }, []);
 
   useEffect(() => {
-    const loadUsers = async () => {
+    const loadDepartmentsAndUsers = async () => {
       try {
         setIsLoading(true);
         const token = await AuthStorage.getToken();
@@ -63,28 +63,47 @@ export default function AddMembers() {
         const memberIds = roomResponse.data.members.map((member: any) => member.userId);
         setExistingMembers(memberIds);
         
-        // Only load users for HOD (non-Karyalay admins)
-        // Karyalay admins will use the department selector
-        if (!isKaryalayAdmin) {
-          // Get all users - FIXED: Use the correct endpoint
-          const usersResponse = await axios.get(`${API_URL}/api/chat/users`, {
-            headers: { Authorization: `Bearer ${token}` }
-          });
-          
-          console.log("Users fetched:", usersResponse.data.length);
-          
-          // Filter out users who are already members
-          const availableUsers = usersResponse.data.filter(
-            (user: any) => !memberIds.includes(user.userId)
-          );
-          
-          console.log("Available users to add:", availableUsers.length);
-          setUsers(availableUsers);
-          setFilteredUsers(availableUsers);
-        }
+        // Get departments based on user role
+        const departmentsResponse = await axios.get(`${API_URL}/api/departments/my-departments`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        
+        console.log("Departments fetched:", departmentsResponse.data);
+        
+        // Get users for each department
+        const departmentsWithUsers = await Promise.all(
+          departmentsResponse.data.map(async (dept: any) => {
+            try {
+              // Get users for this department
+              const usersResponse = await axios.get(`${API_URL}/api/departments/${dept.departmentId}/users`, {
+                headers: { Authorization: `Bearer ${token}` }
+              });
+              
+              // Filter out users who are already members
+              const availableUsers = usersResponse.data.filter(
+                (user: any) => !memberIds.includes(user.userId)
+              );
+              
+              return {
+                ...dept,
+                users: availableUsers
+              };
+            } catch (error) {
+              console.error(`Error loading users for department ${dept.departmentId}:`, error);
+              return {
+                ...dept,
+                users: []
+              };
+            }
+          })
+        );
+        
+        setDepartments(departmentsWithUsers);
+        console.log("Departments with users:", departmentsWithUsers);
+        
       } catch (error) {
-        console.error('Error loading users:', error);
-        alert('Failed to load users: ' + (error as any).message);
+        console.error('Error loading departments and users:', error);
+        alert('Failed to load departments and users: ' + (error as any).message);
         router.back();
       } finally {
         setIsLoading(false);
@@ -92,22 +111,20 @@ export default function AddMembers() {
     };
 
     if (roomId && currentUser) {
-      loadUsers();
+      loadDepartmentsAndUsers();
     }
-  }, [roomId, currentUser, isKaryalayAdmin]);
+  }, [roomId, currentUser]);
 
-  useEffect(() => {
-    // Filter users based on search query
-    if (searchQuery) {
-      const filtered = users.filter(user => 
-        (user.fullName?.toLowerCase() || '').includes(searchQuery.toLowerCase()) ||
-        (user.mobileNumber?.toLowerCase() || '').includes(searchQuery.toLowerCase())
-      );
-      setFilteredUsers(filtered);
+  // Toggle department expansion
+  const toggleDepartment = (departmentId: string) => {
+    const newExpanded = new Set(expandedDepartments);
+    if (newExpanded.has(departmentId)) {
+      newExpanded.delete(departmentId);
     } else {
-      setFilteredUsers(users);
+      newExpanded.add(departmentId);
     }
-  }, [searchQuery, users]);
+    setExpandedDepartments(newExpanded);
+  };
 
   const toggleUserSelection = (userId: string) => {
     setSelectedUsers(prev => 
@@ -115,13 +132,6 @@ export default function AddMembers() {
         ? prev.filter(id => id !== userId)
         : [...prev, userId]
     );
-  };
-
-  // Handle selection from department selector (for Karyalay admins)
-  const handleDepartmentSelection = (users: ChatUser[]) => {
-    setSelectedUsersFromDept(users);
-    const userIds = users.map(user => user.userId);
-    setSelectedUsers(userIds);
   };
 
   const addMembersToRoom = async () => {
@@ -144,34 +154,100 @@ export default function AddMembers() {
     }
   };
 
-  const renderUserItem = ({ item }: { item: any }) => (
+  const renderUserItem = (user: any, isExistingMember: boolean) => (
     <TouchableOpacity 
-      className={`flex-row items-center justify-between p-4 border-b border-gray-200 ${
-        selectedUsers.includes(item.userId) ? 'bg-blue-50' : 'bg-white'
+      key={user.userId}
+      className={`flex-row items-center justify-between p-3 ml-4 border-b border-gray-100 ${
+        isExistingMember 
+          ? 'bg-gray-100' 
+          : selectedUsers.includes(user.userId) 
+            ? 'bg-blue-50' 
+            : 'bg-white'
       }`}
-      onPress={() => toggleUserSelection(item.userId)}
+      onPress={() => !isExistingMember && toggleUserSelection(user.userId)}
+      disabled={isExistingMember}
     >
       <View className="flex-row items-center">
-        <View className="w-10 h-10 bg-blue-100 rounded-full justify-center items-center mr-3">
-          <Text className="text-blue-500 font-bold">
-            {(item.fullName || 'U').charAt(0).toUpperCase()}
+        <View className="w-8 h-8 bg-blue-100 rounded-full justify-center items-center mr-3">
+          <Text className="text-blue-500 font-bold text-sm">
+            {(user.fullName || 'U').charAt(0).toUpperCase()}
           </Text>
         </View>
         <View>
-          <Text className="text-lg font-bold">{item.fullName || 'Unknown User'}</Text>
-          <Text className="text-gray-500">{item.mobileNumber || ''}</Text>
+          <Text className={`text-base font-medium ${isExistingMember ? 'text-gray-500' : 'text-gray-800'}`}>
+            {user.fullName || 'Unknown User'}
+          </Text>
+          <Text className="text-gray-400 text-sm">{user.mobileNumber || ''}</Text>
+          {isExistingMember && (
+            <Text className="text-red-500 text-xs">Already in room</Text>
+          )}
         </View>
       </View>
       
       <View>
-        {selectedUsers.includes(item.userId) ? (
-          <Ionicons name="checkmark-circle" size={24} color="#0284c7" />
+        {isExistingMember ? (
+          <Ionicons name="checkmark-circle" size={20} color="#9ca3af" />
+        ) : selectedUsers.includes(user.userId) ? (
+          <Ionicons name="checkmark-circle" size={20} color="#0284c7" />
         ) : (
-          <Ionicons name="add-circle-outline" size={24} color="#9ca3af" />
+          <Ionicons name="add-circle-outline" size={20} color="#9ca3af" />
         )}
       </View>
     </TouchableOpacity>
   );
+
+  const renderDepartmentItem = (department: any) => {
+    const isExpanded = expandedDepartments.has(department.departmentId);
+    const availableUsers = department.users || [];
+    const existingUsersInDept = department.userList?.filter((userId: string) => existingMembers.includes(userId)) || [];
+    
+    return (
+      <View key={department.departmentId} className="mb-4">
+        <TouchableOpacity 
+          className="flex-row items-center justify-between p-4 bg-white border border-gray-200 rounded-lg"
+          onPress={() => toggleDepartment(department.departmentId)}
+        >
+          <View className="flex-row items-center">
+            <View className="w-10 h-10 bg-blue-100 rounded-full justify-center items-center mr-3">
+              <Ionicons name="business" size={20} color="#0284c7" />
+            </View>
+            <View>
+              <Text className="text-lg font-bold text-gray-800">{department.departmentName}</Text>
+              <Text className="text-gray-500 text-sm">
+                {availableUsers.length} available users
+                {existingUsersInDept.length > 0 && `, ${existingUsersInDept.length} already in room`}
+              </Text>
+            </View>
+          </View>
+          <Ionicons 
+            name={isExpanded ? "chevron-up" : "chevron-down"} 
+            size={24} 
+            color="#9ca3af" 
+          />
+        </TouchableOpacity>
+        
+        {isExpanded && (
+          <View className="mt-2 bg-gray-50 rounded-lg border border-gray-200">
+            {/* Available users */}
+            {availableUsers.map((user: any) => renderUserItem(user, false))}
+            
+            {/* Existing members from this department */}
+            {department.userList?.filter((userId: string) => existingMembers.includes(userId)).map((userId: string) => {
+              // Find user details from the department's users array
+              const user = availableUsers.find((u: any) => u.userId === userId) || { userId, fullName: 'Unknown User', mobileNumber: '' };
+              return renderUserItem(user, true);
+            })}
+            
+            {availableUsers.length === 0 && existingUsersInDept.length === 0 && (
+              <View className="p-4 items-center">
+                <Text className="text-gray-500">No users in this department</Text>
+              </View>
+            )}
+          </View>
+        )}
+      </View>
+    );
+  };
 
   if (isLoading || !currentUser) {
     return (
@@ -182,98 +258,56 @@ export default function AddMembers() {
     );
   }
 
-  // Render different UI based on user type
-  if (isKaryalayAdmin) {
-    // Karyalay admin sees department-based selection
-    return (
-      <View className="flex-1 bg-gray-50">
-        <View className="p-4 bg-white border-b border-gray-200">
-          <Text className="text-xl font-bold mb-2">Add Members by Department</Text>
-          <Text className="text-gray-600 mb-4">
-            Expand departments and select users to add to the chat room.
-          </Text>
-          
-          <View className="flex-row items-center bg-gray-100 rounded-lg px-3 py-2">
-            <Ionicons name="search" size={20} color="#6b7280" />
-            <TextInput
-              className="flex-1 ml-2 text-base"
-              placeholder="Search departments or users..."
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-            />
-            {searchQuery.length > 0 && (
-              <TouchableOpacity onPress={() => setSearchQuery('')}>
-                <Ionicons name="close-circle" size={20} color="#6b7280" />
-              </TouchableOpacity>
-            )}
-          </View>
-        </View>
+  // Filter departments based on search query
+  const filteredDepartments = departments.filter(dept => 
+    searchQuery === '' || 
+    dept.departmentName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    dept.users?.some((user: any) => 
+      user.fullName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      user.mobileNumber?.includes(searchQuery)
+    )
+  );
 
-        <View className="flex-1">
-          <DepartmentSelector 
-            onSelectionChange={handleDepartmentSelection}
-            excludeUserIds={existingMembers}
-            searchQuery={searchQuery}
-          />
-        </View>
-
-        <View className="p-4 bg-white border-t border-gray-200">
-          <Text className="text-center mb-3 text-gray-600">
-            {selectedUsers.length} user{selectedUsers.length !== 1 ? 's' : ''} selected
-          </Text>
-          <CustomButton
-            title="Add Selected Members"
-            onPress={addMembersToRoom}
-            disabled={selectedUsers.length === 0}
-            bgVariant="primary"
-          />
-        </View>
-      </View>
-    );
-  }
-
-  // HOD or regular users see traditional user list
   return (
     <View className="flex-1 bg-gray-50">
-      <View className="p-4 bg-white">
-        <Text className="text-xl font-bold mb-2">Add Members</Text>
+      <View className="p-4 bg-white border-b border-gray-200">
+        <Text className="text-xl font-bold mb-2">Add Members by Department</Text>
         <Text className="text-gray-600 mb-4">
-          {currentUser.isAdmin 
-            ? `As a department admin, you can only add users from your department (${currentUser.department}).`
-            : 'Select users to add to the chat room.'}
+          {isKaryalayAdmin 
+            ? 'As Karyalay admin, you can add users from any department.'
+            : 'As HOD, you can add users from departments you manage.'}
         </Text>
         
-        <View className="flex-row items-center bg-gray-100 rounded-lg px-3 mb-4">
+        <View className="flex-row items-center bg-gray-100 rounded-lg px-3 py-2">
           <Ionicons name="search" size={20} color="#6b7280" />
           <TextInput
-            className="flex-1 py-2 px-3"
-            placeholder="Search users..."
+            className="flex-1 ml-2 text-base"
+            placeholder="Search departments or users..."
             value={searchQuery}
             onChangeText={setSearchQuery}
           />
-          {searchQuery ? (
+          {searchQuery.length > 0 && (
             <TouchableOpacity onPress={() => setSearchQuery('')}>
               <Ionicons name="close-circle" size={20} color="#6b7280" />
             </TouchableOpacity>
-          ) : null}
+          )}
         </View>
       </View>
-      
-      <FlatList
-        data={filteredUsers}
-        keyExtractor={(item) => item.userId}
-        renderItem={renderUserItem}
-        ListEmptyComponent={
-          <View className="p-4 items-center">
+
+      <ScrollView className="flex-1 p-4">
+        {filteredDepartments.length > 0 ? (
+          filteredDepartments.map(department => renderDepartmentItem(department))
+        ) : (
+          <View className="items-center py-8">
             <Text className="text-gray-500">
               {searchQuery 
-                ? 'No users found matching your search' 
-                : 'No users available to add'}
+                ? 'No departments or users found matching your search'
+                : 'No departments available'}
             </Text>
           </View>
-        }
-      />
-      
+        )}
+      </ScrollView>
+
       <View className="p-4 bg-white border-t border-gray-200">
         <Text className="text-center mb-3 text-gray-600">
           {selectedUsers.length} user{selectedUsers.length !== 1 ? 's' : ''} selected
