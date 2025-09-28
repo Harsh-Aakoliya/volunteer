@@ -2,7 +2,7 @@
   "expo": {
     "name": "Sevak",
     "slug": "Sevak",
-    "version": "1.0.11",
+    "version": "1.0.12",
     "userInterfaceStyle": "automatic",
     "icon": "./assets/images/appicon.png",
     "newArchEnabled": true,
@@ -21,7 +21,8 @@
             "usesCleartextTraffic": true,
             "networkSecurityConfig": {
               "cleartextTrafficPermitted": true
-            }
+            },
+            "abiFilters": ["armeabi-v7a", "arm64-v8a"]
           }
         }
       ]
