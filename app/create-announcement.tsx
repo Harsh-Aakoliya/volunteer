@@ -1,8 +1,12 @@
-import { View, Text, SafeAreaView, Alert } from 'react-native';
+//create-announcement.tsx
+
+import { View, Text, SafeAreaView, Alert, BackHandler } from 'react-native';
 import React, { useEffect, useState } from 'react';
 import { useLocalSearchParams, router } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
+import { useCallback } from 'react';
 import { AuthStorage } from '@/utils/authStorage';
-import AnnouncementWizard from '@/components/announcement/AnnouncementWizard';
+import AnnouncementCreator from '@/components/announcement/AnnouncementCreator';
 
 const Announcement = () => {
   const params = useLocalSearchParams();
@@ -15,6 +19,9 @@ const Announcement = () => {
   const initialBody = (params.body || params.content) as string;
   const announcementMode = params.announcementMode as string;
   const hasCoverImage = params.hasCoverImage as string;
+  const departmentTags = params.departmentTags ? JSON.parse(params.departmentTags as string) : [];
+  
+  console.log("params", params);
 
   useEffect(() => {
     checkAuthorization();
@@ -70,14 +77,20 @@ const Announcement = () => {
     );
   }
 
+  const handleExit = () => {
+    router.replace('/announcement');
+  };
+
   return (
     <SafeAreaView className="flex-1 bg-white">
-      <AnnouncementWizard 
+      <AnnouncementCreator 
         initialTitle={initialTitle || ''} 
         initialContent={initialBody || ''}
         announcementId={announcementId ? Number(announcementId) : undefined}
         announcementMode={announcementMode}
         hasCoverImage={hasCoverImage === 'true' || hasCoverImage === 'TRUE'}
+        initialDepartmentTags={departmentTags}
+        onExit={handleExit}
       />
     </SafeAreaView>
   );

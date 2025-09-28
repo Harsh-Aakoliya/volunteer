@@ -20,7 +20,7 @@ const createChatRoomsTable = async (client) => {
           "roomId" SERIAL PRIMARY KEY,
           "roomName" VARCHAR(255) NOT NULL,
           "roomDescription" TEXT,
-          "createdOn" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          "createdOn" TIMESTAMP WITH TIME ZONE DEFAULT (NOW() AT TIME ZONE 'Asia/Kolkata'),
           "isGroup" BOOLEAN DEFAULT FALSE,
           "createdBy" VARCHAR(50)
       );
@@ -53,7 +53,7 @@ const createChatRoomUsersTable = async (client) => {
           "userId" VARCHAR(50),
           "isAdmin" BOOLEAN DEFAULT FALSE,
           "canSendMessage" BOOLEAN DEFAULT TRUE,
-          "joinedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+          "joinedAt" TIMESTAMP WITH TIME ZONE DEFAULT (NOW() AT TIME ZONE 'Asia/Kolkata')
       );
     `);
     console.log("Chatroomusers table created successfully");
@@ -83,7 +83,7 @@ const createChatMessagesTable = async (client) => {
           "roomId" INTEGER,
           "senderId" VARCHAR(50),
           "messageText" TEXT NOT NULL,
-          "createdAt" TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+          "createdAt" TIMESTAMP WITH TIME ZONE DEFAULT (NOW() AT TIME ZONE 'Asia/Kolkata'),
           "messageType" "messageType" NOT NULL DEFAULT 'text',
           "pollId" INTEGER,
           "mediaFilesId" INTEGER,
@@ -175,7 +175,7 @@ const createMessageReadStatusTable = async (client) => {
           "id" SERIAL PRIMARY KEY,
           "messageId" INTEGER NOT NULL,
           "userId" VARCHAR(50) NOT NULL,
-          "readAt" TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+          "readAt" TIMESTAMP WITH TIME ZONE DEFAULT (NOW() AT TIME ZONE 'Asia/Kolkata'),
           "roomId" INTEGER NOT NULL,
           UNIQUE("messageId", "userId"),
           FOREIGN KEY ("messageId") REFERENCES chatmessages("id") ON DELETE CASCADE,

@@ -1,7 +1,7 @@
 // Announcement model and controller
 import pool from "../config/database.js";
 import path from "path";
-import { sendAnnouncementNotifications } from "./notificationController.js";
+import { sendAnnouncementNotifications, sendAuthorUpdateNotification } from "./notificationController.js";
 const defaultCoverImage=path.join(process.cwd(), 'media',"defaultcoverimage.png");
 
 const Announcement = {
@@ -533,6 +533,21 @@ export const updateAnnouncementController = async (req, res) => {
     const { id } = req.params;
     const { title, body, departmentTags = [] } = req.body;
     
+    // Get the current announcement to compare department tags and get author info
+    const currentResult = await pool.query(
+      'SELECT a.*, u."fullName" as "authorName" FROM "announcements" a LEFT JOIN "users" u ON a."authorId" = u."userId" WHERE a."id" = $1',
+      [id]
+    );
+    
+    if (currentResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Announcement not found' });
+    }
+    
+    const currentAnnouncement = currentResult.rows[0];
+    const previousDepartmentTags = currentAnnouncement.departmentTag || [];
+    const authorId = currentAnnouncement.authorId;
+    const authorName = currentAnnouncement.authorName;
+    
     // Update the announcement
     const result = await pool.query(
       'UPDATE "announcements" SET "title" = $1, "body" = $2, "departmentTag" = $3, "updatedAt" = CURRENT_TIMESTAMP WHERE "id" = $4 RETURNING *',
@@ -541,6 +556,28 @@ export const updateAnnouncementController = async (req, res) => {
     
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Announcement not found' });
+    }
+    
+    // Find new departments (departments in new list but not in previous list)
+    const newDepartments = departmentTags.filter(dept => !previousDepartmentTags.includes(dept));
+    
+    // Send notifications for new departments
+    if (newDepartments.length > 0) {
+      try {
+        console.log('Sending notifications to new departments:', newDepartments);
+        await sendAnnouncementNotifications(id, authorId, authorName, title, newDepartments);
+      } catch (notificationError) {
+        console.error('Error sending update notifications:', notificationError);
+        // Don't fail the update if notifications fail
+      }
+    }
+    
+    // Send update notification to author
+    try {
+      await sendAuthorUpdateNotification(id, authorId, authorName, title);
+    } catch (authorNotificationError) {
+      console.error('Error sending author update notification:', authorNotificationError);
+      // Don't fail the update if author notification fails
     }
     
     res.status(200).json(result.rows[0]);

@@ -22,6 +22,9 @@ const router = express.Router();
 // All department routes require authentication
 router.use(authenticateToken);
 
+// Get all departments (for Karyalay admins) or user's departments (for HODs)
+router.get('/', getMyDepartments);
+
 // Get all departments created by current admin
 router.get('/my-departments', getMyDepartments);
 

@@ -59,6 +59,7 @@
     "react": "18.3.1",
     "react-dom": "18.3.1",
     "react-native": "0.76.9",
+    "react-native-autoheight-webview": "^1.6.5",
     "react-native-css-interop": "^0.1.22",
     "react-native-gesture-handler": "~2.20.2",
     "react-native-image-zoom-viewer": "^3.0.1",

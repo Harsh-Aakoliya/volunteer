@@ -4,11 +4,13 @@ import { useRouter } from 'expo-router';
 import { AuthStorage } from '@/utils/authStorage';
 import * as Application from 'expo-application';
 import { VersionChecker } from '@/components/VersionChecker';
-import { Platform, Alert, TextInput, View, Text } from 'react-native';
-import { setApiUrl } from '@/constants/api';
+import { Platform, Alert, TextInput, View, Text, TouchableOpacity } from 'react-native';
 import React from 'react';
+import CustomInput from '@/components/ui/CustomInput';
+import CustomButton from '@/components/ui/CustomButton';
+import { API_URL, setApiUrl, updateDevIP } from "@/constants/api";
 
-const DEV_IP = "http://192.168.98.33:3000";
+const DEV_IP = "http://192.168.113.33:3000";
 const INTERNAL_IP = "http://192.168.2.134:3000";
 const EXTERNAL_IP = "http://103.47.172.58:50160";
 
@@ -211,6 +213,39 @@ export default function Index() {
     console.log("🔄 Both connectivity and version checks complete, checking auth status...");
     checkAuthStatus();
   }, [connectivityCheckComplete, versionCheckComplete, hasNavigated, checkAuthStatus]);
+  const [showIPModal, setShowIPModal] = useState(false);
+  const [clickCount, setClickCount] = useState(0); // New state for click tracking
+  const [devIP, setDevIP] = useState(getDefaultDevIP()); // Initialize with default dev IP
+
+  const handleLoginToContinuePress = () => {
+    setClickCount((prevCount) => {
+      const newCount = prevCount + 1;
+      console.log("newCount", newCount);
+  
+      if (newCount >= 7) {
+        Alert.alert(
+          "🔧 Developer Mode Activated",
+          "You will now be redirected to login screen to set backend IP.",
+          [
+            {
+              text: "OK",
+              onPress: () => {
+                // Navigate to login WITH state to trigger IP modal
+                router.replace({
+                  pathname: '/login',
+                  params: { showDevIpModal: 'true' },
+                });
+                setClickCount(0); // Reset counter
+              },
+            },
+          ]
+        );
+        return 0; // Reset immediately even if alert dismissed without OK
+      }
+  
+      return newCount;
+    });
+  };
 
   if (showDevIpInput) {
     return (
@@ -272,9 +307,54 @@ export default function Index() {
   if (!connectivityCheckComplete) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-        <Text style={{ fontSize: 16, textAlign: 'center' }}>
-          Connecting to server...
-        </Text>
+        <TouchableOpacity onPress={handleLoginToContinuePress}>
+          <Text className="text-gray-600 font-JakartaMedium mt-2">
+            Connecting to server...
+          </Text>
+        </TouchableOpacity>
+        {showIPModal && (
+  <View className="absolute inset-0 bg-black/50 flex justify-center items-center z-50">
+    <View className="bg-white p-6 rounded-xl w-11/12 max-w-md mx-4">
+      <Text className="text-lg font-JakartaBold mb-4">Set Backend IP Address</Text>
+      <CustomInput
+        placeholder="e.g., 192.168.1.100:3000"
+        value={devIP.replace(/^https?:\/\//, '')}
+        onChangeText={(text) => setDevIP(text)}
+        keyboardType="url"
+      />
+      <View className="flex-row justify-between mt-4 space-x-2">
+        <CustomButton
+          title="Cancel"
+          onPress={() => setShowIPModal(false)}
+          bgVariant="secondary"
+          className="flex-1"
+        />
+        <CustomButton
+          title="Save"
+          onPress={() => {
+            if (!devIP.trim()) {
+              Alert.alert("Error", "IP address cannot be empty.");
+              return;
+            }
+
+            let formattedUrl = devIP.trim();
+            if (!formattedUrl.startsWith('http://') && !formattedUrl.startsWith('https://')) {
+              formattedUrl = 'http://' + formattedUrl;
+            }
+
+            updateDevIP(formattedUrl);
+            setDevIP(formattedUrl);
+            Alert.alert("Success", `Backend IP updated to:\n${formattedUrl}`);
+            setShowIPModal(false);
+            setClickCount(0); // Fully reset counter
+          }}
+          bgVariant="success"
+          className="flex-1"
+        />
+      </View>
+    </View>
+  </View>
+)}
       </View>
     );
   }
@@ -283,6 +363,7 @@ export default function Index() {
 
   return (
     <>
+    
       {(Platform.OS === "ios" || Platform.OS === "android") && (
         <VersionChecker onUpdateCheckComplete={() => setVersionCheckComplete(true)} />
       )}

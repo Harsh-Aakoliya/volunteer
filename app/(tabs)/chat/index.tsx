@@ -18,6 +18,8 @@ import { ChatRoom } from "@/types/type";
 import { useFocusEffect } from "@react-navigation/native";
 import socketService from "@/utils/socketService";
 import { formatDistanceToNow } from "date-fns";
+import eventEmitter from "@/utils/eventEmitter";
+import { getRelativeTimeIST, formatISTTime } from "@/utils/dateUtils";
 
 interface LastMessageResponse {
   lastMessageByRoom: {
@@ -299,6 +301,40 @@ export default function ChatRooms() {
 
   useEffect(() => {
     initializeSocket();
+    
+    // Listen for notification events to open specific chat rooms
+    const handleOpenChatRoom = (data: { roomId: string }) => {
+      const { roomId } = data;
+      console.log('💬 Opening chat room from notification:', roomId);
+      
+      // Check if the room exists in our current room list
+      const roomExists = chatRooms.some(room => room.roomId?.toString() === roomId);
+      
+      if (roomExists) {
+        console.log('✅ Room found in list, navigating to:', roomId);
+        router.push(`/chat/${roomId}`);
+      } else {
+        console.log('🔄 Room not found in list, refreshing rooms and then navigating...');
+        // Refresh rooms first, then navigate
+        loadChatRooms().then(() => {
+          setTimeout(() => {
+            router.push(`/chat/${roomId}`);
+          }, 300);
+        }).catch(error => {
+          console.error('❌ Error refreshing chat rooms:', error);
+          // Try to navigate anyway
+          router.push(`/chat/${roomId}`);
+        });
+      }
+    };
+
+    // Add event listener for custom notification events using EventEmitter
+    eventEmitter.on('openChatRoom', handleOpenChatRoom);
+    
+    // Cleanup
+    return () => {
+      eventEmitter.off('openChatRoom', handleOpenChatRoom);
+    };
   }, [])
 
   // Handle app state changes
@@ -436,7 +472,7 @@ export default function ChatRooms() {
     if (!timestamp) return "";
 
     try {
-      return formatDistanceToNow(new Date(timestamp), { addSuffix: true });
+      return getRelativeTimeIST(timestamp);
     } catch (error) {
       console.error("Error formatting time:", error);
       return "";

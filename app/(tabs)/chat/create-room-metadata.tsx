@@ -13,6 +13,8 @@ export default function CreateRoomMetadata() {
   const [roomDescription, setRoomDescription] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [touched, setTouched] = useState({ name: false });
+  const userIdArray = (selectedUserIds as string).split(',').filter(id => id.trim() !== '');
+  const othersCount = userIdArray.length - 1; // excluding self
 
 // app/chat/create-room-metadata.tsx - Updated handleCreateRoom function
 const handleCreateRoom = async () => {
@@ -90,7 +92,7 @@ const handleCreateRoom = async () => {
         <View className="bg-white rounded-lg p-4 shadow-sm mb-4">
           <Text className="text-lg font-bold mb-1">Selected Users</Text>
           <Text className="text-gray-500 mb-2">
-            {(selectedUserIds as string).split(',').length} users will be added to this room
+            You + {othersCount} other{othersCount !== 1 ? 's' : ''} ({userIdArray.length} total)
           </Text>
         </View>
 

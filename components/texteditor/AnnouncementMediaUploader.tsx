@@ -6,6 +6,7 @@ import {
   Image,
   Alert,
   StyleSheet,
+  Dimensions,
 } from "react-native";
 import * as DocumentPicker from "expo-document-picker";
 import axios from "axios";
@@ -16,6 +17,8 @@ import { Platform } from "react-native";
 import ImageViewer from './ImageViewer';
 import VideoViewer from './VideoViewer';
 import AudioViewer from './AudioViewer';
+import { Ionicons } from '@expo/vector-icons';
+import { VideoView, useVideoPlayer } from 'expo-video';
 
 type AnnouncementMediaFile = {
   id: string;
@@ -60,6 +63,10 @@ export default function AnnouncementMediaUploader({
   const [videoViewerVisible, setVideoViewerVisible] = useState(false);
   const [audioViewerVisible, setAudioViewerVisible] = useState(false);
   const [selectedFile, setSelectedFile] = useState<AnnouncementMediaFile | null>(null);
+
+  // Screen dimensions for grid layout
+  const screenWidth = Dimensions.get('window').width;
+  const mediaItemWidth = (screenWidth - 48) / 2;
 
 
 
@@ -158,7 +165,6 @@ export default function AnnouncementMediaUploader({
 
         if (response.data.success) {
           setMediaFiles((prev) => [...prev, ...response.data.uploadedFiles]);
-          Alert.alert('Success', 'Media files uploaded successfully!');
         }
 
         setTimeout(() => setUploadingFiles([]), 1000);
@@ -184,11 +190,52 @@ export default function AnnouncementMediaUploader({
         }
       );
       setMediaFiles(prev => prev.filter(f => f.id !== file.id));
-      Alert.alert('Success', 'Media file removed successfully!');
     } catch (error) {
       console.error("Error removing file:", error);
       Alert.alert("Error", "Failed to remove file");
     }
+  };
+
+  const renderMediaGrid = () => {
+    if (mediaFiles.length === 0) {
+      return null;
+    }
+
+    const rows = [];
+    for (let i = 0; i < mediaFiles.length; i += 2) {
+      const leftFile = mediaFiles[i];
+      const rightFile = mediaFiles[i + 1];
+      
+      rows.push(
+        <View key={i} className="flex-row justify-between mb-4">
+          <View style={{ width: mediaItemWidth }}>
+            <MediaThumbnail 
+              file={leftFile} 
+              onPress={() => openFileModal(leftFile)}
+              onRemove={() => removeFile(leftFile)}
+              announcementId={announcementId}
+              width={mediaItemWidth}
+            />
+          </View>
+          
+          {rightFile ? (
+            <View style={{ width: mediaItemWidth }}>
+              <MediaThumbnail 
+                file={rightFile} 
+                onPress={() => openFileModal(rightFile)}
+                onRemove={() => removeFile(rightFile)}
+                announcementId={announcementId}
+                width={mediaItemWidth}
+              />
+            </View>
+          ) : (
+            <View style={{ width: mediaItemWidth }} />
+          )}
+        </View>
+      );
+    }
+    
+    return <View>{rows}</View>;
   };
 
   const openFileModal = (file: AnnouncementMediaFile) => {
@@ -237,17 +284,7 @@ export default function AnnouncementMediaUploader({
           <Text className="text-sm font-semibold mb-2 text-gray-700">
             Attached Files ({mediaFiles.length})
           </Text>
-          <View className="flex-row flex-wrap gap-2">
-            {mediaFiles.map((file, index) => (
-              <MediaThumbnail 
-                key={index} 
-                file={file} 
-                onPress={() => openFileModal(file)}
-                onRemove={() => removeFile(file)}
-                announcementId={announcementId}
-              />
-            ))}
-          </View>
+          {renderMediaGrid()}
         </View>
       )}
 
@@ -294,56 +331,119 @@ const MediaThumbnail = ({
   file, 
   onPress, 
   onRemove, 
-  announcementId 
+  announcementId,
+  width
 }: { 
   file: AnnouncementMediaFile; 
   onPress: () => void;
   onRemove: () => void;
   announcementId: number;
+  width: number;
 }) => {
   const isImage = file.mimeType.startsWith("image");
   const isAudio = file.mimeType.startsWith("audio");
   const isVideo = file.mimeType.startsWith("video");
 
   return (
-    <View className="w-20 h-20 rounded-lg overflow-hidden justify-center items-center relative bg-gray-100">
-      <TouchableOpacity className="w-full h-full" onPress={onPress}>
+    <View className="relative">
+      <TouchableOpacity
+        onPress={onPress}
+        className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden"
+        style={{ height: width }}
+      >
         {isImage && (
-          <Image 
-            source={{ 
-              uri: `${API_URL}/media/announcement/${announcementId}/media/${file.fileName}`,
-            }} 
-            className="w-full h-full" 
+          <Image
+            source={{ uri: `${API_URL}/media/announcement/${announcementId}/media/${file.fileName}` }}
+            style={{ width: '100%', height: '100%' }}
             resizeMode="cover"
             onError={() => {
               console.error("Thumbnail load error for:", file.fileName);
             }}
           />
         )}
-        {isAudio && (
-          <View className="w-full h-full bg-purple-500 justify-center items-center">
-            <Text className="text-lg mb-1">🎵</Text>
-            <Text className="text-white text-xs text-center px-1" numberOfLines={1}>
-              {file.originalName}
-            </Text>
-          </View>
-        )}
         {isVideo && (
-          <View className="w-full h-full bg-red-500 justify-center items-center">
-            <Text className="text-lg mb-1">🎬</Text>
-            <Text className="text-white text-xs text-center px-1" numberOfLines={1}>
-              {file.originalName}
-            </Text>
+          <VideoThumbnailUploader 
+            file={file} 
+            announcementId={announcementId} 
+            width={width} 
+          />
+        )}
+        {isAudio && (
+          <View className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden items-center justify-center" style={{ height: width }}>
+            <View className="w-24 h-24 bg-purple-500 rounded-full justify-center items-center mb-5">
+              <Text className="text-4xl">🎵</Text>
+            </View>
           </View>
         )}
       </TouchableOpacity>
       
       <TouchableOpacity
-        className="absolute top-1 right-1 bg-red-500 rounded-full w-5 h-5 justify-center items-center"
+        className="absolute top-2 right-2 bg-red-500 rounded-full w-6 h-6 justify-center items-center z-10"
         onPress={onRemove}
       >
-        <Text className="text-white text-xs font-bold">×</Text>
+        <Ionicons name="close" size={16} color="white" />
       </TouchableOpacity>
+    </View>
+  );
+};
+
+// Video thumbnail component for uploader
+const VideoThumbnailUploader: React.FC<{ file: any; announcementId: number; width: number }> = ({ 
+  file, 
+  announcementId, 
+  width 
+}) => {
+  const videoUrl = `${API_URL}/media/announcement/${announcementId}/media/${file.fileName}`;
+  
+  // Create video player for preview (paused, no controls)
+  const previewVideoPlayer = useVideoPlayer(videoUrl, player => {
+    if (player) {
+      player.loop = false;
+      player.muted = true;
+      player.pause();
+    }
+  });
+
+  return (
+    <View className="relative" style={{ height: width }}>
+      {/* Video preview as background */}
+      <VideoView
+        style={{ 
+          width: '100%', 
+          height: '100%',
+          borderRadius: 8,
+        }}
+        player={previewVideoPlayer}
+        nativeControls={false}
+        allowsFullscreen={false}
+        allowsPictureInPicture={false}
+        showsTimecodes={false}
+        requiresLinearPlayback={true}
+      />
+      
+      {/* Play overlay on top of video */}
+      <View style={{
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: 'rgba(0,0,0,0.3)',
+        borderRadius: 8,
+      }}>
+        <View style={{
+          backgroundColor: 'rgba(0,0,0,0.6)',
+          borderRadius: 50,
+          width: 50,
+          height: 50,
+          justifyContent: 'center',
+          alignItems: 'center'
+        }}>
+          <Ionicons name="play" size={25} color="white" />
+        </View>
+      </View>
     </View>
   );
 };

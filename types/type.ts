@@ -197,37 +197,7 @@ export interface ChatRoomUser {
   joinedAt: string;
 }
 
-// Announcement-related Types
-export interface Announcement {
-  id: number;
-  title: string;
-  body: string;
-  authorId: string;
-  authorName?: string;
-  hasCoverImage?: boolean;
-  createdAt: string;
-  likes: string[];
-  dislikes: number;
-  readBy: ReadEntry[];
-  updatedAt: string;
-  status:string;
-}
 
-export interface ReadEntry {
-  userId: string;
-  readAt: string;
-}
-
-export interface LikedUser {
-  userId: string;
-  fullName: string;
-}
-
-export interface ReadUser {
-  userId: string;
-  fullName: string;
-  readAt: string;
-}
 
 // Admin-related Types
 export interface PendingUser {
@@ -242,6 +212,42 @@ export interface LoginResponse {
   token: string;
   userId: string;
   isAdmin: boolean;
+}
+
+export interface Announcement {
+  id: number;
+  title: string;
+  body: string;
+  authorId: string;
+  authorName: string;
+  authorDepartments?: string[];
+  departmentTag?: string[];
+  thumbnail: string;
+  hasCoverImage?: boolean;
+  createdAt: string;
+  updatedAt: string;
+  likedBy: Array<{
+    userId: string;
+    fullName: string;
+    likedAt: string;
+  }>;
+  readBy: Array<{
+    userId: string;
+    fullName: string;
+    readAt: string;
+  }>;
+}
+
+export interface LikedUser {
+  userId: string;
+  fullName: string;
+  likedAt: string;
+}
+
+export interface ReadUser {
+  userId: string;
+  fullName: string;
+  readAt: string;
 }
 
 // Utility Types

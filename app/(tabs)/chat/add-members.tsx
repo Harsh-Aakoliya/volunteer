@@ -15,11 +15,18 @@ import axios from 'axios';
 import { API_URL } from '@/constants/api';
 import { AuthStorage } from '@/utils/authStorage';
 import CustomButton from '@/components/ui/CustomButton';
+import Checkbox from 'expo-checkbox';
+
+interface Department {
+  departmentId: string;
+  departmentName: string;
+  users: any[];
+}
 
 export default function AddMembers() {
   const { roomId } = useLocalSearchParams();
-  const [departments, setDepartments] = useState<any[]>([]);
-  const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
+  const [departments, setDepartments] = useState<Department[]>([]);
+  const [selectedUsers, setSelectedUsers] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [existingMembers, setExistingMembers] = useState<string[]>([]);
@@ -38,7 +45,7 @@ export default function AddMembers() {
         // Check if user is Karyalay admin
         const isKaryalay = userData?.isAdmin && userData?.departments?.includes("Karyalay");
         setIsKaryalayAdmin(isKaryalay || false);
-        console.log("isKaryalayAdmin", isKaryalayAdmin);
+        console.log("isKaryalayAdmin", isKaryalay);
         console.log("userData in add members page", userData);
       } catch (error) {
         console.error('Error fetching current user:', error);
@@ -64,9 +71,19 @@ export default function AddMembers() {
         setExistingMembers(memberIds);
         
         // Get departments based on user role
-        const departmentsResponse = await axios.get(`${API_URL}/api/departments/my-departments`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
+        let departmentsResponse;
+        
+        if (isKaryalayAdmin) {
+          // Karyalay admin can see all departments
+          departmentsResponse = await axios.get(`${API_URL}/api/departments`, {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+        } else {
+          // HOD can see only departments they manage
+          departmentsResponse = await axios.get(`${API_URL}/api/departments/my-departments`, {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+        }
         
         console.log("Departments fetched:", departmentsResponse.data);
         
@@ -85,13 +102,15 @@ export default function AddMembers() {
               );
               
               return {
-                ...dept,
+                departmentId: dept.departmentId,
+                departmentName: dept.departmentName,
                 users: availableUsers
               };
             } catch (error) {
               console.error(`Error loading users for department ${dept.departmentId}:`, error);
               return {
-                ...dept,
+                departmentId: dept.departmentId,
+                departmentName: dept.departmentName,
                 users: []
               };
             }
@@ -101,7 +120,7 @@ export default function AddMembers() {
         setDepartments(departmentsWithUsers);
         console.log("Departments with users:", departmentsWithUsers);
         
-      } catch (error) {
+      } catch (error) { 
         console.error('Error loading departments and users:', error);
         alert('Failed to load departments and users: ' + (error as any).message);
         router.back();
@@ -127,22 +146,47 @@ export default function AddMembers() {
   };
 
   const toggleUserSelection = (userId: string) => {
-    setSelectedUsers(prev => 
-      prev.includes(userId)
-        ? prev.filter(id => id !== userId)
-        : [...prev, userId]
-    );
+    setSelectedUsers(prev => {
+      const newSelected = new Set(prev);
+      if (newSelected.has(userId)) {
+        newSelected.delete(userId);
+      } else {
+        newSelected.add(userId);
+      }
+      return newSelected;
+    });
+  };
+
+  const toggleDepartmentSelection = (departmentId: string) => {
+    const department = departments.find(dept => dept.departmentId === departmentId);
+    if (!department) return;
+
+    const departmentUserIds = department.users.map(user => user.userId);
+    const allUsersInDeptSelected = departmentUserIds.length > 0 && departmentUserIds.every(userId => selectedUsers.has(userId));
+
+    setSelectedUsers(prev => {
+      const newSelected = new Set(prev);
+      if (allUsersInDeptSelected) {
+        // Remove all users from this department
+        departmentUserIds.forEach(userId => newSelected.delete(userId));
+      } else {
+        // Add all users from this department
+        departmentUserIds.forEach(userId => newSelected.add(userId));
+      }
+      return newSelected;
+    });
   };
 
   const addMembersToRoom = async () => {
-    if (selectedUsers.length === 0) return;
+    if (selectedUsers.size === 0) return;
     
     try {
-      console.log("Adding members:", selectedUsers);
+      const selectedUserArray = Array.from(selectedUsers);
+      console.log("Adding members:", selectedUserArray);
       const token = await AuthStorage.getToken();
       await axios.post(
         `${API_URL}/api/chat/rooms/${roomId}/members`,
-        { userIds: selectedUsers },
+        { userIds: selectedUserArray },
         { headers: { Authorization: `Bearer ${token}` } }
       );
       
@@ -154,68 +198,67 @@ export default function AddMembers() {
     }
   };
 
-  const renderUserItem = (user: any, isExistingMember: boolean) => (
-    <TouchableOpacity 
-      key={user.userId}
-      className={`flex-row items-center justify-between p-3 ml-4 border-b border-gray-100 ${
-        isExistingMember 
-          ? 'bg-gray-100' 
-          : selectedUsers.includes(user.userId) 
-            ? 'bg-blue-50' 
-            : 'bg-white'
-      }`}
-      onPress={() => !isExistingMember && toggleUserSelection(user.userId)}
-      disabled={isExistingMember}
-    >
-      <View className="flex-row items-center">
-        <View className="w-8 h-8 bg-blue-100 rounded-full justify-center items-center mr-3">
-          <Text className="text-blue-500 font-bold text-sm">
-            {(user.fullName || 'U').charAt(0).toUpperCase()}
-          </Text>
-        </View>
-        <View>
-          <Text className={`text-base font-medium ${isExistingMember ? 'text-gray-500' : 'text-gray-800'}`}>
-            {user.fullName || 'Unknown User'}
-          </Text>
-          <Text className="text-gray-400 text-sm">{user.mobileNumber || ''}</Text>
-          {isExistingMember && (
-            <Text className="text-red-500 text-xs">Already in room</Text>
-          )}
-        </View>
-      </View>
-      
-      <View>
-        {isExistingMember ? (
-          <Ionicons name="checkmark-circle" size={20} color="#9ca3af" />
-        ) : selectedUsers.includes(user.userId) ? (
-          <Ionicons name="checkmark-circle" size={20} color="#0284c7" />
-        ) : (
-          <Ionicons name="add-circle-outline" size={20} color="#9ca3af" />
-        )}
-      </View>
-    </TouchableOpacity>
-  );
+  const renderUserItem = (user: any) => {
+    const isSelected = selectedUsers.has(user.userId);
+    const firstLetter = user.fullName ? user.fullName.charAt(0).toUpperCase() : '?';
+    const displayName = user.fullName || 'Unknown User';
 
-  const renderDepartmentItem = (department: any) => {
+    return (
+      <TouchableOpacity 
+        key={user.userId}
+        className={`flex-row items-center p-3 ml-4 border-b border-gray-100 ${
+          isSelected ? 'bg-blue-50' : 'bg-white'
+        }`}
+        onPress={() => toggleUserSelection(user.userId)}
+      >
+        <Checkbox
+          value={isSelected}
+          onValueChange={() => toggleUserSelection(user.userId)}
+          className="mr-3"
+          color={isSelected ? '#0284c7' : undefined}
+        />
+        <View className="flex-row items-center flex-1">
+          <View className="w-8 h-8 bg-blue-100 rounded-full justify-center items-center mr-3">
+            <Text className="text-blue-500 font-bold text-sm">
+              {firstLetter}
+            </Text>
+          </View>
+          <View>
+            <Text className="text-base font-medium text-gray-800">{displayName}</Text>
+            <Text className="text-gray-400 text-sm">{user.mobileNumber || ''}</Text>
+          </View>
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
+  const renderDepartmentItem = (department: Department) => {
     const isExpanded = expandedDepartments.has(department.departmentId);
-    const availableUsers = department.users || [];
-    const existingUsersInDept = department.userList?.filter((userId: string) => existingMembers.includes(userId)) || [];
-    
+    const departmentUserIds = department.users.map(user => user.userId);
+    const allUsersInDeptSelected = departmentUserIds.length > 0 && departmentUserIds.every(userId => selectedUsers.has(userId));
+    const someUsersInDeptSelected = departmentUserIds.some(userId => selectedUsers.has(userId));
+
     return (
       <View key={department.departmentId} className="mb-4">
         <TouchableOpacity 
           className="flex-row items-center justify-between p-4 bg-white border border-gray-200 rounded-lg"
           onPress={() => toggleDepartment(department.departmentId)}
         >
-          <View className="flex-row items-center">
+          <View className="flex-row items-center flex-1">
+            <Checkbox
+              value={allUsersInDeptSelected}
+              onValueChange={() => toggleDepartmentSelection(department.departmentId)}
+              className="mr-3"
+              color={allUsersInDeptSelected || someUsersInDeptSelected ? '#0284c7' : undefined}
+            />
             <View className="w-10 h-10 bg-blue-100 rounded-full justify-center items-center mr-3">
               <Ionicons name="business" size={20} color="#0284c7" />
             </View>
-            <View>
+            <View className="flex-1">
               <Text className="text-lg font-bold text-gray-800">{department.departmentName}</Text>
               <Text className="text-gray-500 text-sm">
-                {availableUsers.length} available users
-                {existingUsersInDept.length > 0 && `, ${existingUsersInDept.length} already in room`}
+                {department.users.length} available users
+                {someUsersInDeptSelected && ` (${departmentUserIds.filter(id => selectedUsers.has(id)).length} selected)`}
               </Text>
             </View>
           </View>
@@ -228,17 +271,8 @@ export default function AddMembers() {
         
         {isExpanded && (
           <View className="mt-2 bg-gray-50 rounded-lg border border-gray-200">
-            {/* Available users */}
-            {availableUsers.map((user: any) => renderUserItem(user, false))}
-            
-            {/* Existing members from this department */}
-            {department.userList?.filter((userId: string) => existingMembers.includes(userId)).map((userId: string) => {
-              // Find user details from the department's users array
-              const user = availableUsers.find((u: any) => u.userId === userId) || { userId, fullName: 'Unknown User', mobileNumber: '' };
-              return renderUserItem(user, true);
-            })}
-            
-            {availableUsers.length === 0 && existingUsersInDept.length === 0 && (
+            {department.users.map(user => renderUserItem(user))}
+            {department.users.length === 0 && (
               <View className="p-4 items-center">
                 <Text className="text-gray-500">No users in this department</Text>
               </View>
@@ -310,12 +344,12 @@ export default function AddMembers() {
 
       <View className="p-4 bg-white border-t border-gray-200">
         <Text className="text-center mb-3 text-gray-600">
-          {selectedUsers.length} user{selectedUsers.length !== 1 ? 's' : ''} selected
+          {selectedUsers.size} user{selectedUsers.size !== 1 ? 's' : ''} selected
         </Text>
         <CustomButton
           title="Add Selected Members"
           onPress={addMembersToRoom}
-          disabled={selectedUsers.length === 0}
+          disabled={selectedUsers.size === 0}
           bgVariant="primary"
         />
       </View>

@@ -74,7 +74,7 @@ const chatController = {
       
       const result = await pool.query(
         `SELECT cr."roomId" as id, cr."roomName", cr."roomDescription", cr."isGroup", 
-                cr."createdBy", cr."createdOn", cru."isAdmin", 
+                cr."createdBy", cr."createdOn" AT TIME ZONE 'Asia/Kolkata' as "createdOn", cru."isAdmin", 
                 CASE WHEN cru."isAdmin" = TRUE THEN TRUE ELSE FALSE END as "canSendMessage"
         FROM chatrooms cr
         JOIN chatroomusers cru ON cr."roomId" = cru."roomId"
@@ -96,7 +96,7 @@ const chatController = {
     try {
       await client.query('BEGIN');
 
-      const { roomName, roomDescription, isGroup, userIds } = req.body;
+      let { roomName, roomDescription, isGroup, userIds } = req.body;
       const createdBy = req.user.userId;
 
       console.log("Creating room with:", {
@@ -106,6 +106,8 @@ const chatController = {
         userIds,
         createdBy
       });
+      userIds=new Set(userIds);
+      userIds=Array.from(userIds);
 
       // Validate that createdBy exists
       if (!createdBy) {
@@ -113,12 +115,12 @@ const chatController = {
       }
 
       // Validate userIds array
-      if (!userIds || !Array.isArray(userIds) || userIds.length === 0) {
+      if (!userIds || userIds.length === 0) {
         throw new Error("No valid user IDs provided");
       }
 
       // Filter out any empty or invalid userIds
-      const validUserIds = userIds.filter(id => id && typeof id === 'string' && id.trim() !== '');
+      const validUserIds = Array.from(userIds);
 
       if (validUserIds.length === 0) {
         throw new Error("No valid user IDs provided after filtering");
@@ -231,10 +233,11 @@ const chatController = {
 
       // First check if user is a member of this room
       const memberCheck = await pool.query(
-        `SELECT 1 FROM chatroomusers 
+        `SELECT * FROM chatroomusers 
         WHERE "roomId" = $1 AND "userId" = $2`,
         [roomIdInt, userId]
       );
+      console.log(memberCheck.rows);
 
       if (memberCheck.rows.length === 0) {
         return res.status(403).json({ 
@@ -244,7 +247,8 @@ const chatController = {
 
       // Get room details
       const roomResult = await pool.query(
-        `SELECT cr."roomId", cr."roomName", cr."roomDescription", cr."isGroup", cr."createdOn",
+        `SELECT cr."roomId", cr."roomName", cr."roomDescription", cr."isGroup", 
+                cr."createdOn" AT TIME ZONE 'Asia/Kolkata' as "createdOn",
                 u."fullName" as "creatorName", cr."createdBy" = $2 as "isCreator"
         FROM chatrooms cr
         JOIN "users" u ON cr."createdBy" = u."userId"
@@ -269,7 +273,10 @@ const chatController = {
       // Get recent messages with mediaFiles, edit information, and reply information
       const messagesResult = await pool.query(
         `SELECT m."id", m."messageText", m."messageType", m."mediaFilesId", m."pollId", m."tableId", 
-                m."createdAt", m."isEdited", m."editedAt", m."editedBy", m."replyMessageId",
+                m."createdAt" AT TIME ZONE 'Asia/Kolkata' as "createdAt", 
+                m."isEdited", 
+                m."editedAt" AT TIME ZONE 'Asia/Kolkata' as "editedAt", 
+                m."editedBy", m."replyMessageId",
                 u."userId" as "senderId", u."fullName" as "senderName",
                 e."fullName" as "editorName",
                 rm."messageText" as "replyMessageText", rm."messageType" as "replyMessageType",
@@ -384,12 +391,14 @@ const chatController = {
 
       // Check if user is an admin of this room
       const adminCheck = await client.query(
-        `SELECT 1 FROM chatroomusers 
+        `SELECT * FROM chatroomusers 
         WHERE "roomId" = $1 AND "userId" = $2 AND "isAdmin" = TRUE`,
         [roomIdInt, userId]
       );
+      console.log(adminCheck.rows);
 
       if (adminCheck.rows.length === 0) {
+        console.log("Admin check failed");
         return res.status(403).json({ 
           message: "You don't have permission to add members to this room" 
         });
@@ -397,7 +406,7 @@ const chatController = {
 
       // Check if room exists
       const roomCheck = await client.query(
-        `SELECT 1 FROM chatrooms WHERE "roomId" = $1`,
+        `SELECT * FROM chatrooms WHERE "roomId" = $1`,
         [roomIdInt]
       );
 
@@ -428,7 +437,7 @@ const chatController = {
       } else if (currentUser.isAdmin && !currentUser.departments.includes("Karyalay")) {
         // HOD can only add users from their own department
         userCheckQuery = `SELECT "userId", "departments" FROM "users" WHERE "userId" = ANY($1) AND "departments" && $2`;
-        userCheckParams = [userIds, currentUser.department];
+        userCheckParams = [userIds, currentUser.departments];
       } else {
         // Regular users can add any user (existing behavior)
         userCheckQuery = `SELECT "userId", "departments" FROM "users" WHERE "userId" = ANY($1)`;
@@ -443,6 +452,7 @@ const chatController = {
       if (missingUserIds.length > 0) {
         // Provide specific error message for department access restrictions
         if (currentUser.isAdmin && !currentUser.departments.includes("Karyalay")) {
+          console.log("Admin check failed here1");
           return res.status(403).json({ 
             message: `You can only add users from your department (${currentUser.departments.join(', ')}). Some selected users are not from your department or don't exist.`,
             invalidUserIds: missingUserIds
@@ -908,8 +918,8 @@ const chatController = {
 
         //first insert the basic message
         let result = await pool.query(
-          `INSERT INTO chatmessages ("roomId", "senderId", "messageText","messageType", "replyMessageId")
-          VALUES ($1, $2, $3, $4, $5)
+          `INSERT INTO chatmessages ("roomId", "senderId", "messageText","messageType", "replyMessageId", "createdAt")
+          VALUES ($1, $2, $3, $4, $5, NOW() AT TIME ZONE 'Asia/Kolkata')
           RETURNING *`,
           [roomIdInt, senderId, messageText, messageType, replyMessageId]
         );
@@ -1141,7 +1151,7 @@ const chatController = {
       // Update the message
       const updateResult = await pool.query(
         `UPDATE chatmessages 
-        SET "messageText" = $1, "isEdited" = TRUE, "editedAt" = NOW(), "editedBy" = $2
+        SET "messageText" = $1, "isEdited" = TRUE, "editedAt" = NOW() AT TIME ZONE 'Asia/Kolkata', "editedBy" = $2
         WHERE "id" = $3 AND "roomId" = $4
         RETURNING *`,
         [messageText.trim(), userId, messageIdInt, roomIdInt]
@@ -1375,7 +1385,8 @@ const chatController = {
       let newLastMessage = null;
       if (needToUpdateLastMessage) {
         const newLastMessageResult = await client.query(
-          `SELECT m.*, u."fullName" as "senderName" 
+          `SELECT m.*, u."fullName" as "senderName",
+                  m."createdAt" AT TIME ZONE 'Asia/Kolkata' as "createdAt"
           FROM chatmessages m 
           JOIN "users" u ON m."senderId" = u."userId"
           WHERE m."roomId" = $1 
@@ -1523,7 +1534,7 @@ const chatController = {
 
       // Get read status for each member
       const readStatusResult = await pool.query(
-        `SELECT mrs."userId", mrs."readAt", u."fullName"
+        `SELECT mrs."userId", mrs."readAt" AT TIME ZONE 'Asia/Kolkata' as "readAt", u."fullName"
          FROM messagereadstatus mrs
          JOIN "users" u ON mrs."userId" = u."userId"
          WHERE mrs."messageId" = $1`,
@@ -1614,9 +1625,9 @@ const chatController = {
       // Insert or update read status
       await pool.query(
         `INSERT INTO messagereadstatus ("messageId", "userId", "roomId", "readAt")
-         VALUES ($1, $2, $3, NOW())
+         VALUES ($1, $2, $3, NOW() AT TIME ZONE 'Asia/Kolkata')
          ON CONFLICT ("messageId", "userId") 
-         DO UPDATE SET "readAt" = NOW()`,
+         DO UPDATE SET "readAt" = NOW() AT TIME ZONE 'Asia/Kolkata'`,
         [messageIdInt, userId, roomId]
       );
 

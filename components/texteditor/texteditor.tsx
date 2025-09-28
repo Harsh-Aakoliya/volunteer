@@ -683,6 +683,14 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
               line-height: 1.5;
               background-color: white;
             }
+            b {
+              height:1px;
+              margin-bottom:10px;
+              margin-top:10px;
+              border-bottom:1px solid #e5e7eb;
+              width:100%;
+              background-color:#e5e7eb;
+            }
             img {
               max-width: 100%;
               height: auto;
@@ -1008,10 +1016,16 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
                 actions.setUnderline,
                 actions.heading1,
                 actions.heading2,
+                actions.heading3,
+                actions.heading4,
+                actions.heading5,
+                actions.heading6,
                 actions.insertBulletsList,
                 actions.insertOrderedList,
                 actions.insertLink,
                 actions.insertImage,
+                actions.insertVideo,
+                actions.table,
                 actions.alignLeft,
                 actions.alignCenter,
                 actions.alignRight,

@@ -11,6 +11,12 @@ export default function AnnouncementLayout() {
           headerShown:true
         }} 
       />
+      <Stack.Screen 
+        name="preview" 
+        options={{ 
+          headerShown: false
+        }} 
+      />
     </Stack>
   );
 }

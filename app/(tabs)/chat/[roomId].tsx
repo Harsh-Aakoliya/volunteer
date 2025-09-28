@@ -28,6 +28,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, router, useNavigation } from "expo-router";
 import { AuthStorage } from "@/utils/authStorage";
 import { Message, ChatRoom, ChatUser } from "@/types/type";
+import { getISTTimestamp, formatISTTime, formatISTDate, isSameDayIST, getRelativeTimeIST } from "@/utils/dateUtils";
 import axios from "axios";
 import { API_URL } from "@/constants/api";
 import { useFocusEffect } from "@react-navigation/native";
@@ -626,7 +627,7 @@ export default function ChatRoomScreen() {
         senderName: currentUser.fullName || "You",
         messageText: trimmedMessage,
         messageType: messageType,
-        createdAt: new Date().toISOString(),
+        createdAt: getISTTimestamp(),
         mediaFilesId: mediaFilesId,
         pollId: pollId,
         tableId: tableId,
@@ -1023,7 +1024,14 @@ export default function ChatRoomScreen() {
     const grouped: { [key: string]: Message[] } = {};
     
     messages.forEach(message => {
-      const date = new Date(message.createdAt).toDateString();
+      const date = formatISTDate(message.createdAt, { 
+        year: 'numeric', 
+        month: 'short', 
+        day: 'numeric',
+        hour: undefined,
+        minute: undefined,
+        hour12: undefined 
+      });
       if (!grouped[date]) {
         grouped[date] = [];
       }
@@ -1035,22 +1043,34 @@ export default function ChatRoomScreen() {
 
   // Format date for display
   const formatDateForDisplay = (dateString: string) => {
-    const date = new Date(dateString);
     const today = new Date();
     const yesterday = new Date(today);
     yesterday.setDate(yesterday.getDate() - 1);
     
-    if (date.toDateString() === today.toDateString()) {
-      return 'Today';
-    } else if (date.toDateString() === yesterday.toDateString()) {
-      return 'Yesterday';
+    // Check if the date string is already formatted or if it's a raw date
+    const todayIST = formatISTDate(today, { 
+      year: 'numeric', 
+      month: 'short', 
+      day: 'numeric',
+      hour: undefined,
+      minute: undefined,
+      hour12: undefined 
+    });
+    const yesterdayIST = formatISTDate(yesterday, { 
+      year: 'numeric', 
+      month: 'short', 
+      day: 'numeric',
+      hour: undefined,
+      minute: undefined,
+      hour12: undefined 
+    });
+    
+    if (dateString === todayIST) {
+      return "Today";
+    } else if (dateString === yesterdayIST) {
+      return "Yesterday";
     } else {
-      return date.toLocaleDateString('en-US', { 
-        weekday: 'long', 
-        year: 'numeric', 
-        month: 'long', 
-        day: 'numeric' 
-      });
+      return dateString; // Already formatted in IST
     }
   };
 
@@ -1304,11 +1324,7 @@ export default function ChatRoomScreen() {
                 isOwnMessage ? "text-gray-600" : "text-gray-500"
               }`}
             >
-              {new Date(item.createdAt).toLocaleTimeString('en-IN', {
-                hour: "2-digit",
-                minute: "2-digit",
-                timeZone: 'Asia/Kolkata'
-              })}
+              {formatISTTime(item.createdAt)}
             </Text>
             {isOwnMessage && (
               <View className="ml-1">
@@ -1458,7 +1474,7 @@ export default function ChatRoomScreen() {
         )}
 
         {/* Reply preview - show above message input when replying */}
-        {isReplying && replyToMessage && (
+        {isReplying && replyToMessage && (isGroupAdmin || replyToMessage.senderId === currentUser?.userId) && (
           <View className="bg-gray-100 border-t border-gray-200 px-4 py-3">
             <View className="flex-row items-center justify-between">
               <View className="flex-1">
@@ -1613,7 +1629,7 @@ export default function ChatRoomScreen() {
               {selectedMessageForReadStatus && (
                 <View className="mb-6 p-4 bg-gray-50 rounded-lg">
                   <Text className="text-sm text-gray-600 mb-2">
-                    {selectedMessageForReadStatus.senderName} • {new Date(selectedMessageForReadStatus.createdAt).toLocaleString()}
+                    {selectedMessageForReadStatus.senderName} • {formatISTDate(selectedMessageForReadStatus.createdAt)}
                   </Text>
                   <Text className="text-base text-gray-900" numberOfLines={3}>
                     {selectedMessageForReadStatus.messageText}
@@ -1639,7 +1655,7 @@ export default function ChatRoomScreen() {
                         <View key={index} className="flex-row items-center justify-between py-2 border-b border-gray-100">
                           <Text className="text-gray-900">{user.fullName}</Text>
                           <Text className="text-sm text-gray-500">
-                            {new Date(user.readAt).toLocaleString()}
+                            {formatISTDate(user.readAt)}
                           </Text>
                         </View>
                       ))}

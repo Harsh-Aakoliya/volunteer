@@ -252,3 +252,34 @@ export const sendTestNotification = async (req, res) => {
     res.status(500).json({ error: 'Failed to send test notification' });
   }
 };
+
+// Send update notification to author when announcement is edited
+export const sendAuthorUpdateNotification = async (announcementId, authorId, authorName, announcementTitle) => {
+  try {
+    console.log('Sending author update notification for:', {
+      announcementId,
+      authorId,
+      authorName,
+      announcementTitle
+    });
+
+    const updateNotificationResult = await sendNotificationToUsers(
+      [authorId],
+      'Announcement Updated',
+      `Your announcement "${announcementTitle}" has been updated successfully`,
+      {
+        type: 'announcement',
+        announcementId: announcementId.toString(),
+        authorId,
+        route: 'announcement',
+        notificationType: 'update'
+      }
+    );
+
+    console.log('Sent update notification to author:', updateNotificationResult);
+    return updateNotificationResult;
+  } catch (error) {
+    console.error('Error sending author update notification:', error);
+    throw error;
+  }
+};

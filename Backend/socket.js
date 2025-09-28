@@ -26,7 +26,8 @@ const setupSocketIO = (io, app) => {
         
         // Get last message for this room
         const lastMessageResult = await pool.query(
-          `SELECT m.*, u."fullName" as "senderName" 
+          `SELECT m.*, u."fullName" as "senderName",
+                  m."createdAt" AT TIME ZONE 'Asia/Kolkata' as "createdAt"
            FROM chatmessages m 
            JOIN "users" u ON m."senderId" = u."userId"
            WHERE m."roomId" = $1 

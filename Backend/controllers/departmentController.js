@@ -324,6 +324,8 @@ export const getDepartmentUsers = async (req, res) => {
       ORDER BY u."fullName" ASC
     `, [departmentId]);
 
+    console.log("user result in getDepartmentUsers", usersResult.rows);
+
     res.json(usersResult.rows);
   } catch (error) {
     console.error('Error fetching department users:', error);
