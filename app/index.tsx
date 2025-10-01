@@ -10,12 +10,12 @@ import CustomInput from '@/components/ui/CustomInput';
 import CustomButton from '@/components/ui/CustomButton';
 import { API_URL, setApiUrl, updateDevIP } from "@/constants/api";
 
-const DEV_IP = "http://192.168.113.33:3000";
-const INTERNAL_IP = "http://192.168.2.134:3000";
-const EXTERNAL_IP = "http://103.47.172.58:50160";
+const DEV_IP = "http://192.168.113.242:3000";
+const INTERNAL_IP = "https://volunteer-r441.onrender.com";
+const EXTERNAL_IP = "https://volunteer-r441.onrender.com";
 
 // Export dev mode status and DEV_IP for use in other components
-export const getDevModeStatus = () => false; // Set to true to enable manual IP configuration for development
+export const getDevModeStatus = () => true; // Set to true to enable manual IP configuration for development
 export const getDefaultDevIP = () => DEV_IP;
 
 export default function Index() {
@@ -374,3 +374,15 @@ export default function Index() {
 
 
 
+// import "./global.css"
+// import { Text, View } from "react-native";
+// import React from "react";
+// export default function App() {
+//   return (
+//     <View className="flex-1 items-center justify-center bg-white">
+//       <Text className="text-xl font-bold text-blue-500">
+//         Welcome to Nativewind!
+//       </Text>
+//     </View>
+//   );
+// }
