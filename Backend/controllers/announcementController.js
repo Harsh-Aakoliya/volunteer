@@ -337,10 +337,27 @@ const Announcement = {
       
       const likedBy = result.rows[0].likedBy || [];
       
-      return {
-        likedBy: likedBy,
-        likedUsers: likedBy
-      };
+      // Get user details for those who liked
+      const likedUsers = [];
+      if (likedBy.length > 0) {
+        const userIds = likedBy.map(like => like.userId);
+        const userResult = await pool.query(
+          'SELECT "userId", "fullName", "departments" FROM "users" WHERE "userId" = ANY($1)',
+          [userIds]
+        );
+        
+        likedUsers.push(...likedBy.map(like => {
+          const user = userResult.rows.find(u => u.userId === like.userId);
+          return {
+            userId: like.userId,
+            fullName: user ? user.fullName : 'Unknown User',
+            likedAt: like.likedAt,
+            department: user ? (user.departments && user.departments[0]) || 'Unknown' : 'Unknown'
+          };
+        }));
+      }
+      
+      return { likedBy, likedUsers };
     } catch (error) {
       console.error("Error getting liked users:", error);
       throw error;
@@ -349,35 +366,61 @@ const Announcement = {
 
   getReadUsers: async (id) => {
     try {
-      const result = await pool.query('SELECT "readBy" FROM "announcements" WHERE "id" = $1', [id]);
+      const result = await pool.query('SELECT "readBy", "departmentTag" FROM "announcements" WHERE "id" = $1', [id]);
       
       if (result.rows.length === 0) {
-        return { readBy: [], readUsers: [] };
+        return { readBy: [], readUsers: [], unreadUsers: [] };
       }
       
-      const readBy = result.rows[0].readBy || [];
-      
-      if (readBy.length === 0) {
-        return { readBy: [], readUsers: [] };
-      }
+      const announcement = result.rows[0];
+      const readBy = announcement.readBy || [];
+      const departmentTag = announcement.departmentTag || [];
       
       // Get user details for those who read
-      const userIds = readBy.map(read => read.userId);
-      const userResult = await pool.query(
-        'SELECT "userId", "fullName" FROM "users" WHERE "userId" = ANY($1)',
-        [userIds]
-      );
+      const readUsers = [];
+      if (readBy.length > 0) {
+        const userIds = readBy.map(read => read.userId);
+        const userResult = await pool.query(
+          'SELECT "userId", "fullName", "departments" FROM "users" WHERE "userId" = ANY($1)',
+          [userIds]
+        );
+        
+        readUsers.push(...readBy.map(read => {
+          const user = userResult.rows.find(u => u.userId === read.userId);
+          return {
+            userId: read.userId,
+            fullName: user ? user.fullName : 'Unknown User',
+            readAt: read.readAt,
+            department: user ? (user.departments && user.departments[0]) || 'Unknown' : 'Unknown'
+          };
+        }));
+      }
       
-      const readUsers = readBy.map(read => {
-        const user = userResult.rows.find(u => u.userId === read.userId);
-        return {
-          userId: read.userId,
-          fullName: user ? user.fullName : 'Unknown User',
-          readAt: read.readAt
-        };
-      });
+      // Get unread users from target departments
+      const unreadUsers = [];
+      if (departmentTag.length > 0) {
+        const readUserIds = readBy.map(read => read.userId);
+        
+        // Get all users from target departments who haven't read
+        const unreadQuery = `
+          SELECT "userId", "fullName", "departments" 
+          FROM "users" 
+          WHERE "isApproved" = true 
+          AND "departments" && $1
+          ${readUserIds.length > 0 ? 'AND "userId" != ALL($2)' : ''}
+        `;
+        
+        const unreadParams = readUserIds.length > 0 ? [departmentTag, readUserIds] : [departmentTag];
+        const unreadResult = await pool.query(unreadQuery, unreadParams);
+        
+        unreadUsers.push(...unreadResult.rows.map(user => ({
+          userId: user.userId,
+          fullName: user.fullName || 'Unknown User',
+          department: (user.departments && user.departments[0]) || 'Unknown'
+        })));
+      }
       
-      return { readBy, readUsers };
+      return { readBy, readUsers, unreadUsers };
     } catch (error) {
       console.error("Error getting read users:", error);
       throw error;

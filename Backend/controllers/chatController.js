@@ -74,7 +74,7 @@ const chatController = {
       
       const result = await pool.query(
         `SELECT cr."roomId" as id, cr."roomName", cr."roomDescription", cr."isGroup", 
-                cr."createdBy", cr."createdOn" AT TIME ZONE 'Asia/Kolkata' as "createdOn", cru."isAdmin", 
+                cr."createdBy", cr."createdOn", cru."isAdmin", 
                 CASE WHEN cru."isAdmin" = TRUE THEN TRUE ELSE FALSE END as "canSendMessage"
         FROM chatrooms cr
         JOIN chatroomusers cru ON cr."roomId" = cru."roomId"
@@ -248,7 +248,7 @@ const chatController = {
       // Get room details
       const roomResult = await pool.query(
         `SELECT cr."roomId", cr."roomName", cr."roomDescription", cr."isGroup", 
-                cr."createdOn" AT TIME ZONE 'Asia/Kolkata' as "createdOn",
+                cr."createdOn",
                 u."fullName" as "creatorName", cr."createdBy" = $2 as "isCreator"
         FROM chatrooms cr
         JOIN "users" u ON cr."createdBy" = u."userId"
@@ -273,9 +273,9 @@ const chatController = {
       // Get recent messages with mediaFiles, edit information, and reply information
       const messagesResult = await pool.query(
         `SELECT m."id", m."messageText", m."messageType", m."mediaFilesId", m."pollId", m."tableId", 
-                m."createdAt" AT TIME ZONE 'Asia/Kolkata' as "createdAt", 
+                m."createdAt", 
                 m."isEdited", 
-                m."editedAt" AT TIME ZONE 'Asia/Kolkata' as "editedAt", 
+                m."editedAt", 
                 m."editedBy", m."replyMessageId",
                 u."userId" as "senderId", u."fullName" as "senderName",
                 e."fullName" as "editorName",
@@ -919,7 +919,7 @@ const chatController = {
         //first insert the basic message
         let result = await pool.query(
           `INSERT INTO chatmessages ("roomId", "senderId", "messageText","messageType", "replyMessageId", "createdAt")
-          VALUES ($1, $2, $3, $4, $5, NOW() AT TIME ZONE 'Asia/Kolkata')
+          VALUES ($1, $2, $3, $4, $5, NOW())
           RETURNING *`,
           [roomIdInt, senderId, messageText, messageType, replyMessageId]
         );
@@ -1386,7 +1386,7 @@ const chatController = {
       if (needToUpdateLastMessage) {
         const newLastMessageResult = await client.query(
           `SELECT m.*, u."fullName" as "senderName",
-                  m."createdAt" AT TIME ZONE 'Asia/Kolkata' as "createdAt"
+                  m."createdAt"
           FROM chatmessages m 
           JOIN "users" u ON m."senderId" = u."userId"
           WHERE m."roomId" = $1 

@@ -11,18 +11,14 @@ import {
   Alert,
   Animated,
   Dimensions,
-  Image,
-  Platform,
+  SafeAreaView
 } from "react-native";
 import {
-  fetchAnnouncements,
   fetchUserAnnouncements,
   toggleLike,
   markAsRead,
-  createDraft,
-  getAllDepartments,
+  createDraft
 } from "@/api/admin";
-import { router } from "expo-router";
 import { useFocusEffect } from "expo-router";
 import { useCallback } from "react";
 import { useRouter, useLocalSearchParams } from "expo-router";
@@ -32,9 +28,20 @@ import { Announcement } from "@/types/type";
 import eventEmitter from "@/utils/eventEmitter";
 import { ActivityIndicator, Image as RNImage } from 'react-native'; // 👈 Add these imports at 
 import AnnouncementItem from '@/components/AnnouncementItem';
+import ReadLikeDetailsModal from '@/components/ReadLikeDetailsModal';
+import Basic from '@/components/CNQuillTestSection';
 import { API_URL } from "@/constants/api";
 
 const Announcements = () => {
+
+  // return (
+  //   <SafeAreaView style={{flex: 1, backgroundColor: '#0068C5'}}> 
+  //           <View style={{flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f1f1f1', paddingHorizontal: 22}}>
+  //               <Basic />
+  //           </View>
+  //       </SafeAreaView> 
+  // )
+  
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [allAnnouncements, setAllAnnouncements] = useState<Announcement[]>([]); // Store all fetched announcements
   const [filteredAnnouncements, setFilteredAnnouncements] = useState<Announcement[]>([]); // Filtered announcements for display
@@ -44,7 +51,7 @@ const Announcements = () => {
   const [userDepartments, setUserDepartments] = useState<string[]>([]);
   const [isKaryalay, setIsKaryalay] = useState(false);
   const [isHOD, setIsHOD] = useState(false);
-  const [allDepartments, setAllDepartments] = useState<string[]>([]);
+  // const [allDepartments, setAllDepartments] = useState<string[]>([]);
   const [selectedTab, setSelectedTab] = useState<string>("ALL");
   const [availableTabs, setAvailableTabs] = useState<string[]>([]);
   
@@ -54,6 +61,12 @@ const Announcements = () => {
   const [isAnnouncementOpening,setIsAnnouncementOpening] = useState(false);
   
   const [isNavigatingToEditor, setIsNavigatingToEditor] = useState(false);
+
+  // Read/Like details modal state
+  const [showReadLikeModal, setShowReadLikeModal] = useState(false);
+  const [modalType, setModalType] = useState<'read' | 'like'>('read');
+  const [selectedAnnouncementId, setSelectedAnnouncementId] = useState<number | null>(null);
+  const [selectedDepartmentTag, setSelectedDepartmentTag] = useState<string[]>([]);
   // Animation values
   const rotationAnim = useState(new Animated.Value(0))[0];
   const scaleAnim = useState(new Animated.Value(0))[0];
@@ -62,67 +75,67 @@ const Announcements = () => {
   // Get screen dimensions
   const { height: screenHeight } = Dimensions.get('window');
   const announcementHeight = screenHeight / 4; // Each announcement takes 1/4 of screen height
-  
+
   useEffect(() => {
     getCurrentUser();
-    loadDepartments();
+    // loadDepartments();
     
-    // Listen for notification events to open specific announcements
-    const handleOpenAnnouncement = (data: { announcementId: number }) => {
-      const { announcementId } = data;
-      console.log('📢 Opening announcement from notification:', announcementId);
+    // // Listen for notification events to open specific announcements
+    // const handleOpenAnnouncement = (data: { announcementId: number }) => {
+    //   const { announcementId } = data;
+    //   console.log('📢 Opening announcement from notification:', announcementId);
       
-      // Function to attempt to find and open the announcement
-      const tryOpenAnnouncement = (attempts = 0) => {
-        const maxAttempts = 3;
+    //   // Function to attempt to find and open the announcement
+    //   const tryOpenAnnouncement = (attempts = 0) => {
+    //     const maxAttempts = 3;
         
-        // First check allAnnouncements
-        let announcement = allAnnouncements.find(ann => ann.id === announcementId);
+    //     // First check allAnnouncements
+    //     let announcement = allAnnouncements.find(ann => ann.id === announcementId);
         
-        // If not found, check current announcements
-        if (!announcement) {
-          announcement = announcements.find(ann => ann.id === announcementId);
-        }
+    //     // If not found, check current announcements
+    //     if (!announcement) {
+    //       announcement = announcements.find(ann => ann.id === announcementId);
+    //     }
         
-        if (announcement) {
-          console.log('✅ Found announcement, opening:', announcement.title);
-          openAnnouncement(announcement);
-          return;
-        }
+    //     if (announcement) {
+    //       console.log('✅ Found announcement, opening:', announcement.title);
+    //       openAnnouncement(announcement);
+    //       return;
+    //     }
         
-        // If not found and we haven't exhausted attempts, try refreshing
-        if (attempts < maxAttempts) {
-          console.log(`🔄 Announcement not found, refreshing... (attempt ${attempts + 1}/${maxAttempts})`);
-          loadAnnouncements().then(() => {
-            setTimeout(() => tryOpenAnnouncement(attempts + 1), 300);
-          }).catch(error => {
-            console.error('❌ Error refreshing announcements:', error);
-            if (attempts < maxAttempts - 1) {
-              setTimeout(() => tryOpenAnnouncement(attempts + 1), 500);
-            }
-          });
-        } else {
-          console.log('❌ Announcement not found after all attempts:', announcementId);
-        }
-      };
+    //     // If not found and we haven't exhausted attempts, try refreshing
+    //     if (attempts < maxAttempts) {
+    //       console.log(`🔄 Announcement not found, refreshing... (attempt ${attempts + 1}/${maxAttempts})`);
+    //       loadAnnouncements().then(() => {
+    //         setTimeout(() => tryOpenAnnouncement(attempts + 1), 300);
+    //       }).catch(error => {
+    //         console.error('❌ Error refreshing announcements:', error);
+    //         if (attempts < maxAttempts - 1) {
+    //           setTimeout(() => tryOpenAnnouncement(attempts + 1), 500);
+    //         }
+    //       });
+    //     } else {
+    //       console.log('❌ Announcement not found after all attempts:', announcementId);
+    //     }
+    //   };
       
-      // Wait a bit for component to be ready, then start attempting
-      setTimeout(() => tryOpenAnnouncement(), 200);
-    };
+    //   // Wait a bit for component to be ready, then start attempting
+    //   setTimeout(() => tryOpenAnnouncement(), 200);
+    // };
 
-    // Add event listener for custom notification events using EventEmitter
-    eventEmitter.on('openAnnouncement', handleOpenAnnouncement);
+    // // Add event listener for custom notification events using EventEmitter
+    // eventEmitter.on('openAnnouncement', handleOpenAnnouncement);
     
-    // Cleanup
-    return () => {
-      eventEmitter.off('openAnnouncement', handleOpenAnnouncement);
-    };
+    // // Cleanup
+    // return () => {
+    //   eventEmitter.off('openAnnouncement', handleOpenAnnouncement);
+    // };
   }, []);
 
   useEffect(() => {
     // Set up tabs based on user type
     setupTabs();
-  }, [isKaryalay, isHOD, userDepartments, allDepartments]);
+  }, [isKaryalay, isHOD, userDepartments]); 
 
   useEffect(() => {
     // Load announcements when user type is determined
@@ -138,7 +151,7 @@ const Announcements = () => {
 
   const getCurrentUser = async () => {
     const userData = await AuthStorage.getUser();
-    console.log("User data in announcement page",userData);
+    // console.log("User data in announcement page",userData);
     if (userData) {
       setCurrentUserId(userData.userId);
       setIsAdmin(userData.isAdmin || false);
@@ -148,14 +161,14 @@ const Announcements = () => {
     }
   };
 
-  const loadDepartments = async () => {
-    try {
-      const departments = await getAllDepartments();
-      setAllDepartments(departments);
-    } catch (error) {
-      console.error('Error loading departments:', error);
-    }
-  };
+  // const loadDepartments = async () => {
+  //   try {
+  //     const departments = await getAllDepartments();
+  //     setAllDepartments(departments);
+  //   } catch (error) {
+  //     console.error('Error loading departments:', error);
+  //   }
+  // };
 
   const setupTabs = () => {
     let tabs: string[] = ['ALL'];
@@ -490,6 +503,28 @@ useFocusEffect(
     setSelectedTab(tab);
   };
 
+  // Handle showing read details
+  const handleShowReadDetails = (announcementId: number, departmentTag?: string[]) => {
+    setSelectedAnnouncementId(announcementId);
+    setSelectedDepartmentTag(departmentTag || []);
+    setModalType('read');
+    setShowReadLikeModal(true);
+  };
+
+  // Handle showing like details
+  const handleShowLikeDetails = (announcementId: number) => {
+    setSelectedAnnouncementId(announcementId);
+    setModalType('like');
+    setShowReadLikeModal(true);
+  };
+
+  // Handle closing modal
+  const handleCloseModal = () => {
+    setShowReadLikeModal(false);
+    setSelectedAnnouncementId(null);
+    setSelectedDepartmentTag([]);
+  };
+
 
 
 
@@ -502,7 +537,12 @@ useFocusEffect(
               <Text className="mt-4 text-gray-600">Opening announcement...</Text>
           </View>
       )} */}
-      {/* Department Tabs */}
+      
+      {/* TEST SECTION FOR REACT-NATIVE-CN-QUILL */}
+      
+      
+
+      {/* <Department  /> */}
       {availableTabs.length > 1 && (
         <View className="bg-white border-b border-gray-200">
           <ScrollView 
@@ -552,12 +592,14 @@ useFocusEffect(
             onOpenAnnouncement={openAnnouncement}
             formatDateTime={formatDateTime}
             isAnnouncementOpening={isAnnouncementOpening}
+            onShowReadDetails={handleShowReadDetails}
+            onShowLikeDetails={handleShowLikeDetails}
           />
         )}
       />
 
       {/* Twitter-style Floating Action Menu - Only for HODs and Karyalay users */}
-      {isAdmin && (
+      {(isHOD || isKaryalay) && (
         <>
           {/* Blurred Background Overlay */}
           {showActionMenu && (
@@ -674,7 +716,16 @@ useFocusEffect(
         </>
       )}
 
-
+      {/* Read/Like Details Modal */}
+      {selectedAnnouncementId && (
+        <ReadLikeDetailsModal
+          visible={showReadLikeModal}
+          onClose={handleCloseModal}
+          type={modalType}
+          announcementId={selectedAnnouncementId}
+          departmentTag={selectedDepartmentTag}
+        />
+      )}
 
     </View>
   );

@@ -150,8 +150,6 @@ export const checkDepartmentNameExists = async (departmentName: string): Promise
   }
 };
 
-// Subdepartment API functions
-
 // Get all subdepartments for a department
 export const fetchSubdepartments = async (departmentId: string): Promise<Subdepartment[]> => {
   try {

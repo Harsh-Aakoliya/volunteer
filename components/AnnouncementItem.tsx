@@ -19,6 +19,8 @@ interface AnnouncementItemProps {
   onOpenAnnouncement: (item: Announcement) => void;
   formatDateTime: (date: string) => string;
   isAnnouncementOpening: boolean;
+  onShowReadDetails?: (announcementId: number, departmentTag?: string[]) => void;
+  onShowLikeDetails?: (announcementId: number) => void;
 }
 
 const   AnnouncementItem: React.FC<AnnouncementItemProps> = ({
@@ -29,6 +31,8 @@ const   AnnouncementItem: React.FC<AnnouncementItemProps> = ({
   onOpenAnnouncement,
   formatDateTime,
   isAnnouncementOpening,
+  onShowReadDetails,
+  onShowLikeDetails,
 }) => {
   const [imageUri, setImageUri] = useState<string>(
     item.hasCoverImage
@@ -119,15 +123,25 @@ const   AnnouncementItem: React.FC<AnnouncementItemProps> = ({
             {/* Action buttons - Read | Like (only for authors) */}
             {isAuthor && (
               <View className="flex-row items-center">
-                <Text className="text-xs text-blue-600 font-medium">
-                  Read ({item.readBy?.length || 0})
-                </Text>
+                <TouchableOpacity 
+                  onPress={() => onShowReadDetails?.(item.id, item.departmentTag)}
+                  className="flex-row items-center"
+                >
+                  <Text className="text-sm text-blue-600 font-semibold">
+                    Read ({item.readBy?.length || 0})
+                  </Text>
+                </TouchableOpacity>
                 
-                <Text className="text-gray-400 mx-3 text-xs">|</Text>
+                <Text className="text-gray-400 mx-3 text-sm">|</Text>
                 
-                <Text className="text-xs text-blue-600 font-medium">
-                  Like ({item.likedBy?.length || 0})
-                </Text>
+                <TouchableOpacity 
+                  onPress={() => onShowLikeDetails?.(item.id)}
+                  className="flex-row items-center"
+                >
+                  <Text className="text-sm text-blue-600 font-semibold">
+                    Like ({item.likedBy?.length || 0})
+                  </Text>
+                </TouchableOpacity>
               </View>
             )}
 

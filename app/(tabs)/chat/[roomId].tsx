@@ -20,8 +20,7 @@ import {
 } from "react-native";
 import {
   PanGestureHandler,
-  GestureHandlerRootView,
-  PanGestureHandlerGestureEvent,
+  GestureHandlerRootView
 } from 'react-native-gesture-handler';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from "@expo/vector-icons";
@@ -200,9 +199,6 @@ export default function ChatRoomScreen() {
   };
 
 
-
-
-
   // Parse message text to identify mentions (kept for rendering existing messages)
   const parseMessageText = (text: string): MentionSegment[] => {
     const segments: MentionSegment[] = [];
@@ -277,8 +273,6 @@ export default function ChatRoomScreen() {
       </Text>
     );
   };
-
-
 
   // Handle app state changes (background/foreground)
   useEffect(() => {
@@ -627,7 +621,7 @@ export default function ChatRoomScreen() {
         senderName: currentUser.fullName || "You",
         messageText: trimmedMessage,
         messageType: messageType,
-        createdAt: getISTTimestamp(),
+        createdAt: new Date().toISOString(),
         mediaFilesId: mediaFilesId,
         pollId: pollId,
         tableId: tableId,
@@ -1043,6 +1037,7 @@ export default function ChatRoomScreen() {
 
   // Format date for display
   const formatDateForDisplay = (dateString: string) => {
+    console.log("dateString",dateString);
     const today = new Date();
     const yesterday = new Date(today);
     yesterday.setDate(yesterday.getDate() - 1);
@@ -1408,10 +1403,26 @@ export default function ChatRoomScreen() {
         <FlatList
           ref={flatListRef}
           data={(() => {
-            const grouped = groupMessagesByDate(messages);
+            // Sort messages by timestamp first (oldest to newest)
+            const sortedMessages = [...messages].sort((a, b) => 
+              new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+            );
+            
+            // Group sorted messages by date
+            const grouped = groupMessagesByDate(sortedMessages);
+            
+            // Get date keys and sort them chronologically
+            const dateKeys = Object.keys(grouped);
+            const sortedDateKeys = dateKeys.sort((a, b) => {
+              // Get the first message from each date group to determine chronological order
+              const firstMessageA = grouped[a][0];
+              const firstMessageB = grouped[b][0];
+              return new Date(firstMessageA.createdAt).getTime() - new Date(firstMessageB.createdAt).getTime();
+            });
+            
             const flatData: (Message | { type: 'date', date: string })[] = [];
             
-            Object.keys(grouped).sort().forEach(date => {
+            sortedDateKeys.forEach(date => {
               flatData.push({ type: 'date', date } as any);
               flatData.push(...grouped[date]);
             });

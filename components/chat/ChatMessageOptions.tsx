@@ -9,7 +9,7 @@ import {
 import { Message, ChatUser } from "@/types/type";
 import { Ionicons } from '@expo/vector-icons';
 import EditMessageModal from './EditMessageModal';
-
+import { ToastAndroid } from 'react-native';
 type ChatMessageOptionProps = {
     selectedMessages: Message[];
     setSelectedMessages:any;
@@ -124,7 +124,8 @@ const ChatMessageOptions: React.FC<ChatMessageOptionProps> = ({
     const handleCopy = () => {
         if (selectedMessage && selectedMessage.messageText) {
             Clipboard.setString(selectedMessage.messageText);
-            Alert.alert('Copied', 'Message copied to clipboard');
+            ToastAndroid.show("Message copied to clipboard", ToastAndroid.SHORT);
+            // Alert.alert('Copied', 'Message copied to clipboard');
             onClose();
         }
     };

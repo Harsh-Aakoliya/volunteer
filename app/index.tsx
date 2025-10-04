@@ -5,11 +5,10 @@ import { AuthStorage } from '@/utils/authStorage';
 import * as Application from 'expo-application';
 import { VersionChecker } from '@/components/VersionChecker';
 import { Platform, Alert, TextInput, View, Text, TouchableOpacity } from 'react-native';
-import React from 'react';
 import CustomInput from '@/components/ui/CustomInput';
 import CustomButton from '@/components/ui/CustomButton';
 import { API_URL, setApiUrl, updateDevIP } from "@/constants/api";
-
+import React from 'react';
 const DEV_IP = "http://192.168.113.242:3000";
 const INTERNAL_IP = "https://volunteer-r441.onrender.com";
 const EXTERNAL_IP = "https://volunteer-r441.onrender.com";
@@ -363,7 +362,6 @@ export default function Index() {
 
   return (
     <>
-    
       {(Platform.OS === "ios" || Platform.OS === "android") && (
         <VersionChecker onUpdateCheckComplete={() => setVersionCheckComplete(true)} />
       )}

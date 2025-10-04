@@ -6,25 +6,26 @@
  */
 export const getISTTimestamp = (): string => {
   const now = new Date();
-  // Convert to IST (UTC+5:30)
-  const istTime = new Date(now.getTime() + (5.5 * 60 * 60 * 1000));
-  return istTime.toISOString();
+  // Return current time as ISO string - backend will handle IST conversion
+  console.log("now",now);
+  return now.toISOString();
 };
 
 /**
- * Convert any date to IST
+ * Convert any date to IST display time
  */
 export const toIST = (date: Date | string): Date => {
   const inputDate = typeof date === 'string' ? new Date(date) : date;
-  // Convert to IST (UTC+5:30)
-  return new Date(inputDate.getTime() + (5.5 * 60 * 60 * 1000));
+  // For display purposes, we'll use the browser's timezone handling
+  // The backend already stores timestamps in the correct timezone
+  return inputDate;
 };
 
 /**
  * Format IST date for display
  */
 export const formatISTDate = (date: Date | string, options?: Intl.DateTimeFormatOptions): string => {
-  const istDate = toIST(date);
+  const inputDate = typeof date === 'string' ? new Date(date) : date;
   
   const defaultOptions: Intl.DateTimeFormatOptions = {
     timeZone: 'Asia/Kolkata',
@@ -36,16 +37,16 @@ export const formatISTDate = (date: Date | string, options?: Intl.DateTimeFormat
     hour12: true
   };
   
-  return istDate.toLocaleString('en-IN', { ...defaultOptions, ...options });
+  return inputDate.toLocaleString('en-IN', { ...defaultOptions, ...options });
 };
 
 /**
  * Format IST time only
  */
 export const formatISTTime = (date: Date | string): string => {
-  const istDate = toIST(date);
+  const inputDate = typeof date === 'string' ? new Date(date) : date;
   
-  return istDate.toLocaleString('en-IN', {
+  return inputDate.toLocaleString('en-IN', {
     timeZone: 'Asia/Kolkata',
     hour: '2-digit',
     minute: '2-digit',
@@ -57,9 +58,9 @@ export const formatISTTime = (date: Date | string): string => {
  * Format IST date only
  */
 export const formatISTDateOnly = (date: Date | string): string => {
-  const istDate = toIST(date);
+  const inputDate = typeof date === 'string' ? new Date(date) : date;
   
-  return istDate.toLocaleDateString('en-IN', {
+  return inputDate.toLocaleDateString('en-IN', {
     timeZone: 'Asia/Kolkata',
     year: 'numeric',
     month: 'short',
@@ -71,10 +72,10 @@ export const formatISTDateOnly = (date: Date | string): string => {
  * Get relative time in IST context
  */
 export const getRelativeTimeIST = (date: Date | string): string => {
-  const istDate = toIST(date);
-  const now = toIST(new Date());
+  const inputDate = typeof date === 'string' ? new Date(date) : date;
+  const now = new Date();
   
-  const diffInMs = now.getTime() - istDate.getTime();
+  const diffInMs = now.getTime() - inputDate.getTime();
   const diffInMinutes = Math.floor(diffInMs / (1000 * 60));
   const diffInHours = Math.floor(diffInMinutes / 60);
   const diffInDays = Math.floor(diffInHours / 24);
@@ -88,7 +89,7 @@ export const getRelativeTimeIST = (date: Date | string): string => {
   } else if (diffInDays < 7) {
     return `${diffInDays}d ago`;
   } else {
-    return formatISTDateOnly(istDate);
+    return formatISTDateOnly(inputDate);
   }
 };
 
@@ -96,8 +97,12 @@ export const getRelativeTimeIST = (date: Date | string): string => {
  * Check if two dates are the same day in IST
  */
 export const isSameDayIST = (date1: Date | string, date2: Date | string): boolean => {
-  const istDate1 = toIST(date1);
-  const istDate2 = toIST(date2);
+  const inputDate1 = typeof date1 === 'string' ? new Date(date1) : date1;
+  const inputDate2 = typeof date2 === 'string' ? new Date(date2) : date2;
+  
+  // Convert both dates to IST timezone for comparison
+  const istDate1 = new Date(inputDate1.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
+  const istDate2 = new Date(inputDate2.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
   
   return istDate1.toDateString() === istDate2.toDateString();
 };
@@ -110,10 +115,10 @@ export const getISTOffset = (): string => {
 };
 
 /**
- * Parse IST timestamp to local date for database operations
+ * Parse timestamp for database operations
+ * Note: This function is kept for backward compatibility but may not be needed
  */
-export const parseISTToUTC = (istTimestamp: string): Date => {
-  const date = new Date(istTimestamp);
-  // Subtract IST offset to get UTC
-  return new Date(date.getTime() - (5.5 * 60 * 60 * 1000));
+export const parseISTToUTC = (timestamp: string): Date => {
+  const date = new Date(timestamp);
+  return date;
 };

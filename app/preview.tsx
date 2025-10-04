@@ -15,7 +15,7 @@ import {
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { cssInterop } from "nativewind";
-import { RichEditor } from 'react-native-pell-rich-editor';
+import { RichText, useEditorBridge } from '@10play/tentap-editor';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import { publishDraft, updateAnnouncement } from '@/api/admin';
 import { AuthStorage } from '@/utils/authStorage';
@@ -24,9 +24,7 @@ import ImageViewer from '@/components/texteditor/ImageViewer';
 import VideoViewer from '@/components/texteditor/VideoViewer';
 import AudioViewer from '@/components/texteditor/AudioViewer';
 
-const StyledRichEditor = cssInterop(RichEditor, {
-  className: 'style'
-});
+// Tentap editor doesn't need cssInterop
 
 const AnnouncementPreviewScreen = () => {
   const params = useLocalSearchParams();
@@ -54,6 +52,14 @@ const AnnouncementPreviewScreen = () => {
   const [selectedVideoFile, setSelectedVideoFile] = useState<any>(null);
 
   const screenWidth = Dimensions.get('window').width;
+
+  // Tentap Editor Bridge for preview
+  const editor = useEditorBridge({
+    autofocus: false,
+    avoidIosKeyboard: true,
+    initialContent: content,
+    dynamicHeight: true,
+  });
 
   const handleBackToEdit = () => {
     // Navigate back to create-announcement with current content preserved
@@ -195,20 +201,12 @@ const AnnouncementPreviewScreen = () => {
         {/* Content */}
         <View className="px-4 pb-4">
           <View className="min-h-40">
-            <StyledRichEditor
-              className="min-h-40 bg-white"
-              initialContentHTML={content}
-              editorStyle={{
-                contentCSSText: `
-                  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-                  font-size: 16px;
-                  margin: 0px;
-                  border: none;
-                  min-height: 200px;
-                `
-              }}
-              disabled={true}
-            />
+            <View style={{ minHeight: 200, borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 8 }}>
+              <RichText
+                editor={editor}
+                style={{ minHeight: 200 }}
+              />
+            </View>
           </View>
         </View>
 

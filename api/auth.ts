@@ -7,7 +7,6 @@ import { router } from "expo-router";
 import * as Notifications from "expo-notifications";
 import Constants from "expo-constants";
 
-// Generate and store notification token
 const generateAndStoreNotificationToken = async (userId: string) => {
   try {
     // Request notification permissions
@@ -58,7 +57,6 @@ const generateAndStoreNotificationToken = async (userId: string) => {
   }
 };
 
-// Remove notification token on logout
 const removeNotificationToken = async (userId: string) => {
   try {
     const token = await AuthStorage.getToken();

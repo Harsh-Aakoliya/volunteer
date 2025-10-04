@@ -60,30 +60,6 @@ export const rejectUser = async (userId: string) => {
   }
 };
 
-export const fetchAnnouncements = async (department?: string) => {
-  try {
-    const token = await AuthStorage.getToken();
-    if (!token) {
-      throw new Error('No authentication token');
-    }
-    
-    const url = department 
-      ? `${API_URL}/api/announcements?department=${encodeURIComponent(department)}`
-      : `${API_URL}/api/announcements`;
-    
-    const response = await axios.get(url, {
-      headers: {
-        Authorization: `Bearer ${token}`
-      }
-    });
-    return response.data;
-  } catch (error) {
-    console.error('Error fetching announcements:', error);
-    throw error;
-  }
-};
-
-// New function to fetch announcements based on user type
 export const fetchUserAnnouncements = async () => {
   try {
     const token = await AuthStorage.getToken();
@@ -100,27 +76,6 @@ export const fetchUserAnnouncements = async () => {
     return response.data;
   } catch (error) {
     console.error('Error fetching user announcements:', error);
-    throw error;
-  }
-};
-
-export const fetchAnnouncementsDebug = async () => {
-  try {
-    const token = await AuthStorage.getToken();
-    if (!token) {
-      throw new Error('No authentication token');
-    }
-    
-    console.log("Fetching all announcements for debug");
-    const response = await axios.get(`${API_URL}/api/announcements/debug`, {
-      headers: {
-        Authorization: `Bearer ${token}`
-      }
-    });
-    console.log("Debug response:", response.data);
-    return response.data;
-  } catch (error) {
-    console.error('Error fetching debug announcements:', error);
     throw error;
   }
 };
@@ -238,15 +193,16 @@ export const markAsRead = async (id: number, userId: string) => {
     if (!token) {
       throw new Error('No authentication token');
     }
-    
+    if(!userId){
+      return;
+    }
     const response = await axios.post(`${API_URL}/api/announcements/${id}/mark-read`, 
       { userId },
       {
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
+      headers: {
+        Authorization: `Bearer ${token}`
       }
-    );
+    });
     return response.data;
   } catch (error) {
     console.error('Error marking as read:', error);
@@ -357,8 +313,6 @@ export const publishDraft = async (id: number, title: string, body: string, auth
     throw error;
   }
 };
-
-
 
 export const getDrafts = async (authorId: string) => {
   try {
