@@ -625,7 +625,13 @@ export default function ChatRoomScreen() {
         mediaFilesId: mediaFilesId,
         pollId: pollId,
         tableId: tableId,
-        replyMessageId: replyMessageId
+        replyMessageId: replyMessageId,
+        // Add reply information if this is a reply
+        ...(replyMessageId && replyToMessage && {
+          replySenderName: replyToMessage.senderName,
+          replyMessageText: replyToMessage.messageText,
+          replyMessageType: replyToMessage.messageType
+        })
       };
 
       // Add optimistic message using helper function
@@ -664,13 +670,26 @@ export default function ChatRoomScreen() {
         senderName: currentUser.fullName || "You",
       }));
 
+      // If this is a reply message, add reply information to the message
+      const messagesWithReplyInfo = messagesWithSenderName.map(msg => {
+        if (msg.replyMessageId && replyToMessage) {
+          return {
+            ...msg,
+            replySenderName: replyToMessage.senderName,
+            replyMessageText: replyToMessage.messageText,
+            replyMessageType: replyToMessage.messageType
+          };
+        }
+        return msg;
+      });
+
       // Replace optimistic messages with real ones from the server
       // Remove temp messages and add real ones
       setMessages((prev) => {
         const filteredMessages = prev.filter(
           msg => !(typeof msg.id === 'string' && msg.id.includes('temp'))
         );
-        return [...filteredMessages, ...messagesWithSenderName];
+        return [...filteredMessages, ...messagesWithReplyInfo];
       });
       
       // Update messages set
@@ -787,6 +806,12 @@ export default function ChatRoomScreen() {
     setSelectedMessages([]);
   };
 
+  // Handle reply preview click - scroll to message and add blink effect
+  const handleReplyPreviewClick = (messageId: string | number) => {
+    // Scroll to the message
+    scrollToMessage(messageId);
+  };
+
   const handleCancelReply = () => {
     setReplyToMessage(null);
     setIsReplying(false);
@@ -817,8 +842,8 @@ export default function ChatRoomScreen() {
     
     animation.setValue(limitedTranslation);
     
-    // Trigger haptic feedback when threshold is reached
-    const threshold = 50;
+    // Trigger haptic feedback when threshold is reached (increased threshold for less sensitivity)
+    const threshold = 60; // Increased from 50 to 60
     if (Math.abs(limitedTranslation) > threshold && !hapticTriggered.current.get(messageId)) {
       hapticTriggered.current.set(messageId, true);
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -828,9 +853,10 @@ export default function ChatRoomScreen() {
   const handleGestureEnd = (event: any, message: Message) => {
     const { translationX, velocityX } = event.nativeEvent;
     const animation = getMessageAnimation(message.id);
-    const threshold = 50; // Minimum swipe distance to trigger reply
+    const threshold = 70; // Increased from 50 to 70 for less sensitivity
+    const velocityThreshold = 800; // Increased from 500 to 800 for more intentional swipes
     
-    if (Math.abs(translationX) > threshold || Math.abs(velocityX) > 500) {
+    if (Math.abs(translationX) > threshold || Math.abs(velocityX) > velocityThreshold) {
       // Trigger reply
       handleStartReply(message);
       
@@ -1037,12 +1063,17 @@ export default function ChatRoomScreen() {
 
   // Format date for display
   const formatDateForDisplay = (dateString: string) => {
-    console.log("dateString",dateString);
+    console.log("dateString", dateString);
+    
+    // The dateString is already formatted (e.g., "Oct 2, 2025")
+    // We need to compare it directly with today/yesterday formatted strings
+    
+    // Get current IST date
     const today = new Date();
     const yesterday = new Date(today);
     yesterday.setDate(yesterday.getDate() - 1);
     
-    // Check if the date string is already formatted or if it's a raw date
+    // Format dates in IST for comparison
     const todayIST = formatISTDate(today, { 
       year: 'numeric', 
       month: 'short', 
@@ -1060,12 +1091,14 @@ export default function ChatRoomScreen() {
       hour12: undefined 
     });
     
+    // console.log("Comparing:", { dateString, todayIST, yes/terdayIST });
+    
     if (dateString === todayIST) {
       return "Today";
     } else if (dateString === yesterdayIST) {
       return "Yesterday";
     } else {
-      return dateString; // Already formatted in IST
+      return dateString; // Return the already formatted date string
     }
   };
 
@@ -1140,9 +1173,11 @@ export default function ChatRoomScreen() {
           onCancelled={(event) => handleGestureEnd(event, item)}
           onFailed={(event) => handleGestureEnd(event, item)}
           enabled={!isMessageSelected(item.id)} // Disable swipe when message is selected
-          activeOffsetX={[-10, 10]} // Allow small movements before taking over
-          failOffsetY={[-50, 50]} // Fail gesture if moving too much vertically (preserves scroll)
+          activeOffsetX={[-20, 20]} // Increased from [-10, 10] to require more movement
+          failOffsetY={[-30, 30]} // Reduced from [-50, 50] to allow slight vertical movement
           shouldCancelWhenOutside={true}
+          minPointers={1}
+          maxPointers={1}
         >
           <Animated.View
             style={{
@@ -1192,7 +1227,7 @@ export default function ChatRoomScreen() {
                   ? 'bg-blue-50 border-blue-300' 
                   : 'bg-gray-50 border-gray-400'
               }`}
-              onPress={() => scrollToMessage(item.replyMessageId!)}
+              onPress={() => handleReplyPreviewClick(item.replyMessageId!)}
             >
               <Text className={`text-xs ${
                 isOwnMessage ? 'text-blue-600' : 'text-gray-600'
@@ -1206,7 +1241,17 @@ export default function ChatRoomScreen() {
                 numberOfLines={1}
                 ellipsizeMode="tail"
               >
-                {item.replyMessageText || 'Message'}
+                {(() => {
+                  if (item.replyMessageType === 'media') {
+                    return '📁 Media Files';
+                  } else if (item.replyMessageType === 'poll') {
+                    return '📊 Poll';
+                  } else if (item.replyMessageType === 'table') {
+                    return '📋 Table';
+                  } else {
+                    return item.replyMessageText || 'Message';
+                  }
+                })()}
               </Text>
             </TouchableOpacity>
           )}
@@ -1319,7 +1364,7 @@ export default function ChatRoomScreen() {
                 isOwnMessage ? "text-gray-600" : "text-gray-500"
               }`}
             >
-              {formatISTTime(item.createdAt)}
+              {formatISTTime(item.editedAt || "")}
             </Text>
             {isOwnMessage && (
               <View className="ml-1">

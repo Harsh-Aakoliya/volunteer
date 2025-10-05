@@ -44,6 +44,9 @@ export const formatISTDate = (date: Date | string, options?: Intl.DateTimeFormat
  * Format IST time only
  */
 export const formatISTTime = (date: Date | string): string => {
+  if(date === null || date === undefined || date === ""){
+    return "";
+  }
   const inputDate = typeof date === 'string' ? new Date(date) : date;
   
   return inputDate.toLocaleString('en-US', {
@@ -58,6 +61,9 @@ export const formatISTTime = (date: Date | string): string => {
  * Format IST date only
  */
 export const formatISTDateOnly = (date: Date | string): string => {
+  if(date === null || date === undefined || date === ""){
+    return "";
+  }
   const inputDate = typeof date === 'string' ? new Date(date) : date;
   
   return inputDate.toLocaleDateString('en-US', {
@@ -72,6 +78,9 @@ export const formatISTDateOnly = (date: Date | string): string => {
  * Get relative time in IST context
  */
 export const getRelativeTimeIST = (date: Date | string): string => {
+  if(date === null || date === undefined || date === ""){
+    return "";
+  }
   const inputDate = typeof date === 'string' ? new Date(date) : date;
   const now = new Date();
   

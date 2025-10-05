@@ -919,7 +919,7 @@ const chatController = {
         //first insert the basic message
         let result = await pool.query(
           `INSERT INTO chatmessages ("roomId", "senderId", "messageText","messageType", "replyMessageId", "createdAt")
-          VALUES ($1, $2, $3, $4, $5, NOW() AT TIME ZONE 'Asia/Kolkata')
+          VALUES ($1, $2, $3, $4, $5, NOW() AT TIME ZONE 'UTC')
           RETURNING *`,
           [roomIdInt, senderId, messageText, messageType, replyMessageId]
         );
@@ -1151,13 +1151,14 @@ const chatController = {
       // Update the message
       const updateResult = await pool.query(
         `UPDATE chatmessages 
-        SET "messageText" = $1, "isEdited" = TRUE, "editedAt" = NOW() AT TIME ZONE 'Asia/Kolkata', "editedBy" = $2
+        SET "messageText" = $1, "isEdited" = TRUE, "editedAt" = NOW() AT TIME ZONE 'UTC', "editedBy" = $2
         WHERE "id" = $3 AND "roomId" = $4
         RETURNING *`,
         [messageText.trim(), userId, messageIdInt, roomIdInt]
       );
 
       const updatedMessage = updateResult.rows[0];
+      console.log("updatedMessage",updatedMessage);
 
       // Get sender information
       const senderResult = await pool.query(
@@ -1534,7 +1535,7 @@ const chatController = {
 
       // Get read status for each member
       const readStatusResult = await pool.query(
-        `SELECT mrs."userId", mrs."readAt" AT TIME ZONE 'Asia/Kolkata' as "readAt", u."fullName"
+        `SELECT mrs."userId", mrs."readAt" as "readAt", u."fullName"
          FROM messagereadstatus mrs
          JOIN "users" u ON mrs."userId" = u."userId"
          WHERE mrs."messageId" = $1`,
@@ -1625,9 +1626,9 @@ const chatController = {
       // Insert or update read status
       await pool.query(
         `INSERT INTO messagereadstatus ("messageId", "userId", "roomId", "readAt")
-         VALUES ($1, $2, $3, NOW() AT TIME ZONE 'Asia/Kolkata')
+         VALUES ($1, $2, $3, NOW() AT TIME ZONE 'UTC')
          ON CONFLICT ("messageId", "userId") 
-         DO UPDATE SET "readAt" = NOW() AT TIME ZONE 'Asia/Kolkata'`,
+         DO UPDATE SET "readAt" = NOW() AT TIME ZONE 'UTC'`,
         [messageIdInt, userId, roomId]
       );
 
