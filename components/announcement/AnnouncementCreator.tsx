@@ -175,11 +175,47 @@ export default function AnnouncementCreator({
     editorInitializedRef.current = true;
     setIsEditorReady(true);
 
+    // Inject CSS to fix line spacing
+    if (editor.webviewRef.current) {
+      const cssInjection = `
+        const style = document.createElement('style');
+        style.textContent = \`
+          .ProseMirror {
+            line-height: 1.4 !important;
+          }
+          .ProseMirror p {
+            margin: 0 0 0.5em 0 !important;
+            line-height: 1.4 !important;
+          }
+          .ProseMirror h1, .ProseMirror h2, .ProseMirror h3, .ProseMirror h4, .ProseMirror h5, .ProseMirror h6 {
+            margin: 0.5em 0 0.25em 0 !important;
+            line-height: 1.3 !important;
+          }
+          .ProseMirror ul, .ProseMirror ol {
+            margin: 0.5em 0 !important;
+            padding-left: 1.5em !important;
+          }
+          .ProseMirror li {
+            margin: 0.25em 0 !important;
+            line-height: 1.4 !important;
+          }
+          .ProseMirror br {
+            line-height: 1.4 !important;
+          }
+        \`;
+        document.head.appendChild(style);
+      `;
+      
+      setTimeout(() => {
+        editor.webviewRef.current?.injectJavaScript(cssInjection);
+      }, 100);
+    }
+
     // Set content immediately if needed
     if (memoizedInitialContent && memoizedInitialContent.trim() !== '' && !contentSetRef.current) {
       setEditorContent(memoizedInitialContent);
     }
-  }, [memoizedInitialContent, setEditorContent]);
+  }, [memoizedInitialContent, setEditorContent, editor]);
 
   // Initialize user data and cover image
   useEffect(() => {
@@ -325,6 +361,44 @@ const keyboardHeightRef = useKeyboardHeight();
       }
     }
   }, [memoizedInitialContent, setEditorContent]);
+
+  // Inject CSS when editor is ready
+  useEffect(() => {
+    if (isEditorReady && editor.webviewRef.current) {
+      const cssInjection = `
+        const style = document.createElement('style');
+        style.textContent = \`
+          .ProseMirror {
+            line-height: 1.4 !important;
+          }
+          .ProseMirror p {
+            margin: 0 0 0.5em 0 !important;
+            line-height: 1.4 !important;
+          }
+          .ProseMirror h1, .ProseMirror h2, .ProseMirror h3, .ProseMirror h4, .ProseMirror h5, .ProseMirror h6 {
+            margin: 0.5em 0 0.25em 0 !important;
+            line-height: 1.3 !important;
+          }
+          .ProseMirror ul, .ProseMirror ol {
+            margin: 0.5em 0 !important;
+            padding-left: 1.5em !important;
+          }
+          .ProseMirror li {
+            margin: 0.25em 0 !important;
+            line-height: 1.4 !important;
+          }
+          .ProseMirror br {
+            line-height: 1.4 !important;
+          }
+        \`;
+        document.head.appendChild(style);
+      `;
+      
+      setTimeout(() => {
+        editor.webviewRef.current?.injectJavaScript(cssInjection);
+      }, 200);
+    }
+  }, [isEditorReady, editor]);
 
   const loadExistingAnnouncementData = async () => {
     if (!announcementId || (!isEdit && !isDraft)) return;
@@ -712,16 +786,10 @@ const keyboardHeightRef = useKeyboardHeight();
                   setIsEditorFocused(true);
                   editor.focus();
                 }}
-                style={{
-                  lineHeight: 20, // Reduced line height
-                }}
               >
                 <RichText
                   editor={editor}
                   className="min-h-[300px]"
-                  style={{
-                    lineHeight: 20, // Reduced line height
-                  }}
                 />
               </View>
             </View>

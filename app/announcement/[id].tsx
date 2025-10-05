@@ -13,8 +13,6 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { cssInterop } from "nativewind";
-import { RichEditor } from 'react-native-pell-rich-editor';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import { AuthStorage } from '@/utils/authStorage';
 import { getAnnouncementDetails, markAsRead, toggleLike, deleteAnnouncement } from '@/api/admin';
@@ -25,10 +23,7 @@ import ImageViewer from '@/components/texteditor/ImageViewer';
 import VideoViewer from '@/components/texteditor/VideoViewer';
 import AudioViewer from '@/components/texteditor/AudioViewer';
 import { Announcement, LikedUser, ReadUser } from "@/types/type";
-
-const StyledRichEditor = cssInterop(RichEditor, {
-  className: 'style'
-});
+import { WebView } from 'react-native-webview';
 
 const AnnouncementDetails = () => {
   const params = useLocalSearchParams();
@@ -39,6 +34,7 @@ const AnnouncementDetails = () => {
   const [currentUserId, setCurrentUserId] = useState<string>("");
   const [attachedMediaFiles, setAttachedMediaFiles] = useState<any[]>([]);
   const [isLiking, setIsLiking] = useState(false);
+  const [contentHeight, setContentHeight] = useState(200);
   
   // Media viewer states
   const [imageViewerVisible, setImageViewerVisible] = useState(false);
@@ -301,19 +297,82 @@ const AnnouncementDetails = () => {
           <Text className="text-sm text-gray-500 mb-2">
             By {announcement.authorName} • {formatISTDate(announcement.createdAt, { year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })}  </Text>
           
-          <StyledRichEditor
-            className="bg-white"
-            initialContentHTML={announcement.body}
-            editorStyle={{
-              contentCSSText: `
-                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-                font-size: 16px;
-                margin: 0;
-                border: none;
-                padding: 0;//important
-              `
+          <WebView
+            source={{ html: `
+              <!DOCTYPE html>
+              <html>
+              <head>
+                <meta charset="utf-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <style>
+                  body {
+                    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+                    font-size: 16px;
+                    line-height: 1;
+                    margin: 0;
+                    padding: 0;
+                    color: #374151;
+                  }
+                  p {
+                    margin: 0 0 1em 0;
+                    line-height: 1;
+                  }
+                  h1, h2, h3, h4, h5, h6 {
+                    margin: 0 0 0 0;
+                    line-height: 1;
+                  }
+                  ul, ol {
+                    margin: 0.5em 0;
+                    padding-left: 1.5em;
+                  }
+                  li {
+                    margin: 0.25em 0;
+                    line-height: 1;
+                  }
+                  strong, b {
+                    font-weight: 600;
+                  }
+                  em, i {
+                    font-style: italic;
+                  }
+                </style>
+              </head>
+              <body>
+                ${announcement.body}
+              </body>
+              <script>
+                function sendHeight() {
+                  const height = Math.max(document.body.scrollHeight, document.body.offsetHeight);
+                  window.ReactNativeWebView.postMessage(JSON.stringify({type: 'contentHeight', height: height}));
+                }
+                
+                // Send height when content loads
+                window.addEventListener('load', sendHeight);
+                document.addEventListener('DOMContentLoaded', sendHeight);
+                
+                // Also send height after a short delay to ensure content is fully rendered
+                setTimeout(sendHeight, 100);
+              </script>
+              </html>
+            ` }}
+            style={{ 
+              height: contentHeight, 
+              backgroundColor: 'transparent',
+              marginVertical: 8
             }}
-            disabled
+            scrollEnabled={false}
+            showsVerticalScrollIndicator={false}
+            showsHorizontalScrollIndicator={false}
+            onMessage={(event) => {
+              try {
+                const data = JSON.parse(event.nativeEvent.data);
+                if (data.type === 'contentHeight') {
+                  setContentHeight(data.height + 20); // Add some padding
+                }
+              } catch (error) {
+                console.log('Error parsing WebView message:', error);
+              }
+            }}
           />
         </View>
         </ScrollView>
