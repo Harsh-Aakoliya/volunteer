@@ -23,7 +23,7 @@ interface AnnouncementItemProps {
   onShowLikeDetails?: (announcementId: number) => void;
 }
 
-const   AnnouncementItem: React.FC<AnnouncementItemProps> = ({
+const AnnouncementItem: React.FC<AnnouncementItemProps> = ({
   item,
   currentUserId,
   likingInProgress,
@@ -51,37 +51,36 @@ const   AnnouncementItem: React.FC<AnnouncementItemProps> = ({
   };
 
   return (
-    <View 
-      className={`bg-white mx-4 my-2 rounded-lg shadow-sm border ${
-        isRead 
-          ? 'border-gray-200' 
+    <View
+      className={`bg-white mx-4 my-2 rounded-lg shadow-sm border ${isRead
+          ? 'border-gray-200'
           : 'border-blue-200 shadow-md'
-      }`}
+        }`}
       style={{ height: 120 }}
     >
       {/* Unread indicator */}
       {!isRead && (
         <View className="absolute top-3 right-3 w-3 h-3 bg-blue-500 rounded-full z-10" />
       )}
-      
+
       {/* Horizontal Layout: Cover Image + Content */}
       <View className="flex-row h-full">
         {/* Cover Image - Square on the left */}
-        <TouchableOpacity 
-    onPress={() => {
-        if (!isAnnouncementOpening) {
-            onOpenAnnouncement(item);
-        } 
-    }}
-    disabled={isAnnouncementOpening} // 👈 Disable interaction during navigation
-    className="relative"
->
+        <TouchableOpacity
+          onPress={() => {
+            if (!isAnnouncementOpening) {
+              onOpenAnnouncement(item);
+            }
+          }}
+          disabled={isAnnouncementOpening} // 👈 Disable interaction during navigation
+          className="relative"
+        >
           <View className="w-[120px] h-[120px] bg-gray-200 rounded-l-lg overflow-hidden">
             <RNImage
               key={item.id}
               source={{ uri: imageUri }}
               style={{ width: '100%', height: '100%' }}
-              resizeMode="cover"
+              resizeMode="contain"
               onError={handleImageError}
               onLoadEnd={() => setLoading(false)}
             />
@@ -102,14 +101,13 @@ const   AnnouncementItem: React.FC<AnnouncementItemProps> = ({
             </Text>
 
             {/* Title */}
-            <TouchableOpacity 
+            <TouchableOpacity
               onPress={() => onOpenAnnouncement(item)}
               className="mb-2"
             >
-              <Text 
-                className={`text-sm font-bold ${
-                  isRead ? 'text-gray-700' : 'text-gray-900'
-                }`}
+              <Text
+                className={`text-sm font-bold ${isRead ? 'text-gray-700' : 'text-gray-900'
+                  }`}
                 numberOfLines={2}
                 ellipsizeMode="tail"
               >
@@ -123,7 +121,7 @@ const   AnnouncementItem: React.FC<AnnouncementItemProps> = ({
             {/* Action buttons - Read | Like (only for authors) */}
             {isAuthor && (
               <View className="flex-row items-center">
-                <TouchableOpacity 
+                <TouchableOpacity
                   onPress={() => onShowReadDetails?.(item.id, item.departmentTag)}
                   className="flex-row items-center"
                 >
@@ -131,10 +129,10 @@ const   AnnouncementItem: React.FC<AnnouncementItemProps> = ({
                     Read ({item.readBy?.length || 0})
                   </Text>
                 </TouchableOpacity>
-                
+
                 <Text className="text-gray-400 mx-3 text-sm">|</Text>
-                
-                <TouchableOpacity 
+
+                <TouchableOpacity
                   onPress={() => onShowLikeDetails?.(item.id)}
                   className="flex-row items-center"
                 >
@@ -147,15 +145,15 @@ const   AnnouncementItem: React.FC<AnnouncementItemProps> = ({
 
             {/* Like button for non-authors */}
             {!isAuthor && (
-              <TouchableOpacity 
+              <TouchableOpacity
                 onPress={() => onToggleLike(item.id)}
                 className="flex-row items-center"
                 disabled={likingInProgress.has(item.id)}
               >
-                <Ionicons 
-                  name={isLiked ? "heart" : "heart-outline"} 
-                  size={14} 
-                  color={likingInProgress.has(item.id) ? "#9ca3af" : (isLiked ? "#ef4444" : "#6b7280")} 
+                <Ionicons
+                  name={isLiked ? "heart" : "heart-outline"}
+                  size={14}
+                  color={likingInProgress.has(item.id) ? "#9ca3af" : (isLiked ? "#ef4444" : "#6b7280")}
                 />
                 <Text className="text-xs text-gray-500 ml-1">
                   {isLiked ? 'Liked' : 'Like'}

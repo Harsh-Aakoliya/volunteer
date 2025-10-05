@@ -51,6 +51,7 @@ export const setupChatNotificationListeners = () => {
     const data = response.notification.request.content.data;
     
     console.log('🔔 Notification tapped:', data);
+    console.log("notification data", data);
     
     if (data?.type === 'chat_message') {
       handleChatNotificationTap(data);
@@ -61,17 +62,17 @@ export const setupChatNotificationListeners = () => {
 };
 
 // Handle chat notification tap navigation
-const handleChatNotificationTap = (data: any) => {
+export const handleChatNotificationTap = async (data: any) => {
   try {
     console.log(`🚀 Navigating to chat tab from notification`);
     
     // Always navigate to chat tab (index.tsx) instead of specific room
     // This allows user to see all rooms with unread counts and last messages
-    router.push('/chat');
+    router.push('/(tabs)/chat');
   } catch (error) {
     console.error('Error handling chat notification tap:', error);
     // Fallback navigation
-    router.push('/chat');
+    router.push('/(tabs)/chat');
   }
 };
 

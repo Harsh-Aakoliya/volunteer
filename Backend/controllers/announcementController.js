@@ -8,21 +8,24 @@ const Announcement = {
   create: async (title, body, authorId, status = 'published', departmentTags = []) => {
     // console.log("Body of announcement at backend", body);
     const result = await pool.query(
-      'INSERT INTO "announcements" ("title", "body", "authorId", "status", "updatedAt", "departmentTag") VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, $5) RETURNING *',
+      'INSERT INTO "announcements" ("title", "body", "authorId", "status", "updatedAt", "departmentTag") VALUES ($1, $2, $3, $4, NOW(), $5) RETURNING *',
       [title, body, authorId, status, departmentTags]
     );
     return result.rows[0];
   },
-  
+
+  //this will be called when user clicks on that + icon and then on crate announcement tab
   createDraft: async (authorId, departmentTags = []) => {
     // console.log(path.join(process.cwd()));
     // console.log("defaultCoverImage", defaultCoverImage);
     const result = await pool.query(
-      'INSERT INTO "announcements" ("title", "body", "authorId", "status", "updatedAt", "departmentTag") VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, $5) RETURNING *',
+      'INSERT INTO "announcements" ("title", "body", "authorId", "status", "departmentTag") VALUES ($1, $2, $3, $4, $5) RETURNING *',
       ['', '', authorId, 'draft', departmentTags]
     );
+    console.log("result",result.rows[0]);
     return result.rows[0];
   },
+
   uploadCoverImage: async (req, res) => {
     try {
         const { files, announcementId } = req.body;
@@ -100,14 +103,29 @@ const Announcement = {
         console.error("Error uploading cover image:", error);
         res.status(500).json({ error: "Failed to upload cover image", details: error.message });
     }
-},
+  },
 
+  //this will be called when user is on edit-draft screen and clicks on save draft button
   updateDraft: async (id, title, body, authorId, departmentTags = []) => {
     const result = await pool.query(
-      'UPDATE "announcements" SET "title" = $1, "body" = $2, "departmentTag" = $3, "updatedAt" = CURRENT_TIMESTAMP WHERE "id" = $4 AND "authorId" = $5 AND "status" = $6 RETURNING *',
+      `
+        UPDATE "announcements"
+        SET 
+          "title" = $1,
+          "body" = $2,
+          "departmentTag" = $3,
+          "updatedAt" = (NOW() AT TIME ZONE 'UTC')
+        WHERE 
+          "id" = $4 AND 
+          "authorId" = $5 AND 
+          "status" = $6
+        RETURNING *
+      `,
       [title, body, departmentTags, id, authorId, 'draft']
     );
+    console.log("result",result.rows[0]);
     return result.rows[0];
+    
   },
 
   publishDraft: async (id, title, body, authorId, departmentTags = []) => {
@@ -125,7 +143,20 @@ const Announcement = {
     
     // Update the draft to published while preserving the original createdAt
     const result = await pool.query(
-      'UPDATE "announcements" SET "title" = $1, "body" = $2, "departmentTag" = $3, "status" = $4, "createdAt" = $5, "updatedAt" = CURRENT_TIMESTAMP WHERE "id" = $6 AND "authorId" = $7 RETURNING *',
+      `
+        UPDATE "announcements"
+        SET 
+          "title" = $1,
+          "body" = $2,
+          "departmentTag" = $3,
+          "status" = $4,
+          "createdAt" = $5,
+          "updatedAt" = (NOW() AT TIME ZONE 'UTC')
+        WHERE 
+          "id" = $6 AND 
+          "authorId" = $7
+        RETURNING *
+      `,
       [title, body, departmentTags, 'published', originalCreatedAt, id, authorId]
     );
     return result.rows[0];
@@ -139,6 +170,7 @@ const Announcement = {
     return result.rows;
   },
 
+  //this will be called when user clicks on delete draft button
   deleteDraft: async (id, authorId) => {
     const result = await pool.query(
       'DELETE FROM "announcements" WHERE "id" = $1 AND "authorId" = $2 AND "status" = $3 RETURNING *',
@@ -593,7 +625,7 @@ export const updateAnnouncementController = async (req, res) => {
     
     // Update the announcement
     const result = await pool.query(
-      'UPDATE "announcements" SET "title" = $1, "body" = $2, "departmentTag" = $3, "updatedAt" = CURRENT_TIMESTAMP WHERE "id" = $4 RETURNING *',
+      'UPDATE "announcements" SET "title" = $1, "body" = $2, "departmentTag" = $3, "updatedAt" = NOW() AT TIME ZONE \'Asia/Kolkata\' WHERE "id" = $4 RETURNING *',
       [title, body, departmentTags, id]
     );
     
@@ -672,6 +704,7 @@ export const updateDraftController = async (req, res) => {
   }
 };
 
+//this will be called when user is on edit draft screen and clicks on preview -> publish button
 export const publishDraftController = async (req, res) => {
   try {
     const { id } = req.params;

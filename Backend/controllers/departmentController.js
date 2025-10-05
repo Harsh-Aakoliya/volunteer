@@ -78,7 +78,6 @@ export const getAllUsers = async (req, res) => {
         u."isAdmin",
         u."xetra",
         u."mandal",
-        u."role",
         u."departments",
         u."departmentIds"
       FROM "users" u
@@ -315,7 +314,6 @@ export const getDepartmentUsers = async (req, res) => {
         u."isAdmin",
         u."xetra",
         u."mandal",
-        u."role",
         u."departments",
         u."departmentIds"
       FROM "users" u

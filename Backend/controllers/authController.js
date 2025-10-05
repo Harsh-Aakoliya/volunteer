@@ -29,6 +29,7 @@ const register = async (req, res) => {
         `INSERT INTO "users" ("mobileNumber", "userId", "fullName") VALUES ($1, $2, $3) RETURNING *`,
         [mobileNumber, userId, fullName]
       );
+      console.log("result",result.rows);
       console.log("inserted successfully");
       res.json({
         success: true,

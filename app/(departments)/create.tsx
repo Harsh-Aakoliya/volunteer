@@ -92,11 +92,6 @@ export default function CreateDepartmentPage() {
       return false;
     }
 
-    if (name.trim().length < 3) {
-      setNameError('Department name must be at least 3 characters');
-      return false;
-    }
-
     try {
       const exists = await checkDepartmentNameExists(name.trim());
       if (exists) {
@@ -237,7 +232,10 @@ export default function CreateDepartmentPage() {
       </View>
     );
   }
-
+  const handleDepartmentNameChange = (text: string) => {
+    setDepartmentName(text);
+    setNameError('');
+  };
   // filteredUsers already contains only unassigned users
   const availableUsers = filteredUsers;
 
@@ -262,7 +260,7 @@ export default function CreateDepartmentPage() {
           <Text className="text-lg font-bold text-gray-800 mb-3">Department Name</Text>
           <TextInput
             value={departmentName}
-            onChangeText={setDepartmentName}
+            onChangeText={handleDepartmentNameChange}
             onBlur={() => validateDepartmentName(departmentName)}
             placeholder="Enter department name"
             className="border border-gray-200 rounded-xl px-4 py-3 text-gray-800"

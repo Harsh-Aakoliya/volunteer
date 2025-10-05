@@ -133,7 +133,7 @@ export default function LoginForm() {
             <View className="flex-row justify-between items-center">
               <View>
                 <Text className="text-3xl text-gray-800 font-JakartaBold">
-                  Welcome Back again
+                  Welcome Back version 1.0.17
                 </Text>
                 <TouchableOpacity onPress={handleLoginToContinuePress}>
                   <Text className="text-gray-600 font-JakartaMedium mt-2">

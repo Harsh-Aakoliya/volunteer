@@ -20,7 +20,7 @@ const createChatRoomsTable = async (client) => {
           "roomId" SERIAL PRIMARY KEY,
           "roomName" VARCHAR(255) NOT NULL,
           "roomDescription" TEXT,
-          "createdOn" TIMESTAMP WITH TIME ZONE DEFAULT (NOW() AT TIME ZONE 'Asia/Kolkata'),
+          "createdOn" TIMESTAMPTZ DEFAULT (NOW() AT TIME ZONE 'UTC'),
           "isGroup" BOOLEAN DEFAULT FALSE,
           "createdBy" VARCHAR(50)
       );
@@ -53,7 +53,7 @@ const createChatRoomUsersTable = async (client) => {
           "userId" VARCHAR(50),
           "isAdmin" BOOLEAN DEFAULT FALSE,
           "canSendMessage" BOOLEAN DEFAULT TRUE,
-          "joinedAt" TIMESTAMP WITH TIME ZONE DEFAULT (NOW() AT TIME ZONE 'Asia/Kolkata')
+          "joinedAt" TIMESTAMPTZ DEFAULT (NOW() AT TIME ZONE 'UTC')
       );
     `);
     console.log("Chatroomusers table created successfully");
@@ -83,75 +83,20 @@ const createChatMessagesTable = async (client) => {
           "roomId" INTEGER,
           "senderId" VARCHAR(50),
           "messageText" TEXT NOT NULL,
-          "createdAt" TIMESTAMP WITH TIME ZONE DEFAULT (NOW() AT TIME ZONE 'Asia/Kolkata'),
+          "createdAt" TIMESTAMPTZ DEFAULT (NOW() AT TIME ZONE 'UTC'),
           "messageType" "messageType" NOT NULL DEFAULT 'text',
           "pollId" INTEGER,
           "mediaFilesId" INTEGER,
           "tableId" INTEGER,
           "isEdited" BOOLEAN DEFAULT FALSE,
-          "editedAt" TIMESTAMP WITH TIME ZONE,
-          "editedBy" VARCHAR(50)
+          "editedAt" TIMESTAMPTZ DEFAULT (NOW() AT TIME ZONE 'UTC'),
+          "editedBy" VARCHAR(50),
+          "replyMessageId" INTEGER
       );
     `);
     console.log("Chatmessages table created successfully");
   } catch (error) {
     console.error("Error while creating chatmessages table:", error);
-    throw error;
-  }
-};
-
-const addEditColumnsIfNotExists = async (client) => {
-  try {
-    // Check if isEdited column exists
-    const isEditedCheck = await client.query(`
-      SELECT column_name 
-      FROM information_schema.columns 
-      WHERE table_name = 'chatmessages' AND column_name = 'isEdited'
-    `);
-    
-    if (isEditedCheck.rows.length === 0) {
-      console.log("Adding edit-related columns to chatmessages table...");
-      
-      await client.query(`
-        ALTER TABLE chatmessages 
-        ADD COLUMN "isEdited" BOOLEAN DEFAULT FALSE,
-        ADD COLUMN "editedAt" TIMESTAMP WITH TIME ZONE,
-        ADD COLUMN "editedBy" VARCHAR(50)
-      `);
-      
-      console.log("Edit-related columns added successfully");
-    } else {
-      console.log("Edit-related columns already exist in chatmessages table");
-    }
-  } catch (error) {
-    console.error("Error adding edit columns:", error);
-    throw error;
-  }
-};
-
-const addReplyColumnIfNotExists = async (client) => {
-  try {
-    // Check if replyMessageId column exists
-    const replyCheck = await client.query(`
-      SELECT column_name 
-      FROM information_schema.columns 
-      WHERE table_name = 'chatmessages' AND column_name = 'replyMessageId'
-    `);
-    
-    if (replyCheck.rows.length === 0) {
-      console.log("Adding reply column to chatmessages table...");
-      
-      await client.query(`
-        ALTER TABLE chatmessages 
-        ADD COLUMN "replyMessageId" INTEGER
-      `);
-      
-      console.log("Reply column added successfully");
-    } else {
-      console.log("Reply column already exists in chatmessages table");
-    }
-  } catch (error) {
-    console.error("Error adding reply column:", error);
     throw error;
   }
 };
@@ -175,7 +120,7 @@ const createMessageReadStatusTable = async (client) => {
           "id" SERIAL PRIMARY KEY,
           "messageId" INTEGER NOT NULL,
           "userId" VARCHAR(50) NOT NULL,
-          "readAt" TIMESTAMP WITH TIME ZONE DEFAULT (NOW() AT TIME ZONE 'Asia/Kolkata'),
+          "readAt" TIMESTAMPTZ DEFAULT (NOW() AT TIME ZONE 'UTC'),
           "roomId" INTEGER NOT NULL,
           UNIQUE("messageId", "userId"),
           FOREIGN KEY ("messageId") REFERENCES chatmessages("id") ON DELETE CASCADE,
@@ -189,20 +134,40 @@ const createMessageReadStatusTable = async (client) => {
   }
 };
 
+const createMessageTypeTable = async (client) => {
+  try {
+    const tableCheck = await client.query(`
+      SELECT EXISTS (
+          SELECT 1
+          FROM pg_type
+          WHERE typname = 'messageType'
+      );
+
+    `);
+    if (tableCheck) {
+      console.log("MessageType table already exists");
+      return;
+    }
+
+    await client.query(`
+      create type "messageType" as enum('text', 'media', 'poll', 'table');  
+    `);
+    console.log("MessageType table created successfully");
+  } catch (error) {
+    console.error("Error while creating messageType table:", error);
+    throw error;
+  }
+};
+
 const initChatDB = async () => {
   const client = await pool.connect();
   try {
     // Create tables in sequence due to dependencies
+    await createMessageTypeTable(client);
     await createChatRoomsTable(client);
     await createChatRoomUsersTable(client);
     await createChatMessagesTable(client);
     await createMessageReadStatusTable(client);
-    
-    // Add edit columns to existing tables
-    await addEditColumnsIfNotExists(client);
-    
-    // Add reply column to existing tables
-    await addReplyColumnIfNotExists(client);
     
     console.log("All chat-related tables initialization completed");
   } catch (error) {

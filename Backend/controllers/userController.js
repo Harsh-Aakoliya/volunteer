@@ -96,11 +96,9 @@ const getUserProfile = async (req, res) => {
         "mobileNumber", 
         "fullName", 
         "xetra", 
-        "mandal", 
-        "role",
+        "mandal",
         "departments",
         "departmentIds",
-        "subdepartmentIds",
         "totalSabha", 
         "presentCount", 
         "absentCount", 
@@ -570,7 +568,7 @@ const getSearchFilters = async (req, res) => {
     const isKaryalay = requester.isAdmin && userDepartments.includes('Karyalay');
 
     let departments = [];
-    let subdepartments = [];
+    // let subdepartments = [];
 
     if (isKaryalay) {
       // Karyalay can see ALL departments (they are HOD of all departments)
@@ -581,17 +579,17 @@ const getSearchFilters = async (req, res) => {
       `);
       departments = deptResult.rows;
 
-      // Get all subdepartments for these departments
-      if (departments.length > 0) {
-        const deptIds = departments.map(d => d.departmentId);
-        const subdeptResult = await pool.query(`
-          SELECT "subdepartmentId", "subdepartmentName", "departmentId"
-          FROM "subdepartments" 
-          WHERE "departmentId" = ANY($1)
-          ORDER BY "subdepartmentName" ASC
-        `, [deptIds]);
-        subdepartments = subdeptResult.rows;
-      }
+      // // Get all subdepartments for these departments
+      // if (departments.length > 0) {
+      //   const deptIds = departments.map(d => d.departmentId);
+      //   const subdeptResult = await pool.query(`
+      //     SELECT "subdepartmentId", "subdepartmentName", "departmentId"
+      //     FROM "subdepartments" 
+      //     WHERE "departmentId" = ANY($1)
+      //     ORDER BY "subdepartmentName" ASC
+      //   `, [deptIds]);
+      //   subdepartments = subdeptResult.rows;
+      // }
     } else {
       // HOD can only see departments where they are designated as HOD
       const hodDepartmentsResult = await pool.query(`
@@ -603,22 +601,21 @@ const getSearchFilters = async (req, res) => {
       
       departments = hodDepartmentsResult.rows;
 
-      // Get subdepartments for these departments
-      if (departments.length > 0) {
-        const deptIds = departments.map(d => d.departmentId);
-        const subdeptResult = await pool.query(`
-          SELECT "subdepartmentId", "subdepartmentName", "departmentId"
-          FROM "subdepartments" 
-          WHERE "departmentId" = ANY($1)
-          ORDER BY "subdepartmentName" ASC
-        `, [deptIds]);
-        subdepartments = subdeptResult.rows;
-      }
+      // // Get subdepartments for these departments
+      // if (departments.length > 0) {
+      //   const deptIds = departments.map(d => d.departmentId);
+      //   const subdeptResult = await pool.query(`
+      //     SELECT "subdepartmentId", "subdepartmentName", "departmentId"
+      //     FROM "subdepartments" 
+      //     WHERE "departmentId" = ANY($1)
+      //     ORDER BY "subdepartmentName" ASC
+      //   `, [deptIds]);
+      //   subdepartments = subdeptResult.rows;
+      // }
     }
 
     res.json({
       departments,
-      subdepartments,
       userRole: {
         isKaryalay,
         isHOD: requester.isAdmin && !isKaryalay
@@ -840,47 +837,46 @@ const updateUserWithSubdepartments = async (req, res) => {
         "mobileNumber" = $2,
         "departmentIds" = $3,
         "departments" = $4,
-        "subdepartmentIds" = $5,
-        "isAdmin" = $6,
-        "gender" = $7,
-        "dateOfBirth" = $8,
-        "bloodGroup" = $9,
-        "maritalStatus" = $10,
-        "education" = $11,
-        "whatsappNumber" = $12,
-        "emergencyContact" = $13,
-        "email" = $14,
-        "address" = $15
-       WHERE "userId" = $16 
+        "isAdmin" = $5,
+        "gender" = $6,
+        "dateOfBirth" = $7,
+        "bloodGroup" = $8,
+        "maritalStatus" = $9,
+        "education" = $10,
+        "whatsappNumber" = $11,
+        "emergencyContact" = $12,
+        "email" = $13,
+        "address" = $14
+       WHERE "userId" = $15 
        RETURNING *`,
-      [fullName, mobileNumber, departmentIds, departmentNames, subdepartmentIds, isAdmin,
+      [fullName, mobileNumber, departmentIds, departmentNames, isAdmin,
        gender, formattedDateOfBirth, bloodGroup, maritalStatus, education, whatsappNumber, 
        emergencyContact, email, address, userId]
     );
 
     // Update subdepartment user lists
-    if (subdepartmentIds.length > 0) {
-      // Remove user from all subdepartments first
-      await client.query(`
-        UPDATE "subdepartments" 
-        SET "userList" = array_remove("userList", $1)
-        WHERE "userList" @> ARRAY[$1]
-      `, [userId]);
+    // if (subdepartmentIds.length > 0) {
+    //   // Remove user from all subdepartments first
+    //   await client.query(`
+    //     UPDATE "subdepartments" 
+    //     SET "userList" = array_remove("userList", $1)
+    //     WHERE "userList" @> ARRAY[$1]
+    //   `, [userId]);
 
-      // Add user to selected subdepartments
-      await client.query(`
-        UPDATE "subdepartments" 
-        SET "userList" = array_append("userList", $1)
-        WHERE "subdepartmentId" = ANY($2) AND NOT ("userList" @> ARRAY[$1])
-      `, [userId, subdepartmentIds]);
-    } else {
-      // Remove user from all subdepartments if none selected
-      await client.query(`
-        UPDATE "subdepartments" 
-        SET "userList" = array_remove("userList", $1)
-        WHERE "userList" @> ARRAY[$1]
-      `, [userId]);
-    }
+    //   // Add user to selected subdepartments
+    //   await client.query(`
+    //     UPDATE "subdepartments" 
+    //     SET "userList" = array_append("userList", $1)
+    //     WHERE "subdepartmentId" = ANY($2) AND NOT ("userList" @> ARRAY[$1])
+    //   `, [userId, subdepartmentIds]);
+    // } else {
+    //   // Remove user from all subdepartments if none selected
+    //   await client.query(`
+    //     UPDATE "subdepartments" 
+    //     SET "userList" = array_remove("userList", $1)
+    //     WHERE "userList" @> ARRAY[$1]
+    //   `, [userId]);
+    // }
 
     await client.query('COMMIT');
     

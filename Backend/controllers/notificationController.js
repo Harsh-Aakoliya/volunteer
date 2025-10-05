@@ -21,7 +21,7 @@ export const storeNotificationToken = async (req, res) => {
     if (existingToken.rows.length > 0) {
       // Update existing token
       const result = await pool.query(
-        'UPDATE "notification_tokens" SET "token" = $1, "deviceInfo" = $2, "isActive" = TRUE, "updatedAt" = CURRENT_TIMESTAMP WHERE "userId" = $3 AND "tokenType" = $4 RETURNING *',
+        'UPDATE "notification_tokens" SET "token" = $1, "deviceInfo" = $2, "isActive" = TRUE, "updatedAt" = NOW() AT TIME ZONE \'Asia/Kolkata\' WHERE "userId" = $3 AND "tokenType" = $4 RETURNING *',
         [token, deviceInfo, userId, tokenType]
       );
       res.json({ success: true, message: 'Token updated successfully', data: result.rows[0] });
@@ -49,7 +49,7 @@ export const deleteNotificationToken = async (req, res) => {
     }
 
     const result = await pool.query(
-      'UPDATE "notification_tokens" SET "isActive" = FALSE, "updatedAt" = CURRENT_TIMESTAMP WHERE "userId" = $1 AND "tokenType" = $2 RETURNING *',
+      'UPDATE "notification_tokens" SET "isActive" = FALSE, "updatedAt" = NOW() AT TIME ZONE \'Asia/Kolkata\' WHERE "userId" = $1 AND "tokenType" = $2 RETURNING *',
       [userId, tokenType]
     );
 
@@ -204,7 +204,7 @@ export const sendAnnouncementNotifications = async (announcementId, authorId, au
           type: 'announcement',
           announcementId: announcementId.toString(),
           authorId,
-          route: 'announcement'
+          route: `announcement/${announcementId}`
         }
       );
       totalSent += departmentNotificationResult.sentCount || 0;
@@ -219,7 +219,7 @@ export const sendAnnouncementNotifications = async (announcementId, authorId, au
       {
         type: 'announcement_published',
         announcementId: announcementId.toString(),
-        route: 'announcement'
+        route: `announcement/${announcementId}`
       }
     );
     totalSent += authorNotificationResult.sentCount || 0;
@@ -233,23 +233,6 @@ export const sendAnnouncementNotifications = async (announcementId, authorId, au
   } catch (error) {
     console.error('Error sending announcement notifications:', error);
     return { success: false, error: error.message };
-  }
-};
-
-// Test notification endpoint
-export const sendTestNotification = async (req, res) => {
-  try {
-    const { userId, title, body } = req.body;
-
-    if (!userId || !title || !body) {
-      return res.status(400).json({ error: 'UserId, title, and body are required' });
-    }
-
-    const result = await sendNotificationToUsers([userId], title, body, { type: 'test' });
-    res.json(result);
-  } catch (error) {
-    console.error('Error sending test notification:', error);
-    res.status(500).json({ error: 'Failed to send test notification' });
   }
 };
 
@@ -271,7 +254,7 @@ export const sendAuthorUpdateNotification = async (announcementId, authorId, aut
         type: 'announcement',
         announcementId: announcementId.toString(),
         authorId,
-        route: 'announcement',
+        route: `announcement/${announcementId}`,
         notificationType: 'update'
       }
     );

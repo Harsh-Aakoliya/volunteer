@@ -32,7 +32,7 @@ export default function DepartmentDetailPage() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const [department, setDepartment] = useState<Department | null>(null);
   const [departmentUsers, setDepartmentUsers] = useState<DepartmentUser[]>([]);
-  const [subdepartments, setSubdepartments] = useState<Subdepartment[]>([]);
+  // const [subdepartments, setSubdepartments] = useState<Subdepartment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -68,14 +68,13 @@ export default function DepartmentDetailPage() {
       if (showLoader) setIsLoading(true);
       setError(null);
 
-      const [departmentData, allUsers, subdepartmentData] = await Promise.all([
+      const [departmentData, allUsers] = await Promise.all([
         fetchDepartmentById(id),
         fetchAllUsers(),
-        fetchSubdepartments(id)
       ]);
 
       setDepartment(departmentData);
-      setSubdepartments(subdepartmentData);
+      // setSubdepartments(subdepartmentData);
       
       // Filter users that belong to this department
       const usersInDepartment = allUsers.filter(user => 
@@ -103,139 +102,6 @@ export default function DepartmentDetailPage() {
   const handleRefresh = () => {
     setIsRefreshing(true);
     loadDepartmentData(false);
-  };
-
-  const handleRemoveUser = (user: DepartmentUser) => {
-    Alert.alert(
-      'Remove User',
-      `Are you sure you want to remove ${user.fullName} from this department?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Remove',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await removeUserFromDepartment(id, user.userId);
-              await loadDepartmentData(false);
-              Alert.alert('Success', 'User removed successfully');
-            } catch (error) {
-              Alert.alert('Error', 'Failed to remove user');
-            }
-          },
-        },
-      ]
-    );
-  };
-
-  const handleCreateSubdepartment = async () => {
-    if (!newSubdeptName.trim()) {
-      Alert.alert('Error', 'Please enter a subdepartment name');
-      return;
-    }
-
-    if (selectedSubdeptUsers.length === 0) {
-      Alert.alert('Error', 'Please select at least one user for the subdepartment');
-      return;
-    }
-
-    // Check for duplicate names (excluding current subdepartment when editing)
-    const existingSubdept = subdepartments.find(subdept => 
-      subdept.subdepartmentName.toLowerCase() === newSubdeptName.trim().toLowerCase() &&
-      subdept.subdepartmentId !== editingSubdept?.subdepartmentId
-    );
-
-    if (existingSubdept) {
-      Alert.alert('Error', 'A subdepartment with this name already exists');
-      return;
-    }
-
-    try {
-      setIsCreatingSubdept(true);
-      
-      if (editingSubdept) {
-        // Update existing subdepartment
-        await updateSubdepartment(id, editingSubdept.subdepartmentId, {
-          subdepartmentName: newSubdeptName.trim(),
-          userList: selectedSubdeptUsers.map(user => user.userId)
-        });
-        Alert.alert('Success', 'Subdepartment updated successfully');
-      } else {
-        // Create new subdepartment
-        await createSubdepartment(id, {
-          subdepartmentName: newSubdeptName.trim(),
-          userList: selectedSubdeptUsers.map(user => user.userId)
-        });
-        Alert.alert('Success', 'Subdepartment created successfully');
-      }
-
-      setShowCreateSubdeptModal(false);
-      setNewSubdeptName('');
-      setSelectedSubdeptUsers([]);
-      setEditingSubdept(null);
-      await loadDepartmentData(false);
-    } catch (error) {
-      Alert.alert('Error', editingSubdept ? 'Failed to update subdepartment' : 'Failed to create subdepartment');
-    } finally {
-      setIsCreatingSubdept(false);
-    }
-  };
-
-  const handleDeleteSubdepartment = (subdepartment: Subdepartment) => {
-    Alert.alert(
-      'Delete Subdepartment',
-      `Are you sure you want to delete "${subdepartment.subdepartmentName}"? This action cannot be undone.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await deleteSubdepartment(id, subdepartment.subdepartmentId);
-              await loadDepartmentData(false);
-              Alert.alert('Success', 'Subdepartment deleted successfully');
-            } catch (error) {
-              Alert.alert('Error', 'Failed to delete subdepartment');
-            }
-          },
-        },
-      ]
-    );
-  };
-
-  const toggleUserSelection = (user: DepartmentUser) => {
-    setSelectedSubdeptUsers(prev => {
-      const isSelected = prev.some(u => u.userId === user.userId);
-      if (isSelected) {
-        return prev.filter(u => u.userId !== user.userId);
-      } else {
-        return [...prev, user];
-      }
-    });
-  };
-
-  const toggleSubdepartmentExpansion = (subdeptId: string) => {
-    setExpandedSubdepts(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(subdeptId)) {
-        newSet.delete(subdeptId);
-      } else {
-        newSet.add(subdeptId);
-      }
-      return newSet;
-    });
-  };
-
-  const handleEditSubdepartment = (subdepartment: Subdepartment) => {
-    setEditingSubdept(subdepartment);
-    setNewSubdeptName(subdepartment.subdepartmentName);
-    // Set selected users for this subdepartment
-    const subdeptUsers = departmentUsers.filter(user => 
-      subdepartment.userList.includes(user.userId)
-    );
-    setSelectedSubdeptUsers(subdeptUsers);
-    setShowCreateSubdeptModal(true);
   };
 
   const handleViewUser = (user: DepartmentUser) => {

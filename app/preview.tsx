@@ -20,12 +20,15 @@ import { VideoView, useVideoPlayer } from 'expo-video';
 import { publishDraft, updateAnnouncement } from '@/api/admin';
 import { AuthStorage } from '@/utils/authStorage';
 import { API_URL } from '@/constants/api';
+import { formatISTDate } from '@/utils/dateUtils';
 import ImageViewer from '@/components/texteditor/ImageViewer';
 import VideoViewer from '@/components/texteditor/VideoViewer';
 import AudioViewer from '@/components/texteditor/AudioViewer';
-
 // Tentap editor doesn't need cssInterop
-
+import { RichEditor } from 'react-native-pell-rich-editor';
+const StyledRichEditor = cssInterop(RichEditor, {
+  className: 'style'
+});
 const AnnouncementPreviewScreen = () => {
   const params = useLocalSearchParams();
   const [isPublishing, setIsPublishing] = useState(false);
@@ -62,6 +65,15 @@ const AnnouncementPreviewScreen = () => {
   });
 
   const handleBackToEdit = () => {
+    console.log("announcementId", announcementId);
+    console.log("title", title);
+    console.log("content", content);
+    console.log("announcementMode", announcementMode);
+    console.log("departmentTags", departmentTags);
+    console.log("attachedMediaFiles", attachedMediaFiles);
+    console.log("hasCoverImage", params.hasCoverImage);
+    console.log("authorName", authorName);
+    
     // Navigate back to create-announcement with current content preserved
     router.replace({
       pathname: "../create-announcement",
@@ -72,7 +84,6 @@ const AnnouncementPreviewScreen = () => {
         announcementMode: announcementMode,
         hasCoverImage: params.hasCoverImage || 'false',
         departmentTags: JSON.stringify(departmentTags),
-        preserveContent: 'true' // Flag to indicate content should be preserved
       }
     });
   };
@@ -182,32 +193,32 @@ const AnnouncementPreviewScreen = () => {
 
       {/* Scrollable Preview Content */}
       <ScrollView className="flex-1" showsVerticalScrollIndicator={true}>
-        {/* Title */}
-        <View className="px-4 py-4">
-          <Text className="text-2xl font-bold text-gray-900 mb-3">
-            {title}
-          </Text>
+        <View className="px-4 py-2">
+          <Text className="text-2xl font-bold text-gray-900 mb-1">{title}</Text>
+          <Text className="text-sm text-gray-500 mb-2">
+            By {authorName} • {formatISTDate(new Date(), { year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })}  </Text>
           
-          {/* Author and Date */}
-          <Text className="text-sm text-gray-500 mb-4">
-            By {authorName} • {new Date().toLocaleDateString('en-US', {
-              year: 'numeric',
-              month: 'long',
-              day: 'numeric',
-            })}
-          </Text>
-        </View>
+            <StyledRichEditor
+              className="bg-white"
+              initialContentHTML={content}
+              editorStyle={{
+                contentCSSText: `
+                  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+                  font-size: 16px;
+                  margin: 0;
+                  border: none;
+                  padding: 0;
+                `,
+                cssText: `
+                  p {
+                    margin-top: 0;
+                    margin-bottom: 0.5em; /* about one line of spacing */
+                  }
+                `
+              }}
+              disabled
+            />
 
-        {/* Content */}
-        <View className="px-4 pb-4">
-          <View className="min-h-40">
-            <View style={{ minHeight: 200, borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 8 }}>
-              <RichText
-                editor={editor}
-                style={{ minHeight: 200 }}
-              />
-            </View>
-          </View>
         </View>
 
         {/* Attached Media Files */}

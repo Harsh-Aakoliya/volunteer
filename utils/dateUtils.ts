@@ -37,7 +37,7 @@ export const formatISTDate = (date: Date | string, options?: Intl.DateTimeFormat
     hour12: true
   };
   
-  return inputDate.toLocaleString('en-IN', { ...defaultOptions, ...options });
+  return inputDate.toLocaleString('en-US', { ...defaultOptions, ...options });
 };
 
 /**
@@ -46,7 +46,7 @@ export const formatISTDate = (date: Date | string, options?: Intl.DateTimeFormat
 export const formatISTTime = (date: Date | string): string => {
   const inputDate = typeof date === 'string' ? new Date(date) : date;
   
-  return inputDate.toLocaleString('en-IN', {
+  return inputDate.toLocaleString('en-US', {
     timeZone: 'Asia/Kolkata',
     hour: '2-digit',
     minute: '2-digit',
@@ -60,7 +60,7 @@ export const formatISTTime = (date: Date | string): string => {
 export const formatISTDateOnly = (date: Date | string): string => {
   const inputDate = typeof date === 'string' ? new Date(date) : date;
   
-  return inputDate.toLocaleDateString('en-IN', {
+  return inputDate.toLocaleDateString('en-US', {
     timeZone: 'Asia/Kolkata',
     year: 'numeric',
     month: 'short',

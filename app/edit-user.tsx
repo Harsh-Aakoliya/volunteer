@@ -234,7 +234,6 @@ export default function EditUserScreen() {
     }
   };
 
-
   // Save user changes
   const handleSaveUser = async () => {
     try {

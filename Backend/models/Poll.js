@@ -25,10 +25,10 @@ const createPollTable = async () => {
             "votes" JSONB,
             "roomId" INTEGER,
             "isActive" BOOLEAN DEFAULT TRUE,
-            "pollEndTime" TIMESTAMP WITH TIME ZONE,
+            "pollEndTime" TIMESTAMPTZ DEFAULT (NOW() AT TIME ZONE 'UTC'),
             "isMultipleChoiceAllowed" BOOLEAN DEFAULT FALSE,
             "createdBy" VARCHAR(50),
-            "createdAt" TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            "createdAt" TIMESTAMPTZ DEFAULT (NOW() AT TIME ZONE 'UTC')
         );
     `);
     console.log("Poll table created successfully");

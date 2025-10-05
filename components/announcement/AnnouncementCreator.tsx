@@ -1,5 +1,5 @@
 //AnnouncementCreator.tsx
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo  } from 'react';
 import {
   View,
   Text,
@@ -14,7 +14,7 @@ import {
   ActivityIndicator,
   Modal
 } from 'react-native';
-import { RichText, Toolbar, useEditorBridge } from '@10play/tentap-editor';
+import { RichText, Toolbar, useEditorBridge, DEFAULT_TOOLBAR_ITEMS } from '@10play/tentap-editor';
 import { cssInterop } from "nativewind";
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
@@ -22,10 +22,10 @@ import * as FileSystem from 'expo-file-system';
 import Checkbox from 'expo-checkbox';
 import WebView from 'react-native-webview';
 import axios from 'axios';
-
 // Import utilities and components
 import { AuthStorage } from '@/utils/authStorage';
 import { API_URL } from '@/constants/api';
+import { formatISTDate } from '@/utils/dateUtils';
 import AnnouncementMediaUploader from '@/components/texteditor/AnnouncementMediaUploader';
 import { router } from 'expo-router';
 
@@ -37,6 +37,29 @@ import {
   updateAnnouncement,
   getAnnouncementDetails
 } from '@/api/admin';
+
+// Filter default toolbar items to only include allowed buttons
+// Keep: Bold, Italic, Underline, Headings (Aa), Strikethrough, Ordered List, Unordered List, Indent, Outdent, Undo, Redo
+// Remove: Link, Task List, Code, Blockquote
+const allowedToolbarItems = DEFAULT_TOOLBAR_ITEMS.filter((_, index) => {
+  // Based on DEFAULT_TOOLBAR_ITEMS array:
+  // 0: Bold ✓
+  // 1: Italic ✓  
+  // 2: Link ✗
+  // 3: Task List ✗
+  // 4: Headings (Aa) ✓
+  // 5: Code ✗
+  // 6: Underline ✓
+  // 7: Strikethrough ✓
+  // 8: Blockquote ✗
+  // 9: Ordered List ✓
+  // 10: Unordered List ✓
+  // 11: Indent ✓
+  // 12: Outdent ✓
+  // 13: Undo ✓
+  // 14: Redo ✓
+  return [0, 1, 4, 6, 7, 9, 10, 11, 12, 13, 14].includes(index);
+});
 
 // Tentap Editor doesn't need forwarded refs like react-native-pell-rich-editor
 
@@ -68,13 +91,7 @@ export default function AnnouncementCreator({
   initialDepartmentTags = [],
   onExit
 }: AnnouncementCreatorProps) {
-  // console.log("initialTitle", initialTitle);
-  // console.log("initialContent", initialContent);
   // console.log("announcementMode", announcementMode);
-  // console.log("hasCoverImage", initialHasCoverImage);
-  // console.log("initialDepartmentTags", initialDepartmentTags);
-  // console.log("onExit", onExit);
-
   // Memoize initial values to prevent unnecessary re-renders
   const memoizedInitialContent = useMemo(() => initialContent, []);
   const memoizedInitialTitle = useMemo(() => initialTitle, []);
@@ -105,6 +122,7 @@ export default function AnnouncementCreator({
   const [coverImageUri, setCoverImageUri] = useState('');
   const [isUploadingCover, setIsUploadingCover] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [coverImageLoading, setCoverImageLoading] = useState(true);
 
   // Media files states
   const [attachedMediaFiles, setAttachedMediaFiles] = useState<any[]>([]);
@@ -157,11 +175,9 @@ export default function AnnouncementCreator({
     editorInitializedRef.current = true;
     setIsEditorReady(true);
 
-    // Set content if needed
+    // Set content immediately if needed
     if (memoizedInitialContent && memoizedInitialContent.trim() !== '' && !contentSetRef.current) {
-      setTimeout(() => {
-        setEditorContent(memoizedInitialContent);
-      }, 100);
+      setEditorContent(memoizedInitialContent);
     }
   }, [memoizedInitialContent, setEditorContent]);
 
@@ -187,10 +203,10 @@ export default function AnnouncementCreator({
     initializeData();
 
     // Initialize cover image
-    if (initialHasCoverImage) {
+    if (initialHasCoverImage && announcementId) {
       setCoverImageUri(`${API_URL}/media/announcement/${announcementId}/coverimage.jpg?t=${Date.now()}`);
     } else {
-      setCoverImageUri(`${API_URL}/media/defaultcoverimage.jpg`);
+      setCoverImageUri(`${API_URL}/media/defaultcoverimage.png`);
     }
   }, []);
 
@@ -206,41 +222,33 @@ export default function AnnouncementCreator({
     currentTitleRef.current = memoizedInitialTitle;
   }, [memoizedInitialTitle]);
 
-  // Backup content setting mechanism
+  // Backup content setting mechanism - immediate without timeout
   useEffect(() => {
     if (isEditorReady && memoizedInitialContent && memoizedInitialContent.trim() !== '' && !contentSetRef.current) {
-      const backupTimeout = setTimeout(() => {
-        if (!contentSetRef.current) {
-          console.log('Backup content setting triggered');
-          setEditorContent(memoizedInitialContent);
-        }
-      }, 1000);
-
-      return () => clearTimeout(backupTimeout);
+      console.log('Backup content setting triggered');
+      setEditorContent(memoizedInitialContent);
     }
   }, [isEditorReady, memoizedInitialContent, setEditorContent]);
 
-  // Final failsafe for content setting
+  // Final failsafe for content setting - immediate without timeout
   useEffect(() => {
-    if (isEditorReady && memoizedInitialContent && memoizedInitialContent.trim() !== '') {
-      const finalTimeout = setTimeout(async () => {
-        if (!contentSetRef.current) {
-          try {
-            const currentContent = await editor.getHTML();
-            const cleanCurrent = currentContent.replace(/<p><br><\/p>/g, '').trim();
+    if (isEditorReady && memoizedInitialContent && memoizedInitialContent.trim() !== '' && !contentSetRef.current) {
+      try {
+        const currentContentPromise = editor.getHTML();
+        currentContentPromise.then(currentContent => {
+          const cleanCurrent = currentContent.replace(/<p><br><\/p>/g, '').trim();
 
-            if (cleanCurrent === '<p></p>' || cleanCurrent === '') {
-              console.log('Final failsafe: Setting content');
-              editor.setContent(memoizedInitialContent);
-              contentSetRef.current = true;
-            }
-          } catch (error) {
-            console.log('Final failsafe error:', error);
+          if (cleanCurrent === '<p></p>' || cleanCurrent === '') {
+            console.log('Final failsafe: Setting content');
+            editor.setContent(memoizedInitialContent);
+            contentSetRef.current = true;
           }
-        }
-      }, 3000);
-
-      return () => clearTimeout(finalTimeout);
+        }).catch(error => {
+          console.log('Final failsafe error:', error);
+        });
+      } catch (error) {
+        console.log('Final failsafe error:', error);
+      }
     }
   }, [isEditorReady, memoizedInitialContent, editor]);
 //----------------------------------------------------------
@@ -306,22 +314,16 @@ const keyboardHeightRef = useKeyboardHeight();
     }
   }, [searchQuery, departments]);
 
-  // Emergency failsafe for editor initialization
+  // Emergency failsafe for editor initialization - immediate without timeout
   useEffect(() => {
-    const timeout = setTimeout(() => {
-      if (!isEditorReady && !editorInitializedRef.current) {
-        console.log('Emergency failsafe: Setting editor as ready');
-        setIsEditorReady(true);
+    if (!isEditorReady && !editorInitializedRef.current) {
+      console.log('Emergency failsafe: Setting editor as ready');
+      setIsEditorReady(true);
 
-        if (memoizedInitialContent && memoizedInitialContent.trim() !== '' && !contentSetRef.current) {
-          setTimeout(() => {
-            setEditorContent(memoizedInitialContent);
-          }, 500);
-        }
+      if (memoizedInitialContent && memoizedInitialContent.trim() !== '' && !contentSetRef.current) {
+        setEditorContent(memoizedInitialContent);
       }
-    }, 5000);
-
-    return () => clearTimeout(timeout);
+    }
   }, [memoizedInitialContent, setEditorContent]);
 
   const loadExistingAnnouncementData = async () => {
@@ -536,6 +538,7 @@ const keyboardHeightRef = useKeyboardHeight();
     }
   };
 
+  //when user is in edit draft and then clicks on save draft button
   const handleSaveAsDraft = async () => {
     if (!announcementId || !currentUserId || isSavingDraft) return;
 
@@ -570,15 +573,6 @@ const keyboardHeightRef = useKeyboardHeight();
     try {
       setIsLoadingPreview(true);
       const { currentTitle, currentContent } = await getCurrentContent();
-
-      // Auto-save progress
-      // if (announcementId && currentUserId) {
-      //   try {
-      //     await updateDraft(announcementId, currentTitle, currentContent, currentUserId, selectedDepartments);
-      //   } catch (error) {
-      //     console.error('Error auto-saving:', error);
-      //   }
-      // }
 
       // Navigate to preview route with current content
       router.push({
@@ -666,7 +660,7 @@ const keyboardHeightRef = useKeyboardHeight();
         </TouchableOpacity>
 
         <Text className="text-lg font-semibold text-gray-900">
-          {isEdit ? 'Edit Announcement' : 'Create Announcement'}
+          {isEdit ? 'Edit Announcement' : isDraft? "Edit Draft": 'Create Announcement'}
         </Text>
 
         <View className="w-8" />
@@ -679,18 +673,18 @@ const keyboardHeightRef = useKeyboardHeight();
       >
         <ScrollView
           ref={scrollViewRef}
-          className="flex-1 px-4 py-4"
+          className="flex-1 px-4 py-2"
           contentContainerStyle={{ paddingBottom: Platform.OS === 'ios' ? 120 : 100 }}
         >
           {/* Title and Body Section */}
-          <View className="mb-8">
+          <View className="mb-4">
             {/* Title Input */}
             <TextInput
               ref={titleInputRef}
               value={draftTitle}
               onChangeText={handleTitleChange}
               placeholder="Enter announcement title..."
-              className="text-xl font-semibold text-gray-900 py-3 mb-2"
+              className="text-xl font-semibold text-gray-900 py-2 mb-1"
               placeholderTextColor="#9ca3af"
               multiline={true}
               numberOfLines={3}
@@ -698,16 +692,15 @@ const keyboardHeightRef = useKeyboardHeight();
               onBlur={() => setIsTitleFocused(false)}
             />
 
-            {/* Editor Loading State */}
+            {/* Editor Loading State - Simplified */}
             {!isEditorReady && (
-              <View className="min-h-80 p-4 bg-gray-50 flex items-center justify-center rounded-lg border border-gray-200">
+              <View className="min-h-80 flex items-center justify-center">
                 <ActivityIndicator size="large" color="#0284c7" />
                 <Text className="text-gray-500 mt-2">Preparing editor...</Text>
               </View>
             )}
 
             {/* Tentap Rich Text Editor */}
-            
             <View
               ref={editorContainerRef}
               className={isEditorReady ? 'block' : 'hidden'}
@@ -719,10 +712,16 @@ const keyboardHeightRef = useKeyboardHeight();
                   setIsEditorFocused(true);
                   editor.focus();
                 }}
+                style={{
+                  lineHeight: 20, // Reduced line height
+                }}
               >
                 <RichText
                   editor={editor}
                   className="min-h-[300px]"
+                  style={{
+                    lineHeight: 20, // Reduced line height
+                  }}
                 />
               </View>
             </View>
@@ -738,14 +737,25 @@ const keyboardHeightRef = useKeyboardHeight();
                 className="relative"
               >
                 <View className="w-[200px] h-[200px] bg-gray-200 rounded-lg overflow-hidden">
+                  {coverImageLoading && (
+                    <View className="absolute inset-0 bg-gray-300 flex items-center justify-center z-10">
+                      <ActivityIndicator size="large" color="#6b7280" />
+                    </View>
+                  )}
+                  
                   <Image
                     source={{ uri: coverImageUri }}
                     className="w-full h-full"
                     resizeMode="cover"
+                    onLoadEnd={() => setCoverImageLoading(false)}
+                    onError={() => {
+                      setCoverImageLoading(false);
+                      setCoverImageUri(`${API_URL}/media/defaultcoverimage.png`);
+                    }}
                   />
 
                   {isUploadingCover && (
-                    <View className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+                    <View className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center z-20">
                       <View className="bg-white bg-opacity-90 p-4 rounded-lg items-center">
                         <Text className="text-gray-800 text-sm mb-2">Uploading...</Text>
                         <View className="w-32 h-2 bg-gray-300 rounded-full overflow-hidden">
@@ -910,31 +920,20 @@ const keyboardHeightRef = useKeyboardHeight();
         </ScrollView>
 
       </KeyboardAvoidingView>
-      {isEditorFocused && (
+          {isEditorFocused && (
             <View
-              /* ⚠  Make sure this View is rendered as a sibling of
-                    your whole screen (i.e. *not* inside a ScrollView)
-                    so that absolute positioning works correctly.       */
-              style={[
+              style={
                 {
                   position: 'absolute',
                   left: 0,
                   right: 0,
                   backgroundColor: 'white',
-                  borderTopWidth: 1,
-                  borderColor: '#E5E7EB',
-                  paddingVertical: 8,
                   zIndex: 9999,
-                  // Shadow (optional)
-                  shadowColor: '#000',
-                  shadowOpacity: 0.05,
-                  shadowRadius: 5,
-                  elevation: 5,
-                },
-                { bottom: 0 },          // ⬅ dynamic distance
-              ]}
+                  bottom: 0
+                }
+              }
             >
-              <Toolbar editor={editor} />
+              <Toolbar editor={editor} items={allowedToolbarItems} />
             </View>
           )}
     </View>

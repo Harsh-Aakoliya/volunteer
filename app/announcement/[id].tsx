@@ -19,6 +19,7 @@ import { VideoView, useVideoPlayer } from 'expo-video';
 import { AuthStorage } from '@/utils/authStorage';
 import { getAnnouncementDetails, markAsRead, toggleLike, deleteAnnouncement } from '@/api/admin';
 import { API_URL } from '@/constants/api';
+import { formatISTDate } from '@/utils/dateUtils';
 import axios from 'axios';
 import ImageViewer from '@/components/texteditor/ImageViewer';
 import VideoViewer from '@/components/texteditor/VideoViewer';
@@ -294,37 +295,28 @@ const AnnouncementDetails = () => {
       </View>
 
       <ScrollView className="flex-1" showsVerticalScrollIndicator={true}>
-        {/* Title */}
-        <View className="px-4 py-4">
-          <Text className="text-2xl font-bold text-gray-900 mb-3">
-            {announcement.title}
-          </Text>
+        <ScrollView className="flex-1" showsVerticalScrollIndicator={true}>
+        <View className="px-4 py-2">
+          <Text className="text-2xl font-bold text-gray-900 mb-1">{announcement.title}</Text>
+          <Text className="text-sm text-gray-500 mb-2">
+            By {announcement.authorName} • {formatISTDate(announcement.createdAt, { year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })}  </Text>
           
-          {/* Author and Date */}
-          <Text className="text-sm text-gray-500 mb-4">
-            By {announcement.authorName} • {formatDateTime(announcement.createdAt)}
-          </Text>
+          <StyledRichEditor
+            className="bg-white"
+            initialContentHTML={announcement.body}
+            editorStyle={{
+              contentCSSText: `
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+                font-size: 16px;
+                margin: 0;
+                border: none;
+                padding: 0;//important
+              `
+            }}
+            disabled
+          />
         </View>
-
-        {/* Content */}
-        <View className="px-4 pb-4">
-          <View className="min-h-40">
-            <StyledRichEditor
-              className="min-h-40 bg-white"
-              initialContentHTML={announcement.body}
-              editorStyle={{
-                contentCSSText: `
-                  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-                  font-size: 16px;
-                  margin: 0px;
-                  border: none;
-                  min-height: 200px;
-                `
-              }}
-              disabled={true}
-            />
-          </View>
-        </View>
+        </ScrollView>
 
         {/* Attached Media Files */}
         {attachedMediaFiles.length > 0 && (

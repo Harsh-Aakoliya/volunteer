@@ -26,8 +26,8 @@ const createNotificationTokenTable = async () => {
           "tokenType" VARCHAR(20) DEFAULT 'fcm',
           "deviceInfo" JSONB DEFAULT '{}',
           "isActive" BOOLEAN DEFAULT TRUE,
-          "createdAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-          "updatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          "createdAt" TIMESTAMPTZ DEFAULT (NOW() AT TIME ZONE 'UTC'),
+          "updatedAt" TIMESTAMPTZ DEFAULT (NOW() AT TIME ZONE 'UTC'),
           FOREIGN KEY ("userId") REFERENCES "users"("userId") ON DELETE CASCADE,
           UNIQUE("userId", "tokenType")
       );

@@ -28,7 +28,7 @@ const createTableTable = async () => {
             "id" SERIAL PRIMARY KEY,
             "roomId" INTEGER,
             "senderId" VARCHAR(50),
-            "createdAt" TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+            "createdAt" TIMESTAMPTZ DEFAULT (NOW() AT TIME ZONE 'UTC'),
             "tableTitle" VARCHAR(255),
             "messageId" INTEGER,
             "tableData" JSONB,

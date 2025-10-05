@@ -12,19 +12,14 @@ const pollController = {
         } = req.body;
     
         try {
-            // Convert to IST timezone
-            const now = new Date();
-            const istOffset = 5.5 * 60 * 60 * 1000; // IST is UTC+5:30
-            const istNow = new Date(now.getTime() + istOffset);
-            
             // Default poll end time: 24 hours from now in IST
             const defaultEndTime = pollEndTime 
                 ? new Date(pollEndTime) 
-                : new Date(istNow.getTime() + 24 * 60 * 60 * 1000);
+                : new Date(Date.now() + 24 * 60 * 60 * 1000);
 
             const result = await pool.query(
                 `INSERT INTO poll ("question", "options", "isMultipleChoiceAllowed", "pollEndTime", "roomId", "createdBy", "createdAt")
-                VALUES ($1, $2::jsonb, $3, $4, $5, $6, $7)
+                VALUES ($1, $2::jsonb, $3, $4, $5, $6, NOW() AT TIME ZONE 'Asia/Kolkata')
                 RETURNING *`,
                 [
                     question,
@@ -32,8 +27,7 @@ const pollController = {
                     isMultipleChoiceAllowed,
                     defaultEndTime,
                     roomId,
-                    createdBy,
-                    istNow
+                    createdBy
                 ]
             );
 

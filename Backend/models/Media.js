@@ -22,7 +22,7 @@ const createMediaTable = async () => {
         "id" SERIAL PRIMARY KEY,
         "roomId" INTEGER,
         "senderId" VARCHAR(50),
-        "createdAt" TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+        "createdAt" TIMESTAMPTZ DEFAULT (NOW() AT TIME ZONE 'UTC'),
         "caption" VARCHAR(255),
         "messageId" INTEGER,
         "driveUrlObject" JSONB DEFAULT '[]'

@@ -1,6 +1,5 @@
 //main announcement page (index.tsx)
-
-import React, { useEffect, useState } from "react";
+import React,{ useEffect, useState } from "react";
 import {
   View,
   Text,
@@ -25,7 +24,6 @@ import { useRouter, useLocalSearchParams } from "expo-router";
 import { AuthStorage } from "@/utils/authStorage";
 import { Ionicons } from '@expo/vector-icons';
 import { Announcement } from "@/types/type";
-import eventEmitter from "@/utils/eventEmitter";
 import { ActivityIndicator, Image as RNImage } from 'react-native'; // 👈 Add these imports at 
 import AnnouncementItem from '@/components/AnnouncementItem';
 import ReadLikeDetailsModal from '@/components/ReadLikeDetailsModal';
@@ -79,57 +77,6 @@ const Announcements = () => {
   useEffect(() => {
     getCurrentUser();
     // loadDepartments();
-    
-    // // Listen for notification events to open specific announcements
-    // const handleOpenAnnouncement = (data: { announcementId: number }) => {
-    //   const { announcementId } = data;
-    //   console.log('📢 Opening announcement from notification:', announcementId);
-      
-    //   // Function to attempt to find and open the announcement
-    //   const tryOpenAnnouncement = (attempts = 0) => {
-    //     const maxAttempts = 3;
-        
-    //     // First check allAnnouncements
-    //     let announcement = allAnnouncements.find(ann => ann.id === announcementId);
-        
-    //     // If not found, check current announcements
-    //     if (!announcement) {
-    //       announcement = announcements.find(ann => ann.id === announcementId);
-    //     }
-        
-    //     if (announcement) {
-    //       console.log('✅ Found announcement, opening:', announcement.title);
-    //       openAnnouncement(announcement);
-    //       return;
-    //     }
-        
-    //     // If not found and we haven't exhausted attempts, try refreshing
-    //     if (attempts < maxAttempts) {
-    //       console.log(`🔄 Announcement not found, refreshing... (attempt ${attempts + 1}/${maxAttempts})`);
-    //       loadAnnouncements().then(() => {
-    //         setTimeout(() => tryOpenAnnouncement(attempts + 1), 300);
-    //       }).catch(error => {
-    //         console.error('❌ Error refreshing announcements:', error);
-    //         if (attempts < maxAttempts - 1) {
-    //           setTimeout(() => tryOpenAnnouncement(attempts + 1), 500);
-    //         }
-    //       });
-    //     } else {
-    //       console.log('❌ Announcement not found after all attempts:', announcementId);
-    //     }
-    //   };
-      
-    //   // Wait a bit for component to be ready, then start attempting
-    //   setTimeout(() => tryOpenAnnouncement(), 200);
-    // };
-
-    // // Add event listener for custom notification events using EventEmitter
-    // eventEmitter.on('openAnnouncement', handleOpenAnnouncement);
-    
-    // // Cleanup
-    // return () => {
-    //   eventEmitter.off('openAnnouncement', handleOpenAnnouncement);
-    // };
   }, []);
 
   useEffect(() => {

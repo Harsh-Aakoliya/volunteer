@@ -919,7 +919,7 @@ const chatController = {
         //first insert the basic message
         let result = await pool.query(
           `INSERT INTO chatmessages ("roomId", "senderId", "messageText","messageType", "replyMessageId", "createdAt")
-          VALUES ($1, $2, $3, $4, $5, NOW())
+          VALUES ($1, $2, $3, $4, $5, NOW() AT TIME ZONE 'Asia/Kolkata')
           RETURNING *`,
           [roomIdInt, senderId, messageText, messageType, replyMessageId]
         );

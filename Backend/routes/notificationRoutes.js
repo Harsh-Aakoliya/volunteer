@@ -3,7 +3,6 @@ import express from 'express';
 import { 
   storeNotificationToken,
   deleteNotificationToken,
-  sendTestNotification
 } from '../controllers/notificationController.js';
 import { runAllTests } from '../test/chatNotificationTest.js';
 import { authenticateToken } from '../middlewares/auth.js';
@@ -18,9 +17,6 @@ router.post('/store-token', storeNotificationToken);
 
 // Delete notification token (on logout)
 router.post('/delete-token', deleteNotificationToken);
-
-// Send test notification
-router.post('/test', sendTestNotification);
 
 // Test chat notification system (for development)
 router.get('/test-chat-system', async (req, res) => {

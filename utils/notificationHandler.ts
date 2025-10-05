@@ -1,13 +1,13 @@
 // utils/notificationHandler.ts
 import * as Notifications from "expo-notifications";
 import { router } from "expo-router";
-import { markAsRead } from "@/api/admin";
 import { AuthStorage } from "@/utils/authStorage";
-import { socketService } from "@/utils/socketService";
-import eventEmitter from "./eventEmitter";
+import socketService from "@/utils/socketService";
+import { handleChatNotificationTap } from "./chatNotificationHandler";
+import { handleAnnouncementNotificationTap } from "./announcementNotificationHandler";
 
 export interface NotificationData {
-  type: 'announcement' | 'chat';
+  type: 'announcement' | 'announcement_published' | 'chat' | 'chat_message';
   announcementId?: string;
   roomId?: string;
   title?: string;
@@ -28,6 +28,8 @@ export class NotificationHandler {
   private static instance: NotificationHandler;
   private navigationQueue: NotificationData[] = [];
   private isAppReady = false;
+  private processedNotifications = new Set<string>();
+  private navigationInProgress = new Set<string>();
 
   static getInstance(): NotificationHandler {
     if (!NotificationHandler.instance) {
@@ -103,119 +105,39 @@ export class NotificationHandler {
     try {
       console.log('Handling notification navigation:', data);
 
-      if (data.type === 'announcement' && data.announcementId) {
-        await this.handleAnnouncementNotification(data.announcementId);
+      // Create a unique key for this notification
+      const notificationKey = `${data.type}_${data.announcementId || data.roomId}_${Date.now()}`;
+      
+      // Check if this notification has already been processed
+      if (this.processedNotifications.has(notificationKey)) {
+        console.log('🛑 Notification already processed, ignoring:', notificationKey);
+        return;
+      }
+
+      // Mark as processed
+      this.processedNotifications.add(notificationKey);
+
+      if ((data.type === 'announcement' || data.type === 'announcement_published') && data.announcementId) {
+        await handleAnnouncementNotificationTap(data);
       } else if ((data.type === 'chat' || data.type === 'chat_message') && data.roomId) {
-        await this.handleChatNotification(data.roomId);
+        await handleChatNotificationTap(data);
       } else if (data.route) {
         // Fallback to direct route navigation
         router.push(data.route as any);
+      }
+
+      // Clean up old processed notifications (keep only last 50)
+      if (this.processedNotifications.size > 50) {
+        const notificationsArray = Array.from(this.processedNotifications);
+        const toRemove = notificationsArray.slice(0, notificationsArray.length - 50);
+        toRemove.forEach(key => this.processedNotifications.delete(key));
       }
     } catch (error) {
       console.error('Error handling notification navigation:', error);
     }
   }
 
-  // Handle announcement notification
-  private async handleAnnouncementNotification(announcementId: string) {
-    try {
-      const user = await AuthStorage.getUser();
-      if (!user) {
-        console.log('No user found, redirecting to login');
-        router.replace('/(auth)/login');
-        return;
-      }
 
-      console.log('📢 Handling announcement notification for ID:', announcementId);
-
-      // Navigate to announcement tab first
-      router.replace('/(tabs)/announcement');
-      
-      // Wait a bit for the tab to load
-      setTimeout(async () => {
-        try {
-          // Mark as read
-          await markAsRead(parseInt(announcementId), user.userId);
-          console.log('✅ Marked announcement as read:', announcementId);
-          
-          // Open the specific announcement via EventEmitter
-          this.openSpecificAnnouncement(parseInt(announcementId));
-        } catch (error) {
-          console.error('❌ Error marking announcement as read:', error);
-          // Still try to open the announcement even if marking as read fails
-          this.openSpecificAnnouncement(parseInt(announcementId));
-        }
-      }, 800); // Increased timeout to ensure tab is fully loaded
-
-    } catch (error) {
-      console.error('❌ Error handling announcement notification:', error);
-    }
-  }
-
-  // Handle chat notification
-  private async handleChatNotification(roomId: string) {
-    try {
-      const user = await AuthStorage.getUser();
-      if (!user) {
-        console.log('No user found, redirecting to login');
-        router.replace('/(auth)/login');
-        return;
-      }
-
-      console.log('💬 Handling chat notification for room ID:', roomId);
-
-      // Navigate to chat tab first
-      router.replace('/(tabs)/chat');
-      
-      // Wait a bit for the tab to load
-      setTimeout(async () => {
-        try {
-          // Connect to socket if not already connected
-          if (!socketService.isConnected()) {
-            console.log('🔌 Connecting to socket...');
-            await socketService.connect(user.userId);
-          }
-
-          // Wait a moment for socket to fully connect
-          setTimeout(async () => {
-            try {
-              // Join the specific room
-              console.log('🚪 Joining room:', roomId);
-              socketService.joinRoom(roomId);
-              
-              // Navigate to the specific chat room
-              router.push(`/(tabs)/chat/${roomId}`);
-              
-              // Emit custom event for chat room opening via EventEmitter
-              this.openSpecificChatRoom(roomId);
-              
-              console.log('✅ Successfully opened chat room:', roomId);
-            } catch (roomError) {
-              console.error('❌ Error joining room:', roomError);
-            }
-          }, 300);
-          
-        } catch (error) {
-          console.error('❌ Error handling chat notification:', error);
-        }
-      }, 800); // Increased timeout to ensure tab is fully loaded
-
-    } catch (error) {
-      console.error('❌ Error handling chat notification:', error);
-    }
-  }
-
-  // Open specific chat room (this will be handled by the chat screen)
-  private openSpecificChatRoom(roomId: string) {
-    console.log('Emitting openChatRoom event for roomId:', roomId);
-    eventEmitter.emit('openChatRoom', { roomId });
-  }
-
-  // Open specific announcement (this will be handled by the announcement screen)
-  private openSpecificAnnouncement(announcementId: number) {
-    console.log('Emitting openAnnouncement event for announcementId:', announcementId);
-    eventEmitter.emit('openAnnouncement', { announcementId });
-  }
 
   // Show in-app notification when app is in foreground
   private showInAppNotification(notification: Notifications.Notification) {
@@ -240,7 +162,7 @@ export const notificationHandler = NotificationHandler.getInstance();
 
 // Helper function to create notification data
 export const createNotificationData = (
-  type: 'announcement' | 'chat',
+  type: 'announcement' | 'announcement_published' | 'chat' | 'chat_message',
   options: {
     announcementId?: number;
     roomId?: string;
@@ -254,6 +176,6 @@ export const createNotificationData = (
     roomId: options.roomId,
     title: options.title,
     body: options.body,
-    route: type === 'announcement' ? '/(tabs)/announcement' : '/(tabs)/chat'
+    route: (type === 'announcement' || type === 'announcement_published') ? `/(tabs)/announcement` : type === 'chat' ? '/(tabs)/chat' : `/chat/${options.roomId}`
   };
 };
