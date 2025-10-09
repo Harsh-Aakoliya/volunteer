@@ -16,6 +16,7 @@ import initializeForeignKeyConstraints from "./models/ForeignKeyConstraints.js"
 import errorHandling from "./middlewares/errorHandler.js";
 import apiRoutes from "./routes/index.js";
 import setupSocketIO from "./socket.js";
+import scheduledPublisher from "./services/scheduledAnnouncementPublisher.js";
 import os from "os";
 import path from "path";
 import fs from "fs";
@@ -52,6 +53,9 @@ app.use("/media",express.static(path.join(process.cwd(), 'media')));
 
 // Initialize Firebase for FCM notifications
 initializeFirebase();
+
+// Initialize scheduled announcement publisher
+console.log('🚀 Starting scheduled announcement publisher...');
 
 const UPLOAD_DIR = path.join(process.cwd(), 'media');
 console.log("UPLOAD_DIR",UPLOAD_DIR);
@@ -176,6 +180,27 @@ app.get("/api/version", (req, res) => {
   } catch (error) {
     console.error('Error reading version file:', error);
     res.status(500).json({ error: 'Unable to read version file' });
+  }
+});
+
+// Scheduled announcement publisher endpoints
+app.get("/api/scheduled-publisher/status", (req, res) => {
+  try {
+    const status = scheduledPublisher.getStatus();
+    res.json({ success: true, status });
+  } catch (error) {
+    console.error('Error getting publisher status:', error);
+    res.status(500).json({ error: 'Unable to get publisher status' });
+  }
+});
+
+app.post("/api/scheduled-publisher/check", async (req, res) => {
+  try {
+    await scheduledPublisher.manualCheck();
+    res.json({ success: true, message: 'Manual check completed' });
+  } catch (error) {
+    console.error('Error during manual check:', error);
+    res.status(500).json({ error: 'Manual check failed' });
   }
 });
 

@@ -50,6 +50,55 @@ const AnnouncementItem: React.FC<AnnouncementItemProps> = ({
     setImageUri(`${API_URL}/media/announcement/defaultcoverimage.png`);
   };
 
+  // For scheduled announcements, show different UI without read/like functionality
+  if (item.status === 'scheduled') {
+    return (
+      <TouchableOpacity
+        onPress={() => onOpenAnnouncement(item)}
+        disabled={isAnnouncementOpening}
+        className={`bg-white mx-4 my-2 rounded-lg shadow-sm border border-yellow-200 ${isAnnouncementOpening ? 'opacity-50' : ''}`}
+        style={{ height: 120 }}
+        activeOpacity={0.7}
+      >
+        {/* Large Timer Icon for Scheduled */}
+        <View className="absolute top-3 right-3 bg-yellow-100 rounded-full p-3 z-10">
+          <Ionicons name="time-outline" size={24} color="#f59e0b" />
+        </View>
+
+        {/* Horizontal Layout: Content */}
+        <View className="flex-row h-full">
+          {/* Content Section */}
+          <View className="flex-1 p-3 pr-16 justify-between">
+            {/* Top section: Title and Preview */}
+            <View>
+              {/* Title */}
+              <Text
+                className="text-sm font-bold text-gray-900"
+                numberOfLines={2}
+                ellipsizeMode="tail"
+              >
+                {item.title}
+              </Text>
+              
+              {/* Body Preview */}
+              <Text className="text-xs text-gray-600 mt-1" numberOfLines={2} ellipsizeMode="tail">
+                {item.body.replace(/<[^>]*>/g, '').substring(0, 100)}...
+              </Text>
+            </View>
+
+            {/* Bottom section: Author and Scheduled Time */}
+            <View>
+              <Text className="text-xs text-gray-500">
+                By {item.authorName} • Scheduled for {formatDateTime(item.createdAt)}
+              </Text>
+            </View>
+          </View>
+        </View>
+      </TouchableOpacity>
+    );
+  }
+
+  // For published announcements, show normal UI with read/like functionality
   return (
     <View
       className={`bg-white mx-4 my-2 rounded-lg shadow-sm border ${isRead
@@ -65,41 +114,10 @@ const AnnouncementItem: React.FC<AnnouncementItemProps> = ({
 
       {/* Horizontal Layout: Cover Image + Content */}
       <View className="flex-row h-full">
-        {/* Cover Image - Square on the left */}
-        <TouchableOpacity
-          onPress={() => {
-            if (!isAnnouncementOpening) {
-              onOpenAnnouncement(item);
-            }
-          }}
-          disabled={isAnnouncementOpening} // 👈 Disable interaction during navigation
-          className="relative"
-        >
-          <View className="w-[120px] h-[120px] bg-gray-200 rounded-l-lg overflow-hidden">
-            <RNImage
-              key={item.id}
-              source={{ uri: imageUri }}
-              style={{ width: '100%', height: '100%' }}
-              resizeMode="contain"
-              onError={handleImageError}
-              onLoadEnd={() => setLoading(false)}
-            />
-            {loading && (
-              <View className="absolute inset-0 bg-gray-300 flex items-center justify-center">
-                <ActivityIndicator size="small" color="#6b7280" />
-              </View>
-            )}
-          </View>
-        </TouchableOpacity>
-
         {/* Content Section - Right side */}
         <View className="flex-1 p-3 justify-between">
           {/* Top section: Date and Author */}
           <View>
-            <Text className="text-xs text-gray-500 mb-1" numberOfLines={1}>
-              {formatDateTime(item.createdAt)} | {item.authorName}
-            </Text>
-
             {/* Title */}
             <TouchableOpacity
               onPress={() => onOpenAnnouncement(item)}
@@ -114,6 +132,16 @@ const AnnouncementItem: React.FC<AnnouncementItemProps> = ({
                 {item.title}
               </Text>
             </TouchableOpacity>
+
+            {/* Body Preview */}
+            <Text className="text-xs text-gray-600 mb-1" numberOfLines={2} ellipsizeMode="tail">
+              {item.body.replace(/<[^>]*>/g, '').substring(0, 100)}...
+            </Text>
+
+            {/* Author and Date */}
+            <Text className="text-xs text-gray-500">
+              By {item.authorName} • {formatDateTime(item.createdAt)}
+            </Text>
           </View>
 
           {/* Bottom section: Action buttons */}

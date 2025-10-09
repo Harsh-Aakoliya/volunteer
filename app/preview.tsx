@@ -15,19 +15,26 @@ import {
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { VideoView, useVideoPlayer } from 'expo-video';
-import { publishDraft, updateAnnouncement } from '@/api/admin';
+import { publishDraft, scheduleDraft, rescheduleAnnouncement, updateAnnouncement } from '@/api/admin';
 import { AuthStorage } from '@/utils/authStorage';
 import { API_URL } from '@/constants/api';
 import { formatISTDate } from '@/utils/dateUtils';
 import ImageViewer from '@/components/texteditor/ImageViewer';
 import VideoViewer from '@/components/texteditor/VideoViewer';
 import AudioViewer from '@/components/texteditor/AudioViewer';
+import DateTimePicker from '@/components/chat/DateTimePicker';
 import { WebView } from 'react-native-webview';
 const AnnouncementPreviewScreen = () => {
   const params = useLocalSearchParams();
   const [isPublishing, setIsPublishing] = useState(false);
   const [showPublishingAnimation, setShowPublishingAnimation] = useState(false);
   const [contentHeight, setContentHeight] = useState(200);
+  
+  // Scheduling states
+  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [selectedTime, setSelectedTime] = useState<string | null>(null);
+  const [showSchedulePicker, setShowSchedulePicker] = useState(false);
+  const [isScheduling, setIsScheduling] = useState(false);
   
   // Extract params
   const title = params.title as string || '';
@@ -163,6 +170,79 @@ const AnnouncementPreviewScreen = () => {
     );
   };
 
+  const handleSchedule = () => {
+    if (!selectedDate || !selectedTime) {
+      Alert.alert('Error', 'Please select both date and time to schedule the announcement.');
+      return;
+    }
+
+    const [hours, minutes] = selectedTime.split(':').map(Number);
+    const scheduledDateTime = new Date(selectedDate);
+    scheduledDateTime.setHours(hours, minutes, 0, 0);
+
+    if (scheduledDateTime <= new Date()) {
+      Alert.alert('Error', 'Scheduled time must be in the future.');
+      return;
+    }
+
+    setShowSchedulePicker(false);
+    Alert.alert(
+      'Schedule Announcement',
+      `Are you sure you want to schedule this announcement for ${scheduledDateTime.toLocaleString()}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Schedule',
+          onPress: () => performSchedule(scheduledDateTime.toISOString())
+        }
+      ]
+    );
+  };
+
+  const performSchedule = async (scheduledAt: string) => {
+    try {
+      setIsScheduling(true);
+      setShowPublishingAnimation(true);
+      
+      const user = await AuthStorage.getUser();
+      if (!user) {
+        throw new Error('User not found');
+      }
+      
+      if (isEdit) {
+        await rescheduleAnnouncement(
+          announcementId as number,
+          title,
+          content,
+          user.userId,
+          departmentTags,
+          scheduledAt
+        );
+      } else {
+        await scheduleDraft(
+          announcementId as number,
+          title,
+          content,
+          user.userId,
+          departmentTags,
+          scheduledAt
+        );
+      }
+      
+      setTimeout(() => {
+        setShowPublishingAnimation(false);
+        setIsScheduling(false);
+        router.replace('/announcement');
+      }, 2000);
+      
+    } catch (error) {
+      setIsScheduling(false);
+      setShowPublishingAnimation(false);
+      console.error('Scheduling error:', error);
+      Alert.alert('Error', 'Failed to schedule announcement. Please try again.');
+    }
+  };
+
 
   return (
     <SafeAreaView className="flex-1 bg-white">
@@ -274,22 +354,37 @@ const AnnouncementPreviewScreen = () => {
         )}
       </ScrollView>
 
-      {/* Fixed Publish Button */}
+      {/* Fixed Action Buttons */}
       <View className="p-4 bg-white border-t border-gray-200">
         <View className="flex-row space-x-3">
           <TouchableOpacity
             onPress={handleBackToEdit}
-            disabled={isPublishing}
+            disabled={isPublishing || isScheduling}
             className="flex-1 py-3 px-6 rounded-lg border border-gray-300"
           >
             <Text className="text-gray-700 text-center font-semibold">Back to Edit</Text>
           </TouchableOpacity>
           
           <TouchableOpacity
-            onPress={handlePublish}
-            disabled={isPublishing}
+            onPress={() => setShowSchedulePicker(true)}
+            disabled={isPublishing || isScheduling}
             className={`flex-1 py-3 px-6 rounded-lg ${
-              isPublishing ? 'bg-gray-400' : 'bg-green-600'
+              isPublishing || isScheduling ? 'bg-gray-400' : 'bg-yellow-600'
+            }`}
+          >
+            <Text className="text-white text-center font-semibold">
+              {isScheduling 
+                ? 'Scheduling...' 
+                : isEdit ? 'Reschedule' : 'Schedule'
+              }
+            </Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            onPress={handlePublish}
+            disabled={isPublishing || isScheduling}
+            className={`flex-1 py-3 px-6 rounded-lg ${
+              isPublishing || isScheduling ? 'bg-gray-400' : 'bg-green-600'
             }`}
           >
             <Text className="text-white text-center font-semibold">
@@ -301,6 +396,78 @@ const AnnouncementPreviewScreen = () => {
           </TouchableOpacity>
         </View>
       </View>
+
+      {/* Schedule Picker Modal */}
+      {showSchedulePicker && (
+        <Modal
+          animationType="slide"
+          transparent={true}
+          visible={showSchedulePicker}
+          onRequestClose={() => setShowSchedulePicker(false)}
+        >
+          <View className="flex-1 bg-black/50 justify-center">
+            <View className="bg-white mx-6 rounded-2xl p-6">
+              <View className="flex-row justify-between items-center mb-4">
+                <Text className="text-xl font-bold text-gray-800">
+                  {isEdit ? 'Reschedule Announcement' : 'Schedule Announcement'}
+                </Text>
+                <TouchableOpacity
+                  onPress={() => {
+                    setShowSchedulePicker(false);
+                    setSelectedDate(null);
+                    setSelectedTime(null);
+                  }}
+                  className="p-2"
+                >
+                  <Ionicons name="close" size={24} color="#6B7280" />
+                </TouchableOpacity>
+              </View>
+
+              <Text className="text-gray-600 mb-4">
+                Select when you want to {isEdit ? 'reschedule' : 'schedule'} this announcement.
+              </Text>
+
+              <DateTimePicker
+                selectedDate={selectedDate}
+                setSelectedDate={setSelectedDate}
+                selectedTime={selectedTime}
+                setSelectedTime={setSelectedTime}
+                containerClassName="mb-6"
+              />
+
+              <View className="flex-row justify-between space-x-3">
+                <TouchableOpacity
+                  onPress={() => {
+                    setShowSchedulePicker(false);
+                    setSelectedDate(null);
+                    setSelectedTime(null);
+                  }}
+                  className="flex-1 py-3 px-6 rounded-lg border border-gray-300"
+                >
+                  <Text className="text-gray-700 text-center font-semibold">Cancel</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                  onPress={handleSchedule}
+                  disabled={!selectedDate || !selectedTime || isScheduling}
+                  className={`flex-1 py-3 px-6 rounded-lg ${
+                    selectedDate && selectedTime && !isScheduling
+                      ? 'bg-yellow-600'
+                      : 'bg-gray-400'
+                  }`}
+                >
+                  <Text className="text-white text-center font-semibold">
+                    {isScheduling 
+                      ? 'Scheduling...' 
+                      : isEdit ? 'Reschedule' : 'Schedule'
+                    }
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+      )}
 
       {/* Publishing Animation Modal */}
       <Modal

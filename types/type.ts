@@ -226,6 +226,7 @@ export interface Announcement {
   hasCoverImage?: boolean;
   createdAt: string;
   updatedAt: string;
+  status?: 'published' | 'scheduled' | 'draft';
   likedBy: Array<{
     userId: string;
     fullName: string;

@@ -13,6 +13,8 @@ import {
   createDraftController,
   updateDraftController,
   publishDraftController,
+  scheduleDraftController,
+  rescheduleAnnouncementController,
   getDraftsController,
   deleteDraftController,
   removeEmptyDraftController,
@@ -57,6 +59,8 @@ router.get('/:id/read-users', getReadUsers);
 router.post('/draft', createDraftController);
 router.put('/draft/:id', updateDraftController);
 router.put('/draft/:id/publish', publishDraftController);
+router.put('/draft/:id/schedule', scheduleDraftController);
+router.put('/scheduled/:id/reschedule', rescheduleAnnouncementController);
 router.get('/drafts/:authorId', getDraftsController);
 router.delete('/draft/:id', deleteDraftController);
 router.delete('/draft/:id/empty', removeEmptyDraftController);

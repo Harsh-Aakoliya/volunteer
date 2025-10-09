@@ -8,7 +8,6 @@ import {
   ScrollView,
   RefreshControl,
   Alert,
-  Animated,
   Dimensions,
   SafeAreaView
 } from "react-native";
@@ -54,7 +53,6 @@ const Announcements = () => {
   const [availableTabs, setAvailableTabs] = useState<string[]>([]);
   
   const [likingInProgress, setLikingInProgress] = useState<Set<number>>(new Set());
-  const [showActionMenu, setShowActionMenu] = useState(false);
 
   const [isAnnouncementOpening,setIsAnnouncementOpening] = useState(false);
   
@@ -65,10 +63,6 @@ const Announcements = () => {
   const [modalType, setModalType] = useState<'read' | 'like'>('read');
   const [selectedAnnouncementId, setSelectedAnnouncementId] = useState<number | null>(null);
   const [selectedDepartmentTag, setSelectedDepartmentTag] = useState<string[]>([]);
-  // Animation values
-  const rotationAnim = useState(new Animated.Value(0))[0];
-  const scaleAnim = useState(new Animated.Value(0))[0];
-  const opacityAnim = useState(new Animated.Value(0))[0];
 
   // Get screen dimensions
   const { height: screenHeight } = Dimensions.get('window');
@@ -285,7 +279,8 @@ const Announcements = () => {
     console.log("Opening announcement:", announcement);
 
     try {
-        if (!isRead(announcement)) {
+        // Only mark as read for published announcements, not scheduled ones
+        if (!isRead(announcement) && announcement.status === 'published') {
             await handleMarkAsRead(announcement.id);
         }
         router.push(`/announcement/${announcement.id}`);
@@ -335,7 +330,6 @@ useFocusEffect(
     }
 
     try {
-        closeActionMenu();
         setIsNavigatingToEditor(true);
 
         let departmentTags: string[] = [];
@@ -366,24 +360,6 @@ useFocusEffect(
     }
 };
 
-const handleCreateFromDraft = () => {
-  if (isNavigatingToEditor) {
-      console.log("🛑 Navigation to editor already in progress");
-      return;
-  }
-
-  closeActionMenu();
-  setIsNavigatingToEditor(true);
-
-  router.push({
-      pathname: "../../draft-list",
-      params: {
-          authorId: currentUserId
-      }
-  });
-
-  // DO NOT reset here — wait until user comes back!
-};
 useFocusEffect(
   useCallback(() => {
       if (isNavigatingToEditor) {
@@ -393,57 +369,6 @@ useFocusEffect(
   }, [isNavigatingToEditor])
 );
 
-  const openActionMenu = () => {
-    setShowActionMenu(true);
-    
-    Animated.parallel([
-      Animated.timing(rotationAnim, {
-        toValue: 1,
-        duration: 300,
-        useNativeDriver: true,
-      }),
-      Animated.timing(scaleAnim, {
-        toValue: 1,
-        duration: 300,
-        useNativeDriver: true,
-      }),
-      Animated.timing(opacityAnim, {
-        toValue: 1,
-        duration: 300,
-        useNativeDriver: true,
-      }),
-    ]).start();
-  };
-
-  const closeActionMenu = () => {
-    Animated.parallel([
-      Animated.timing(rotationAnim, {
-        toValue: 0,
-        duration: 300,
-        useNativeDriver: true,
-      }),
-      Animated.timing(scaleAnim, {
-        toValue: 0,
-        duration: 300,
-        useNativeDriver: true,
-      }),
-      Animated.timing(opacityAnim, {
-        toValue: 0,
-        duration: 300,
-        useNativeDriver: true,
-      }),
-    ]).start(() => {
-      setShowActionMenu(false);
-    });
-  };
-
-  const handleActionMenuToggle = () => {
-    if (showActionMenu) {
-      closeActionMenu();
-    } else {
-      openActionMenu();
-    }
-  };
 
   // Handle tab selection
   const handleTabSelect = (tab: string) => {
@@ -547,120 +472,16 @@ useFocusEffect(
 
       {/* Twitter-style Floating Action Menu - Only for HODs and Karyalay users */}
       {(isHOD || isKaryalay) && (
-        <>
-          {/* Blurred Background Overlay */}
-          {showActionMenu && (
-            <Animated.View 
-              style={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                right: 0,
-                bottom: 0,
-                backgroundColor: 'rgba(0, 0, 0, 0.5)',
-                opacity: opacityAnim,
-              }}
-            >
-              <TouchableOpacity 
-                style={{ flex: 1 }}
-                onPress={closeActionMenu}
-                activeOpacity={1}
-              />
-            </Animated.View>
-          )}
-
-          {/* Floating Action Buttons */}
-          {showActionMenu && (
-            <>
-              {/* Create from Draft Button */}
-              <Animated.View
-                style={{
-                  position: 'absolute',
-                  bottom: 150, // 90 + 60 (button height + spacing)
-                  right: 24,
-                  transform: [
-                    { scale: scaleAnim },
-                    { 
-                      translateY: scaleAnim.interpolate({
-                        inputRange: [0, 1],
-                        outputRange: [50, 0]
-                      })
-                    }
-                  ],
-                  opacity: opacityAnim,
-                }}
-                className="flex-row items-center"
-              >
-                <View className="bg-black bg-opacity-80 px-3 py-2 rounded-full mr-3">
-                  <Text className="text-white text-sm font-medium">Create from Draft</Text>
-                </View>
-                <TouchableOpacity
-                    onPress={handleCreateFromDraft}
-                    disabled={isNavigatingToEditor} // 👈 Disable during nav
-                    className={`bg-green-500 w-14 h-14 rounded-full items-center justify-center shadow-lg ${
-                        isNavigatingToEditor ? 'opacity-50' : ''
-                    }`}
-                    style={{ elevation: 8 }}
-                >
-                    <Ionicons name="file-tray-outline" size={24} color="white" />
-                </TouchableOpacity>
-              </Animated.View>
-
-              {/* Create New Announcement Button */}
-              <Animated.View
-                style={{
-                  position: 'absolute',
-                  bottom: 90, // 90 from bottom
-                  right: 24,
-                  transform: [
-                    { scale: scaleAnim },
-                    { 
-                      translateY: scaleAnim.interpolate({
-                        inputRange: [0, 1],
-                        outputRange: [30, 0]
-                      })
-                    }
-                  ],
-                  opacity: opacityAnim,
-                }}
-                className="flex-row items-center"
-              >
-                <View className="bg-black bg-opacity-80 px-3 py-2 rounded-full mr-3">
-                  <Text className="text-white text-sm font-medium">Create New Announcement</Text>
-                </View>
-                <TouchableOpacity
-                  onPress={handleCreateNewAnnouncement}
-                  className="bg-blue-500 w-14 h-14 rounded-full items-center justify-center shadow-lg"
-                  style={{ elevation: 8 }}
-                >
-                  <Ionicons name="document-text-outline" size={24} color="white" />
-                </TouchableOpacity>
-              </Animated.View>
-            </>
-          )}
-
-          {/* Main FAB with rotating + to X */}
-          <TouchableOpacity
-            onPress={handleActionMenuToggle}
-            className="absolute bottom-6 right-6 bg-blue-500 w-14 h-14 rounded-full items-center justify-center shadow-lg"
-            style={{ elevation: 10 }}
-          >
-            <Animated.View
-              style={{
-                transform: [
-                  {
-                    rotate: rotationAnim.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: ['0deg', '45deg']
-                    })
-                  }
-                ]
-              }}
-            >
-              <Ionicons name="add" size={32} color="white" />
-            </Animated.View>
-          </TouchableOpacity>
-        </>
+        <TouchableOpacity
+          onPress={handleCreateNewAnnouncement}
+          disabled={isNavigatingToEditor}
+          className={`absolute bottom-6 right-6 bg-blue-500 w-14 h-14 rounded-full items-center justify-center shadow-lg ${
+            isNavigatingToEditor ? 'opacity-50' : ''
+          }`}
+          style={{ elevation: 10 }}
+        >
+          <Ionicons name="add" size={32} color="white" />
+        </TouchableOpacity>
       )}
 
       {/* Read/Like Details Modal */}

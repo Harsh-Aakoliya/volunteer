@@ -162,6 +162,51 @@ const Announcement = {
     return result.rows[0];
   },
 
+  scheduleDraft: async (id, title, body, authorId, departmentTags = [], scheduledAt) => {
+    // Update the draft to scheduled status with the scheduled time
+    const result = await pool.query(
+      `
+        UPDATE "announcements"
+        SET 
+          "title" = $1,
+          "body" = $2,
+          "departmentTag" = $3,
+          "status" = $4,
+          "createdAt" = $5,
+          "updatedAt" = (NOW() AT TIME ZONE 'UTC')
+        WHERE 
+          "id" = $6 AND 
+          "authorId" = $7 AND
+          "status" = $8
+        RETURNING *
+      `,
+      [title, body, departmentTags, 'scheduled', scheduledAt, id, authorId, 'draft']
+    );
+    return result.rows[0];
+  },
+
+  rescheduleAnnouncement: async (id, title, body, authorId, departmentTags = [], scheduledAt) => {
+    // Update the scheduled announcement with new time
+    const result = await pool.query(
+      `
+        UPDATE "announcements"
+        SET 
+          "title" = $1,
+          "body" = $2,
+          "departmentTag" = $3,
+          "createdAt" = $4,
+          "updatedAt" = (NOW() AT TIME ZONE 'UTC')
+        WHERE 
+          "id" = $5 AND 
+          "authorId" = $6 AND
+          "status" = $7
+        RETURNING *
+      `,
+      [title, body, departmentTags, scheduledAt, id, authorId, 'scheduled']
+    );
+    return result.rows[0];
+  },
+
   getDraftsByAuthor: async (authorId) => {
     const result = await pool.query(
       'SELECT * FROM "announcements" WHERE "authorId" = $1 AND "status" = $2 ORDER BY "updatedAt" DESC',
@@ -744,6 +789,66 @@ export const publishDraftController = async (req, res) => {
   }
 };
 
+export const scheduleDraftController = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { title, body, authorId, departmentTags = [], scheduledAt } = req.body;
+    
+    // Validate scheduledAt
+    if (!scheduledAt) {
+      return res.status(400).json({ error: 'Scheduled time is required' });
+    }
+    
+    const scheduledDate = new Date(scheduledAt);
+    const now = new Date();
+    
+    if (scheduledDate <= now) {
+      return res.status(400).json({ error: 'Scheduled time must be in the future' });
+    }
+    
+    const announcement = await Announcement.scheduleDraft(id, title, body, authorId, departmentTags, scheduledAt);
+    
+    if (!announcement) {
+      return res.status(404).json({ error: 'Draft not found or not authorized' });
+    }
+    
+    res.status(200).json(announcement);
+  } catch (error) {
+    console.error('Error scheduling draft:', error);
+    res.status(500).json({ error: 'Failed to schedule draft' });
+  }
+};
+
+export const rescheduleAnnouncementController = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { title, body, authorId, departmentTags = [], scheduledAt } = req.body;
+    
+    // Validate scheduledAt
+    if (!scheduledAt) {
+      return res.status(400).json({ error: 'Scheduled time is required' });
+    }
+    
+    const scheduledDate = new Date(scheduledAt);
+    const now = new Date();
+    
+    if (scheduledDate <= now) {
+      return res.status(400).json({ error: 'Scheduled time must be in the future' });
+    }
+    
+    const announcement = await Announcement.rescheduleAnnouncement(id, title, body, authorId, departmentTags, scheduledAt);
+    
+    if (!announcement) {
+      return res.status(404).json({ error: 'Scheduled announcement not found or not authorized' });
+    }
+    
+    res.status(200).json(announcement);
+  } catch (error) {
+    console.error('Error rescheduling announcement:', error);
+    res.status(500).json({ error: 'Failed to reschedule announcement' });
+  }
+};
+
 export const getDraftsController = async (req, res) => {
   try {
     const { authorId } = req.params;
@@ -1034,23 +1139,25 @@ export const getUserAnnouncementsController = async (req, res) => {
     
     if (isKaryalay) {
       // Karyalay users see announcements they created OR where department tag includes 'Karyalay'
+      // Also include scheduled announcements they created
       const result = await pool.query(`
         SELECT DISTINCT a.*, u."fullName" as "authorName", u."departments" as "authorDepartments"
         FROM "announcements" a
         LEFT JOIN "users" u ON a."authorId" = u."userId"
-        WHERE a."status" = 'published' 
-        AND (a."authorId" = $1 OR 'Karyalay' = ANY(a."departmentTag"))
+        WHERE (a."status" = 'published' AND (a."authorId" = $1 OR 'Karyalay' = ANY(a."departmentTag")))
+        OR (a."status" = 'scheduled' AND a."authorId" = $1)
         ORDER BY a."createdAt" DESC
       `, [userId]);
       announcements = result.rows;
     } else if (isHOD) {
       // HOD users see announcements they created OR where department tag includes any of their departments
+      // Also include scheduled announcements they created
       const result = await pool.query(`
         SELECT DISTINCT a.*, u."fullName" as "authorName", u."departments" as "authorDepartments"
         FROM "announcements" a
         LEFT JOIN "users" u ON a."authorId" = u."userId"
-        WHERE a."status" = 'published' 
-        AND (a."authorId" = $1 OR (a."departmentTag" && $2))
+        WHERE (a."status" = 'published' AND (a."authorId" = $1 OR (a."departmentTag" && $2)))
+        OR (a."status" = 'scheduled' AND a."authorId" = $1)
         ORDER BY a."createdAt" DESC
       `, [userId, userDepartments]);
       announcements = result.rows;

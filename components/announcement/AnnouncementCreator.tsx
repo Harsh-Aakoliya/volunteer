@@ -27,12 +27,15 @@ import { AuthStorage } from '@/utils/authStorage';
 import { API_URL } from '@/constants/api';
 import { formatISTDate } from '@/utils/dateUtils';
 import AnnouncementMediaUploader from '@/components/texteditor/AnnouncementMediaUploader';
+import DateTimePicker from '@/components/chat/DateTimePicker';
 import { router } from 'expo-router';
 
 // Import API functions
 import {
   updateDraft,
   publishDraft,
+  scheduleDraft,
+  rescheduleAnnouncement,
   deleteDraft,
   updateAnnouncement,
   getAnnouncementDetails
@@ -145,6 +148,11 @@ export default function AnnouncementCreator({
   const [isSavingDraft, setIsSavingDraft] = useState(false);
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
   const [isScheduling, setIsScheduling] = useState(false);
+
+  // Scheduling states
+  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [selectedTime, setSelectedTime] = useState<string | null>(null);
+  const [showSchedulePicker, setShowSchedulePicker] = useState(false);
 
   // User data
   const [currentUserId, setCurrentUserId] = useState<string>("");
@@ -671,13 +679,72 @@ const keyboardHeightRef = useKeyboardHeight();
   };
 
   const handleSchedule = () => {
-    if (isScheduling) return;
-    setIsScheduling(true);
+    if (!selectedDate || !selectedTime) {
+      Alert.alert('Error', 'Please select both date and time to schedule the announcement.');
+      return;
+    }
 
-    setTimeout(() => {
+    const [hours, minutes] = selectedTime.split(':').map(Number);
+    const scheduledDateTime = new Date(selectedDate);
+    scheduledDateTime.setHours(hours, minutes, 0, 0);
+
+    if (scheduledDateTime <= new Date()) {
+      Alert.alert('Error', 'Scheduled time must be in the future.');
+      return;
+    }
+
+    setShowSchedulePicker(false);
+    Alert.alert(
+      'Schedule Announcement',
+      `Are you sure you want to schedule this announcement for ${scheduledDateTime.toLocaleString()}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Schedule',
+          onPress: () => performSchedule(scheduledDateTime.toISOString())
+        }
+      ]
+    );
+  };
+
+  const performSchedule = async (scheduledAt: string) => {
+    if (!announcementId || !currentUserId || isScheduling) return;
+
+    try {
+      setIsScheduling(true);
+      const { currentTitle, currentContent } = await getCurrentContent();
+
+      if (isEdit && announcementMode === 'edit') {
+        // For editing scheduled announcements, use reschedule
+        await rescheduleAnnouncement(
+          announcementId,
+          currentTitle,
+          currentContent,
+          currentUserId,
+          selectedDepartments,
+          scheduledAt
+        );
+        Alert.alert('Success', 'Announcement rescheduled successfully!');
+      } else {
+        // For new drafts, use schedule
+        await scheduleDraft(
+          announcementId,
+          currentTitle,
+          currentContent,
+          currentUserId,
+          selectedDepartments,
+          scheduledAt
+        );
+        Alert.alert('Success', 'Announcement scheduled successfully!');
+      }
+
+      onExit();
+    } catch (error) {
+      console.error('Error scheduling announcement:', error);
+      Alert.alert('Error', 'Failed to schedule announcement. Please try again.');
+    } finally {
       setIsScheduling(false);
-      Alert.alert('Coming Soon', 'Schedule functionality will be available in the next update.');
-    }, 1000);
+    }
   };
 
   const renderDepartmentItem = (department: Department) => {
@@ -796,6 +863,7 @@ const keyboardHeightRef = useKeyboardHeight();
           </View>
 
           {/* Cover Image Section */}
+          {/*
           <View className="mb-8">
             <Text className="text-xl font-bold text-gray-900 mb-4">Cover Image <Text className="text-gray-500 font-normal">(optional)</Text></Text>
             <View className="items-center">
@@ -844,6 +912,7 @@ const keyboardHeightRef = useKeyboardHeight();
               </TouchableOpacity>
             </View>
           </View>
+          */}
 
           {/* Media Files Section */}
           <View className="mb-8">
@@ -924,49 +993,29 @@ const keyboardHeightRef = useKeyboardHeight();
           {/* Action Buttons - After Department Selection */}
           <View className="p-4 bg-white border-t border-gray-200 mb-8">
             <View className="flex-row items-center">
-              {/* Save Draft - Leftmost */}
+              {/* Schedule Button - Leftmost */}
               {(isFresh || isDraft) && (
                 <TouchableOpacity
-                  onPress={handleSaveAsDraft}
-                  disabled={!draftTitle.trim() || isSavingDraft}
-                  className={`py-3 px-6 rounded-lg ${(draftTitle.trim() && !isSavingDraft)
-                    ? 'bg-gray-100'
+                  onPress={() => setShowSchedulePicker(true)}
+                  disabled={!isFormValid || isScheduling}
+                  className={`py-3 px-6 rounded-lg ${(isFormValid && !isScheduling)
+                    ? 'bg-yellow-100'
                     : 'bg-gray-200'
                     }`}
                 >
-                  <Text className={`text-center font-bold text-sm ${(draftTitle.trim() && !isSavingDraft)
-                    ? 'text-gray-700'
+                  <Text className={`text-center font-bold text-sm ${(isFormValid && !isScheduling)
+                    ? 'text-yellow-700'
                     : 'text-gray-400'
                     }`}>
-                    {isSavingDraft ? 'Saving...' : 'Save Draft'}
+                    {isScheduling ? 'Scheduling...' : (isEdit ? 'Reschedule' : 'Schedule')}
                   </Text>
                 </TouchableOpacity>
               )}
               {/* Gap */}
               <View className="flex-1" />
 
-              {/* Schedule and Preview */}
+              {/* Preview */}
               <View className="flex-row gap-3">
-                {/*}
-                <TouchableOpacity
-                  onPress={handleSchedule}
-                  disabled={!isFormValid || isScheduling}
-                  className={`py-3 px-6 rounded-lg ${
-                    (isFormValid && !isScheduling)
-                      ? 'bg-yellow-100'
-                      : 'bg-gray-200'
-                  }`}
-                >
-                  <Text className={`text-center font-bold text-sm ${
-                    (isFormValid && !isScheduling)
-                      ? 'text-yellow-700'
-                      : 'text-gray-400'
-                  }`}>
-                    {isScheduling ? 'Scheduling...' : 'Schedule'}
-                  </Text>
-                </TouchableOpacity>
-                */}
-
                 <TouchableOpacity
                   onPress={handlePreview}
                   disabled={!isFormValid || isLoadingPreview}
@@ -985,6 +1034,78 @@ const keyboardHeightRef = useKeyboardHeight();
               </View>
             </View>
           </View>
+
+          {/* Schedule Picker Modal */}
+          {showSchedulePicker && (
+            <Modal
+              animationType="slide"
+              transparent={true}
+              visible={showSchedulePicker}
+              onRequestClose={() => setShowSchedulePicker(false)}
+            >
+              <View className="flex-1 bg-black/50 justify-center">
+                <View className="bg-white mx-6 rounded-2xl p-6">
+                  <View className="flex-row justify-between items-center mb-4">
+                    <Text className="text-xl font-bold text-gray-800">
+                      {isEdit ? 'Reschedule Announcement' : 'Schedule Announcement'}
+                    </Text>
+                    <TouchableOpacity
+                      onPress={() => {
+                        setShowSchedulePicker(false);
+                        setSelectedDate(null);
+                        setSelectedTime(null);
+                      }}
+                      className="p-2"
+                    >
+                      <Ionicons name="close" size={24} color="#6B7280" />
+                    </TouchableOpacity>
+                  </View>
+
+                  <Text className="text-gray-600 mb-4">
+                    Select when you want to {isEdit ? 'reschedule' : 'schedule'} this announcement.
+                  </Text>
+
+                  <DateTimePicker
+                    selectedDate={selectedDate}
+                    setSelectedDate={setSelectedDate}
+                    selectedTime={selectedTime}
+                    setSelectedTime={setSelectedTime}
+                    containerClassName="mb-6"
+                  />
+
+                  <View className="flex-row justify-between space-x-3">
+                    <TouchableOpacity
+                      onPress={() => {
+                        setShowSchedulePicker(false);
+                        setSelectedDate(null);
+                        setSelectedTime(null);
+                      }}
+                      className="flex-1 py-3 px-6 rounded-lg border border-gray-300"
+                    >
+                      <Text className="text-gray-700 text-center font-semibold">Cancel</Text>
+                    </TouchableOpacity>
+                    
+                    <TouchableOpacity
+                      onPress={handleSchedule}
+                      disabled={!selectedDate || !selectedTime || isScheduling}
+                      className={`flex-1 py-3 px-6 rounded-lg ${
+                        selectedDate && selectedTime && !isScheduling
+                          ? 'bg-yellow-600'
+                          : 'bg-gray-400'
+                      }`}
+                    >
+                      <Text className="text-white text-center font-semibold">
+                        {isScheduling 
+                          ? 'Scheduling...' 
+                          : isEdit ? 'Reschedule' : 'Schedule'
+                        }
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </View>
+            </Modal>
+          )}
         </ScrollView>
 
       </KeyboardAvoidingView>

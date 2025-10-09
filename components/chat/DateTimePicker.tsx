@@ -198,7 +198,7 @@ const DateTimePicker: React.FC<DateTimePickerProps> = ({
     }
 
     for (let h = startHour; h < 24; h++) {
-      for (let m = h === startHour ? startMinute : 0; m < 60; m += 10) {
+      for (let m = h === startHour ? startMinute : 0; m < 60; m += 1) {
         const hrStr = h.toString().padStart(2, '0');
         const minStr = m.toString().padStart(2, '0');
         slots.push(`${hrStr}:${minStr}`);

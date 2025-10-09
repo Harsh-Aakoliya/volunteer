@@ -314,6 +314,50 @@ export const publishDraft = async (id: number, title: string, body: string, auth
   }
 };
 
+export const scheduleDraft = async (id: number, title: string, body: string, authorId: string, departmentTags: string[] = [], scheduledAt: string) => {
+  try {
+    const token = await AuthStorage.getToken();
+    if (!token) {
+      throw new Error('No authentication token');
+    }
+    
+    const response = await axios.put(`${API_URL}/api/announcements/draft/${id}/schedule`, 
+      { title, body, authorId, departmentTags, scheduledAt },
+      {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      }
+    );
+    return response.data;
+  } catch (error) {
+    console.error('Error scheduling draft:', error);
+    throw error;
+  }
+};
+
+export const rescheduleAnnouncement = async (id: number, title: string, body: string, authorId: string, departmentTags: string[] = [], scheduledAt: string) => {
+  try {
+    const token = await AuthStorage.getToken();
+    if (!token) {
+      throw new Error('No authentication token');
+    }
+    
+    const response = await axios.put(`${API_URL}/api/announcements/scheduled/${id}/reschedule`, 
+      { title, body, authorId, departmentTags, scheduledAt },
+      {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      }
+    );
+    return response.data;
+  } catch (error) {
+    console.error('Error rescheduling announcement:', error);
+    throw error;
+  }
+};
+
 export const getDrafts = async (authorId: string) => {
   try {
     const token = await AuthStorage.getToken();

@@ -9,7 +9,8 @@ import {
   Alert,
   ActivityIndicator,
   Image,
-  Dimensions
+  Dimensions,
+  Modal
 } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -35,6 +36,7 @@ const AnnouncementDetails = () => {
   const [attachedMediaFiles, setAttachedMediaFiles] = useState<any[]>([]);
   const [isLiking, setIsLiking] = useState(false);
   const [contentHeight, setContentHeight] = useState(200);
+  
   
   // Media viewer states
   const [imageViewerVisible, setImageViewerVisible] = useState(false);
@@ -153,12 +155,13 @@ const AnnouncementDetails = () => {
         announcementId: announcement.id,
         title: announcement.title,
         content: announcement.body,
-        announcementMode: 'edit',
+        announcementMode: announcement.status === 'scheduled' ? 'edit' : 'edit',
         hasCoverImage: announcement.hasCoverImage ? 'true' : 'false',
         departmentTags: announcement.departmentTag ? JSON.stringify(announcement.departmentTag) : ''
       }
     });
   };
+
 
   const handleDelete = () => {
     if (!announcement) return;
@@ -276,6 +279,18 @@ const AnnouncementDetails = () => {
         {/* Title - Naturally centered */}
         <Text className="text-xl font-bold">Announcement</Text>
         
+        {/* Timer icon for scheduled announcements */}
+        {announcement.status === 'scheduled' && (
+          <View className="absolute right-4 flex-row items-center z-10">
+            <View className="bg-yellow-100 rounded-full p-2 mr-2">
+              <Ionicons name="time-outline" size={20} color="#f59e0b" />
+            </View>
+            <Text className="text-yellow-700 text-xs font-medium">
+              Scheduled for {formatISTDate(announcement.createdAt, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })}
+            </Text>
+          </View>
+        )}
+
         {/* Edit and Delete buttons for authors - Absolutely positioned to right */}
         {isAuthor && (
           <View className="absolute right-4 flex-row items-center z-10">
@@ -443,6 +458,7 @@ const AnnouncementDetails = () => {
           title={selectedVideoFile.originalName || selectedVideoFile.fileName}
         />
       )}
+
     </SafeAreaView>
   );
 };
