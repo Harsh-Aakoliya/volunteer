@@ -1,5 +1,6 @@
 //main announcement page (index.tsx)
-import React,{ useEffect, useState } from "react";
+import * as React from 'react';
+import { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -52,7 +53,6 @@ const Announcements = () => {
   const [selectedTab, setSelectedTab] = useState<string>("ALL");
   const [availableTabs, setAvailableTabs] = useState<string[]>([]);
   
-  const [likingInProgress, setLikingInProgress] = useState<Set<number>>(new Set());
 
   const [isAnnouncementOpening,setIsAnnouncementOpening] = useState(false);
   
@@ -63,10 +63,12 @@ const Announcements = () => {
   const [modalType, setModalType] = useState<'read' | 'like'>('read');
   const [selectedAnnouncementId, setSelectedAnnouncementId] = useState<number | null>(null);
   const [selectedDepartmentTag, setSelectedDepartmentTag] = useState<string[]>([]);
+  const [isRefreshingModal, setIsRefreshingModal] = useState(false);
 
   // Get screen dimensions
   const { height: screenHeight } = Dimensions.get('window');
   const announcementHeight = screenHeight / 4; // Each announcement takes 1/4 of screen height
+  const itemsPerPage = 4; // Show only 4 announcements per page
 
   useEffect(() => {
     getCurrentUser();
@@ -189,70 +191,6 @@ const Announcements = () => {
     setAnnouncements(filtered);
   };
 
-  const handleToggleLike = async (id: number) => {
-    // Prevent multiple rapid clicks
-    if (likingInProgress.has(id)) {
-      return;
-    }
-
-    try {
-      // Mark as in progress
-      setLikingInProgress(prev => new Set(prev.add(id)));
-
-      // Optimistically update the UI first for immediate feedback
-      setAnnouncements(prevAnnouncements => 
-        prevAnnouncements.map(announcement => {
-          if (announcement.id === id) {
-            const currentlyLiked = announcement.likedBy?.some(like => like.userId === currentUserId) || false;
-            let newLikedBy;
-            
-            if (currentlyLiked) {
-              // Remove user's like
-              newLikedBy = announcement.likedBy?.filter(like => like.userId !== currentUserId) || [];
-            } else {
-              // Add user's like
-              const newLike = {
-                userId: currentUserId,
-                fullName: 'You', // We'll get actual name from server response
-                likedAt: new Date().toISOString()
-              };
-              newLikedBy = [...(announcement.likedBy || []), newLike];
-            }
-            
-            return {
-              ...announcement,
-              likedBy: newLikedBy
-            };
-          }
-          return announcement;
-        })
-      );
-
-
-      // Send request to server
-      const result = await toggleLike(id, currentUserId);
-      console.log('Like toggle result:', result);
-      
-      // Success! The optimistic update should be correct
-      // We could optionally refresh to get accurate server data
-      
-    } catch (error: any) {
-      console.error("Error toggling like:", error);
-      
-      // Revert optimistic update on error
-      loadAnnouncements();
-      
-      // Show error message
-      Alert.alert("Error", "Failed to update like. Please try again.");
-    } finally {
-      // Remove from in progress
-      setLikingInProgress(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(id);
-        return newSet;
-      });
-    }
-  };
 
   const handleMarkAsRead = async (id: number) => {
     try {
@@ -307,11 +245,6 @@ useFocusEffect(
   // Check if current user has read the announcement
   const hasUserRead = (announcement: Announcement) => {
     return announcement.readBy?.some(read => read.userId === currentUserId) || false;
-  };
-
-  // Check if current user has liked the announcement
-  const hasUserLiked = (announcement: Announcement) => {
-    return announcement.likedBy?.some(like => like.userId === currentUserId) || false;
   };
 
 
@@ -375,15 +308,35 @@ useFocusEffect(
     setSelectedTab(tab);
   };
 
-  // Handle showing read details
+  // Handle showing analytics modal (both read and like)
   const handleShowReadDetails = (announcementId: number, departmentTag?: string[]) => {
     setSelectedAnnouncementId(announcementId);
     setSelectedDepartmentTag(departmentTag || []);
-    setModalType('read');
+    setModalType('read'); // Start with read tab active
     setShowReadLikeModal(true);
   };
 
-  // Handle showing like details
+  // Handle switching between read and like tabs
+  const handleSwitchModalTab = (type: 'read' | 'like') => {
+    setModalType(type);
+  };
+
+  // Handle refreshing modal data
+  const handleRefreshModalData = async () => {
+    if (!selectedAnnouncementId) return;
+    
+    setIsRefreshingModal(true);
+    try {
+      // Refresh the main announcements data which will update the modal
+      await loadAnnouncements();
+    } catch (error) {
+      console.error('Error refreshing modal data:', error);
+    } finally {
+      setIsRefreshingModal(false);
+    }
+  };
+
+  // Handle showing like details (for backward compatibility)
   const handleShowLikeDetails = (announcementId: number) => {
     setSelectedAnnouncementId(announcementId);
     setModalType('like');
@@ -395,6 +348,7 @@ useFocusEffect(
     setShowReadLikeModal(false);
     setSelectedAnnouncementId(null);
     setSelectedDepartmentTag([]);
+    setModalType('read'); // Reset to read tab
   };
 
 
@@ -416,25 +370,25 @@ useFocusEffect(
 
       {/* <Department  /> */}
       {availableTabs.length > 1 && (
-        <View className="bg-white border-b border-gray-200">
+        <View className="">
           <ScrollView 
             horizontal 
             showsHorizontalScrollIndicator={false}
-            className="px-4 py-3"
+            className="px-4 py-2"
             contentContainerStyle={{ paddingRight: 20 }}
           >
             {availableTabs.map((tab) => (
               <TouchableOpacity
                 key={tab}
                 onPress={() => handleTabSelect(tab)}
-                className={`mr-4 px-4 py-2 rounded-full border ${
+                className={`mr-3 px-3 py-1.5 rounded-full border ${
                   selectedTab === tab
                     ? 'bg-blue-500 border-blue-500'
-                    : 'bg-white border-gray-300'
+                    : 'bg-white border-gray-200'
                 }`}
               >
                 <Text
-                  className={`font-medium ${
+                  className={`text-sm font-medium ${
                     selectedTab === tab ? 'text-white' : 'text-gray-700'
                   }`}
                 >
@@ -447,7 +401,7 @@ useFocusEffect(
       )}
 
       <FlatList
-        data={announcements}
+        data={announcements.slice(0, itemsPerPage)}
         keyExtractor={(item) => item.id.toString()}
         refreshControl={
           <RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />
@@ -459,13 +413,12 @@ useFocusEffect(
           <AnnouncementItem
             item={item}
             currentUserId={currentUserId}
-            likingInProgress={likingInProgress}
-            onToggleLike={handleToggleLike}
             onOpenAnnouncement={openAnnouncement}
             formatDateTime={formatDateTime}
             isAnnouncementOpening={isAnnouncementOpening}
             onShowReadDetails={handleShowReadDetails}
             onShowLikeDetails={handleShowLikeDetails}
+            isScheduled={item.status === 'scheduled'}
           />
         )}
       />
@@ -492,6 +445,9 @@ useFocusEffect(
           type={modalType}
           announcementId={selectedAnnouncementId}
           departmentTag={selectedDepartmentTag}
+          onSwitchTab={handleSwitchModalTab}
+          onRefresh={handleRefreshModalData}
+          isRefreshing={isRefreshingModal}
         />
       )}
 

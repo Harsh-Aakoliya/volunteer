@@ -1,5 +1,6 @@
 //AnnouncementCreator.tsx
-import React, { useState, useEffect, useRef, useCallback, useMemo  } from 'react';
+import * as React from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo  } from 'react';
 import {
   View,
   Text,
@@ -82,6 +83,7 @@ interface AnnouncementCreatorProps {
   announcementMode?: string;
   hasCoverImage?: boolean;
   initialDepartmentTags?: string[];
+  announcementStatus?: string;
   onExit: () => void;
 }
 
@@ -92,6 +94,7 @@ export default function AnnouncementCreator({
   announcementMode = 'new',
   hasCoverImage: initialHasCoverImage = false,
   initialDepartmentTags = [],
+  announcementStatus = 'draft',
   onExit
 }: AnnouncementCreatorProps) {
   // console.log("announcementMode", announcementMode);
@@ -163,6 +166,8 @@ export default function AnnouncementCreator({
   const isFresh = announcementMode === 'new';
   const isDraft = announcementMode === 'draft';
   const isEdit = announcementMode === 'edit';
+  const isScheduled = announcementStatus === 'scheduled';
+  const isReschedule = isEdit && isScheduled;
 
   // Tentap editor content setter
   const setEditorContent = useCallback(async (content: string) => {
@@ -599,7 +604,7 @@ const keyboardHeightRef = useKeyboardHeight();
     if (allSelected) {
       setSelectedDepartments(prev => prev.filter(name => !allDepartmentNames.includes(name)));
     } else {
-      setSelectedDepartments(prev => [...new Set([...prev, ...allDepartmentNames])]);
+      setSelectedDepartments(prev => Array.from(new Set([...prev, ...allDepartmentNames])));
     }
 
     setDepartments(prev => prev.map(dept => ({
@@ -714,7 +719,7 @@ const keyboardHeightRef = useKeyboardHeight();
       setIsScheduling(true);
       const { currentTitle, currentContent } = await getCurrentContent();
 
-      if (isEdit && announcementMode === 'edit') {
+      if (isReschedule) {
         // For editing scheduled announcements, use reschedule
         await rescheduleAnnouncement(
           announcementId,
@@ -993,8 +998,8 @@ const keyboardHeightRef = useKeyboardHeight();
           {/* Action Buttons - After Department Selection */}
           <View className="p-4 bg-white border-t border-gray-200 mb-8">
             <View className="flex-row items-center">
-              {/* Schedule Button - Leftmost */}
-              {(isFresh || isDraft) && (
+              {/* Schedule/Reschedule Button - Leftmost */}
+              {(isFresh || isDraft || isReschedule) && (
                 <TouchableOpacity
                   onPress={() => setShowSchedulePicker(true)}
                   disabled={!isFormValid || isScheduling}
@@ -1007,7 +1012,7 @@ const keyboardHeightRef = useKeyboardHeight();
                     ? 'text-yellow-700'
                     : 'text-gray-400'
                     }`}>
-                    {isScheduling ? 'Scheduling...' : (isEdit ? 'Reschedule' : 'Schedule')}
+                    {isScheduling ? (isReschedule ? 'Rescheduling...' : 'Scheduling...') : (isReschedule ? 'Reschedule' : 'Schedule')}
                   </Text>
                 </TouchableOpacity>
               )}
@@ -1047,7 +1052,7 @@ const keyboardHeightRef = useKeyboardHeight();
                 <View className="bg-white mx-6 rounded-2xl p-6">
                   <View className="flex-row justify-between items-center mb-4">
                     <Text className="text-xl font-bold text-gray-800">
-                      {isEdit ? 'Reschedule Announcement' : 'Schedule Announcement'}
+                      {isReschedule ? 'Reschedule Announcement' : 'Schedule Announcement'}
                     </Text>
                     <TouchableOpacity
                       onPress={() => {
@@ -1062,7 +1067,7 @@ const keyboardHeightRef = useKeyboardHeight();
                   </View>
 
                   <Text className="text-gray-600 mb-4">
-                    Select when you want to {isEdit ? 'reschedule' : 'schedule'} this announcement.
+                    Select when you want to {isReschedule ? 'reschedule' : 'schedule'} this announcement.
                   </Text>
 
                   <DateTimePicker
@@ -1096,8 +1101,8 @@ const keyboardHeightRef = useKeyboardHeight();
                     >
                       <Text className="text-white text-center font-semibold">
                         {isScheduling 
-                          ? 'Scheduling...' 
-                          : isEdit ? 'Reschedule' : 'Schedule'
+                          ? (isReschedule ? 'Rescheduling...' : 'Scheduling...')
+                          : isReschedule ? 'Reschedule' : 'Schedule'
                         }
                       </Text>
                     </TouchableOpacity>

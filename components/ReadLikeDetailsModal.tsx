@@ -8,6 +8,8 @@ import {
   ScrollView,
   ActivityIndicator,
   SafeAreaView,
+  PanGestureHandler,
+  Animated,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { formatISTDate, formatISTTime } from "@/utils/dateUtils";
@@ -19,6 +21,9 @@ interface ReadLikeDetailsModalProps {
   type: 'read' | 'like';
   announcementId: number;
   departmentTag?: string[];
+  onSwitchTab?: (type: 'read' | 'like') => void;
+  onRefresh?: () => void;
+  isRefreshing?: boolean;
 }
 
 interface ReadUser {
@@ -46,23 +51,31 @@ const ReadLikeDetailsModal: React.FC<ReadLikeDetailsModalProps> = ({
   onClose,
   type,
   announcementId,
-  departmentTag = []
+  departmentTag = [],
+  onSwitchTab,
+  onRefresh,
+  isRefreshing = false
 }) => {
   const [readUsers, setReadUsers] = useState<ReadUser[]>([]);
   const [unreadUsers, setUnreadUsers] = useState<UnreadUser[]>([]);
   const [likeUsers, setLikeUsers] = useState<LikeUser[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [currentType, setCurrentType] = useState<'read' | 'like'>(type);
+
+  useEffect(() => {
+    setCurrentType(type);
+  }, [type]);
 
   useEffect(() => {
     if (visible && announcementId) {
-      if (type === 'read') {
-        fetchReadDetails();
-      } else if (type === 'like') {
-        fetchLikeDetails();
-      }
+      fetchAllData();
     }
-  }, [visible, type, announcementId]);
+  }, [visible, announcementId]);
+
+  const fetchAllData = async () => {
+    await Promise.all([fetchReadDetails(), fetchLikeDetails()]);
+  };
 
   const fetchReadDetails = async () => {
     setLoading(true);
@@ -129,10 +142,17 @@ const ReadLikeDetailsModal: React.FC<ReadLikeDetailsModalProps> = ({
     }
   };
   const refreshDetails = () => {
-    if (type === 'read') {
-      fetchReadDetails();
-    } else if (type === 'like') {
-      fetchLikeDetails();
+    if (onRefresh) {
+      onRefresh();
+    } else {
+      fetchAllData();
+    }
+  };
+
+  const handleTabSwitch = (newType: 'read' | 'like') => {
+    setCurrentType(newType);
+    if (onSwitchTab) {
+      onSwitchTab(newType);
     }
   };
 
@@ -282,30 +302,56 @@ const ReadLikeDetailsModal: React.FC<ReadLikeDetailsModalProps> = ({
         <SafeAreaView className="flex-1 bg-white">
             {/* Header */}
             <View className="flex-row items-center justify-between px-4 py-3 border-b border-gray-200">
-            {/* Back button with same left padding as content */}
+            {/* Back button */}
             <TouchableOpacity
                 onPress={onClose}
-                className="pl-4 pr-2 py-2" // Same left padding as content items
+                className="p-2"
             >
                 <Ionicons name="arrow-back" size={24} color="#374151" />
             </TouchableOpacity>
             
-            {/* Title - centered */}
+            {/* Title */}
             <Text className="text-lg font-semibold text-gray-900 flex-1 text-center">
-                {type === 'read' ? 'Read Details' : 'Like Details'}
+                Analytics
             </Text>
     
-            {/* Refresh button with same right padding as content items */}
+            {/* Refresh button */}
             <TouchableOpacity
                 onPress={refreshDetails}
-                className="pr-4 pl-2 py-2" // Same right padding as content items
+                disabled={isRefreshing}
+                className="p-2"
             >
-                <Ionicons name="refresh" size={24} color="#374151" />
+                {isRefreshing ? (
+                  <ActivityIndicator size="small" color="#374151" />
+                ) : (
+                  <Ionicons name="refresh" size={24} color="#374151" />
+                )}
             </TouchableOpacity>
+            </View>
+
+            {/* Tab Bar */}
+            <View className="flex-row border-b border-gray-200">
+              <TouchableOpacity
+                onPress={() => handleTabSwitch('read')}
+                className={`flex-1 py-3 items-center ${currentType === 'read' ? 'border-b-2 border-blue-500' : ''}`}
+              >
+                <Text className={`font-medium ${currentType === 'read' ? 'text-blue-600' : 'text-gray-500'}`}>
+                  Read ({readUsers.length + unreadUsers.length})
+                </Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                onPress={() => handleTabSwitch('like')}
+                className={`flex-1 py-3 items-center ${currentType === 'like' ? 'border-b-2 border-blue-500' : ''}`}
+              >
+                <Text className={`font-medium ${currentType === 'like' ? 'text-blue-600' : 'text-gray-500'}`}>
+                  Likes ({likeUsers.length})
+                </Text>
+              </TouchableOpacity>
             </View>
     
             {/* Content */}
-            {type === 'read' ? renderReadDetails() : renderLikeDetails()}
+            {currentType === 'read' ? renderReadDetails() : renderLikeDetails()}
         </SafeAreaView>
         </Modal>
     );

@@ -8,7 +8,7 @@ import { Platform, Alert, TextInput, View, Text, TouchableOpacity } from 'react-
 import CustomInput from '@/components/ui/CustomInput';
 import CustomButton from '@/components/ui/CustomButton';
 import { API_URL, setApiUrl, updateDevIP } from "@/constants/api";
-import React from 'react';
+import * as React from 'react';
 const DEV_IP = "http://192.168.107.242:3000";
 const INTERNAL_IP = "http://192.168.2.134:3000";
 const EXTERNAL_IP = "http://103.47.172.58:50160";
@@ -305,9 +305,9 @@ export default function Index() {
   // Show loading state while connectivity check is in progress
   if (!connectivityCheckComplete) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-        <TouchableOpacity onPress={handleLoginToContinuePress}>
-          <Text className="text-gray-600 font-JakartaMedium mt-2">
+      <View className="flex-1 justify-center items-center bg-gray-100">
+        <TouchableOpacity onPress={handleLoginToContinuePress} className="bg-blue-500 p-4 rounded-lg">
+          <Text className="text-white text-lg font-bold">
             Connecting to server...
           </Text>
         </TouchableOpacity>
@@ -368,19 +368,3 @@ export default function Index() {
     </>
   );
 }
-
-
-
-
-// import "./global.css"
-// import { Text, View } from "react-native";
-// import React from "react";
-// export default function App() {
-//   return (
-//     <View className="flex-1 items-center justify-center bg-white">
-//       <Text className="text-xl font-bold text-blue-500">
-//         Welcome to Nativewind!
-//       </Text>
-//     </View>
-//   );
-// }

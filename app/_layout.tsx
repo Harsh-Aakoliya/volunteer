@@ -1,9 +1,9 @@
 // app/_layout.tsx
 import { Stack } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Text, ToastAndroid } from 'react-native';
+import { Text, ToastAndroid, View } from 'react-native';
 import * as FileSystem from 'expo-file-system';
-import React from 'react';
+import * as React from 'react';
 
 import { AuthStorage } from '@/utils/authStorage';
 import "../global.css";
@@ -12,7 +12,7 @@ import { requestChatNotificationPermissions } from '@/utils/chatNotificationHand
 import { requestAnnouncementNotificationPermissions } from '@/utils/announcementNotificationHandler';
 
 export default function RootLayout() {
-  const [isReady, setIsReady] = useState(false);
+  const [isReady, setIsReady] = useState(true);
 
   useEffect(() => {
     const bootstrap = async () => {
@@ -51,7 +51,13 @@ export default function RootLayout() {
   }, []);
 
   if (!isReady) {
-    return <Text>Loading...</Text>; // You can replace with a splash/loading component
+    return (
+      <View className="flex-1 items-center justify-center bg-blue-500">
+        <Text className="text-white text-2xl font-bold">
+          Loading...
+        </Text>
+      </View>
+    );
   }
 
   return <Stack screenOptions={{ headerShown: false }} />;

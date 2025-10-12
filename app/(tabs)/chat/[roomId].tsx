@@ -1,5 +1,6 @@
 // app/chat/[roomId].tsx
-import React, { useEffect, useState, useRef, useCallback } from "react";
+import * as React from 'react';
+import { useEffect, useState, useRef, useCallback } from "react";
 import {
   View,
   Text,
@@ -36,7 +37,6 @@ import OnlineUsersIndicator from "@/components/chat/OnlineUsersIndicator";
 import MembersModal from "@/components/chat/MembersModal";
 import MessageStatus from "@/components/chat/MessageStatus";
 import GlobalPollModal from "@/components/chat/GlobalPollModal";
-import RenderDriveFiles from "@/components/chat/RenderDriveFiles";
 import RenderTable from "@/components/chat/Attechments/RenderTable";
 import MediaViewerModal from "@/components/chat/MediaViewerModal";
 import ChatMessageOptions from "@/components/chat/ChatMessageOptions";

@@ -1,5 +1,6 @@
 //preview.tsx
-import React, { useState } from 'react';
+import * as React from "react"
+import { useState } from 'react';
 import { 
   View, 
   Text, 
@@ -106,11 +107,14 @@ const AnnouncementPreviewScreen = () => {
           key={file.fileName}
           onPress={() => handleImageClick(file)}
           className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden mb-4"
-          style={{ height: 200 }}
         >
           <Image
             source={{ uri: `${API_URL}/media/announcement/${announcementId}/media/${file.fileName}` }}
-            style={{ width: '100%', height: '100%' }}
+            style={{ 
+              width: '100%', 
+              aspectRatio: 1,
+              alignSelf: 'center'
+            }}
             resizeMode="cover"
           />
         </TouchableOpacity>
@@ -262,9 +266,10 @@ const AnnouncementPreviewScreen = () => {
       {/* Scrollable Preview Content */}
       <ScrollView className="flex-1" showsVerticalScrollIndicator={true}>
         <View className="px-4 py-2">
-          <Text className="text-2xl font-bold text-gray-900 mb-1">{title}</Text>
+          <Text className="text-3xl font-bold text-gray-900 mb-1">{title}</Text>
           <Text className="text-sm text-gray-500 mb-2">
             By {authorName} • {formatISTDate(new Date(), { year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })}  </Text>
+          <View className="bg-gray-100 h-px mb-2"></View>
           
             <WebView
               source={{ html: `
@@ -274,18 +279,18 @@ const AnnouncementPreviewScreen = () => {
                   <meta charset="utf-8">
                   <meta name="viewport" content="width=device-width, initial-scale=1.0">
                   <style>
-                    body {
-                      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-                      font-size: 16px;
-                      line-height: 1;
-                      margin: 0;
-                      padding: 0;
-                      color: #374151;
-                    }
-                    p {
-                      margin: 0 0 1em 0;
-                      line-height:1;
-                    }
+                  body {
+                    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+                    font-size: 20px;
+                    line-height: 0;
+                    margin: 0;
+                    padding: 0;
+                    color: #374151;
+                  }
+                  p {
+                    margin: 0 0 0.5em 0;
+                    line-height: 1;
+                  }
                     h1, h2, h3, h4, h5, h6 {
                       margin: 0.5em 0 0.25em 0;
                       line-height: 1;
@@ -356,45 +361,20 @@ const AnnouncementPreviewScreen = () => {
 
       {/* Fixed Action Buttons */}
       <View className="p-4 bg-white border-t border-gray-200">
-        <View className="flex-row space-x-3">
-          <TouchableOpacity
-            onPress={handleBackToEdit}
-            disabled={isPublishing || isScheduling}
-            className="flex-1 py-3 px-6 rounded-lg border border-gray-300"
-          >
-            <Text className="text-gray-700 text-center font-semibold">Back to Edit</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity
-            onPress={() => setShowSchedulePicker(true)}
-            disabled={isPublishing || isScheduling}
-            className={`flex-1 py-3 px-6 rounded-lg ${
-              isPublishing || isScheduling ? 'bg-gray-400' : 'bg-yellow-600'
-            }`}
-          >
-            <Text className="text-white text-center font-semibold">
-              {isScheduling 
-                ? 'Scheduling...' 
-                : isEdit ? 'Reschedule' : 'Schedule'
-              }
-            </Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity
-            onPress={handlePublish}
-            disabled={isPublishing || isScheduling}
-            className={`flex-1 py-3 px-6 rounded-lg ${
-              isPublishing || isScheduling ? 'bg-gray-400' : 'bg-green-600'
-            }`}
-          >
-            <Text className="text-white text-center font-semibold">
-              {isPublishing 
-                ? 'Publishing...' 
-                : isEdit ? 'Update Announcement' : 'Publish Announcement'
-              }
-            </Text>
-          </TouchableOpacity>
-        </View>
+        <TouchableOpacity
+          onPress={handlePublish}
+          disabled={isPublishing || isScheduling}
+          className={`py-3 px-6 rounded-lg ${
+            isPublishing || isScheduling ? 'bg-gray-400' : 'bg-green-600'
+          }`}
+        >
+          <Text className="text-white text-center font-semibold">
+            {isPublishing 
+              ? 'Publishing...' 
+              : isEdit ? 'Update Announcement' : 'Publish Announcement'
+            }
+          </Text>
+        </TouchableOpacity>
       </View>
 
       {/* Schedule Picker Modal */}
@@ -548,11 +528,11 @@ const AudioPlayerStripe: React.FC<{
     <TouchableOpacity
       onPress={() => onPress(file)}
       className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden mb-4"
-      style={{ height: 80 }}
+      style={{ height: 100 }}
     >
       <View className="flex-row items-center h-full px-4">
-        <View className="w-12 h-12 bg-purple-500 bg-opacity-20 rounded-full items-center justify-center mr-4">
-          <Ionicons name="musical-notes" size={24} color="#8b5cf6" />
+        <View className="w-16 h-16 bg-purple-100 rounded-lg items-center justify-center mr-4">
+          <Ionicons name="musical-notes" size={32} color="#8b5cf6" />
         </View>
         
         <View className="flex-1">
@@ -564,9 +544,9 @@ const AudioPlayerStripe: React.FC<{
         
         <TouchableOpacity
           onPress={() => onPress(file)}
-          className="w-12 h-12 items-center justify-center"
+          className="items-center justify-center"
         >
-          <Ionicons name="play-circle" size={32} color="#8b5cf6" />
+          <Ionicons name="play-circle" size={40} color="#8b5cf6" />
         </TouchableOpacity>
       </View>
     </TouchableOpacity>
@@ -595,14 +575,13 @@ const VideoPreviewItem: React.FC<{
     <TouchableOpacity
       className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden mb-4"
       onPress={() => onPress(file)}
-      style={{ height: 200 }}
       activeOpacity={0.8}
     >
-      <View className="relative" style={{ height: 200 }}>
+      <View className="relative">
         <VideoView
           style={{ 
             width: '100%', 
-            height: '100%',
+            height: 250,
             borderRadius: 8,
           }}
           player={previewVideoPlayer}
@@ -627,12 +606,12 @@ const VideoPreviewItem: React.FC<{
           <View style={{
             backgroundColor: 'rgba(0,0,0,0.6)',
             borderRadius: 50,
-            width: 60,
-            height: 60,
+            width: 80,
+            height: 80,
             justifyContent: 'center',
             alignItems: 'center'
           }}>
-            <Ionicons name="play" size={30} color="white" />
+            <Ionicons name="play" size={40} color="white" />
           </View>
         </View>
       </View>

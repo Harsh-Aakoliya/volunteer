@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import * as React from 'react';
+import { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -155,7 +156,8 @@ const AnnouncementDetails = () => {
         announcementId: announcement.id,
         title: announcement.title,
         content: announcement.body,
-        announcementMode: announcement.status === 'scheduled' ? 'edit' : 'edit',
+        announcementMode: 'edit',
+        announcementStatus: announcement.status,
         hasCoverImage: announcement.hasCoverImage ? 'true' : 'false',
         departmentTags: announcement.departmentTag ? JSON.stringify(announcement.departmentTag) : ''
       }
@@ -219,11 +221,14 @@ const AnnouncementDetails = () => {
           key={file.fileName}
           onPress={() => handleImageClick(file)}
           className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden mb-4"
-          style={{ height: 200 }}
         >
           <Image
             source={{ uri: `${API_URL}/media/announcement/${announcementId}/media/${file.fileName}` }}
-            style={{ width: '100%', height: '100%' }}
+            style={{ 
+              width: '100%', 
+              aspectRatio: 1,
+              alignSelf: 'center'
+            }}
             resizeMode="cover"
           />
         </TouchableOpacity>
@@ -267,29 +272,17 @@ const AnnouncementDetails = () => {
       <StatusBar barStyle="dark-content" />
 
       {/* Header */}
-      <View className="relative flex-row justify-center items-center px-4 py-3 border-b border-gray-200 bg-white">
+      <View className="relative flex-row justify-center items-center px-4 py-3 bg-white">
         {/* Back Button - Absolutely positioned to left */}
         <TouchableOpacity 
           onPress={() => router.back()} 
-          className="absolute left-4 p-2 z-10"
+          className="absolute left-4 z-10"
         >
           <Ionicons name="arrow-back" size={24} color="#374151" />
         </TouchableOpacity>
         
         {/* Title - Naturally centered */}
         <Text className="text-xl font-bold">Announcement</Text>
-        
-        {/* Timer icon for scheduled announcements */}
-        {announcement.status === 'scheduled' && (
-          <View className="absolute right-4 flex-row items-center z-10">
-            <View className="bg-yellow-100 rounded-full p-2 mr-2">
-              <Ionicons name="time-outline" size={20} color="#f59e0b" />
-            </View>
-            <Text className="text-yellow-700 text-xs font-medium">
-              Scheduled for {formatISTDate(announcement.createdAt, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })}
-            </Text>
-          </View>
-        )}
 
         {/* Edit and Delete buttons for authors - Absolutely positioned to right */}
         {isAuthor && (
@@ -308,10 +301,10 @@ const AnnouncementDetails = () => {
       <ScrollView className="flex-1" showsVerticalScrollIndicator={true}>
         <ScrollView className="flex-1" showsVerticalScrollIndicator={true}>
         <View className="px-4 py-2">
-          <Text className="text-2xl font-bold text-gray-900 mb-1">{announcement.title}</Text>
+          <Text className="text-3xl font-bold text-gray-900 mb-1">{announcement.title}</Text>
           <Text className="text-sm text-gray-500 mb-2">
             By {announcement.authorName} • {formatISTDate(announcement.createdAt, { year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })}  </Text>
-          
+          <View className="bg-gray-100 h-px mb-2"></View>
           <WebView
             source={{ html: `
               <!DOCTYPE html>
@@ -322,14 +315,14 @@ const AnnouncementDetails = () => {
                 <style>
                   body {
                     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-                    font-size: 16px;
-                    line-height: 1;
+                    font-size: 20px;
+                    line-height: 0;
                     margin: 0;
                     padding: 0;
                     color: #374151;
                   }
                   p {
-                    margin: 0 0 1em 0;
+                    margin: 0 0 0.5em 0;
                     line-height: 1;
                   }
                   h1, h2, h3, h4, h5, h6 {
@@ -473,11 +466,11 @@ const AudioPlayerStripe: React.FC<{
     <TouchableOpacity
       onPress={() => onPress(file)}
       className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden mb-4"
-      style={{ height: 80 }}
+      style={{ height: 100 }}
     >
       <View className="flex-row items-center h-full px-4">
-        <View className="w-12 h-12 bg-purple-500 bg-opacity-20 rounded-full items-center justify-center mr-4">
-          <Ionicons name="musical-notes" size={24} color="#8b5cf6" />
+        <View className="w-16 h-16 bg-purple-100 rounded-lg items-center justify-center mr-4">
+          <Ionicons name="musical-notes" size={32} color="#8b5cf6" />
         </View>
         
         <View className="flex-1">
@@ -489,9 +482,9 @@ const AudioPlayerStripe: React.FC<{
         
         <TouchableOpacity
           onPress={() => onPress(file)}
-          className="w-12 h-12 items-center justify-center"
+          className="items-center justify-center"
         >
-          <Ionicons name="play-circle" size={32} color="#8b5cf6" />
+          <Ionicons name="play-circle" size={40} color="#8b5cf6" />
         </TouchableOpacity>
       </View>
     </TouchableOpacity>
@@ -518,14 +511,13 @@ const VideoPreviewItem: React.FC<{
     <TouchableOpacity
       className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden mb-4"
       onPress={() => onPress(file)}
-      style={{ height: 200 }}
       activeOpacity={0.8}
     >
-      <View className="relative" style={{ height: 200 }}>
+      <View className="relative">
         <VideoView
           style={{ 
             width: '100%', 
-            height: '100%',
+            height: 250,
             borderRadius: 8,
           }}
           player={previewVideoPlayer}
@@ -550,12 +542,12 @@ const VideoPreviewItem: React.FC<{
           <View style={{
             backgroundColor: 'rgba(0,0,0,0.6)',
             borderRadius: 50,
-            width: 60,
-            height: 60,
+            width: 80,
+            height: 80,
             justifyContent: 'center',
             alignItems: 'center'
           }}>
-            <Ionicons name="play" size={30} color="white" />
+            <Ionicons name="play" size={40} color="white" />
           </View>
         </View>
       </View>

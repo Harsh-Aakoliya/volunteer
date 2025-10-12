@@ -1,7 +1,8 @@
 //create-announcement.tsx
 
 import { View, Text, SafeAreaView, Alert, BackHandler } from 'react-native';
-import React, { useEffect, useState } from 'react';
+import * as React from 'react';
+import { useEffect, useState } from 'react';
 import { useLocalSearchParams, router } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { useCallback } from 'react';
@@ -18,6 +19,7 @@ const Announcement = () => {
   const initialTitle = params.title as string;
   const initialBody = (params.body || params.content) as string;
   const announcementMode = params.announcementMode as string;
+  const announcementStatus = params.announcementStatus as string;
   const hasCoverImage = params.hasCoverImage as string;
   const departmentTags = params.departmentTags ? JSON.parse(params.departmentTags as string) : [];
   
@@ -88,6 +90,7 @@ const Announcement = () => {
         initialContent={initialBody || ''}
         announcementId={announcementId ? Number(announcementId) : undefined}
         announcementMode={announcementMode}
+        announcementStatus={announcementStatus}
         hasCoverImage={hasCoverImage === 'true' || hasCoverImage === 'TRUE'}
         initialDepartmentTags={departmentTags}
         onExit={handleExit}
