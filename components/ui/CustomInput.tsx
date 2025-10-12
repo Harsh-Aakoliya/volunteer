@@ -1,6 +1,6 @@
 import { TextInput, View, Text, Pressable } from "react-native";
 import { InputProps } from "../../types/type";
-
+import * as React from 'react';
 const CustomInput = ({
     label,
     error,

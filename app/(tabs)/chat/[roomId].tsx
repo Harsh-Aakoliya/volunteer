@@ -30,6 +30,7 @@ import { AuthStorage } from "@/utils/authStorage";
 import { Message, ChatRoom, ChatUser } from "@/types/type";
 import { getISTTimestamp, formatISTTime, formatISTDate, isSameDayIST, getRelativeTimeIST } from "@/utils/dateUtils";
 import axios from "axios";
+import * as FileSystem from 'expo-file-system';
 import { API_URL } from "@/constants/api";
 import { useFocusEffect } from "@react-navigation/native";
 import socketService from "@/utils/socketService";
@@ -43,6 +44,8 @@ import ChatMessageOptions from "@/components/chat/ChatMessageOptions";
 import ForwardMessagesModal from "@/components/chat/ForwardMessagesModal";
 import AttachmentsGrid from "./Attechments-grid";
 import MessageInput from "@/components/chat/MessageInput";
+import AudioRecorder from "@/components/chat/AudioRecorder";
+import AudioMessagePlayer from "@/components/chat/AudioMessagePlayer";
 import { clearRoomNotifications } from "@/utils/chatNotificationHandler";
 
 interface RoomDetails extends ChatRoom {
@@ -103,6 +106,10 @@ export default function ChatRoomScreen() {
     unreadBy: Array<{userId: string, fullName: string}>;
   } | null>(null);
   const [isLoadingReadStatus, setIsLoadingReadStatus] = useState(false);
+
+  // Audio recording state
+  const [showAudioRecorder, setShowAudioRecorder] = useState(false);
+  const [isRecordingAudio, setIsRecordingAudio] = useState(false);
 
   // Scroll to bottom state
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
@@ -586,6 +593,152 @@ export default function ChatRoomScreen() {
       alert("Failed to load chat room details");
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // Handle audio recording start
+  const handleAudioRecordingStart = () => {
+    if (!isGroupAdmin) {
+      alert("Only group admins can send audio messages in this room.");
+      return;
+    }
+    setShowAudioRecorder(true);
+    setIsRecordingAudio(true);
+  };
+
+  // Handle audio recording completion
+  const handleAudioRecordingComplete = async (audioData: {
+    file: string;
+    duration: string;
+    durationMillis: number;
+    waves: any[];
+  }) => {
+    try {
+      setSending(true);
+      console.log("audioData in handleAudioRecordingComplete", audioData);
+      
+      // Upload audio file and get tempFolderId
+      const tempFolderId = await uploadAudioFile(audioData.file);
+      
+      // Send the audio message using vm-media move-to-chat endpoint
+      await sendAudioMessage(tempFolderId, audioData.duration);
+      
+    } catch (error) {
+      console.error("Error sending audio message:", error);
+      alert("Failed to send audio message");
+    } finally {
+      setSending(false);
+      setShowAudioRecorder(false);
+      setIsRecordingAudio(false);
+    }
+  };
+
+  // Send audio message using vm-media move-to-chat endpoint
+  const sendAudioMessage = async (tempFolderId: string, duration: string) => {
+    try {
+      const token = await AuthStorage.getToken();
+      
+      const response = await axios.post(
+        `${API_URL}/api/vm-media/move-to-chat`,
+        {
+          tempFolderId,
+          roomId,
+          senderId: currentUser?.userId,
+          filesWithCaptions: [{
+            fileName: `audio_${Date.now()}.mp3`,
+            originalName: `Audio message (${duration})`,
+            caption: `Audio message (${duration})`,
+            mimeType: 'audio/mp4', // M4A files use MP4 container format
+            size: 0 // Size will be calculated by backend from the uploaded file
+          }]
+        },
+        {
+          headers: { Authorization: `Bearer ${token}` }
+        }
+      );
+
+      console.log("Audio message sent:", response.data);
+
+      if (response.data.success) {
+        // Clear reply state after sending
+        if (isReplying) {
+          setIsReplying(false);
+          setReplyToMessage(null);
+        }
+        
+        // Scroll to bottom after sending
+        setTimeout(() => {
+          if (flatListRef.current) {
+            flatListRef.current.scrollToEnd({ animated: true });
+          }
+        }, 100);
+      } else {
+        throw new Error("Failed to send audio message");
+      }
+    } catch (error) {
+      console.error("Error sending audio message:", error);
+      throw error;
+    }
+  };
+
+  // Handle audio recording cancellation
+  const handleAudioRecordingCancel = () => {
+    setShowAudioRecorder(false);
+    setIsRecordingAudio(false);
+  };
+
+  // Upload audio file to get tempFolderId
+  const uploadAudioFile = async (audioUri: string): Promise<string> => {
+    console.log("Uploading audio file to get tempFolderId",audioUri);
+    try {
+      const token = await AuthStorage.getToken();
+      
+      // Read the audio file as base64
+      const base64AudioData = await FileSystem.readAsStringAsync(audioUri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+
+      // Get file info
+      const fileInfo = await FileSystem.getInfoAsync(audioUri);
+      const originalFileName = fileInfo.uri.split('/').pop() || 'audio.m4a';
+      const fileSize = fileInfo.size || 0;
+      
+      // Create a proper filename with timestamp - rename M4A to MP3 for consistency
+      const timestamp = Date.now();
+      const fileName = `audio_${timestamp}.mp3`;
+
+      console.log("Uploading audio file:", fileName, "Original:", originalFileName, "Size:", fileSize, "Base64 length:", base64AudioData.length);
+      console.log("First 100 chars of base64:", base64AudioData.substring(0, 100));
+      // Upload the file using the correct vm-media endpoint
+      const response = await axios.post(
+        `${API_URL}/api/vm-media/upload`,
+        {
+          files: [{
+            name: fileName,
+            mimeType: 'audio/mp4', // M4A files use MP4 container format
+            fileData: base64AudioData,
+          }]
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      console.log("Upload response:", response.data);
+
+      if (response.data.success && response.data.tempFolderId) {
+        // For now, we'll use the tempFolderId as a reference
+        // The backend will handle moving it to chat when we send the message
+        return response.data.tempFolderId;
+      } else {
+        throw new Error("Upload failed");
+      }
+    } catch (error) {
+      console.error("Error uploading audio file:", error);
+      throw error;
     }
   };
 
@@ -1271,8 +1424,17 @@ export default function ChatRoomScreen() {
             </View>
           )}
           
-          {/* Render media files if present */}
-          {item.mediaFilesId ? (
+          {/* Render audio messages */}
+          {item.mediaFilesId && item.messageType === 'audio' ? (
+            <View className="mt-1">
+              <AudioMessagePlayer
+                audioUrl={`${API_URL}/media/chat/${item.mediaFilesId}`}
+                duration={item.messageText?.includes('(') ? item.messageText.match(/\(([^)]+)\)/)?.[1] : undefined}
+                isOwn={isOwnMessage}
+                waves={[]} // TODO: Store and retrieve wave data
+              />
+            </View>
+          ) : item.mediaFilesId ? (
             <TouchableOpacity 
               onPress={() => item.mediaFilesId && openMediaViewer(item.mediaFilesId)}
               className={`p-2 rounded-lg mt-1 ${
@@ -1564,15 +1726,20 @@ export default function ChatRoomScreen() {
             <MessageInput
               messageText={messageText}
               onChangeText={setMessageText}
-              onSend={(text: string, messageType: string, mediaFilesId?: number, pollId?: number, tableId?: number) => 
-                sendMessage(text, messageType, mediaFilesId, pollId, tableId, replyToMessage?.id as number)
-              }
+              onSend={(text: string, messageType: string, mediaFilesId?: number, pollId?: number, tableId?: number) => {
+                if (messageType === "audio") {
+                  handleAudioRecordingStart();
+                } else {
+                  sendMessage(text, messageType, mediaFilesId, pollId, tableId, replyToMessage?.id as number);
+                }
+              }}
               sending={sending}
               disabled={false}
               roomMembers={roomMembers}
               currentUser={currentUser}
               roomId={roomId as string}
               showAttachments={true}
+              onAudioRecord={handleAudioRecordingStart}
               onFocus={() => {
                 // When input is focused, scroll to end to ensure last messages are visible
                 setTimeout(() => {
@@ -1747,6 +1914,13 @@ export default function ChatRoomScreen() {
             </ScrollView>
           </SafeAreaView>
         </Modal>
+
+        {/* Audio Recorder */}
+        <AudioRecorder
+          isVisible={showAudioRecorder}
+          onRecordingComplete={handleAudioRecordingComplete}
+          onCancel={handleAudioRecordingCancel}
+        />
         </KeyboardAvoidingView>
       </SafeAreaView>
     </GestureHandlerRootView>

@@ -40,6 +40,7 @@ interface MessageInputProps {
   onBlur?: () => void;
   autoFocus?: boolean;
   style?: any;
+  onAudioRecord?: () => void;
 }
 
 export default function MessageInput({
@@ -58,7 +59,8 @@ export default function MessageInput({
   onFocus,
   onBlur,
   autoFocus = false,
-  style
+  style,
+  onAudioRecord
 }: MessageInputProps) {
   const [showMentionMenu, setShowMentionMenu] = useState(false);
   const [mentionSearch, setMentionSearch] = useState("");
@@ -281,25 +283,12 @@ export default function MessageInput({
         </View>
       )}
       
+      
       <View className="flex-row items-center p-2">
-        {/* Attachments button (only show if enabled) */}
-        {showAttachments && (
-          <TouchableOpacity
-            className="p-2"
-            onPress={toggleAttachmentsGrid}
-          >
-            <Ionicons 
-              name={showAttachmentsGrid ? "close-circle" : "add-circle"} 
-              size={24} 
-              color={showAttachmentsGrid ? "#ef4444" : "#6b7280"} 
-            />
-          </TouchableOpacity>
-        )}
-        
-        {/* Input Bar */}
+        {/* Input Bar - always present */}
         <TextInput
           ref={textInputRef}
-          className="flex-1 bg-gray-100 rounded-lg px-4 py-2 mr-2"
+          className="flex-1 bg-gray-100 rounded-lg px-4 py-2 mx-2"
           placeholder={placeholder}
           value={messageText}
           onChangeText={handleTextChange}
@@ -310,23 +299,69 @@ export default function MessageInput({
           editable={!disabled}
           style={maxHeight ? { maxHeight } : undefined}
         />
+        {/* Telegram-like UI: Show 3 icons when empty, send icon when typing */}
+        {messageText.trim().length === 0 ? (
+          <>
+            {/* Camera button */}
+            <TouchableOpacity
+              className="p-2 mr-2"
+              onPress={() => {
+                // TODO: Implement in next release
+                alert("Camera functionality will be implemented in the next release");
+              }}
+            >
+              <Ionicons name="camera" size={24} color="#6b7280" />
+            </TouchableOpacity>
+            
+            {/* Attachments button */}
+            {showAttachments && (
+              <TouchableOpacity
+                className="p-2 mr-2"
+                onPress={toggleAttachmentsGrid}
+              >
+                <Ionicons 
+                  name={showAttachmentsGrid ? "close-circle" : "add-circle"} 
+                  size={24} 
+                  color={showAttachmentsGrid ? "#ef4444" : "#6b7280"} 
+                />
+              </TouchableOpacity>
+            )}
+            
+            {/* Microphone button */}
+            <TouchableOpacity
+              className="p-2"
+              onPress={() => {
+                // This will trigger audio recording - handled by parent component
+                if (onSend) {
+                  onSend("", "audio");
+                }
+              }}
+            >
+              <Ionicons name="mic" size={24} color="#6b7280" />
+            </TouchableOpacity>
+          </>
+        ) : (
+          <>
+            {/* Send button when typing */}
+            <TouchableOpacity
+              className={`rounded-full p-2 ml-auto ${
+                messageText.trim() && !sending && !disabled
+                  ? "bg-blue-500"
+                  : "bg-gray-300"
+              }`}
+              onPress={handleSend}
+              disabled={!messageText.trim() || sending || disabled}
+            >
+              {sending ? (
+                <ActivityIndicator size="small" color="white" />
+              ) : (
+                <Ionicons name="send" size={24} color="white" />
+              )}
+            </TouchableOpacity>
+          </>
+        )}
         
-        {/* Send button */}
-        <TouchableOpacity
-          className={`rounded-full p-2 ${
-            messageText.trim() && !sending && !disabled
-              ? "bg-blue-500"
-              : "bg-gray-300"
-          }`}
-          onPress={handleSend}
-          disabled={!messageText.trim() || sending || disabled}
-        >
-          {sending ? (
-            <ActivityIndicator size="small" color="white" />
-          ) : (
-            <Ionicons name="send" size={24} color="white" />
-          )}
-        </TouchableOpacity>
+        
       </View>
 
       {/* Attachments Grid */}
@@ -336,6 +371,7 @@ export default function MessageInput({
             roomId={roomId} 
             userId={currentUser?.userId || ""} 
             onOptionSelect={() => setShowAttachmentsGrid(false)}
+            onAudioRecord={onAudioRecord}
           />
         </View>
       )}
