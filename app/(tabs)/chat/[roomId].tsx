@@ -49,6 +49,7 @@ import AudioRecorder from "@/components/chat/AudioRecorder";
 import AudioMessagePlayer from "@/components/chat/AudioMessagePlayer";
 import MediaGrid from "@/components/chat/MediaGrid";
 import { clearRoomNotifications } from "@/utils/chatNotificationHandler";
+import { getScheduledMessages } from "@/api/chat";
 
 interface RoomDetails extends ChatRoom {
   members: ChatUser[];
@@ -115,6 +116,10 @@ export default function ChatRoomScreen() {
   // Audio recording state
   const [showAudioRecorder, setShowAudioRecorder] = useState(false);
   const [isRecordingAudio, setIsRecordingAudio] = useState(false);
+
+  // Scheduled messages state
+  const [scheduledMessages, setScheduledMessages] = useState<any[]>([]);
+  const [showScheduledMessages, setShowScheduledMessages] = useState(false);
 
   // Scroll to bottom state
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
@@ -533,6 +538,19 @@ export default function ChatRoomScreen() {
     };
   }, [navigation]);
 
+  const loadScheduledMessages = async () => {
+    try {
+      if (!roomId) return;
+      
+      const response = await getScheduledMessages(roomId as string);
+      if (response.success) {
+        setScheduledMessages(response.scheduledMessages);
+      }
+    } catch (error) {
+      console.error("Error loading scheduled messages:", error);
+    }
+  };
+
   const loadRoomDetails = async () => {
     try {
       setIsLoading(true);
@@ -581,6 +599,9 @@ export default function ChatRoomScreen() {
         
         // Clear notifications for this room when user enters
         clearRoomNotifications(roomId as string);
+        
+        // Load scheduled messages
+        loadScheduledMessages();
       }
 
       // Scroll to end after messages are loaded (with proper delay for FlatList to mount)
@@ -753,7 +774,8 @@ export default function ChatRoomScreen() {
     mediaFilesId?: number,
     pollId?: number,
     tableId?: number,
-    replyMessageId?: number
+    replyMessageId?: number,
+    scheduledAt?: string
   ) => {
     // Only allow group admins to send messages
     if (!isGroupAdmin) {
@@ -812,10 +834,20 @@ export default function ChatRoomScreen() {
           pollId: pollId,
           messageType: messageType,
           tableId: tableId,
-          replyMessageId: replyMessageId
+          replyMessageId: replyMessageId,
+          scheduledAt: scheduledAt
         },
         { headers: { Authorization: `Bearer ${token}` } }
       );
+
+      // Handle the response - check if it's a scheduled message response
+      if (response.data.success && response.data.scheduledMessage) {
+        // This is a scheduled message response
+        console.log("Message scheduled successfully:", response.data);
+        // Refresh scheduled messages list
+        loadScheduledMessages();
+        return;
+      }
 
       // Handle the response which might be a single message or an array of messages
       const newMessages = Array.isArray(response.data) 
@@ -1735,11 +1767,11 @@ export default function ChatRoomScreen() {
             <MessageInput
               messageText={messageText}
               onChangeText={setMessageText}
-              onSend={(text: string, messageType: string, mediaFilesId?: number, pollId?: number, tableId?: number) => {
+              onSend={(text: string, messageType: string, scheduledAt?: string) => {
                 if (messageType === "audio") {
                   handleAudioRecordingStart();
                 } else {
-                  sendMessage(text, messageType, mediaFilesId, pollId, tableId, replyToMessage?.id as number);
+                  sendMessage(text, messageType, undefined, undefined, undefined, replyToMessage?.id as number, scheduledAt);
                 }
               }}
               sending={sending}
@@ -1749,6 +1781,8 @@ export default function ChatRoomScreen() {
               roomId={roomId as string}
               showAttachments={true}
               onAudioRecord={handleAudioRecordingStart}
+              onScheduleMessage={() => setShowScheduledMessages(true)}
+              hasScheduledMessages={scheduledMessages.length > 0}
               onFocus={() => {
                 // When input is focused, scroll to end to ensure last messages are visible
                 setTimeout(() => {
@@ -1934,6 +1968,67 @@ export default function ChatRoomScreen() {
           onRecordingComplete={handleAudioRecordingComplete}
           onCancel={handleAudioRecordingCancel}
         />
+
+        {/* Scheduled Messages Modal */}
+        <Modal
+          visible={showScheduledMessages}
+          animationType="slide"
+          transparent={false}
+          onRequestClose={() => setShowScheduledMessages(false)}
+        >
+          <SafeAreaView className="flex-1 bg-white">
+            <View className="flex-row items-center justify-between px-4 py-3 border-b border-gray-200">
+              <TouchableOpacity
+                onPress={() => setShowScheduledMessages(false)}
+                className="p-2"
+              >
+                <Ionicons name="arrow-back" size={24} color="#374151" />
+              </TouchableOpacity>
+              
+              <Text className="text-lg font-semibold text-gray-900">Scheduled Messages</Text>
+              
+              <TouchableOpacity
+                onPress={loadScheduledMessages}
+                className="p-2"
+              >
+                <Ionicons name="refresh" size={24} color="#374151" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView className="flex-1 px-4 py-4">
+              {scheduledMessages.length === 0 ? (
+                <View className="flex-1 justify-center items-center py-8">
+                  <Ionicons name="time-outline" size={60} color="#d1d5db" />
+                  <Text className="text-gray-500 mt-4 text-center">
+                    No scheduled messages
+                  </Text>
+                </View>
+              ) : (
+                scheduledMessages.map((message, index) => (
+                  <View key={index} className="mb-4 p-4 bg-gray-50 rounded-lg">
+                    <View className="flex-row items-center justify-between mb-2">
+                      <Text className="text-sm text-gray-600">
+                        {message.senderName}
+                      </Text>
+                      <Text className="text-sm text-gray-500">
+                        {formatISTDate(message.createdAt)}
+                      </Text>
+                    </View>
+                    <Text className="text-base text-gray-900 mb-2">
+                      {message.messageText}
+                    </Text>
+                    <View className="flex-row items-center">
+                      <Ionicons name="time-outline" size={16} color="#6b7280" />
+                      <Text className="text-sm text-gray-600 ml-1">
+                        Scheduled for {formatISTDate(message.createdAt)}
+                      </Text>
+                    </View>
+                  </View>
+                ))
+              )}
+            </ScrollView>
+          </SafeAreaView>
+        </Modal>
         </KeyboardAvoidingView>
       </SafeAreaView>
     </GestureHandlerRootView>

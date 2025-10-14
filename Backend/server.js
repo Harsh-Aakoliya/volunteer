@@ -17,6 +17,7 @@ import errorHandling from "./middlewares/errorHandler.js";
 import apiRoutes from "./routes/index.js";
 import setupSocketIO from "./socket.js";
 import scheduledPublisher from "./services/scheduledAnnouncementPublisher.js";
+import scheduledMessageService from "./services/scheduledMessageService.js";
 import os from "os";
 import path from "path";
 import fs from "fs";
@@ -204,6 +205,27 @@ app.post("/api/scheduled-publisher/check", async (req, res) => {
   }
 });
 
+// Scheduled message service endpoints
+app.get("/api/scheduled-messages/status", (req, res) => {
+  try {
+    const status = scheduledMessageService.isRunning;
+    res.json({ success: true, status });
+  } catch (error) {
+    console.error('Error getting scheduled message service status:', error);
+    res.status(500).json({ error: 'Unable to get service status' });
+  }
+});
+
+app.post("/api/scheduled-messages/check", async (req, res) => {
+  try {
+    await scheduledMessageService.triggerCheck();
+    res.json({ success: true, message: 'Manual check completed' });
+  } catch (error) {
+    console.error('Error during manual check:', error);
+    res.status(500).json({ error: 'Manual check failed' });
+  }
+});
+
 // Use httpServer instead of app to listen
 httpServer.listen(PORT, "0.0.0.0", () => {
   const addresses = Object.values(os.networkInterfaces())
@@ -214,6 +236,9 @@ httpServer.listen(PORT, "0.0.0.0", () => {
   console.log(`Server running on port ${PORT}`);
   console.log("Available on:");
   addresses.forEach((addr) => console.log(`http://${addr}:${PORT}`));
+  
+  // Start scheduled message service
+  scheduledMessageService.start();
 });
 
 

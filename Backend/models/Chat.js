@@ -91,7 +91,8 @@ const createChatMessagesTable = async (client) => {
           "isEdited" BOOLEAN DEFAULT FALSE,
           "editedAt" TIMESTAMPTZ DEFAULT (NOW() AT TIME ZONE 'UTC'),
           "editedBy" VARCHAR(50),
-          "replyMessageId" INTEGER
+          "replyMessageId" INTEGER,
+          "isScheduled" BOOLEAN DEFAULT FALSE
       );
     `);
     console.log("Chatmessages table created successfully");

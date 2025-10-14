@@ -388,7 +388,7 @@ const AnnouncementDetails = () => {
         {/* Attached Media Files */}
         {attachedMediaFiles.length > 0 && (
           <View className="px-4 pb-6">
-            <Text className="text-lg font-semibold text-gray-900 mb-4">Attached Media Files</Text>
+            {/* <Text className="text-lg font-semibold text-gray-900 mb-4">Attached Media Files</Text> */}
             {attachedMediaFiles.map(file => renderMediaItem(file))}
           </View>
         )}

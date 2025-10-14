@@ -63,7 +63,7 @@ export default function CustomImageViewer({
         imageUrls={images}
         onCancel={onClose}
         enableSwipeDown={true}
-        renderHeader={renderHeader}
+        // renderHeader={renderHeader}
         renderIndicator={renderIndicator}
         backgroundColor="black"
         enablePreload={true}

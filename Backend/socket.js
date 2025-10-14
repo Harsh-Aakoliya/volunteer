@@ -3,6 +3,11 @@
 import { sendChatNotifications } from "./controllers/chatNotificationController.js";
 
 const setupSocketIO = (io, app) => {
+  // Make io instance globally available for scheduled message service
+  global.io = io;
+  global.lastMessageByRoom = app.get('lastMessageByRoom') || {};
+  global.unreadMessagesByUser = app.get('unreadMessagesByUser') || {};
+  
   // Get the shared data from the Express app
   const onlineUsersByRoom = app.get('onlineUsersByRoom') || {};
   const unreadMessagesByUser = app.get('unreadMessagesByUser') || {};

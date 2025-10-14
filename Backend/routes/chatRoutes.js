@@ -31,6 +31,9 @@ router.post('/rooms/:roomId/messages', chatController.sendMessage);
 router.put('/rooms/:roomId/messages/:messageId', chatController.editMessage);
 router.delete('/rooms/:roomId/messages', chatController.deleteMessages);
 
+// Scheduled messages
+router.get('/rooms/:roomId/scheduled-messages', chatController.getScheduledMessages);
+
 // Room online users
 router.get('/rooms/:roomId/online-users', chatController.getRoomOnlineUsers);
 

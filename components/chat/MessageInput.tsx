@@ -7,11 +7,14 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   ScrollView,
-  Keyboard
+  Keyboard,
+  Modal,
+  Pressable
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { ChatUser } from '@/types/type';
 import AttachmentsGrid from '@/app/(tabs)/chat/Attechments-grid';
+import DateTimePicker from './DateTimePicker';
 
 interface MentionSegment {
   text: string;
@@ -23,7 +26,7 @@ interface MentionSegment {
 interface MessageInputProps {
   messageText: string;
   onChangeText: (text: string) => void;
-  onSend: (text: string, messageType: string) => void;
+  onSend: (text: string, messageType: string, scheduledAt?: string) => void;
   placeholder?: string;
   sending?: boolean;
   disabled?: boolean;
@@ -41,6 +44,8 @@ interface MessageInputProps {
   autoFocus?: boolean;
   style?: any;
   onAudioRecord?: () => void;
+  onScheduleMessage?: () => void;
+  hasScheduledMessages?: boolean;
 }
 
 export default function MessageInput({
@@ -60,7 +65,9 @@ export default function MessageInput({
   onBlur,
   autoFocus = false,
   style,
-  onAudioRecord
+  onAudioRecord,
+  onScheduleMessage,
+  hasScheduledMessages = false
 }: MessageInputProps) {
   const [showMentionMenu, setShowMentionMenu] = useState(false);
   const [mentionSearch, setMentionSearch] = useState("");
@@ -68,8 +75,17 @@ export default function MessageInput({
   const [filteredMembers, setFilteredMembers] = useState<ChatUser[]>([]);
   const [cursorPosition, setCursorPosition] = useState(0);
   const [showAttachmentsGrid, setShowAttachmentsGrid] = useState(false);
+  
+  // Scheduling states
+  const [showScheduleMenu, setShowScheduleMenu] = useState(false);
+  const [showDateTimePicker, setShowDateTimePicker] = useState(false);
+  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [selectedTime, setSelectedTime] = useState<string | null>(null);
+  const [longPressTimer, setLongPressTimer] = useState<NodeJS.Timeout | null>(null);
 
   const textInputRef = useRef<TextInput>(null);
+
+  const [isLongPressActive, setIsLongPressActive] = useState(false);
 
   // Auto focus effect
   useEffect(() => {
@@ -261,9 +277,9 @@ export default function MessageInput({
     );
   };
 
-  const handleSend = () => {
+  const handleSend = (scheduledAt?: string) => {
     if (messageText.trim() && !sending && !disabled) {
-      onSend(messageText, "text");
+      onSend(messageText, "text", scheduledAt);
     }
   };
 
@@ -274,107 +290,315 @@ export default function MessageInput({
     onFocus && onFocus();
   };
 
+  // Scheduling functions
+  const handleLongPressStart = () => {
+    if (messageText.trim() && !sending && !disabled) {
+      const timer = setTimeout(() => {
+        setIsLongPressActive(true);
+        setShowScheduleMenu(true);
+      }, 500); // 500ms long press
+      setLongPressTimer(timer);
+    }
+  };
+
+  const handleLongPressEnd = () => {
+    if (longPressTimer) {
+      clearTimeout(longPressTimer);
+      setLongPressTimer(null);
+    }
+    setIsLongPressActive(false);
+
+  };
+
+  const handleScheduleOption = (minutes: number) => {
+    const now = new Date();
+    const scheduledTime = new Date(now.getTime() + minutes * 60 * 1000);
+    const scheduledAt = scheduledTime.toISOString();
+    
+    setShowScheduleMenu(false);
+    handleSend(scheduledAt);
+  };
+
+  const handleScheduleAtSpecificTime = () => {
+    setShowScheduleMenu(false);
+    setShowDateTimePicker(true);
+  };
+
+  const handleDateTimeConfirm = () => {
+    if (selectedDate && selectedTime) {
+      const [hours, minutes] = selectedTime.split(':').map(Number);
+      const scheduledDateTime = new Date(selectedDate);
+      scheduledDateTime.setHours(hours, minutes, 0, 0);
+      
+      // Check if the selected time is in the future
+      if (scheduledDateTime > new Date()) {
+        const scheduledAt = scheduledDateTime.toISOString();
+        setShowDateTimePicker(false);
+        setSelectedDate(null);
+        setSelectedTime(null);
+        handleSend(scheduledAt);
+      } else {
+        alert('Please select a future date and time');
+      }
+    }
+  };
+
+  const handleDateTimeCancel = () => {
+    setShowDateTimePicker(false);
+    setSelectedDate(null);
+    setSelectedTime(null);
+  };
+
   return (
     <View style={style}>
       {/* Mention Menu */}
       {showMentionMenu && (
-        <View className="p-2">
+        <View className="px-4 pb-2">
           {renderMentionMenu()}
         </View>
       )}
       
-      
-      <View className="flex-row items-center p-2">
-        {/* Input Bar - always present */}
-        <TextInput
-          ref={textInputRef}
-          className="flex-1 bg-gray-100 rounded-lg px-4 py-2 mx-2"
-          placeholder={placeholder}
-          value={messageText}
-          onChangeText={handleTextChange}
-          onSelectionChange={handleSelectionChange}
-          multiline={multiline}
-          onFocus={handleInputFocus}
-          onBlur={onBlur}
-          editable={!disabled}
-          style={maxHeight ? { maxHeight } : undefined}
-        />
-        {/* Telegram-like UI: Show 3 icons when empty, send icon when typing */}
-        {messageText.trim().length === 0 ? (
-          <>
-            {/* Camera button */}
-            <TouchableOpacity
-              className="p-2 mr-2"
-              onPress={() => {
-                // TODO: Implement in next release
-                alert("Camera functionality will be implemented in the next release");
-              }}
-            >
-              <Ionicons name="camera" size={24} color="#6b7280" />
-            </TouchableOpacity>
-            
-            {/* Attachments button */}
-            {showAttachments && (
-              <TouchableOpacity
-                className="p-2 mr-2"
-                onPress={toggleAttachmentsGrid}
-              >
-                <Ionicons 
-                  name={showAttachmentsGrid ? "close-circle" : "add-circle"} 
-                  size={24} 
-                  color={showAttachmentsGrid ? "#ef4444" : "#6b7280"} 
-                />
-              </TouchableOpacity>
-            )}
-            
-            {/* Microphone button */}
-            <TouchableOpacity
-              className="p-2"
-              onPress={() => {
-                // This will trigger audio recording - handled by parent component
-                if (onSend) {
-                  onSend("", "audio");
-                }
-              }}
-            >
-              <Ionicons name="mic" size={24} color="#6b7280" />
-            </TouchableOpacity>
-          </>
-        ) : (
-          <>
-            {/* Send button when typing */}
-            <TouchableOpacity
-              className={`rounded-full p-2 ml-auto ${
-                messageText.trim() && !sending && !disabled
-                  ? "bg-blue-500"
-                  : "bg-gray-300"
-              }`}
-              onPress={handleSend}
-              disabled={!messageText.trim() || sending || disabled}
-            >
-              {sending ? (
-                <ActivityIndicator size="small" color="white" />
-              ) : (
-                <Ionicons name="send" size={24} color="white" />
+      {/* Main Input Container - Telegram-like design */}
+      <View className="bg-white">
+        <View className="flex-row items-end">
+          {/* Emoji button - always on the left */}
+          {/* <TouchableOpacity
+            className="mr-3 pb-1"
+            onPress={() => {
+              // TODO: Implement emoji picker
+              alert("Emoji picker will be implemented in the next release");
+            }}
+          >
+            <Ionicons name="happy-outline" size={24} color="#6b7280" />
+          </TouchableOpacity> */}
+          
+          {/* Text Input */}
+          <View className="flex-1 bg-gray-100 rounded-2xl px-4 py-2 min-h-[40px] max-h-[120px]">
+            <TextInput
+              ref={textInputRef}
+              className="text-base text-gray-900"
+              placeholder={placeholder}
+              placeholderTextColor="#9ca3af"
+              value={messageText}
+              onChangeText={handleTextChange}
+              onSelectionChange={handleSelectionChange}
+              multiline={multiline}
+              onFocus={handleInputFocus}
+              onBlur={onBlur}
+              editable={!disabled}
+              style={maxHeight ? { maxHeight } : undefined}
+            />
+          </View>
+          
+          {/* Right side icons */}
+          {messageText.trim().length === 0 ? (
+            <View className="flex-row items-center ml-3">
+              {/* Schedule button - show if there are scheduled messages */}
+              {hasScheduledMessages && (
+                <TouchableOpacity
+                  className="mr-3 pb-1"
+                  onPress={onScheduleMessage}
+                >
+                  <Ionicons name="time-outline" size={24} color="#6b7280" />
+                </TouchableOpacity>
               )}
-            </TouchableOpacity>
-          </>
+              
+              {/* Camera button */}
+              <TouchableOpacity
+                className="mr-3 pb-1"
+                onPress={() => {
+                  // TODO: Implement in next release
+                  alert("Camera functionality will be implemented in the next release");
+                }}
+              >
+                <Ionicons name="camera-outline" size={24} color="#6b7280" />
+              </TouchableOpacity>
+              
+              {/* Attachments button */}
+              {showAttachments && (
+                <TouchableOpacity
+                  className="mr-3 pb-1"
+                  onPress={toggleAttachmentsGrid}
+                >
+                  <Ionicons 
+                    name={showAttachmentsGrid ? "close-circle" : "add-circle-outline"} 
+                    size={24} 
+                    color={showAttachmentsGrid ? "#ef4444" : "#6b7280"} 
+                  />
+                </TouchableOpacity>
+              )}
+              
+              {/* Microphone button */}
+              <TouchableOpacity
+                className="pb-1"
+                onPress={() => {
+                  // This will trigger audio recording - handled by parent component
+                  if (onSend) {
+                    onSend("", "audio");
+                  }
+                }}
+              >
+                <Ionicons name="mic-outline" size={24} color="#6b7280" />
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View className="ml-3">
+              {/* Send button when typing */}
+              <TouchableOpacity
+                className={`w-10 h-10 rounded-full items-center justify-center ${
+                  messageText.trim() && !sending && !disabled
+                    ? "bg-blue-500"
+                    : "bg-gray-300"
+                }`}
+                onPress={() => {
+                  if (!isLongPressActive) handleSend();
+                }}
+                onPressIn={handleLongPressStart}
+                onPressOut={handleLongPressEnd}
+                disabled={!messageText.trim() || sending || disabled}
+              >
+                {sending ? (
+                  <ActivityIndicator size="small" color="white" />
+                ) : (
+                  <Ionicons name="send" size={20} color="white" />
+                )}
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+
+        {/* Attachments Grid */}
+        {showAttachmentsGrid && showAttachments && roomId && (
+          <View className="border-t border-gray-200 bg-gray-50 px-4 py-3">
+            <AttachmentsGrid 
+              roomId={roomId} 
+              userId={currentUser?.userId || ""} 
+              onOptionSelect={() => setShowAttachmentsGrid(false)}
+              onAudioRecord={onAudioRecord}
+            />
+          </View>
         )}
-        
-        
       </View>
 
-      {/* Attachments Grid */}
-      {showAttachmentsGrid && showAttachments && roomId && (
-        <View className="border-t border-gray-200 bg-gray-50 p-4">
-          <AttachmentsGrid 
-            roomId={roomId} 
-            userId={currentUser?.userId || ""} 
-            onOptionSelect={() => setShowAttachmentsGrid(false)}
-            onAudioRecord={onAudioRecord}
-          />
+      {/* Schedule Menu Modal */}
+      <Modal
+        visible={showScheduleMenu}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowScheduleMenu(false)}
+      >
+        <Pressable 
+          className="flex-1 justify-center items-center bg-black/20"
+          onPress={() => setShowScheduleMenu(false)}
+        >
+          <View className="bg-white rounded-2xl mx-4 shadow-lg overflow-hidden">
+            <TouchableOpacity
+              className="px-6 py-4 border-b border-gray-100"
+              onPress={() => handleScheduleOption(30)}
+            >
+              <View className="flex-row items-center">
+                <View className="w-8 h-8 bg-gray-100 rounded-full items-center justify-center mr-4">
+                  <Text className="text-gray-600 font-medium text-xs">30m</Text>
+                </View>
+                <Text className="text-gray-900 text-base">Send in 30 minutes</Text>
+              </View>
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              className="px-6 py-4 border-b border-gray-100"
+              onPress={() => handleScheduleOption(120)}
+            >
+              <View className="flex-row items-center">
+                <View className="w-8 h-8 bg-gray-100 rounded-full items-center justify-center mr-4">
+                  <Text className="text-gray-600 font-medium text-xs">2h</Text>
+                </View>
+                <Text className="text-gray-900 text-base">Send in 2 hours</Text>
+              </View>
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              className="px-6 py-4 border-b border-gray-100"
+              onPress={() => handleScheduleOption(480)}
+            >
+              <View className="flex-row items-center">
+                <View className="w-8 h-8 bg-gray-100 rounded-full items-center justify-center mr-4">
+                  <Text className="text-gray-600 font-medium text-xs">8h</Text>
+                </View>
+                <Text className="text-gray-900 text-base">Send in 8 hours</Text>
+              </View>
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              className="px-6 py-4 border-b border-gray-100"
+              onPress={() => handleScheduleOption(525600)}
+            >
+              <View className="flex-row items-center">
+                <View className="w-8 h-8 bg-gray-100 rounded-full items-center justify-center mr-4">
+                  <Text className="text-gray-600 font-medium text-xs">1y</Text>
+                </View>
+                <Text className="text-gray-900 text-base">Send in 1 year</Text>
+              </View>
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              className="px-6 py-4"
+              onPress={handleScheduleAtSpecificTime}
+            >
+              <View className="flex-row items-center">
+                <View className="w-8 h-8 bg-gray-100 rounded-full items-center justify-center mr-4">
+                  <Ionicons name="calendar-outline" size={16} color="#6b7280" />
+                </View>
+                <Text className="text-gray-900 text-base">Send at specific date...</Text>
+              </View>
+            </TouchableOpacity>
+          </View>
+        </Pressable>
+      </Modal>
+
+      {/* Date Time Picker Modal */}
+      <Modal
+        visible={showDateTimePicker}
+        transparent
+        animationType="slide"
+        onRequestClose={handleDateTimeCancel}
+      >
+        <View className="flex-1 justify-center items-center bg-black/20">
+          <View className="bg-white rounded-2xl mx-4 p-6 w-80">
+            <Text className="text-lg font-semibold text-gray-900 mb-4 text-center">
+              Schedule Message
+            </Text>
+            
+            <DateTimePicker
+              selectedDate={selectedDate}
+              setSelectedDate={setSelectedDate}
+              selectedTime={selectedTime}
+              setSelectedTime={setSelectedTime}
+              containerClassName="mb-6"
+            />
+            
+            <View className="flex-row justify-end space-x-3">
+              <TouchableOpacity
+                className="px-4 py-2"
+                onPress={handleDateTimeCancel}
+              >
+                <Text className="text-gray-600 text-base">Cancel</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                className="px-4 py-2"
+                onPress={handleDateTimeConfirm}
+                disabled={!selectedDate || !selectedTime}
+              >
+                <Text className={`text-base font-medium ${
+                  selectedDate && selectedTime ? 'text-blue-500' : 'text-gray-400'
+                }`}>
+                  Schedule
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
         </View>
-      )}
+      </Modal>
     </View>
   );
 }

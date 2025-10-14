@@ -49,7 +49,7 @@ export default function VideoViewer({
       onRequestClose={onClose}
     >
       <View style={styles.modal}>
-        <View style={styles.header}>
+        {/* <View style={styles.header}>
           {title && (
             <Text style={styles.title} numberOfLines={1}>
               {title}
@@ -61,7 +61,7 @@ export default function VideoViewer({
           >
             <Text style={styles.closeButtonText}>Close</Text>
           </TouchableOpacity>
-        </View>
+        </View> */}
         
         <View style={styles.videoContainer}>
           <VideoView
@@ -70,7 +70,7 @@ export default function VideoViewer({
             allowsFullscreen
             allowsPictureInPicture
           />
-          <View style={styles.videoControls}>
+          {/* <View style={styles.videoControls}>
             <TouchableOpacity
               style={styles.playButton}
               onPress={() => {
@@ -85,7 +85,7 @@ export default function VideoViewer({
                 {isPlaying ? '⏸️' : '▶️'}
               </Text>
             </TouchableOpacity>
-          </View>
+          </View> */}
         </View>
       </View>
     </Modal>

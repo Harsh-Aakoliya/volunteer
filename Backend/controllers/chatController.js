@@ -788,7 +788,7 @@ const chatController = {
     try {
       const { roomId } = req.params;
       console.log("req body ",req.body);
-      let { messageText, mediaFiles, messageType, mediaFilesId,pollId,tableId, replyMessageId } = req.body; // Also receive mediaFiles and replyMessageId
+      let { messageText, mediaFiles, messageType, mediaFilesId,pollId,tableId, replyMessageId, scheduledAt } = req.body; // Also receive mediaFiles, replyMessageId, and scheduledAt
       console.log("Message text",messageText);
       console.log("Media files",mediaFiles);
       console.log("Message type",messageType);
@@ -796,10 +796,12 @@ const chatController = {
       console.log("Poll id is ",pollId);
       console.log("Table id is ",tableId);
       console.log("Reply message id is ",replyMessageId);
+      console.log("Scheduled at is ",scheduledAt);
       if(!mediaFilesId) mediaFilesId=null;
       if(!pollId) pollId=null;
       if(!tableId) tableId=null;
       if(!replyMessageId) replyMessageId=null;
+      if(!scheduledAt) scheduledAt=null;
       const senderId = req.user.userId;
 
       // Convert roomId to integer
@@ -917,12 +919,24 @@ const chatController = {
         
 
         //first insert the basic message
-        let result = await pool.query(
-          `INSERT INTO chatmessages ("roomId", "senderId", "messageText","messageType", "replyMessageId", "createdAt")
-          VALUES ($1, $2, $3, $4, $5, NOW() AT TIME ZONE 'UTC')
-          RETURNING *`,
-          [roomIdInt, senderId, messageText, messageType, replyMessageId]
-        );
+        let result;
+        if (scheduledAt) {
+          // For scheduled messages, use the scheduledAt time as createdAt
+          result = await pool.query(
+            `INSERT INTO chatmessages ("roomId", "senderId", "messageText","messageType", "replyMessageId", "createdAt", "isScheduled")
+            VALUES ($1, $2, $3, $4, $5, $6, TRUE)
+            RETURNING *`,
+            [roomIdInt, senderId, messageText, messageType, replyMessageId, scheduledAt]
+          );
+        } else {
+          // For immediate messages, use current time
+          result = await pool.query(
+            `INSERT INTO chatmessages ("roomId", "senderId", "messageText","messageType", "replyMessageId", "createdAt", "isScheduled")
+            VALUES ($1, $2, $3, $4, $5, NOW() AT TIME ZONE 'UTC', FALSE)
+            RETURNING *`,
+            [roomIdInt, senderId, messageText, messageType, replyMessageId]
+          );
+        }
         let newMessage = result.rows[0];
 
         //then insert the media files id
@@ -968,53 +982,211 @@ const chatController = {
         senderName
       }));
       
-      // Get the io instance and other app data
-      const io = req.app.get('io');
-      const lastMessageByRoom = req.app.get('lastMessageByRoom');
-      const unreadMessagesByUser = req.app.get('unreadMessagesByUser');
-      
-      // If multiple messages were created, use the last one as the last message for the room
-      const lastMessage = messagesWithSender[messagesWithSender.length - 1];
-      
-      // Update last message for this room
-      if (lastMessageByRoom) {
-        lastMessageByRoom[roomIdInt] = {
-          id: lastMessage.id,
-          messageText: lastMessage.messageText,
-          createdAt: lastMessage.createdAt,
-          messageType: messageType,
-          mediaFilesId: mediaFilesId,
-          pollId:pollId,
-          tableId:tableId,
-          replyMessageId: replyMessageId,
-          sender: {
-            userId: senderId,
-            userName: senderName
-          }
-        };
+      // Handle scheduled vs immediate messages differently
+      if (scheduledAt) {
+        // For scheduled messages, just return success without sending via socket
+        console.log("Scheduled message created", messagesWithSender);
+        res.status(201).json({
+          success: true,
+          message: "Message scheduled successfully",
+          scheduledMessage: messagesWithSender.length === 1 ? messagesWithSender[0] : messagesWithSender,
+          scheduledAt: scheduledAt
+        });
+      } else {
+        // For immediate messages, proceed with normal flow
+        // Get the io instance and other app data
+        const io = req.app.get('io');
+        const lastMessageByRoom = req.app.get('lastMessageByRoom');
+        const unreadMessagesByUser = req.app.get('unreadMessagesByUser');
+        
+        // If multiple messages were created, use the last one as the last message for the room
+        const lastMessage = messagesWithSender[messagesWithSender.length - 1];
+        
+        // Update last message for this room
+        if (lastMessageByRoom) {
+          lastMessageByRoom[roomIdInt] = {
+            id: lastMessage.id,
+            messageText: lastMessage.messageText,
+            createdAt: lastMessage.createdAt,
+            messageType: messageType,
+            mediaFilesId: mediaFilesId,
+            pollId:pollId,
+            tableId:tableId,
+            replyMessageId: replyMessageId,
+            sender: {
+              userId: senderId,
+              userName: senderName
+            }
+          };
+        }
+        
+        // Get all members of the room
+        const membersResult = await pool.query(
+          `SELECT "userId" FROM chatroomusers WHERE "roomId" = $1`,
+          [roomIdInt]
+        );
+        
+        const memberIds = membersResult.rows.map(row => row.userId);
+        
+        // Note: Unread count is now handled by socket.js to avoid double counting
+        
+        // Note: Message emission is now handled by socket.js to avoid duplicates
+        // The socket.js file handles the newMessage emission when sendMessage event is received
+        console.log("Message with sender",messagesWithSender);
+        // Return all created messages or just the last message
+        // Depending on the use case, you might want to return all or just the last one
+        res.status(201).json(messagesWithSender.length === 1 ? messagesWithSender[0] : messagesWithSender);
       }
-      
-      // Get all members of the room
-      const membersResult = await pool.query(
-        `SELECT "userId" FROM chatroomusers WHERE "roomId" = $1`,
-        [roomIdInt]
-      );
-      
-      const memberIds = membersResult.rows.map(row => row.userId);
-      
-      // Note: Unread count is now handled by socket.js to avoid double counting
-      
-      // Note: Message emission is now handled by socket.js to avoid duplicates
-      // The socket.js file handles the newMessage emission when sendMessage event is received
-      console.log("Message with sender",messagesWithSender);
-      // Return all created messages or just the last message
-      // Depending on the use case, you might want to return all or just the last one
-      res.status(201).json(messagesWithSender.length === 1 ? messagesWithSender[0] : messagesWithSender);
     } catch (error) {
       console.error('Error sending message:', error);
       res.status(500).json({ message: "Server error", error: error.message });
     }
   },
+
+  // Get scheduled messages for a room
+  async getScheduledMessages(req, res) {
+    try {
+      const { roomId } = req.params;
+      const roomIdInt = parseInt(roomId, 10);
+      const userId = req.user.userId;
+
+      // Check if user is a member of this room
+      const memberCheck = await pool.query(
+        `SELECT "isAdmin" FROM chatroomusers 
+        WHERE "roomId" = $1 AND "userId" = $2`,
+        [roomIdInt, userId]
+      );
+
+      if (memberCheck.rows.length === 0) {
+        return res.status(403).json({ 
+          message: "You are not a member of this chat room" 
+        });
+      }
+
+      // Get scheduled messages for this room
+      const result = await pool.query(
+        `SELECT cm.*, u."fullName" as "senderName"
+        FROM chatmessages cm
+        JOIN users u ON cm."senderId" = u."userId"
+        WHERE cm."roomId" = $1 AND cm."isScheduled" = TRUE AND cm."createdAt" > NOW() AT TIME ZONE 'UTC'
+        ORDER BY cm."createdAt" ASC`,
+        [roomIdInt]
+      );
+
+      res.status(200).json({
+        success: true,
+        scheduledMessages: result.rows
+      });
+    } catch (error) {
+      console.error('Error fetching scheduled messages:', error);
+      res.status(500).json({ message: "Server error", error: error.message });
+    }
+  },
+
+  // Send scheduled message when time comes (called by scheduler)
+  async sendScheduledMessage(messageId) {
+    try {
+      // Get the scheduled message
+      const result = await pool.query(
+        `SELECT cm.*, u."fullName" as "senderName"
+        FROM chatmessages cm
+        JOIN users u ON cm."senderId" = u."userId"
+        WHERE cm."id" = $1 AND cm."isScheduled" = TRUE`,
+        [messageId]
+      );
+
+      if (result.rows.length === 0) {
+        console.log('Scheduled message not found or already sent');
+        return;
+      }
+
+      const message = result.rows[0];
+      
+      // Update the message to mark it as sent (no longer scheduled)
+      await pool.query(
+        `UPDATE chatmessages SET "isScheduled" = FALSE WHERE "id" = $1`,
+        [messageId]
+      );
+
+      // Get the io instance and other app data
+      const io = global.io; // We'll need to make io globally available
+      const lastMessageByRoom = global.lastMessageByRoom;
+      const unreadMessagesByUser = global.unreadMessagesByUser;
+
+      // Update last message for this room
+      if (lastMessageByRoom) {
+        lastMessageByRoom[message.roomId] = {
+          id: message.id,
+          messageText: message.messageText,
+          createdAt: message.createdAt,
+          messageType: message.messageType,
+          mediaFilesId: message.mediaFilesId,
+          pollId: message.pollId,
+          tableId: message.tableId,
+          replyMessageId: message.replyMessageId,
+          sender: {
+            userId: message.senderId,
+            userName: message.senderName
+          }
+        };
+      }
+
+      // Get all members of the room
+      const membersResult = await pool.query(
+        `SELECT "userId" FROM chatroomusers WHERE "roomId" = $1`,
+        [message.roomId]
+      );
+      
+      const memberIds = membersResult.rows.map(row => row.userId);
+
+      // Emit the message to all room members
+      if (io) {
+        io.to(`room_${message.roomId}`).emit('newMessage', {
+          id: message.id,
+          roomId: message.roomId,
+          messageText: message.messageText,
+          messageType: message.messageType,
+          createdAt: message.createdAt,
+          mediaFilesId: message.mediaFilesId,
+          pollId: message.pollId,
+          tableId: message.tableId,
+          replyMessageId: message.replyMessageId,
+          sender: {
+            userId: message.senderId,
+            userName: message.senderName
+          }
+        });
+
+        // Update unread counts for all members except sender
+        memberIds.forEach(memberId => {
+          if (memberId !== message.senderId) {
+            if (!unreadMessagesByUser[memberId]) {
+              unreadMessagesByUser[memberId] = {};
+            }
+            if (!unreadMessagesByUser[memberId][message.roomId]) {
+              unreadMessagesByUser[memberId][message.roomId] = 0;
+            }
+            unreadMessagesByUser[memberId][message.roomId]++;
+          }
+        });
+
+        // Emit unread count updates
+        memberIds.forEach(memberId => {
+          if (memberId !== message.senderId) {
+            io.to(`user_${memberId}`).emit('unreadCountUpdate', {
+              roomId: message.roomId,
+              unreadCount: unreadMessagesByUser[memberId][message.roomId]
+            });
+          }
+        });
+      }
+
+      console.log(`Scheduled message ${messageId} sent successfully`);
+    } catch (error) {
+      console.error('Error sending scheduled message:', error);
+    }
+  },
+
   // Add a new function to get online users for a room
   async getRoomOnlineUsers(req, res) {
     try {

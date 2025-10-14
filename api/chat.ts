@@ -92,3 +92,19 @@ export const fetchChatRooms = async (): Promise<ChatRoom[]> => {
     throw error;
   }
 };
+
+// Get scheduled messages for a room
+export const getScheduledMessages = async (roomId: string) => {
+  try {
+    const token = await AuthStorage.getToken();
+    const response = await axios.get(`${API_URL}/api/chat/rooms/${roomId}/scheduled-messages`, {
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    });
+    return response.data;
+  } catch (error) {
+    console.error("Error fetching scheduled messages:", error);
+    throw error;
+  }
+};
