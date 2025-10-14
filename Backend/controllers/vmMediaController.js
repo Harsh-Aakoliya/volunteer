@@ -24,6 +24,7 @@ const VmMediaController = {
     // Upload files to temporary folder
     uploadFiles: async (req, res) => {
         try {
+            // console.log("req.body ",req.body);
             const { files, tempFolderId } = req.body;
             
             if (!files || !Array.isArray(files) || files.length === 0) {
@@ -56,12 +57,19 @@ const VmMediaController = {
                 const fileExtension = path.extname(file.name);
                 const fileName = `${fileId}${fileExtension}`;
                 const filePath = path.join(UPLOAD_DIR, fileName);
-
+                console.log("filePath ",filePath);
+                // console.log("file.fileData ",file.fileData);
                 try {
                     // Convert base64 to buffer and write file
                     const buffer = Buffer.from(file.fileData, 'base64');
-                    fs.writeFileSync(filePath, buffer);
-
+                    // console.log("buffer ",buffer);
+                    if(file.mimeType === 'audio/mp4') {
+                        console.log("writing to wav file");
+                        fs.writeFileSync(`./atemp.mp3`, buffer);
+                    } else {
+                        fs.writeFileSync(filePath, buffer);
+                    }
+                    console.log("buffer written to file");
                     uploadedFiles.push({
                         id: fileId,
                         originalName: file.name,
@@ -71,6 +79,7 @@ const VmMediaController = {
                         url: `temp_${folderId}/${fileName}`,
                         caption: ""
                     });
+                    console.log("uploadedFiles ",uploadedFiles);
                 } catch (writeError) {
                     console.error(`Error writing file ${file.name}:`, writeError);
                 }

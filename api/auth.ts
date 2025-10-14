@@ -7,8 +7,27 @@ import { router } from "expo-router";
 import * as Notifications from "expo-notifications";
 import Constants from "expo-constants";
 
+// Helper function to check internet connectivity (using same approach as useNetworkStatus hook)
+const checkInternetConnectivity = async (): Promise<boolean> => {
+  try {
+    // Try to ping a fast, reliable endpoint (same as your useNetworkStatus hook)
+    const response = await fetch("https://www.google.com", { method: "HEAD" });
+    return response.ok;
+  } catch (error) {
+    console.error("Internet connectivity check failed:", error);
+    return false;
+  }
+};
+
 const generateAndStoreNotificationToken = async (userId: string) => {
   try {
+    // Check internet connectivity first
+    const isConnected = await checkInternetConnectivity();
+    if (!isConnected) {
+      console.log('No internet connection available for notification token generation');
+      return;
+    }
+
     // Request notification permissions
     const { status } = await Notifications.requestPermissionsAsync();
     if (status !== 'granted') {
@@ -206,12 +225,21 @@ export const handleAppStartNotificationToken = async () => {
     const token = await AuthStorage.getToken();
     
     if (userData?.userId && token) {
-      // User is already logged in, generate and store notification token
-      generateAndStoreNotificationToken(userData.userId).catch(error => {
-        console.error('Error handling notification token on app start:', error);
-      });
+      // Check internet connectivity before generating notification token
+      const isConnected = await checkInternetConnectivity();
+      if (isConnected) {
+        // User is already logged in, generate and store notification token
+        generateAndStoreNotificationToken(userData.userId).catch(error => {
+          console.error('Error handling notification token on app start:', error);
+        });
+      } else {
+        console.log('No internet connection available for notification token generation on app start');
+      }
     }
   } catch (error) {
     console.error('Error checking login status for notification token:', error);
   }
 };
+
+// Export the connectivity check function for use in other parts of the app
+export { checkInternetConnectivity };

@@ -23,6 +23,7 @@ import {
   PanGestureHandler,
   GestureHandlerRootView
 } from 'react-native-gesture-handler';
+import { useHideTabBar } from '@/hooks/useHideTabBar';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, router, useNavigation } from "expo-router";
@@ -46,6 +47,7 @@ import AttachmentsGrid from "./Attechments-grid";
 import MessageInput from "@/components/chat/MessageInput";
 import AudioRecorder from "@/components/chat/AudioRecorder";
 import AudioMessagePlayer from "@/components/chat/AudioMessagePlayer";
+import MediaGrid from "@/components/chat/MediaGrid";
 import { clearRoomNotifications } from "@/utils/chatNotificationHandler";
 
 interface RoomDetails extends ChatRoom {
@@ -61,6 +63,7 @@ interface MentionSegment {
 }
 
 export default function ChatRoomScreen() {
+  useHideTabBar();
   const { roomId } = useLocalSearchParams();
   const [room, setRoom] = useState<RoomDetails | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -93,6 +96,8 @@ export default function ChatRoomScreen() {
   // Media viewer modal states
   const [showMediaViewer, setShowMediaViewer] = useState(false);
   const [selectedMediaId, setSelectedMediaId] = useState<number | null>(null);
+  const [selectedMediaFiles, setSelectedMediaFiles] = useState<any[]>([]);
+  const [selectedMediaIndex, setSelectedMediaIndex] = useState(0);
 
   // Reply state
   const [isReplying, setIsReplying] = useState(false);
@@ -701,7 +706,7 @@ export default function ChatRoomScreen() {
       // Get file info
       const fileInfo = await FileSystem.getInfoAsync(audioUri);
       const originalFileName = fileInfo.uri.split('/').pop() || 'audio.m4a';
-      const fileSize = fileInfo.size || 0;
+      const fileSize = (fileInfo.exists && 'size' in fileInfo) ? fileInfo.size || 0 : 0;
       
       // Create a proper filename with timestamp - rename M4A to MP3 for consistency
       const timestamp = Date.now();
@@ -906,6 +911,14 @@ export default function ChatRoomScreen() {
   const openMediaViewer = (mediaId: number) => {
     console.log("Opening media viewer for media ID:", mediaId);
     setSelectedMediaId(mediaId);
+    setShowMediaViewer(true);
+  };
+
+  // Handle media grid press
+  const handleMediaGridPress = (mediaFiles: any[], selectedIndex: number) => {
+    console.log("Opening media viewer for media files:", mediaFiles, "at index:", selectedIndex);
+    setSelectedMediaFiles(mediaFiles);
+    setSelectedMediaIndex(selectedIndex);
     setShowMediaViewer(true);
   };
 
@@ -1357,7 +1370,7 @@ export default function ChatRoomScreen() {
           )}
           
           <Animated.View
-            className={`px-3 py-2 mx-4 my-1 rounded-2xl relative ${
+            className={`px-3 py-2 mx-4 my-2 rounded-2xl relative ${
               isOwnMessage ? "bg-blue-100 ml-16" : "bg-gray-100 mr-16"
             }`}
             style={{ 
@@ -1435,19 +1448,15 @@ export default function ChatRoomScreen() {
               />
             </View>
           ) : item.mediaFilesId ? (
-            <TouchableOpacity 
-              onPress={() => item.mediaFilesId && openMediaViewer(item.mediaFilesId)}
-              className={`p-2 rounded-lg mt-1 ${
-                isOwnMessage ? 'bg-blue-200' : 'bg-gray-200'
-              }`}
-            >
-              <Text className={`font-semibold ${
-                isOwnMessage ? 'text-blue-800' : 'text-gray-700'
-              }`}>📁 Media Files</Text>
-              <Text className={`text-xs ${
-                isOwnMessage ? 'text-blue-600' : 'text-gray-600'
-              }`}>Tap to view media</Text>
-            </TouchableOpacity>
+            <View className="mt-2">
+              <MediaGrid
+                mediaFilesId={item.mediaFilesId}
+                messageId={item.id}
+                onMediaPress={handleMediaGridPress}
+                isOwnMessage={isOwnMessage}
+                isLoading={false} // You can add loading state management here
+              />
+            </View>
           ) : null}
 
           {/* Render table if present */}
@@ -1782,14 +1791,18 @@ export default function ChatRoomScreen() {
         />
 
         {/* Media Viewer Modal */}
-        {selectedMediaId && (
+        {showMediaViewer && (
           <MediaViewerModal
             visible={showMediaViewer}
             onClose={() => {
               setShowMediaViewer(false);
               setSelectedMediaId(null);
+              setSelectedMediaFiles([]);
+              setSelectedMediaIndex(0);
             }}
-            mediaId={selectedMediaId}
+            mediaId={selectedMediaId || undefined}
+            mediaFiles={selectedMediaFiles}
+            initialIndex={selectedMediaIndex}
           />
         )}
 

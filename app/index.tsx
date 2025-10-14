@@ -8,8 +8,9 @@ import { Platform, Alert, TextInput, View, Text, TouchableOpacity } from 'react-
 import CustomInput from '@/components/ui/CustomInput';
 import CustomButton from '@/components/ui/CustomButton';
 import { API_URL, setApiUrl, updateDevIP } from "@/constants/api";
+import useNetworkStatus from '@/hooks/userNetworkStatus';
 import * as React from 'react';
-const DEV_IP = "http://192.168.107.242:3000";
+const DEV_IP = "http://192.168.35.242:3000";
 const INTERNAL_IP = "http://192.168.2.134:3000";
 const EXTERNAL_IP = "http://103.47.172.58:50160";
 
@@ -20,6 +21,7 @@ export const getDefaultDevIP = () => DEV_IP;
 export default function Index() {
   const appVersion = Application.nativeApplicationVersion;
   const router = useRouter();
+  const isConnected = useNetworkStatus();
   const [connectivityCheckComplete, setConnectivityCheckComplete] = useState(false);
   const [versionCheckComplete, setVersionCheckComplete] = useState(false);
   const [showDevIpInput, setShowDevIpInput] = useState(false);
@@ -71,6 +73,16 @@ export default function Index() {
 
     const setupApiUrl = async () => {
       console.log("🔍 Starting server connectivity check...");
+
+      // Step 0: Check internet connectivity first
+      if (!isConnected) {
+        console.log("❌ No internet connection available");
+        Alert.alert(
+          "No Internet Connection", 
+          "Please connect to the internet via WiFi or mobile data and try again."
+        );
+        return;
+      }
 
       // Step 1: Check if user is in dev mode
       console.log("isDevMode:", isDevMode);
@@ -128,11 +140,16 @@ export default function Index() {
     };
 
     setupApiUrl();
-  }, []);
+  }, [isConnected]);
 
   const handleDevIpSubmit = async () => {
     if (!devIpInput.trim()) {
       Alert.alert("Invalid IP", "Please enter a valid IP address with port (e.g., http://192.168.1.100:3000)");
+      return;
+    }
+
+    if (!isConnected) {
+      Alert.alert("No Internet Connection", "Please check your internet connection and try again.");
       return;
     }
 
@@ -333,6 +350,11 @@ export default function Index() {
           onPress={() => {
             if (!devIP.trim()) {
               Alert.alert("Error", "IP address cannot be empty.");
+              return;
+            }
+
+            if (!isConnected) {
+              Alert.alert("No Internet Connection", "Please check your internet connection and try again.");
               return;
             }
 

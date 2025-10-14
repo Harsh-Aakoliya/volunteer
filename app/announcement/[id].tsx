@@ -73,7 +73,7 @@ const AnnouncementDetails = () => {
       }
       
       // Load media files
-      await loadAnnouncementMediaFiles(announcementId);
+      loadAnnouncementMediaFiles(announcementId);
     } catch (error) {
       console.error('Error loading announcement details:', error);
       Alert.alert('Error', 'Failed to load announcement details');

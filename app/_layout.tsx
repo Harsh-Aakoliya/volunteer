@@ -10,9 +10,12 @@ import "../global.css";
 import { initializeNotifications } from '@/utils/notificationSetup';
 import { requestChatNotificationPermissions } from '@/utils/chatNotificationHandler';
 import { requestAnnouncementNotificationPermissions } from '@/utils/announcementNotificationHandler';
+import useNetworkStatus from '@/hooks/userNetworkStatus';
+import OfflinePopup from '@/components/OfflinePopup';
 
 export default function RootLayout() {
   const [isReady, setIsReady] = useState(true);
+  const isConnected = useNetworkStatus();
 
   useEffect(() => {
     const bootstrap = async () => {
@@ -60,5 +63,10 @@ export default function RootLayout() {
     );
   }
 
-  return <Stack screenOptions={{ headerShown: false }} />;
+  return (
+    <>
+      <Stack screenOptions={{ headerShown: false }} />
+      <OfflinePopup isVisible={!isConnected} />
+    </>
+  );
 }

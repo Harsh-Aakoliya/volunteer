@@ -43,10 +43,18 @@ interface MediaData {
 interface MediaViewerModalProps {
   visible: boolean;
   onClose: () => void;
-  mediaId: number;
+  mediaId?: number | null;
+  mediaFiles?: any[];
+  initialIndex?: number;
 }
 
-export default function MediaViewerModal({ visible, onClose, mediaId }: MediaViewerModalProps) {
+export default function MediaViewerModal({ 
+  visible, 
+  onClose, 
+  mediaId, 
+  mediaFiles,
+  initialIndex = 0 
+}: MediaViewerModalProps) {
   const [mediaData, setMediaData] = useState<MediaData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -61,10 +69,32 @@ export default function MediaViewerModal({ visible, onClose, mediaId }: MediaVie
 
   // Fetch media data when modal opens
   useEffect(() => {
-    if (visible && mediaId) {
-      fetchMediaData();
+    if (visible) {
+      if (mediaFiles && mediaFiles.length > 0) {
+        // Use provided media files directly
+        setMediaData({
+          id: 0,
+          roomId: 0,
+          senderId: '',
+          createdAt: '',
+          messageId: 0,
+          files: mediaFiles.map(file => ({
+            url: file.fileName || file.id,
+            filename: file.fileName,
+            originalName: file.originalName || file.fileName,
+            caption: '',
+            mimeType: file.mimeType,
+            size: file.size || 0
+          }))
+        });
+        setLoading(false);
+        setError(null);
+      } else if (mediaId) {
+        // Fetch media data from API
+        fetchMediaData();
+      }
     }
-  }, [visible, mediaId]);
+  }, [visible, mediaId, mediaFiles]);
 
   // Reset viewer states when modal closes
   useEffect(() => {
@@ -93,6 +123,22 @@ export default function MediaViewerModal({ visible, onClose, mediaId }: MediaVie
     setSelectedAudioFile(file);
     setAudioViewerVisible(true);
   };
+
+  // Auto-open the initial media file when modal opens
+  useEffect(() => {
+    if (visible && mediaData && mediaData.files.length > 0 && initialIndex >= 0) {
+      const initialFile = mediaData.files[initialIndex];
+      if (initialFile) {
+        if (initialFile.mimeType.startsWith('image/')) {
+          handleImageClick(initialFile);
+        } else if (initialFile.mimeType.startsWith('video/')) {
+          handleVideoClick(initialFile);
+        } else if (initialFile.mimeType.startsWith('audio/')) {
+          handleAudioClick(initialFile);
+        }
+      }
+    }
+  }, [visible, mediaData, initialIndex]);
 
   const fetchMediaData = async () => {
     setLoading(true);
