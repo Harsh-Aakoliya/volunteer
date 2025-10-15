@@ -8,7 +8,6 @@ import {
   ScrollView,
   ActivityIndicator,
   SafeAreaView,
-  PanGestureHandler,
   Animated,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";

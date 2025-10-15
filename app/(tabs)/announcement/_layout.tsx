@@ -8,7 +8,9 @@ export default function AnnouncementLayout() {
         name="index" 
         options={{ 
           title: 'Announcements',
-          headerShown:true
+          headerShown:true,
+          headerTintColor: '#0284c7',
+          headerTitleStyle: { fontWeight: 'bold' }
         }} 
       />
       <Stack.Screen 

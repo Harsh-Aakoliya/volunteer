@@ -9,7 +9,6 @@ import {
   ScrollView,
   RefreshControl,
   Alert,
-  Dimensions,
   SafeAreaView
 } from "react-native";
 import {
@@ -65,10 +64,7 @@ const Announcements = () => {
   const [selectedDepartmentTag, setSelectedDepartmentTag] = useState<string[]>([]);
   const [isRefreshingModal, setIsRefreshingModal] = useState(false);
 
-  // Get screen dimensions
-  const { height: screenHeight } = Dimensions.get('window');
-  const announcementHeight = screenHeight / 4; // Each announcement takes 1/4 of screen height
-  const itemsPerPage = 4; // Show only 4 announcements per page
+  // Removed fixed sizing and pagination to show full list naturally
 
   useEffect(() => {
     getCurrentUser();
@@ -189,6 +185,29 @@ const Announcements = () => {
 
     setFilteredAnnouncements(filtered);
     setAnnouncements(filtered);
+  };
+
+
+  // Compute unread counts per tab
+  const getUnreadCountForTab = (tab: string) => {
+    const isAnnouncementUnread = (announcement: Announcement) => {
+      return announcement.status === 'published' && !isRead(announcement);
+    };
+
+    if (tab === 'ALL') {
+      return allAnnouncements.filter(isAnnouncementUnread).length;
+    }
+
+    if (tab === 'Your announcements') {
+      return allAnnouncements.filter(a => a.authorId === currentUserId && isAnnouncementUnread(a)).length;
+    }
+
+    if (tab === 'Karyalay') {
+      return allAnnouncements.filter(a => a.authorDepartments && a.authorDepartments.includes('Karyalay') && isAnnouncementUnread(a)).length;
+    }
+
+    // Department-specific tab
+    return allAnnouncements.filter(a => a.departmentTag && a.departmentTag.includes(tab) && isAnnouncementUnread(a)).length;
   };
 
 
@@ -356,7 +375,7 @@ useFocusEffect(
 
 
   return (
-    <View className="flex-1 bg-gray-50">
+    <View className="flex-1 bg-sky-700">
       {/* {isAnnouncementOpening && (
           <View className="absolute inset-0 bg-white z-50 flex items-center justify-center">
               <ActivityIndicator size="large" color="#007AFF" />
@@ -370,45 +389,53 @@ useFocusEffect(
 
       {/* <Department  /> */}
       {availableTabs.length > 1 && (
-        <View className="">
+        <View className="mt-2">
           <ScrollView 
             horizontal 
             showsHorizontalScrollIndicator={false}
-            className="px-4 py-2"
-            contentContainerStyle={{ paddingRight: 20 }}
+            className="px-4 mb-1 mt-2"
+            contentContainerStyle={{ paddingRight: 20}}
           >
-            {availableTabs.map((tab) => (
-              <TouchableOpacity
-                key={tab}
-                onPress={() => handleTabSelect(tab)}
-                className={`mr-3 px-3 py-1.5 rounded-full border ${
-                  selectedTab === tab
-                    ? 'bg-blue-500 border-blue-500'
-                    : 'bg-white border-gray-200'
-                }`}
-              >
-                <Text
-                  className={`text-sm font-medium ${
-                    selectedTab === tab ? 'text-white' : 'text-gray-700'
-                  }`}
-                >
-                  {tab}
-                </Text>
-              </TouchableOpacity>
-            ))}
+            {availableTabs.map((tab) => {
+              const unreadCount = getUnreadCountForTab(tab);
+              return (
+                <View key={tab} className="relative mr-2">
+                  <TouchableOpacity
+                    onPress={() => handleTabSelect(tab)}
+                    className={`px-3 py-1.5 rounded-full ${
+                      selectedTab === tab
+                        ? 'bg-blue-200'
+                        : 'bg-white'
+                    }`}
+                  >
+                    <Text
+                      className={`text-base font-medium ${
+                        selectedTab === tab ? 'text-black-700' : 'text-gray-700'
+                      }`}
+                    >
+                      {tab}
+                    </Text>
+                  </TouchableOpacity>
+                  {unreadCount > 0 && (
+                    <View className="absolute -top-1 -right-1 bg-red-500 rounded-full px-1.5 py-0.5 z-10">
+                      <Text className="text-white text-[10px] font-bold">{unreadCount}</Text>
+                    </View>
+                  )}
+                </View>
+              );
+            })}
           </ScrollView>
         </View>
       )}
 
       <FlatList
-        data={announcements.slice(0, itemsPerPage)}
+        data={announcements}
         keyExtractor={(item) => item.id.toString()}
         refreshControl={
           <RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />
         }
-        ItemSeparatorComponent={() => (
-          <View className="h-px bg-gray-200 mx-4" />
-        )}
+        // Card spacing handled via each item margin
+        contentContainerStyle={{ paddingVertical: 1 }}
         renderItem={({ item }) => (
           <AnnouncementItem
             item={item}

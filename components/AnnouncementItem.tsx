@@ -6,7 +6,6 @@ import {
   TouchableOpacity,
   Image as RNImage,
   ActivityIndicator,
-  Dimensions,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Announcement } from "@/types/type";
@@ -23,8 +22,7 @@ interface AnnouncementItemProps {
   isScheduled: boolean;
 }
 
-const { height: screenHeight } = Dimensions.get('window');
-const announcementHeight = screenHeight / 4; // Each announcement takes 1/4 of screen height
+// Removed fixed height to allow natural content sizing
 
 const AnnouncementItem: React.FC<AnnouncementItemProps> = ({
   item,
@@ -45,6 +43,7 @@ const AnnouncementItem: React.FC<AnnouncementItemProps> = ({
 
   const isRead = item.readBy?.some(read => read.userId === currentUserId) || false;
   const isAuthor = item.authorId === currentUserId;
+  const isUnreadForViewer = !isAuthor && !isRead && item.status === 'published';
 
   const handleImageError = () => {
     // console.log(`⚠️ Cover image failed for announcement ${item.id}, falling back to default.`);
@@ -56,7 +55,6 @@ const AnnouncementItem: React.FC<AnnouncementItemProps> = ({
     return (
       <View
         className={`mx-4 my-1 ${isRead ? 'bg-gray-50' : 'bg-blue-50'}`}
-        style={{ height: announcementHeight }}
       >
         <View className="flex-1 justify-center items-center">
           <ActivityIndicator size="large" color="#007AFF" />
@@ -70,55 +68,76 @@ const AnnouncementItem: React.FC<AnnouncementItemProps> = ({
     <TouchableOpacity
       onPress={() => onOpenAnnouncement(item)}
       disabled={isAnnouncementOpening}
-      className={` mx-1 my-1 ${(isRead || isScheduled) ? 'bg-gray-50' : 'bg-blue-50'}`}
-      style={{ height: announcementHeight }}
+      className={`mx-3 my-1 rounded-xl border ${
+        (isRead || isScheduled)
+          ? 'bg-white border-gray-200'
+          : 'bg-blue-50 border-blue-200'
+      } shadow-sm`}
       activeOpacity={0.7}
     >
-      {/* Top-right icon */}
-      <View className="absolute top-4 right-4 z-10">
-        {item.status === 'scheduled' ? (
-          <TouchableOpacity
-            onPress={(e) => {
-              e.stopPropagation();
-              // Handle scheduling details if needed
-            }}
-            className="bg-yellow-100 rounded-full p-2"
-          >
-            <Ionicons name="time-outline" size={20} color="#f59e0b" />
-          </TouchableOpacity>
-        ) : isAuthor ? (
-          <TouchableOpacity
-            onPress={(e) => {
-              e.stopPropagation();
-              // Show analytics modal with both read and like data
-              onShowReadDetails?.(item.id, item.departmentTag);
-            }}
-            className="bg-blue-100 rounded-full p-2"
-          >
-            <Ionicons name="stats-chart" size={20} color="#3b82f6" />
-          </TouchableOpacity>
-        ) : null}
-      </View>
-
       {/* Content */}
-      <View className="flex-1 p-4 pr-16 justify-center">
-        {/* Title */}
-        <Text
-          className="text-2xl font-bold text-gray-900 mb-4"
-          numberOfLines={2}
-          ellipsizeMode="tail"
-        >
-          {item.title}
-        </Text>
-        
-        {/* Body Preview */}
+      <View className="p-4">
+        {/* Title and top-right icon in one row */}
+        <View className="mb-2 flex-row items-start justify-between">
+          <Text
+            className="text-xl font-bold text-gray-900 flex-1"
+            numberOfLines={1}
+            ellipsizeMode="tail"
+          >
+            {item.title}
+          </Text>
+          {item.status === 'scheduled' ? (
+            <TouchableOpacity
+              onPress={(e) => {
+                e.stopPropagation();
+                // Handle scheduling details if needed
+              }}
+              className="ml-3 bg-yellow-100 rounded-full p-2"
+            >
+              <Ionicons name="time-outline" size={16} color="#f59e0b" />
+            </TouchableOpacity>
+          ) : isAuthor ? (
+            <TouchableOpacity
+              onPress={(e) => {
+                e.stopPropagation();
+                // Show analytics modal with both read and like data
+                onShowReadDetails?.(item.id, item.departmentTag);
+              }}
+              className="ml-3 bg-blue-100 rounded-full p-2"
+            >
+              <Ionicons name="stats-chart" size={16} color="#3b82f6" />
+            </TouchableOpacity>
+          ) : isUnreadForViewer ? (
+            <View className="ml-3 w-3 h-3 rounded-full bg-red-500" />
+          ) : null}
+        </View>
+
+        {/* Body Preview (two lines) */}
         <Text 
-          className="text-lg text-gray-600 flex-1" 
-          numberOfLines={8} 
+          className={`text-base text-gray-600 ${isUnreadForViewer ? 'font-semibold' : ''}`}
+          numberOfLines={2} 
           ellipsizeMode="tail"
         >
           {item.body.replace(/<[^>]*>/g, '').substring(0, 300)}...
         </Text>
+
+        {/* Footer: author left (maroon), timestamp right (blue) */}
+        <View className="mt-2 flex-row items-center justify-between">
+          <Text className={`text-sm ${isUnreadForViewer ? 'font-bold' : 'font-semibold'} text-[#800000]`} numberOfLines={1}>
+            {/* {item.authorName} */}
+            Sevak Karyalay
+          </Text>
+          <Text className={`text-xs ${isUnreadForViewer ? 'font-bold' : 'font-medium'} text-blue-600`}>
+            {new Date(item.createdAt).toLocaleString(undefined, {
+              year: 'numeric',
+              month: 'short',
+              day: '2-digit',
+              hour: '2-digit',
+              minute: '2-digit',
+              hour12: true,
+            })}
+          </Text>
+        </View>
       </View>
     </TouchableOpacity>
   );

@@ -289,14 +289,14 @@ const AnnouncementPreviewScreen = () => {
                   }
                   p {
                     margin: 0 0 0.5em 0;
-                    line-height: 1;
+                    line-height: 1.2;
                   }
                     h1, h2, h3, h4, h5, h6 {
                       margin: 0.5em 0 0.25em 0;
                       line-height: 1;
                     }
                     ul, ol {
-                      margin: 0.5em 0;
+                      margin: 0em 0;
                       padding-left: 1.5em;
                     }
                     li {

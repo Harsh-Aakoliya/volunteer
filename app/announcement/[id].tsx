@@ -315,7 +315,7 @@ const AnnouncementDetails = () => {
                 <style>
                   body {
                     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-                    font-size: 20px;
+                    font-size: 16px;
                     line-height: 0;
                     margin: 0;
                     padding: 0;
@@ -323,7 +323,7 @@ const AnnouncementDetails = () => {
                   }
                   p {
                     margin: 0 0 0.5em 0;
-                    line-height: 1;
+                    line-height: 1.1;
                   }
                   h1, h2, h3, h4, h5, h6 {
                     margin: 0 0 0 0;
