@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { ChatUser } from '@/types/type';
-import AttachmentsGrid from '@/app/(tabs)/chat/Attechments-grid';
+import AttachmentsGrid from '@/app/chat/Attechments-grid';
 import DateTimePicker from './DateTimePicker';
 
 interface MentionSegment {

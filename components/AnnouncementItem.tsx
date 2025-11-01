@@ -54,11 +54,15 @@ const AnnouncementItem: React.FC<AnnouncementItemProps> = ({
   if (isAnnouncementOpening) {
     return (
       <View
-        className={`mx-4 my-1 ${isRead ? 'bg-gray-50' : 'bg-blue-50'}`}
+        className="mx-4 my-2 rounded-2xl"
+        style={{
+          backgroundColor: isRead ? '#f1f5f9' : '#eef2ff',
+          padding: 20,
+        }}
       >
         <View className="flex-1 justify-center items-center">
-          <ActivityIndicator size="large" color="#007AFF" />
-          <Text className="mt-2 text-gray-600">Opening announcement...</Text>
+          <ActivityIndicator size="large" color="#6366f1" />
+          <Text className="mt-2 text-gray-600 font-semibold">Opening announcement...</Text>
         </View>
       </View>
     );
@@ -68,21 +72,34 @@ const AnnouncementItem: React.FC<AnnouncementItemProps> = ({
     <TouchableOpacity
       onPress={() => onOpenAnnouncement(item)}
       disabled={isAnnouncementOpening}
-      className={`mx-3 my-1 rounded-xl border ${
-        (isRead || isScheduled)
-          ? 'bg-white border-gray-200'
-          : 'bg-blue-50 border-blue-200'
-      } shadow-sm`}
-      activeOpacity={0.7}
+      className="mx-3 my-2 rounded-2xl"
+      style={{
+        backgroundColor: (isRead || isScheduled) ? '#ffffff' : '#eef2ff',
+        borderWidth: (isRead || isScheduled) ? 1 : 2,
+        borderColor: (isRead || isScheduled) ? '#e2e8f0' : '#c7d2fe',
+        shadowColor: isUnreadForViewer ? '#6366f1' : '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: isUnreadForViewer ? 0.15 : 0.08,
+        shadowRadius: 8,
+        elevation: isUnreadForViewer ? 6 : 3,
+      }}
+      activeOpacity={0.8}
     >
       {/* Content */}
-      <View className="p-4">
+      <View className="p-5">
         {/* Title and top-right icon in one row */}
-        <View className="mb-2 flex-row items-start justify-between">
+        <View className="mb-3 flex-row items-start justify-between">
           <Text
-            className="text-xl font-bold text-gray-900 flex-1"
-            numberOfLines={1}
+            className="flex-1"
+            numberOfLines={2}
             ellipsizeMode="tail"
+            style={{
+              fontSize: 18,
+              fontWeight: isUnreadForViewer ? '800' : '700',
+              color: isUnreadForViewer ? '#1e293b' : '#334155',
+              letterSpacing: -0.3,
+              lineHeight: 24,
+            }}
           >
             {item.title}
           </Text>
@@ -92,9 +109,10 @@ const AnnouncementItem: React.FC<AnnouncementItemProps> = ({
                 e.stopPropagation();
                 // Handle scheduling details if needed
               }}
-              className="ml-3 bg-yellow-100 rounded-full p-2"
+              className="ml-3 rounded-full p-2"
+              style={{ backgroundColor: '#fef3c7' }}
             >
-              <Ionicons name="time-outline" size={16} color="#f59e0b" />
+              <Ionicons name="time-outline" size={18} color="#f59e0b" />
             </TouchableOpacity>
           ) : isAuthor ? (
             <TouchableOpacity
@@ -103,31 +121,65 @@ const AnnouncementItem: React.FC<AnnouncementItemProps> = ({
                 // Show analytics modal with both read and like data
                 onShowReadDetails?.(item.id, item.departmentTag);
               }}
-              className="ml-3 bg-blue-100 rounded-full p-2"
+              className="ml-3 rounded-full p-2"
+              style={{ backgroundColor: '#ddd6fe' }}
             >
-              <Ionicons name="stats-chart" size={16} color="#3b82f6" />
+              <Ionicons name="stats-chart" size={18} color="#6366f1" />
             </TouchableOpacity>
           ) : isUnreadForViewer ? (
-            <View className="ml-3 w-3 h-3 rounded-full bg-red-500" />
+            <View 
+              className="ml-3 rounded-full"
+              style={{
+                width: 12,
+                height: 12,
+                backgroundColor: '#ef4444',
+                shadowColor: '#ef4444',
+                shadowOffset: { width: 0, height: 2 },
+                shadowOpacity: 0.5,
+                shadowRadius: 4,
+                elevation: 5,
+              }}
+            />
           ) : null}
         </View>
 
         {/* Body Preview (two lines) */}
         <Text 
-          className={`text-base text-gray-600 ${isUnreadForViewer ? 'font-semibold' : ''}`}
           numberOfLines={2} 
           ellipsizeMode="tail"
+          style={{
+            fontSize: 15,
+            fontWeight: isUnreadForViewer ? '600' : '500',
+            color: isUnreadForViewer ? '#475569' : '#64748b',
+            lineHeight: 22,
+            letterSpacing: 0.1,
+          }}
         >
           {item.body.replace(/<[^>]*>/g, '').substring(0, 300)}...
         </Text>
 
         {/* Footer: author left (maroon), timestamp right (blue) */}
-        <View className="mt-2 flex-row items-center justify-between">
-          <Text className={`text-sm ${isUnreadForViewer ? 'font-bold' : 'font-semibold'} text-[#800000]`} numberOfLines={1}>
+        <View className="mt-3 flex-row items-center justify-between">
+          <Text 
+            numberOfLines={1}
+            style={{
+              fontSize: 13,
+              fontWeight: isUnreadForViewer ? '800' : '700',
+              color: '#991b1b',
+              letterSpacing: 0.2,
+            }}
+          >
             {/* {item.authorName} */}
             Sevak Karyalay
           </Text>
-          <Text className={`text-xs ${isUnreadForViewer ? 'font-bold' : 'font-medium'} text-blue-600`}>
+          <Text 
+            style={{
+              fontSize: 12,
+              fontWeight: isUnreadForViewer ? '700' : '600',
+              color: '#6366f1',
+              letterSpacing: 0.2,
+            }}
+          >
             {new Date(item.createdAt).toLocaleString(undefined, {
               year: 'numeric',
               month: 'short',

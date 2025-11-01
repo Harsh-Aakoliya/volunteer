@@ -141,7 +141,7 @@ export const login = async (mobileNumber: string, password: string) => {
       });
 
       // Redirect to announcement page on successful login
-      router.replace("/announcement");
+      router.replace("/(main)/(tabs)/announcement");
       return userData;
     } else {
       return response.data;

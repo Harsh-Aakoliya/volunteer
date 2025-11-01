@@ -1,7 +1,7 @@
 apply plugin: "com.android.application"
 apply plugin: "org.jetbrains.kotlin.android"
 apply plugin: "com.facebook.react"
-apply plugin: 'com.google.gms.google-services'
+
 def projectRoot = rootDir.getAbsoluteFile().getParentFile().getAbsolutePath()
 
 /**
@@ -86,18 +86,13 @@ android {
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
 
-    namespace 'com.harsh123890.Sevak'
+    namespace "com.sevak"
     defaultConfig {
-        applicationId 'com.harsh123890.Sevak'
+        applicationId "com.sevak"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
-        versionName "1.0.17"
-
-        ndk {
-            abiFilters "armeabi-v7a", "arm64-v8a"
-        }
-
+        versionName "1.0"
     }
     signingConfigs {
         debug {
@@ -119,10 +114,6 @@ android {
             minifyEnabled enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
             crunchPngs (findProperty('android.enablePngCrunchInReleaseBuilds')?.toBoolean() ?: true)
-            ndk {
-                abiFilters "arm64-v8a", "armeabi-v7a"
-                debugSymbolLevel 'none'
-            }
         }
     }
     packagingOptions {
@@ -133,12 +124,6 @@ android {
     androidResources {
         ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:!CVS:!thumbs.db:!picasa.ini:!*~'
     }
-    
-    lintOptions {
-        checkReleaseBuilds false
-    }
-
-
 }
 
 // Apply static values from `gradle.properties` to the `android.packagingOptions`

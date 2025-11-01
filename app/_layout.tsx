@@ -1,3 +1,39 @@
+// import { Slot, useRouter, useSegments } from 'expo-router';
+// import { useEffect, useState } from 'react';
+// import { View, ActivityIndicator } from 'react-native';
+// import { storage } from '../utils/storage';
+
+// export default function RootLayout() {
+//   const [isLoading, setIsLoading] = useState(true);
+//   const router = useRouter();
+//   const segments = useSegments();
+
+//   useEffect(() => {
+//     checkAuth();
+//   }, []);
+
+//   const checkAuth = async () => {
+//     const token = await storage.getToken();
+//     setIsLoading(false);
+
+//     if (!token) {
+//       router.replace('/(auth)/login');
+//     } else if (segments[0] !== '(main)') {
+//       router.replace('/(main)/(tabs)/announcement');
+//     }
+//   };
+
+//   if (isLoading) {
+//     return (
+//       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+//         <ActivityIndicator size="large" color="#4A90E2" />
+//       </View>
+//     );
+//   }
+
+//   return <Slot />;
+// }
+
 // app/_layout.tsx
 import { Stack } from 'expo-router';
 import { useEffect, useState } from 'react';
