@@ -42,6 +42,24 @@ demo/
 management/
 VM file media upload demo/
 
+# Web/Next.js files
+web/node_modules/
+web/.next/
+web/out/
+web/build/
+web/.vercel
+web/.swc
+web/*.tsbuildinfo
+web/.env*.local
+web/.env
+web/dist/
+web/.turbo
+web/.eslintcache
+web/.cache/
+web/coverage/
+web/.nyc_output/
+web/.next-env.d.ts
+
 # Large files
 *.dll
 *.exe

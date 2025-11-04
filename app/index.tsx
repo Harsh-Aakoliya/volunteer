@@ -17,7 +17,7 @@ import CustomButton from '@/components/ui/CustomButton';
 import { API_URL, setApiUrl, updateDevIP } from "@/constants/api";
 import useNetworkStatus from '@/hooks/userNetworkStatus';
 import * as React from 'react';
-const DEV_IP = "http://192.168.152.242:3000";
+const DEV_IP = "http://10.246.140.242:8080";
 const INTERNAL_IP = "http://192.168.2.134:3000";
 const EXTERNAL_IP = "http://103.47.172.58:50160";
 

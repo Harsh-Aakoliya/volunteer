@@ -15,7 +15,7 @@ import {
   markAsRead,
   createDraft
 } from "@/api/admin";
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, useNavigation } from "expo-router";
 import { useCallback } from "react";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { AuthStorage } from "@/utils/authStorage";
@@ -24,6 +24,7 @@ import { Announcement } from "@/types/type";
 import AnnouncementItem from '@/components/AnnouncementItem';
 import ReadLikeDetailsModal from '@/components/ReadLikeDetailsModal';
 import { API_URL } from "@/constants/api";
+import { useHeaderContext } from "./_layout";
 
 const Announcements = () => {
   
@@ -49,9 +50,15 @@ const Announcements = () => {
   const [selectedDepartmentTag, setSelectedDepartmentTag] = useState<string[]>([]);
   const [isRefreshingModal, setIsRefreshingModal] = useState(false);
 
+  // Debug states
+  const [showMaterialTabs, setShowMaterialTabs] = useState(true);
+  const { showHeader, setShowHeader } = useHeaderContext();
+
   const router = useRouter();
   const { newAnnouncement } = useLocalSearchParams();
+  const navigation = useNavigation();
 
+  
   useEffect(() => {
     getCurrentUser();
   }, []);
@@ -78,6 +85,27 @@ const Announcements = () => {
     }
   }, [newAnnouncement]);
 
+  // Toggle material top tabs visibility
+  useEffect(() => {
+    if (!showMaterialTabs) {
+      navigation.setOptions({
+        tabBarStyle: { display: 'none' },
+      });
+    } else {
+      navigation.setOptions({
+        tabBarStyle: {
+          backgroundColor: '#fff',
+          elevation: 4,
+          shadowColor: '#6366f1',
+          shadowOffset: { width: 0, height: 2 },
+          shadowOpacity: 0.1,
+          shadowRadius: 4,
+          borderBottomWidth: 0,
+        },
+      });
+    }
+  }, [showMaterialTabs, navigation]);
+
   const getCurrentUser = async () => {
     const userData = await AuthStorage.getUser();
     if (userData) {
@@ -92,18 +120,26 @@ const Announcements = () => {
   const setupTabs = () => {
     let tabs: string[] = ['ALL'];
     
-    if (isKaryalay) {
-      tabs = ['ALL', 'Your announcements'];
-      tabs.push(...userDepartments);
-    } else if (isHOD) {
-      tabs = ['ALL', 'Your announcements'];
-      tabs.push(...userDepartments);
+    if (isKaryalay || isHOD) {
+      tabs.push('Your announcements');
     } else {
-      tabs = ['ALL', 'Karyalay'];
-      tabs.push(...userDepartments);
+      // Only add Karyalay tab if user is NOT from Karyalay department
+      if (!userDepartments.includes('Karyalay')) {
+        tabs.push('Karyalay');
+      }
     }
     
-    setAvailableTabs(tabs);
+    // Add user departments, avoiding duplicates
+    userDepartments.forEach(dept => {
+      if (!tabs.includes(dept)) {
+        tabs.push(dept);
+      }
+    });
+    
+    // Deduplicate tabs array to be extra safe
+    const uniqueTabs = Array.from(new Set(tabs));
+    
+    setAvailableTabs(uniqueTabs);
     setSelectedTab('ALL');
   };
 
@@ -309,6 +345,46 @@ const Announcements = () => {
   return (
     <View style={{ flex: 1, backgroundColor: '#f8fafc' }}>
       
+      {/* Debug Toggle Buttons */}
+      {/* <View style={{ 
+        flexDirection: 'row', 
+        padding: 8, 
+        backgroundColor: '#fff', 
+        borderBottomWidth: 1, 
+        borderBottomColor: '#e0e0e0' 
+      }}>
+        <TouchableOpacity
+          onPress={() => setShowHeader(!showHeader)}
+          style={{
+            flex: 1,
+            marginRight: 4,
+            padding: 8,
+            borderRadius: 8,
+            backgroundColor: showHeader ? '#10b981' : '#ef4444',
+            alignItems: 'center',
+          }}
+        >
+          <Text style={{ color: '#fff', fontWeight: '700', fontSize: 12 }}>
+            {showHeader ? 'Hide' : 'Show'} Header
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => setShowMaterialTabs(!showMaterialTabs)}
+          style={{
+            flex: 1,
+            marginLeft: 4,
+            padding: 8,
+            borderRadius: 8,
+            backgroundColor: showMaterialTabs ? '#10b981' : '#ef4444',
+            alignItems: 'center',
+          }}
+        >
+          <Text style={{ color: '#fff', fontWeight: '700', fontSize: 12 }}>
+            {showMaterialTabs ? 'Hide' : 'Show'} Material Tabs
+          </Text>
+        </TouchableOpacity>
+      </View> */}
+
       {/* Department Tabs */}
       {availableTabs.length > 1 && (
         <View 

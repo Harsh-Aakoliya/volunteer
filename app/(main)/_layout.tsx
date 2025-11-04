@@ -12,6 +12,7 @@ export default function MainLayout() {
           headerShown: false,
           drawerPosition: 'left',
           drawerType: 'slide',
+          swipeEdgeWidth: 100, // Enable swipe from 100px from left edge
         }}
       >
         <Drawer.Screen name="(tabs)" />
