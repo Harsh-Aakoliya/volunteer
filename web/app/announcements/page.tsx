@@ -129,7 +129,7 @@ export default function AnnouncementsPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
           <h1 className="text-2xl font-bold text-gray-900">Announcements</h1>
           <div className="flex items-center gap-4">
-            <span className="text-sm text-gray-600">{user.fullName || user.userId}</span>
+            {/* <span className="text-sm text-gray-600">{user.fullName || user.userId}</span> */}
             {isAdmin && (
               <Link
                 href="/announcements/create"
@@ -140,7 +140,7 @@ export default function AnnouncementsPage() {
                 </svg>
               </Link>
             )}
-            <button
+            {/* <button
               onClick={() => {
                 logout();
                 router.push('/login');
@@ -148,7 +148,7 @@ export default function AnnouncementsPage() {
               className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm"
             >
               Logout
-            </button>
+            </button> */}
           </div>
         </div>
       </header>

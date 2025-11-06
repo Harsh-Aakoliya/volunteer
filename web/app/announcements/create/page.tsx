@@ -173,10 +173,7 @@ function CreateAnnouncementContent() {
       // Upload files immediately
       const response = await announcementApi.uploadMedia(announcementId, files);
       
-      if (response.success && response.uploadedFiles) {
-        // Add uploaded files to the list
-        setUploadedMediaFiles(prev => [...prev, ...response.uploadedFiles]);
-        
+      if (response.success) {
         // Mark files as successfully uploaded
         setUploadingFiles(prev => 
           prev.map(uf => 
@@ -185,6 +182,16 @@ function CreateAnnouncementContent() {
               : uf
           )
         );
+        
+        // Fetch updated media files from server
+        try {
+          const mediaResponse = await announcementApi.getAnnouncementMedia(announcementId);
+          if (mediaResponse.success && mediaResponse.files) {
+            setUploadedMediaFiles(mediaResponse.files);
+          }
+        } catch (mediaError) {
+          console.error('Error fetching media files:', mediaError);
+        }
         
         // Clear uploaded files from attachedFiles after a delay
         setTimeout(() => {
@@ -218,7 +225,18 @@ function CreateAnnouncementContent() {
     
     try {
       await announcementApi.deleteMedia(announcementId, file.fileName);
-      setUploadedMediaFiles(prev => prev.filter(f => f.id !== file.id));
+      
+      // Fetch updated media files from server
+      try {
+        const mediaResponse = await announcementApi.getAnnouncementMedia(announcementId);
+        if (mediaResponse.success && mediaResponse.files) {
+          setUploadedMediaFiles(mediaResponse.files);
+        }
+      } catch (mediaError) {
+        console.error('Error fetching media files:', mediaError);
+        // Fallback: remove from state if fetch fails
+        setUploadedMediaFiles(prev => prev.filter(f => f.id !== file.id));
+      }
     } catch (error) {
       console.error('Error removing file:', error);
       alert('Failed to remove file. Please try again.');
@@ -408,7 +426,7 @@ function CreateAnnouncementContent() {
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="Enter announcement title..."
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-lg"
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-lg text-black"
             />
           </div>
 
@@ -469,13 +487,53 @@ function CreateAnnouncementContent() {
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                   {uploadedMediaFiles.map((file) => (
                     <div key={file.id} className="relative group border border-gray-200 rounded-lg overflow-hidden">
-                      {file.mimeType.startsWith('image/') && (
-                        <img
-                          src={file.url}
-                          alt={file.originalName}
-                          className="w-full h-32 object-cover"
-                        />
-                      )}
+                      {file.mimeType.startsWith('image/') && (() => {
+                        // Construct proper image URL
+                        // Backend returns URL like: http://localhost:3000/media/announcement/{id}/media/{fileName}
+                        // The backend uses process.env.API_URL which defaults to http://localhost:3000
+                        let imageUrl = file.url || '';
+                        
+                        if (!imageUrl && file.fileName && announcementId) {
+                          // If no URL, construct it from file name
+                          // Backend typically uses port 3000 for media serving
+                          imageUrl = `http://localhost:3000/media/announcement/${announcementId}/media/${file.fileName}`;
+                        } else if (imageUrl && !imageUrl.startsWith('http')) {
+                          // If relative URL, prepend base URL
+                          // Check if it's already a full path
+                          if (imageUrl.startsWith('/media/')) {
+                            imageUrl = `http://localhost:3000${imageUrl}`;
+                          } else {
+                            const baseUrl = process.env.NEXT_PUBLIC_API_URL?.replace('/api', '') || 'http://localhost:8080';
+                            imageUrl = `${baseUrl}${imageUrl.startsWith('/') ? imageUrl : `/${imageUrl}`}`;
+                          }
+                        }
+                        
+                        return (
+                          <img
+                            src={imageUrl}
+                            alt={file.originalName}
+                            className="w-full h-32 object-cover"
+                            onError={(e) => {
+                              // Fallback: try with different ports
+                              const target = e.target as HTMLImageElement;
+                              if (file.fileName && announcementId) {
+                                // Try different common ports
+                                const ports = ['3000', '8080', '5000'];
+                                const currentSrc = target.src;
+                                const currentPort = currentSrc.match(/:(\d+)/)?.[1];
+                                const nextPortIndex = ports.indexOf(currentPort || '') + 1;
+                                
+                                if (nextPortIndex < ports.length) {
+                                  target.src = `http://localhost:${ports[nextPortIndex]}/media/announcement/${announcementId}/media/${file.fileName}`;
+                                } else {
+                                  // Last resort: try without port assumption
+                                  target.style.display = 'none';
+                                }
+                              }
+                            }}
+                          />
+                        );
+                      })()}
                       {file.mimeType.startsWith('video/') && (
                         <div className="w-full h-32 bg-gray-100 flex items-center justify-center">
                           <svg className="w-12 h-12 text-gray-400" fill="currentColor" viewBox="0 0 20 20">

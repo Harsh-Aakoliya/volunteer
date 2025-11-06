@@ -110,7 +110,7 @@ export default function LoginPage() {
                 value={formData.mobileNumber}
                 onChange={(e) => setFormData({ ...formData, mobileNumber: e.target.value })}
                 onBlur={() => setTouched({ ...touched, mobile: true })}
-                className={`block w-full pl-10 pr-3 py-3 border ${
+                className={`text-black block w-full pl-10 pr-3 py-3 border ${
                   touched.mobile && !formData.mobileNumber
                     ? 'border-red-300'
                     : 'border-gray-300'
@@ -150,7 +150,7 @@ export default function LoginPage() {
                 value={formData.password}
                 onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                 onBlur={() => setTouched({ ...touched, password: true })}
-                className={`block w-full pl-10 pr-10 py-3 border ${
+                className={`text-black block w-full pl-10 pr-10 py-3 border ${
                   touched.password && !formData.password
                     ? 'border-red-300'
                     : 'border-gray-300'

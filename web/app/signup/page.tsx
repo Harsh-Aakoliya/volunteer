@@ -111,7 +111,7 @@ export default function SignupPage() {
                 value={formData.fullName}
                 onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
                 onBlur={() => setTouched({ ...touched, fullName: true })}
-                className={`block w-full pl-10 pr-3 py-3 border ${
+                className={`text-black block w-full pl-10 pr-3 py-3 border ${
                   touched.fullName && !formData.fullName
                     ? 'border-red-300'
                     : 'border-gray-300'
@@ -151,7 +151,7 @@ export default function SignupPage() {
                 value={formData.mobileNumber}
                 onChange={(e) => setFormData({ ...formData, mobileNumber: e.target.value })}
                 onBlur={() => setTouched({ ...touched, mobile: true })}
-                className={`block w-full pl-10 pr-3 py-3 border ${
+                className={`text-black block w-full pl-10 pr-3 py-3 border ${
                   touched.mobile && !formData.mobileNumber
                     ? 'border-red-300'
                     : 'border-gray-300'
@@ -191,7 +191,7 @@ export default function SignupPage() {
                 value={formData.userId}
                 onChange={(e) => setFormData({ ...formData, userId: e.target.value })}
                 onBlur={() => setTouched({ ...touched, userId: true })}
-                className={`block w-full pl-10 pr-3 py-3 border ${
+                className={`text-black block w-full pl-10 pr-3 py-3 border ${
                   touched.userId && !formData.userId
                     ? 'border-red-300'
                     : 'border-gray-300'

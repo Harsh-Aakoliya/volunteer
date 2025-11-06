@@ -287,4 +287,117 @@ export const announcementApi = {
   },
 };
 
+// Department interfaces
+export interface Department {
+  departmentId: string;
+  departmentName: string;
+  createdBy: string;
+  createdAt: string;
+  userList?: string[];
+  hodList?: string[];
+  createdByName?: string;
+  hodNames?: string[];
+}
+
+export interface DepartmentUser {
+  userId: string;
+  fullName: string;
+  mobileNumber: string;
+  xetra?: string;
+  mandal?: string;
+  isAdmin?: boolean;
+  departments?: string[];
+}
+
+// User interfaces
+export interface UserProfile {
+  userId: string;
+  mobileNumber: string;
+  fullName: string;
+  isAdmin: boolean;
+  gender?: string;
+  dateOfBirth?: string;
+  bloodGroup?: string;
+  maritalStatus?: string;
+  education?: string;
+  occupation?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  pincode?: string;
+  xetra?: string;
+  mandal?: string;
+  departments?: string[];
+  departmentIds?: string[];
+  subdepartments?: string[];
+  profilePicture?: string;
+  isApproved?: boolean;
+  whatsappNumber?: string;
+  emergencyContact?: string;
+  email?: string;
+}
+
+export interface SearchFiltersResponse {
+  departments: Array<{ departmentId: string; departmentName: string }>;
+  subdepartments: Array<{ subdepartmentId: string; subdepartmentName: string; departmentId: string }>;
+  userRole: { isKaryalay: boolean; isHOD: boolean };
+}
+
+export interface UpdateUserData {
+  fullName: string;
+  mobileNumber: string;
+  isAdmin?: boolean;
+  gender?: string;
+  dateOfBirth?: string;
+  bloodGroup?: string;
+  maritalStatus?: string;
+  education?: string;
+  whatsappNumber?: string;
+  emergencyContact?: string;
+  email?: string;
+  address?: string;
+  departmentIds?: string[];
+}
+
+// Department API functions
+export const departmentApi = {
+  fetchMyDepartments: async (): Promise<Department[]> => {
+    const response = await api.get<Department[]>('/departments/my-departments');
+    return response.data;
+  },
+
+  fetchDepartmentById: async (departmentId: string): Promise<Department> => {
+    const response = await api.get<Department>(`/departments/${departmentId}`);
+    return response.data;
+  },
+
+  fetchAllUsers: async (): Promise<DepartmentUser[]> => {
+    const response = await api.get<DepartmentUser[]>('/departments/users');
+    return response.data;
+  },
+};
+
+// User API functions
+export const userApi = {
+  getUserProfileById: async (userId: string): Promise<UserProfile> => {
+    const response = await api.get<UserProfile>(`/users/${userId}/profile`);
+    return response.data;
+  },
+
+  fetchSabhaAttendanceForUser: async (userId: string) => {
+    const response = await api.get(`/users/${userId}/attendance`);
+    return response.data;
+  },
+
+  updateUserWithSubdepartments: async (userId: string, userData: UpdateUserData): Promise<UserProfile> => {
+    const response = await api.put<UserProfile>(`/users/update-with-subdepartments/${userId}`, userData);
+    return response.data;
+  },
+
+  getSearchFilters: async (): Promise<SearchFiltersResponse> => {
+    const response = await api.get<SearchFiltersResponse>('/users/search-filters');
+    return response.data;
+  },
+};
+
 export default api;

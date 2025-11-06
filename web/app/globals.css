@@ -29,9 +29,11 @@ body {
 .ProseMirror {
   outline: none;
   min-height: 300px;
+  color: #000000;
 }
 
 .ProseMirror p {
+  color: #000000;
   margin: 0.5em 0;
   line-height: 1.6;
 }
@@ -65,15 +67,30 @@ body {
   font-size: 1.25em;
 }
 
-.ProseMirror ul,
+.ProseMirror ul {
+  margin: 0.5em 0;
+  padding-left: 1.5em;
+  list-style-type: disc;
+}
+
 .ProseMirror ol {
   margin: 0.5em 0;
   padding-left: 1.5em;
+  list-style-type: decimal;
 }
 
 .ProseMirror li {
   margin: 0.25em 0;
   line-height: 1.6;
+  display: list-item;
+}
+
+.ProseMirror ul li {
+  list-style-type: disc;
+}
+
+.ProseMirror ol li {
+  list-style-type: decimal;
 }
 
 .ProseMirror strong {
