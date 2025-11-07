@@ -19,7 +19,7 @@ const TipTapEditor = dynamic(() => import('@/components/TipTapEditor'), {
 function CreateAnnouncementContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { user, isAuthenticated } = useAuthStore();
+  const { user, isAuthenticated, webPermissions } = useAuthStore();
   
   const editId = searchParams.get('edit') || searchParams.get('id');
   const isEdit = !!editId;
@@ -40,27 +40,23 @@ function CreateAnnouncementContent() {
   const [uploadedMediaFiles, setUploadedMediaFiles] = useState<any[]>([]);
   const [uploadingFiles, setUploadingFiles] = useState<{ file: File; progress: number; status: 'uploading' | 'success' | 'error' }[]>([]);
   const [announcementId, setAnnouncementId] = useState<number | null>(null);
-  const [isKaryalay, setIsKaryalay] = useState(false);
 
   useEffect(() => {
-    if (!isAuthenticated || !user) {
+    if (!isAuthenticated || !user || !webPermissions) {
       router.push('/login');
       return;
     }
     
-    if (!user.isAdmin) {
-      alert('Only HODs and Karyalay users can create announcements.');
+    // Check if user has permission to create announcements
+    if (!webPermissions.canCreateAnnouncement) {
+      alert('You do not have permission to create announcements.');
       router.push('/announcements');
       return;
     }
 
-    const userDepartments = user.departments || [];
-    const isKaryalayUser = user.isAdmin && userDepartments.includes('Karyalay');
-    setIsKaryalay(isKaryalayUser);
-
     initializeData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAuthenticated, user, router, editId]);
+  }, [isAuthenticated, user, webPermissions, router, editId]);
 
   useEffect(() => {
     if (searchQuery.trim() === '') {
@@ -116,17 +112,8 @@ function CreateAnnouncementContent() {
 
   const loadDepartments = async () => {
     try {
-      if (!user) return;
-      
-      const userDepartments = user.departments || [];
-      let departments: string[] = [];
-
-      if (isKaryalay) {
-        departments = await announcementApi.getAllDepartments();
-      } else {
-        departments = userDepartments;
-      }
-
+      // Load ALL departments from the database
+      const departments = await announcementApi.getAllDepartments();
       setAvailableDepartments(departments);
       setFilteredDepartments(departments);
     } catch (error) {

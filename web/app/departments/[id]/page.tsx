@@ -9,7 +9,7 @@ import Link from 'next/link';
 export default function DepartmentDetailPage() {
   const router = useRouter();
   const params = useParams();
-  const { user, isAuthenticated } = useAuthStore();
+  const { user, isAuthenticated, webPermissions } = useAuthStore();
   const departmentId = params?.id as string;
 
   const [department, setDepartment] = useState<Department | null>(null);
@@ -18,7 +18,7 @@ export default function DepartmentDetailPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!isAuthenticated || !user) {
+    if (!isAuthenticated || !user || !webPermissions) {
       router.push('/login');
       return;
     }
@@ -26,7 +26,7 @@ export default function DepartmentDetailPage() {
     if (departmentId) {
       loadDepartmentData();
     }
-  }, [isAuthenticated, user, router, departmentId]);
+  }, [isAuthenticated, user, webPermissions, router, departmentId]);
 
   const loadDepartmentData = async () => {
     try {

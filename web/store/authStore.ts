@@ -10,9 +10,18 @@ interface User {
   isApproved?: boolean;
 }
 
+interface WebPermissions {
+  accessLevel: 'master' | 'admin';
+  canCreateAnnouncement: boolean;
+  canCreateChatGroup: boolean;
+  canEditUserProfile: boolean;
+  canEditDepartments: boolean;
+}
+
 interface AuthState {
   user: User | null;
   token: string | null;
+  webPermissions: WebPermissions | null;
   isAuthenticated: boolean;
   isLoading: boolean;
   error: string | null;
@@ -20,9 +29,10 @@ interface AuthState {
   // Actions
   setUser: (user: User | null) => void;
   setToken: (token: string | null) => void;
+  setWebPermissions: (webPermissions: WebPermissions | null) => void;
   setLoading: (isLoading: boolean) => void;
   setError: (error: string | null) => void;
-  login: (user: User, token: string) => void;
+  login: (user: User, token: string, webPermissions?: WebPermissions | null) => void;
   logout: () => void;
 }
 
@@ -31,19 +41,22 @@ export const useAuthStore = create<AuthState>()(
     (set) => ({
       user: null,
       token: null,
+      webPermissions: null,
       isAuthenticated: false,
       isLoading: false,
       error: null,
 
       setUser: (user) => set({ user, isAuthenticated: !!user }),
       setToken: (token) => set({ token }),
+      setWebPermissions: (webPermissions) => set({ webPermissions }),
       setLoading: (isLoading) => set({ isLoading }),
       setError: (error) => set({ error }),
       
-      login: (user, token) => {
+      login: (user, token, webPermissions = null) => {
         set({
           user,
           token,
+          webPermissions,
           isAuthenticated: true,
           error: null,
         });
@@ -53,6 +66,7 @@ export const useAuthStore = create<AuthState>()(
         set({
           user: null,
           token: null,
+          webPermissions: null,
           isAuthenticated: false,
           error: null,
         });

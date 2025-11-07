@@ -1,9 +1,6 @@
 // controllers/authController.js
 import pool from "../config/database.js";
 import jwt from 'jsonwebtoken';
-import bcrypt from 'bcryptjs';
-import { UserDefinedMessageInstance } from "twilio/lib/rest/api/v2010/account/call/userDefinedMessage.js";
-import { useId } from "react";
 
 const register = async (req, res) => {
   const { mobileNumber, userId, fullName } = req.body;
@@ -43,39 +40,101 @@ const register = async (req, res) => {
 
 // controllers/authController.js
 const login = async (req, res) => {
-  const { mobileNumber, password } = req.body;
-  console.log("Login attempt:", mobileNumber, password);
+  const { mobileNumber, password, sevakId } = req.body;
+  
+  // Check if this is a web login (sevakId provided) or mobile login (mobileNumber provided)
+  const isWebLogin = !!sevakId;
+  
+  console.log(`Login attempt (${isWebLogin ? 'web' : 'mobile'}):`, isWebLogin ? sevakId : mobileNumber);
   
   try {
-    const result = await pool.query(
-      `SELECT * FROM users WHERE "mobileNumber" = $1 AND "password" = $2`,
-      [mobileNumber, password]
-    );
+    let result;
+    
+    if (isWebLogin) {
+      // Web login: authenticate using sevakId and password
+      result = await pool.query(
+        `SELECT * FROM users WHERE "sevakId" = $1 AND "password" = $2`,
+        [sevakId, password]
+      );
+    } else {
+      // Mobile login: authenticate using mobileNumber and password
+      result = await pool.query(
+        `SELECT * FROM users WHERE "mobileNumber" = $1 AND "password" = $2`,
+        [mobileNumber, password]
+      );
+    }
+    
     console.log("Database results:", result.rows);
 
     if (result.rows.length > 0) {
       const user = result.rows[0];
       const userId = user.userId;
-      const isApproved = user.isApproved;
       
-      if (!isApproved) {
+      // For web login, check webpermissions
+      if (isWebLogin) {
+        const webPermissionsResult = await pool.query(
+          `SELECT * FROM webpermissions WHERE "userId" = $1`,
+          [userId]
+        );
+        
+        if (webPermissionsResult.rows.length === 0) {
+          return res.json({
+            success: false,
+            message: "You do not have permission to access the web portal.",
+          });
+        }
+        
+        const webPermissions = webPermissionsResult.rows[0];
+        const isApproved = user.isApproved;
+        
+        if (!isApproved) {
+          return res.json({
+            success: false,
+            message: "User is not approved, wait for Admin approval",
+          });
+        }
+        
+        const token = jwt.sign(
+          { userId: userId, isAdmin: user.isAdmin, isWebUser: true },
+          process.env.JWT_SECRET
+        );
+        
         return res.json({
-          success: false,
-          message: "User is not approved, wait for Admin approval",
+          success: true,
+          isAdmin: user.isAdmin,
+          token: token,
+          userId: userId,
+          webPermissions: {
+            accessLevel: webPermissions.accessLevel,
+            canCreateAnnouncement: webPermissions.canCreateAnnouncement,
+            canCreateChatGroup: webPermissions.canCreateChatGroup,
+            canEditUserProfile: webPermissions.canEditUserProfile,
+            canEditDepartments: webPermissions.canEditDepartments,
+          },
+        });
+      } else {
+        // Mobile login - existing logic
+        const isApproved = user.isApproved;
+        
+        if (!isApproved) {
+          return res.json({
+            success: false,
+            message: "User is not approved, wait for Admin approval",
+          });
+        }
+        
+        const token = jwt.sign(
+          { userId: userId, isAdmin: user.isAdmin },
+          process.env.JWT_SECRET
+        );
+        
+        return res.json({
+          success: true,
+          isAdmin: user.isAdmin,
+          token: token,
+          userId: userId,
         });
       }
-      
-      const token = jwt.sign(
-        { userId: userId, isAdmin: user.isAdmin },
-        process.env.JWT_SECRET
-      );
-      
-      res.json({
-        success: true,
-        isAdmin: user.isAdmin, // Fixed: was using isadmin (lowercase)
-        token: token,
-        userId: userId,
-      });
     } else {
       res.json({
         success: false,

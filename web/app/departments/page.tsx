@@ -8,25 +8,20 @@ import Link from 'next/link';
 
 export default function DepartmentsPage() {
   const router = useRouter();
-  const { user, isAuthenticated } = useAuthStore();
+  const { user, isAuthenticated, webPermissions } = useAuthStore();
   const [departments, setDepartments] = useState<Department[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!isAuthenticated || !user) {
+    if (!isAuthenticated || !user || !webPermissions) {
       router.push('/login');
       return;
     }
 
-    if (!user.isAdmin) {
-      alert('Only admins can access departments.');
-      router.push('/announcements');
-      return;
-    }
-
+    // Both master and admin users can access departments page
     loadDepartments();
-  }, [isAuthenticated, user, router]);
+  }, [isAuthenticated, user, webPermissions, router]);
 
   const loadDepartments = async () => {
     try {
@@ -82,9 +77,9 @@ export default function DepartmentsPage() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
               </svg>
             </div>
-            <h2 className="text-xl font-bold text-gray-800 mb-2">No Departments Yet</h2>
+            <h2 className="text-xl font-bold text-gray-800 mb-2">No Departments Found</h2>
             <p className="text-gray-500 mb-6">
-              No departments assigned to you yet. Contact Karyalay for department assignment.
+              There are no departments in the system yet.
             </p>
           </div>
         ) : (

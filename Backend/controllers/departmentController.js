@@ -1,65 +1,35 @@
 import pool from "../config/database.js";
 
-// Get all departments based on user role
+// Get all departments based on user role (for web users)
 export const getMyDepartments = async (req, res) => {
   try {
     const userId = req.user.userId;
-    // console.log("userId in getMyDepartments", userId);
 
-    // Check if user is Karyalay (admin in Karyalay department)
-    const userResult = await pool.query(`
-      SELECT "isAdmin", "departments", "departmentIds" FROM "users" WHERE "userId" = $1
+    // Check if user has web permissions
+    const webPermissionsResult = await pool.query(`
+      SELECT "accessLevel" FROM webpermissions WHERE "userId" = $1
     `, [userId]);
-    // console.log("userResult in getMyDepartments", userResult.rows);
-    if (userResult.rows.length === 0) {
-      return res.status(404).json({ message: 'User not found' });
+
+    if (webPermissionsResult.rows.length === 0) {
+      return res.status(403).json({ message: 'You do not have permission to access departments' });
     }
 
-    const user = userResult.rows[0];
-    const userDepartments = user.departments || [];
-    const isKaryalay = user.isAdmin && userDepartments.includes('Karyalay');
-    // console.log("isKaryalay in getMyDepartments", isKaryalay);
-    let query;
-    let params;
-
-    if (isKaryalay) {
-      // Karyalay users see ALL departments (they are HOD of all departments)
-      query = `
-        SELECT 
-          d."departmentId",
-          d."departmentName",
-          d."createdBy",
-          d."createdAt",
-          d."userList",
-          d."hodList",
-          u."fullName" as "createdByName"
-        FROM "departments" d
-        LEFT JOIN "users" u ON d."createdBy" = u."userId"
-        ORDER BY d."createdAt" DESC
-      `;
-      params = [];
-    } else {
-      // HODs see only departments where they are designated as HOD
-      query = `
-        SELECT 
-          d."departmentId",
-          d."departmentName",
-          d."createdBy",
-          d."createdAt",
-          d."userList",
-          d."hodList",
-          u."fullName" as "createdByName"
-        FROM "departments" d
-        LEFT JOIN "users" u ON d."createdBy" = u."userId"
-        WHERE $1 = ANY(d."hodList")
-        ORDER BY d."createdAt" DESC
-      `;
-      params = [userId];
-    }
-    // console.log("query in getMyDepartments", query);
-    // console.log("params in getMyDepartments", params);
-    const result = await pool.query(query, params);
-    // console.log("result in getMyDepartments", result.rows);
+    // Both master and admin users can see ALL departments
+    const query = `
+      SELECT 
+        d."departmentId",
+        d."departmentName",
+        d."createdBy",
+        d."createdAt",
+        d."userList",
+        d."hodList",
+        u."fullName" as "createdByName"
+      FROM "departments" d
+      LEFT JOIN "users" u ON d."createdBy" = u."userId"
+      ORDER BY d."departmentName" ASC
+    `;
+    
+    const result = await pool.query(query);
     res.json(result.rows);
   } catch (error) {
     console.error('Error fetching departments:', error);
@@ -67,9 +37,21 @@ export const getMyDepartments = async (req, res) => {
   }
 };
 
-// Get all users for department management
+// Get all users for department management (for web users)
 export const getAllUsers = async (req, res) => {
   try {
+    const userId = req.user.userId;
+
+    // Check if user has web permissions
+    const webPermissionsResult = await pool.query(`
+      SELECT "accessLevel" FROM webpermissions WHERE "userId" = $1
+    `, [userId]);
+
+    if (webPermissionsResult.rows.length === 0) {
+      return res.status(403).json({ message: 'You do not have permission to access users' });
+    }
+
+    // Both master and admin users can see all approved users
     const result = await pool.query(`
       SELECT 
         u."userId",
@@ -197,66 +179,40 @@ export const createDepartment = async (req, res) => {
   }
 };
 
-// Get department by ID
+// Get department by ID (for web users)
 export const getDepartmentById = async (req, res) => {
   try {
     const { departmentId } = req.params;
     const userId = req.user.userId;
 
-    // Check if user is Karyalay (admin in Karyalay department)
-    const userResult = await pool.query(`
-      SELECT "isAdmin", "departments", "departmentIds" FROM "users" WHERE "userId" = $1
+    // Check if user has web permissions
+    const webPermissionsResult = await pool.query(`
+      SELECT "accessLevel" FROM webpermissions WHERE "userId" = $1
     `, [userId]);
 
-    if (userResult.rows.length === 0) {
-      return res.status(404).json({ message: 'User not found' });
+    if (webPermissionsResult.rows.length === 0) {
+      return res.status(403).json({ message: 'You do not have permission to access departments' });
     }
 
-    const user = userResult.rows[0];
-    const userDepartments = user.departments || [];
-    const isKaryalay = user.isAdmin && userDepartments.includes('Karyalay');
+    // Both master and admin users can access any department
+    const query = `
+      SELECT 
+        d."departmentId",
+        d."departmentName",
+        d."createdBy",
+        d."createdAt",
+        d."userList",
+        d."hodList",
+        u."fullName" as "createdByName"
+      FROM "departments" d
+      LEFT JOIN "users" u ON d."createdBy" = u."userId"
+      WHERE d."departmentId" = $1
+    `;
 
-    let query;
-    let params;
-
-    if (isKaryalay) {
-      // Karyalay users can access any department
-      query = `
-        SELECT 
-          d."departmentId",
-          d."departmentName",
-          d."createdBy",
-          d."createdAt",
-          d."userList",
-          d."hodList",
-          u."fullName" as "createdByName"
-        FROM "departments" d
-        LEFT JOIN "users" u ON d."createdBy" = u."userId"
-        WHERE d."departmentId" = $1
-      `;
-      params = [departmentId];
-    } else {
-      // HODs can only access departments where they are designated as HOD
-      query = `
-        SELECT 
-          d."departmentId",
-          d."departmentName",
-          d."createdBy",
-          d."createdAt",
-          d."userList",
-          d."hodList",
-          u."fullName" as "createdByName"
-        FROM "departments" d
-        LEFT JOIN "users" u ON d."createdBy" = u."userId"
-        WHERE d."departmentId" = $1 AND $2 = ANY(d."hodList")
-      `;
-      params = [departmentId, userId];
-    }
-
-    const result = await pool.query(query, params);
+    const result = await pool.query(query, [departmentId]);
 
     if (result.rows.length === 0) {
-      return res.status(404).json({ message: 'Department not found or access denied' });
+      return res.status(404).json({ message: 'Department not found' });
     }
 
     res.json(result.rows[0]);

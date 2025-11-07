@@ -9,7 +9,7 @@ import Link from 'next/link';
 export default function AnnouncementDetailPage() {
   const router = useRouter();
   const params = useParams();
-  const { user, isAuthenticated } = useAuthStore();
+  const { user, isAuthenticated, webPermissions } = useAuthStore();
   const [announcement, setAnnouncement] = useState<Announcement | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isLiking, setIsLiking] = useState(false);
@@ -107,11 +107,7 @@ export default function AnnouncementDetailPage() {
   };
 
   const handleDelete = async () => {
-    if (!announcement || !user) return;
-    
-    if (announcement.authorId !== user.userId) {
-      return;
-    }
+    if (!announcement || !user || !webPermissions) return;
 
     if (!confirm('Are you sure you want to delete this announcement?')) {
       return;
@@ -120,9 +116,10 @@ export default function AnnouncementDetailPage() {
     try {
       await announcementApi.deleteAnnouncement(announcement.id);
       router.push('/announcements');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error deleting announcement:', error);
-      alert('Failed to delete announcement');
+      const errorMessage = error.response?.data?.error || 'Failed to delete announcement';
+      alert(errorMessage);
     }
   };
 
@@ -137,7 +134,7 @@ export default function AnnouncementDetailPage() {
     });
   };
 
-  if (!isAuthenticated || !user) {
+  if (!isAuthenticated || !user || !webPermissions) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
@@ -173,6 +170,30 @@ export default function AnnouncementDetailPage() {
 
   const isAuthor = announcement.authorId === user.userId;
   const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api';
+  
+  // Check if user can edit/delete this announcement
+  // Master users can edit/delete announcements created by admin users OR their own announcements
+  // Admin users can only edit/delete their own announcements
+  const canEditOrDelete = () => {
+    if (!webPermissions || !announcement) return false;
+    
+    const userAccessLevel = webPermissions.accessLevel;
+    const authorAccessLevel = announcement.authorAccessLevel;
+    
+    if (userAccessLevel === 'admin') {
+      // Admin can only edit/delete their own announcements
+      return isAuthor;
+    } else if (userAccessLevel === 'master') {
+      // Master can edit/delete if:
+      // 1. Announcement author is admin, OR
+      // 2. It's their own announcement
+      return authorAccessLevel === 'admin' || isAuthor;
+    }
+    
+    return false;
+  };
+  
+  const showEditDelete = canEditOrDelete();
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -189,11 +210,12 @@ export default function AnnouncementDetailPage() {
             Back
           </Link>
           <h1 className="text-xl font-bold text-gray-900">Announcement</h1>
-          {isAuthor && (
+          {showEditDelete && (
             <div className="flex items-center gap-3">
               <Link
                 href={`/announcements/create?edit=${announcement.id}&id=${announcement.id}`}
                 className="p-2 text-gray-600 hover:text-gray-900"
+                title="Edit announcement"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -202,6 +224,7 @@ export default function AnnouncementDetailPage() {
               <button
                 onClick={handleDelete}
                 className="p-2 text-red-600 hover:text-red-700"
+                title="Delete announcement"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />

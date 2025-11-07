@@ -37,7 +37,8 @@ api.interceptors.request.use(
 );
 
 export interface LoginCredentials {
-  mobileNumber: string;
+  mobileNumber?: string;
+  sevakId?: string;
   password: string;
 }
 
@@ -47,12 +48,21 @@ export interface RegisterData {
   fullName: string;
 }
 
+export interface WebPermissions {
+  accessLevel: 'master' | 'admin';
+  canCreateAnnouncement: boolean;
+  canCreateChatGroup: boolean;
+  canEditUserProfile: boolean;
+  canEditDepartments: boolean;
+}
+
 export interface LoginResponse {
   success: boolean;
   token?: string;
   userId?: string;
   isAdmin?: boolean;
   message?: string;
+  webPermissions?: WebPermissions;
 }
 
 export interface RegisterResponse {
@@ -76,6 +86,7 @@ export interface Announcement {
   authorId: string;
   authorName?: string;
   authorDepartments?: string[];
+  authorAccessLevel?: 'master' | 'admin';
   departmentTag?: string[];
   departmentTags?: string[];
   status: 'draft' | 'published' | 'scheduled';
@@ -112,8 +123,8 @@ export const authApi = {
 
 // Announcement API functions
 export const announcementApi = {
-  fetchUserAnnouncements: async (): Promise<Announcement[]> => {
-    const response = await api.get<Announcement[]>('/announcements/user-announcements');
+  fetchUserAnnouncements: async (): Promise<{ announcements: Announcement[]; departments: string[] }> => {
+    const response = await api.get<{ announcements: Announcement[]; departments: string[] }>('/announcements/user-announcements');
     return response.data;
   },
 
