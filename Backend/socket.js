@@ -31,10 +31,10 @@ const setupSocketIO = (io, app) => {
         
         // Get last message for this room
         const lastMessageResult = await pool.query(
-          `SELECT m.*, u."fullName" as "senderName",
+          `SELECT m.*, u."full_name" as "senderName",
                   m."createdAt" as "createdAt"
            FROM chatmessages m 
-           JOIN "users" u ON m."senderId" = u."userId"
+           JOIN "users" u ON m."senderId" = u."user_id"::text
            WHERE m."roomId" = $1 
            ORDER BY m."createdAt" DESC 
            LIMIT 1`,
@@ -270,9 +270,9 @@ const setupSocketIO = (io, app) => {
         // Get all members for this room from the database
         const pool = await import("./config/database.js").then((m) => m.default);
         const membersResult = await pool.query(
-          `SELECT u."userId", u."fullName", cru."isAdmin" 
+          `SELECT u."user_id"::text as "userId", u."full_name" as "fullName", cru."isAdmin" 
           FROM chatroomusers cru
-          JOIN "users" u ON cru."userId" = u."userId"
+          JOIN "users" u ON cru."userId" = u."user_id"::text
           WHERE cru."roomId" = $1`,
           [roomId]
         );
@@ -534,9 +534,9 @@ const setupSocketIO = (io, app) => {
       try {
         const pool = await import("./config/database.js").then((m) => m.default);
         const membersResult = await pool.query(
-          `SELECT u."userId", u."fullName", cru."isAdmin" 
+          `SELECT u."user_id"::text as "userId", u."full_name" as "fullName", cru."isAdmin" 
           FROM chatroomusers cru
-          JOIN "users" u ON cru."userId" = u."userId"
+          JOIN "users" u ON cru."userId" = u."user_id"::text
           WHERE cru."roomId" = $1`,
           [roomId]
         );

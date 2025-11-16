@@ -14,8 +14,7 @@ router.get('/:userId/profile', userController.getUserProfile);
 router.put('/:userId/profile', userController.updateUserProfile);
 
 // Sabha attendance routes
-router.get('/:userId/attendance', userController.getSabhaAttendance);
-router.post('/:userId/attendance', userController.recordSabhaAttendance);
+
 
 // Get all users (admin only)
 router.get('/all', userController.getAllUsers);

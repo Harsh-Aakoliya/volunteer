@@ -20,6 +20,7 @@ import { publishDraft, scheduleDraft, rescheduleAnnouncement, updateAnnouncement
 import { AuthStorage } from '@/utils/authStorage';
 import { API_URL } from '@/constants/api';
 import { formatISTDate } from '@/utils/dateUtils';
+import axios from 'axios';
 import ImageViewer from '@/components/texteditor/ImageViewer';
 import VideoViewer from '@/components/texteditor/VideoViewer';
 import AudioViewer from '@/components/texteditor/AudioViewer';
@@ -43,8 +44,8 @@ const AnnouncementPreviewScreen = () => {
   const authorName = params.authorName as string || '';
   const announcementId = params.announcementId ? Number(params.announcementId) : undefined;
   const announcementMode = params.announcementMode as string || 'new';
-  const departmentTags = params.departmentTags ? JSON.parse(params.departmentTags as string) : [];
   const attachedMediaFiles = params.attachedMediaFiles ? JSON.parse(params.attachedMediaFiles as string) : [];
+  const roomId = params.roomId as string; // Get roomId if coming from chat
 
   console.log("Content got in preview", content);
   const isEdit = announcementMode === 'edit';
@@ -65,10 +66,10 @@ const AnnouncementPreviewScreen = () => {
     console.log("title", title);
     console.log("content", content);
     console.log("announcementMode", announcementMode);
-    console.log("departmentTags", departmentTags);
     console.log("attachedMediaFiles", attachedMediaFiles);
     console.log("hasCoverImage", params.hasCoverImage);
     console.log("authorName", authorName);
+    console.log("roomId", roomId);
     
     // Navigate back to create-announcement with current content preserved
     router.replace({
@@ -79,7 +80,7 @@ const AnnouncementPreviewScreen = () => {
         content: content,
         announcementMode: announcementMode,
         hasCoverImage: params.hasCoverImage || 'false',
-        departmentTags: JSON.stringify(departmentTags),
+        roomId: roomId
       }
     });
   };
@@ -150,16 +151,16 @@ const AnnouncementPreviewScreen = () => {
               }
               
               if (isEdit) {
-                await updateAnnouncement(announcementId, title, content, departmentTags);
+                await updateAnnouncement(announcementId, title, content, []);
               } else {
-                await publishDraft(announcementId as number, title, content, user.userId, departmentTags);
+                await publishDraft(announcementId as number, title, content, user.userId, []);
               }
               
               setTimeout(() => {
                 setShowPublishingAnimation(false);
                 setIsPublishing(false);
                 // Navigate back to announcement list
-                router.replace('/announcement');
+                router.replace(`/chat/${roomId}`);
               }, 2000);
               
             } catch (error) {
@@ -203,6 +204,76 @@ const AnnouncementPreviewScreen = () => {
     );
   };
 
+  const handleSendToChatRoom = async () => {
+    if (isPublishing || isScheduling || !roomId) return;
+
+    Alert.alert(
+      "Send to Chat Room",
+      "Are you sure you want to send this announcement to the chat room?",
+      [
+        { text: "Cancel", style: "cancel" },
+        { 
+          text: "Send", 
+          style: "default",
+          onPress: async () => {
+            try {
+              setIsPublishing(true);
+              setShowPublishingAnimation(true);
+              
+              const user = await AuthStorage.getUser();
+              if (!user || !user.userId) {
+                throw new Error('User not found');
+              }
+
+              const token = await AuthStorage.getToken();
+              if (!token) {
+                throw new Error('No authentication token');
+              }
+
+              // Format announcement content as JSON
+              const announcementData = {
+                title,
+                body: content,
+                attachedMediaFiles: attachedMediaFiles || []
+              };
+
+              // Send announcement as message to chat room
+              const response = await axios.post(
+                `${API_URL}/api/chat/rooms/${roomId}/messages`,
+                {
+                  messageText: JSON.stringify(announcementData),
+                  messageType: 'announcement',
+                  mediaFilesId: null,
+                  pollId: null,
+                  tableId: null,
+                  replyMessageId: null
+                },
+                {
+                  headers: {
+                    Authorization: `Bearer ${token}`
+                  }
+                }
+              );
+
+              setTimeout(() => {
+                setShowPublishingAnimation(false);
+                setIsPublishing(false);
+                // Navigate back to chat room
+                router.replace(`/chat/${roomId}`);
+              }, 2000);
+              
+            } catch (error) {
+              setIsPublishing(false);
+              setShowPublishingAnimation(false);
+              console.error('Error sending to chat room:', error);
+              Alert.alert('Error', 'Failed to send announcement to chat room. Please try again.');
+            }
+          }
+        }
+      ]
+    );
+  };
+
   const performSchedule = async (scheduledAt: string) => {
     try {
       setIsScheduling(true);
@@ -219,7 +290,7 @@ const AnnouncementPreviewScreen = () => {
           title,
           content,
           user.userId,
-          departmentTags,
+          [],
           scheduledAt
         );
       } else {
@@ -228,7 +299,7 @@ const AnnouncementPreviewScreen = () => {
           title,
           content,
           user.userId,
-          departmentTags,
+          [],
           scheduledAt
         );
       }
@@ -236,7 +307,7 @@ const AnnouncementPreviewScreen = () => {
       setTimeout(() => {
         setShowPublishingAnimation(false);
         setIsScheduling(false);
-        router.replace('/announcement');
+        router.replace(`/chat/${roomId}`);
       }, 2000);
       
     } catch (error) {
@@ -361,20 +432,39 @@ const AnnouncementPreviewScreen = () => {
 
       {/* Fixed Action Buttons */}
       <View className="p-4 bg-white border-t border-gray-200">
-        <TouchableOpacity
-          onPress={handlePublish}
-          disabled={isPublishing || isScheduling}
-          className={`py-3 px-6 rounded-lg ${
-            isPublishing || isScheduling ? 'bg-gray-400' : 'bg-green-600'
-          }`}
-        >
-          <Text className="text-white text-center font-semibold">
-            {isPublishing 
-              ? 'Publishing...' 
-              : isEdit ? 'Update Announcement' : 'Publish Announcement'
-            }
-          </Text>
-        </TouchableOpacity>
+        {roomId ? (
+          // Show "Send to chat room" button if roomId is provided
+          <TouchableOpacity
+            onPress={handleSendToChatRoom}
+            disabled={isPublishing || isScheduling}
+            className={`py-3 px-6 rounded-lg ${
+              isPublishing || isScheduling ? 'bg-gray-400' : 'bg-blue-600'
+            }`}
+          >
+            <Text className="text-white text-center font-semibold">
+              {isPublishing 
+                ? 'Sending...' 
+                : 'Send to Chat Room'
+              }
+            </Text>
+          </TouchableOpacity>
+        ) : (
+          // Show publish button if no roomId
+          <TouchableOpacity
+            onPress={handlePublish}
+            disabled={isPublishing || isScheduling}
+            className={`py-3 px-6 rounded-lg ${
+              isPublishing || isScheduling ? 'bg-gray-400' : 'bg-green-600'
+            }`}
+          >
+            <Text className="text-white text-center font-semibold">
+              {isPublishing 
+                ? 'Publishing...' 
+                : isEdit ? 'Update Announcement' : 'Publish Announcement'
+              }
+            </Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Schedule Picker Modal */}

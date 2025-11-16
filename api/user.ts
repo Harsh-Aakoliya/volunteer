@@ -94,6 +94,8 @@ export const fetchSabhaAttendanceForUser = async (userId: string) => {
 export const logout = async () => {
   try {
     await AuthStorage.clear();
+    
+    console.log('Logout successful - cache cleared');
   } catch (error) {
     console.error('Error during logout:', error);
   }

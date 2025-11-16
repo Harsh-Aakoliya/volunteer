@@ -21,7 +21,7 @@ const Announcement = () => {
   const announcementMode = params.announcementMode as string;
   const announcementStatus = params.announcementStatus as string;
   const hasCoverImage = params.hasCoverImage as string;
-  const departmentTags = params.departmentTags ? JSON.parse(params.departmentTags as string) : [];
+  const roomId = params.roomId as string; // Get roomId if coming from chat
   
   console.log("params", params);
 
@@ -39,7 +39,7 @@ const Announcement = () => {
           [
             {
               text: 'OK',
-              onPress: () => router.replace('/announcement')
+              onPress: () => router.replace('/chat')
             }
           ]
         );
@@ -54,7 +54,7 @@ const Announcement = () => {
         [
           {
             text: 'OK',
-            onPress: () => router.replace('/announcement')
+            onPress: () => router.replace('/chat')
           }
         ]
       );
@@ -80,7 +80,13 @@ const Announcement = () => {
   }
 
   const handleExit = () => {
-    router.replace('/announcement');
+    if (roomId) {
+      // Navigate back to chat room if coming from chat
+      router.replace(`/chat/${roomId}`);
+    } else {
+      // Navigate to announcement list otherwise
+      router.replace('/chat');
+    }
   };
 
   return (
@@ -92,7 +98,7 @@ const Announcement = () => {
         announcementMode={announcementMode}
         announcementStatus={announcementStatus}
         hasCoverImage={hasCoverImage === 'true' || hasCoverImage === 'TRUE'}
-        initialDepartmentTags={departmentTags}
+        roomId={roomId} // Pass roomId to AnnouncementCreator
         onExit={handleExit}
       />
     </SafeAreaView>

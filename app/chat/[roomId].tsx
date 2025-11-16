@@ -73,6 +73,7 @@ export default function ChatRoomScreen() {
   const [sending, setSending] = useState(false);
   const [messageText, setMessageText] = useState("");
   const [isGroupAdmin, setIsGroupAdmin] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [onlineUsers, setOnlineUsers] = useState<string[]>([]);
   const [currentUser, setCurrentUser] = useState<{
     userId: string;
@@ -562,6 +563,7 @@ export default function ChatRoomScreen() {
           userId: userData.userId,
           fullName: userData.fullName || null
         });
+        setIsAdmin(userData.isAdmin || false);
       }
 
       // Fetch room details
@@ -1459,7 +1461,62 @@ export default function ChatRoomScreen() {
             </Text>
           )}
           
-          {item.messageText && (
+          {/* Render announcement message type */}
+          {item.messageType === 'announcement' ? (
+            <TouchableOpacity
+              onPress={() => {
+                try {
+                  const announcementData = JSON.parse(item.messageText);
+                  // Navigate to announcement detail page with inline data
+                  router.push({
+                    pathname: '/announcement/chat-announcement' as any,
+                    params: {
+                      title: announcementData.title,
+                      body: announcementData.body,
+                      authorName: item.senderName,
+                      createdAt: item.createdAt,
+                      attachedMediaFiles: JSON.stringify(announcementData.attachedMediaFiles || [])
+                    }
+                  });
+                } catch (error) {
+                  console.error('Error parsing announcement data:', error);
+                }
+              }}
+              className={`p-3 rounded-lg ${
+                isOwnMessage ? 'bg-blue-200' : 'bg-gray-200'
+              }`}
+            >
+              <View className="flex-row items-center mb-2">
+                <Ionicons 
+                  name="megaphone" 
+                  size={20} 
+                  color={isOwnMessage ? '#1e40af' : '#374151'} 
+                />
+                <Text className={`ml-2 font-bold text-base ${
+                  isOwnMessage ? 'text-blue-800' : 'text-gray-800'
+                }`}>
+                  Announcement
+                </Text>
+              </View>
+              <Text className={`text-base font-semibold ${
+                isOwnMessage ? 'text-blue-900' : 'text-gray-900'
+              }`} numberOfLines={2}>
+                {(() => {
+                  try {
+                    const announcementData = JSON.parse(item.messageText);
+                    return announcementData.title || 'Untitled Announcement';
+                  } catch {
+                    return 'Untitled Announcement';
+                  }
+                })()}
+              </Text>
+              <Text className={`text-xs mt-1 ${
+                isOwnMessage ? 'text-blue-600' : 'text-gray-600'
+              }`}>
+                Tap to view full announcement
+              </Text>
+            </TouchableOpacity>
+          ) : item.messageText ? (
             <View>
               <Text className={`text-base leading-5 ${
                 isOwnMessage ? "text-gray-900" : "text-gray-800"
@@ -1467,7 +1524,7 @@ export default function ChatRoomScreen() {
                 {renderMessageTextWithMentions(item.messageText)}
               </Text>
             </View>
-          )}
+          ) : null}
           
           {/* Render audio messages */}
           {item.mediaFilesId && item.messageType === 'audio' ? (

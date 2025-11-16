@@ -7,97 +7,52 @@ import {
   TouchableOpacity,
   TextInput,
   ScrollView,
-  Image,
   Alert,
   KeyboardAvoidingView,
   Platform,
   Keyboard,
   ActivityIndicator,
-  Modal
 } from 'react-native';
 import { RichText, Toolbar, useEditorBridge, DEFAULT_TOOLBAR_ITEMS } from '@10play/tentap-editor';
 import { cssInterop } from "nativewind";
 import { Ionicons } from '@expo/vector-icons';
-import * as DocumentPicker from 'expo-document-picker';
-import * as FileSystem from 'expo-file-system';
-import Checkbox from 'expo-checkbox';
 import WebView from 'react-native-webview';
-import axios from 'axios';
 // Import utilities and components
 import { AuthStorage } from '@/utils/authStorage';
 import { API_URL } from '@/constants/api';
-import { formatISTDate } from '@/utils/dateUtils';
 import AnnouncementMediaUploader from '@/components/texteditor/AnnouncementMediaUploader';
-import DateTimePicker from '@/components/chat/DateTimePicker';
 import { router } from 'expo-router';
 
-// Import API functions
-import {
-  updateDraft,
-  publishDraft,
-  scheduleDraft,
-  rescheduleAnnouncement,
-  deleteDraft,
-  updateAnnouncement,
-  getAnnouncementDetails
-} from '@/api/admin';
-
 // Filter default toolbar items to only include allowed buttons
-// Keep: Bold, Italic, Underline, Headings (Aa), Strikethrough, Ordered List, Unordered List, Indent, Outdent, Undo, Redo
-// Remove: Link, Task List, Code, Blockquote
 const allowedToolbarItems = DEFAULT_TOOLBAR_ITEMS.filter((_, index) => {
-  // Based on DEFAULT_TOOLBAR_ITEMS array:
-  // 0: Bold ✓
-  // 1: Italic ✓  
-  // 2: Link ✗
-  // 3: Task List ✗
-  // 4: Headings (Aa) ✓
-  // 5: Code ✗
-  // 6: Underline ✓
-  // 7: Strikethrough ✓
-  // 8: Blockquote ✗
-  // 9: Ordered List ✓
-  // 10: Unordered List ✓
-  // 11: Indent ✓
-  // 12: Outdent ✓
-  // 13: Undo ✓
-  // 14: Redo ✓
   return [0, 1, 4, 6, 7, 9, 10, 11, 12, 13, 14].includes(index);
 });
-
-// Tentap Editor doesn't need forwarded refs like react-native-pell-rich-editor
 
 const StyledWebView = cssInterop(WebView, {
   className: "style",
 });
 
-interface Department {
-  departmentName: string;
-  isSelected: boolean;
-}
-
 interface AnnouncementCreatorProps {
   initialTitle?: string;
   initialContent?: string;
   announcementId?: number;
-  announcementMode?: string;
-  hasCoverImage?: boolean;
-  initialDepartmentTags?: string[];
-  announcementStatus?: string;
+  roomId?: string; // roomId if creating announcement from chat
   onExit: () => void;
+  announcementMode?: string;
+  announcementStatus?: string;
+  hasCoverImage?: boolean;
 }
 
 export default function AnnouncementCreator({
   initialTitle = '',
   initialContent = '',
   announcementId,
-  announcementMode = 'new',
-  hasCoverImage: initialHasCoverImage = false,
-  initialDepartmentTags = [],
-  announcementStatus = 'draft',
-  onExit
+  roomId,
+  onExit,
+  announcementMode,
+  announcementStatus,
+  hasCoverImage
 }: AnnouncementCreatorProps) {
-  // console.log("announcementMode", announcementMode);
   // Memoize initial values to prevent unnecessary re-renders
   const memoizedInitialContent = useMemo(() => initialContent, []);
   const memoizedInitialTitle = useMemo(() => initialTitle, []);
@@ -113,9 +68,7 @@ export default function AnnouncementCreator({
   const currentTitleRef = useRef<string>(initialTitle);
   const editorInitializedRef = useRef<boolean>(false);
   const contentSetRef = useRef<boolean>(false);
-  const retryCountRef = useRef<number>(0);
   const editorContainerRef = useRef<View>(null);
-  // Add these refs near your other refs
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const scrollViewRef = useRef<ScrollView>(null);
 
@@ -123,51 +76,21 @@ export default function AnnouncementCreator({
   const [draftContent, setDraftContent] = useState<string>(memoizedInitialContent);
   const [draftTitle, setDraftTitle] = useState<string>(memoizedInitialTitle);
 
-  // Cover image states
-  const [hasCoverImage, setHasCoverImage] = useState(initialHasCoverImage);
-  const [coverImageUri, setCoverImageUri] = useState('');
-  const [isUploadingCover, setIsUploadingCover] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
-  const [coverImageLoading, setCoverImageLoading] = useState(true);
-
   // Media files states
   const [attachedMediaFiles, setAttachedMediaFiles] = useState<any[]>([]);
-
-  // Department selection states
-  const [selectedDepartments, setSelectedDepartments] = useState<string[]>(initialDepartmentTags);
-  const [departments, setDepartments] = useState<Department[]>([]);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [filteredDepartments, setFilteredDepartments] = useState<Department[]>([]);
 
   // UI states
   const [isEditorReady, setIsEditorReady] = useState<boolean>(false);
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
   const [isTitleFocused, setIsTitleFocused] = useState(false);
   const [isEditorFocused, setIsEditorFocused] = useState(false);
-  const [isLoadingDepartments, setIsLoadingDepartments] = useState(true);
-  const [isLoadingAnnouncementData, setIsLoadingAnnouncementData] = useState(false);
 
   // Button loading states
-  const [isSavingDraft, setIsSavingDraft] = useState(false);
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
-  const [isScheduling, setIsScheduling] = useState(false);
-
-  // Scheduling states
-  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
-  const [selectedTime, setSelectedTime] = useState<string | null>(null);
-  const [showSchedulePicker, setShowSchedulePicker] = useState(false);
 
   // User data
   const [currentUserId, setCurrentUserId] = useState<string>("");
   const [currentUserName, setCurrentUserName] = useState<string>("");
-  const [userDepartments, setUserDepartments] = useState<string[]>([]);
-  const [isKaryalay, setIsKaryalay] = useState(false);
-
-  const isFresh = announcementMode === 'new';
-  const isDraft = announcementMode === 'draft';
-  const isEdit = announcementMode === 'edit';
-  const isScheduled = announcementStatus === 'scheduled';
-  const isReschedule = isEdit && isScheduled;
 
   // Tentap editor content setter
   const setEditorContent = useCallback(async (content: string) => {
@@ -230,41 +153,18 @@ export default function AnnouncementCreator({
     }
   }, [memoizedInitialContent, setEditorContent, editor]);
 
-  // Initialize user data and cover image
+  // Initialize user data
   useEffect(() => {
     const initializeData = async () => {
       const user = await AuthStorage.getUser();
       if (user) {
         setCurrentUserId(user.userId);
         setCurrentUserName(user.fullName || 'User');
-        const departments = user.departments || [];
-        const isKaryalayUser = (user?.departments && user?.departments.includes('Karyalay')) || false;
-        const isAdminUser = user.isAdmin || false;
-
-        setUserDepartments(departments);
-        setIsKaryalay(isKaryalayUser);
-
-        // Load departments
-        await loadDepartments(departments, isKaryalayUser);
       }
     };
 
     initializeData();
-
-    // Initialize cover image
-    if (initialHasCoverImage && announcementId) {
-      setCoverImageUri(`${API_URL}/media/announcement/${announcementId}/coverimage.jpg?t=${Date.now()}`);
-    } else {
-      setCoverImageUri(`${API_URL}/media/defaultcoverimage.png`);
-    }
   }, []);
-
-  // Load existing announcement data for editing and drafts
-  useEffect(() => {
-    if ((isEdit || isDraft) && announcementId) {
-      loadExistingAnnouncementData();
-    }
-  }, [isEdit, isDraft, announcementId]);
 
   // Set initial form values once
   useEffect(() => {
@@ -300,32 +200,28 @@ export default function AnnouncementCreator({
       }
     }
   }, [isEditorReady, memoizedInitialContent, editor]);
-//----------------------------------------------------------
-// 1️⃣  Hook to track keyboard height (cross-platform)
-//----------------------------------------------------------
 
+  const useKeyboardHeight = () => {
+    const [keyboardHeight, setKeyboardHeight] = useState(0);
 
- const useKeyboardHeight = () => {
-  const [keyboardHeight, setKeyboardHeight] = useState(0);
+    useEffect(() => {
+      const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+      const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
 
-  useEffect(() => {
-    const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
-    const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+      const showSub = Keyboard.addListener(showEvt, e =>
+        setKeyboardHeight(e.endCoordinates.height),
+      );
+      const hideSub = Keyboard.addListener(hideEvt, () => setKeyboardHeight(0));
 
-    const showSub = Keyboard.addListener(showEvt, e =>
-      setKeyboardHeight(e.endCoordinates.height),
-    );
-    const hideSub = Keyboard.addListener(hideEvt, () => setKeyboardHeight(0));
+      return () => {
+        showSub.remove();
+        hideSub.remove();
+      };
+    }, []);
 
-    return () => {
-      showSub.remove();
-      hideSub.remove();
-    };
-  }, []);
-
-  return keyboardHeight;
-};
-const keyboardHeightRef = useKeyboardHeight();
+    return keyboardHeight;
+  };
+  const keyboardHeightRef = useKeyboardHeight();
 
   // Replace your existing keyboard useEffect with this:
   useEffect(() => {
@@ -350,18 +246,6 @@ const keyboardHeightRef = useKeyboardHeight();
       keyboardDidHideListener?.remove();
     };
   }, []);
-
-  // Filter departments based on search
-  useEffect(() => {
-    if (searchQuery.trim() === '') {
-      setFilteredDepartments(departments);
-    } else {
-      const filtered = departments.filter(dept =>
-        dept.departmentName.toLowerCase().includes(searchQuery.toLowerCase())
-      );
-      setFilteredDepartments(filtered);
-    }
-  }, [searchQuery, departments]);
 
   // Emergency failsafe for editor initialization - immediate without timeout
   useEffect(() => {
@@ -413,76 +297,6 @@ const keyboardHeightRef = useKeyboardHeight();
     }
   }, [isEditorReady, editor]);
 
-  const loadExistingAnnouncementData = async () => {
-    if (!announcementId || (!isEdit && !isDraft)) return;
-
-    try {
-      setIsLoadingAnnouncementData(true);
-      const announcementDetails = await getAnnouncementDetails(announcementId);
-
-      if (announcementDetails) {
-        const departmentTags = announcementDetails.departmentTags || [];
-        setSelectedDepartments(departmentTags);
-
-        // Reload departments with the correct selection
-        setTimeout(() => {
-          loadDepartments();
-        }, 100);
-      }
-    } catch (error) {
-      console.error('Error loading existing announcement data:', error);
-      Alert.alert(
-        'Warning',
-        'Could not load some existing announcement data. You can still edit the announcement.',
-        [{ text: 'OK' }]
-      );
-    } finally {
-      setIsLoadingAnnouncementData(false);
-    }
-  };
-
-  const loadDepartments = async (userDepts?: string[], isKaryalayUser?: boolean) => {
-    try {
-      setIsLoadingDepartments(true);
-      const token = await AuthStorage.getToken();
-
-      const currentUserDepartments = userDepts || userDepartments;
-      const currentIsKaryalay = isKaryalayUser !== undefined ? isKaryalayUser : isKaryalay;
-
-      let availableDepartments: string[] = [];
-
-      const user = await AuthStorage.getUser();
-      const isAdminUser = user?.isAdmin || false;
-
-      if (currentIsKaryalay) {
-        const response = await axios.get(`${API_URL}/api/announcements/departments`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        availableDepartments = response.data;
-      } else {
-        availableDepartments = currentUserDepartments;
-
-        if (availableDepartments.length === 0) {
-          // Alert.alert("Warning", "You don't have any departments assigned. Please contact administrator.");
-          return;
-        }
-      }
-
-      const departmentObjects: Department[] = availableDepartments.map(deptName => ({
-        departmentName: deptName,
-        isSelected: selectedDepartments.includes(deptName)
-      }));
-
-      setDepartments(departmentObjects);
-      setFilteredDepartments(departmentObjects);
-    } catch (error) {
-      console.error('Error loading departments:', error);
-      Alert.alert('Error', 'Failed to load departments');
-    } finally {
-      setIsLoadingDepartments(false);
-    }
-  };
-
   const handleContentChange = useCallback(() => {
     // Tentap editor content changes are handled internally
     // We'll get content when needed via getCurrentContent
@@ -506,156 +320,14 @@ const keyboardHeightRef = useKeyboardHeight();
     return { currentTitle, currentContent };
   };
 
-  const handleSelectCoverImage = async () => {
-    try {
-      const result = await DocumentPicker.getDocumentAsync({
-        multiple: false,
-        type: ["image/*"],
-        copyToCacheDirectory: true,
-      });
-
-      if (result.canceled || result.assets.length === 0) return;
-
-      const asset = result.assets[0];
-
-      if (!asset.mimeType?.startsWith('image/')) {
-        Alert.alert("Invalid File", "Please select an image file only.");
-        return;
-      }
-
-      setIsUploadingCover(true);
-      setUploadProgress(0);
-
-      try {
-        const fileData = await FileSystem.readAsStringAsync(asset.uri, {
-          encoding: FileSystem.EncodingType.Base64,
-        });
-
-        setUploadProgress(30);
-
-        const fileToUpload = {
-          name: asset.name,
-          mimeType: asset.mimeType || "image/jpeg",
-          fileData,
-        };
-
-        setUploadProgress(50);
-
-        const token = await AuthStorage.getToken();
-        const response = await axios.post(
-          `${API_URL}/api/announcements/cover-image`,
-          {
-            files: [fileToUpload],
-            announcementId: announcementId
-          },
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-              "Content-Type": "application/json",
-            },
-          }
-        );
-
-        setUploadProgress(80);
-
-        if (response.data.success) {
-          const newImageUri = `${API_URL}/media/announcement/${announcementId}/coverimage.jpg?t=${Date.now()}`;
-          setCoverImageUri(newImageUri);
-          setHasCoverImage(true);
-          setUploadProgress(100);
-
-        } else {
-          throw new Error("Upload failed");
-        }
-
-      } catch (error) {
-        console.error("Upload error:", error);
-        Alert.alert("Upload failed", "There was an error uploading your cover image.");
-        setCoverImageUri(`${API_URL}/media/defaultcoverimage.jpg`);
-        setHasCoverImage(false);
-      } finally {
-        setIsUploadingCover(false);
-        setUploadProgress(0);
-      }
-    } catch (error) {
-      console.error("File selection error:", error);
-      setIsUploadingCover(false);
-    }
-  };
-
-  const toggleDepartmentSelection = (departmentName: string) => {
-    setSelectedDepartments(prev =>
-      prev.includes(departmentName)
-        ? prev.filter(name => name !== departmentName)
-        : [...prev, departmentName]
-    );
-
-    setDepartments(prev => prev.map(dept =>
-      dept.departmentName === departmentName
-        ? { ...dept, isSelected: !dept.isSelected }
-        : dept
-    ));
-  };
-
-  const selectAllDepartments = () => {
-    const allDepartmentNames = filteredDepartments.map(dept => dept.departmentName);
-    const allSelected = allDepartmentNames.every(name => selectedDepartments.includes(name));
-
-    if (allSelected) {
-      setSelectedDepartments(prev => prev.filter(name => !allDepartmentNames.includes(name)));
-    } else {
-      setSelectedDepartments(prev => Array.from(new Set([...prev, ...allDepartmentNames])));
-    }
-
-    setDepartments(prev => prev.map(dept => ({
-      ...dept,
-      isSelected: allSelected ? false : (filteredDepartments.some(fd => fd.departmentName === dept.departmentName) ? true : dept.isSelected)
-    })));
-  };
-
-  const handleDeleteDraft = async () => {
-    if (!announcementId || !currentUserId) return;
-
-    try {
-      await deleteDraft(announcementId as number, currentUserId);
-      onExit();
-    } catch (error) {
-      console.error("Error deleting draft:", error);
-      Alert.alert("Error", "Failed to delete draft. Please try again.");
-    }
-  };
-
-  //when user is in edit draft and then clicks on save draft button
-  const handleSaveAsDraft = async () => {
-    if (!announcementId || !currentUserId || isSavingDraft) return;
-
-    try {
-      setIsSavingDraft(true);
-      const { currentTitle, currentContent } = await getCurrentContent();
-      await updateDraft(announcementId, currentTitle, currentContent, currentUserId, selectedDepartments);
-
-      Alert.alert(
-        'Draft Saved',
-        'Your announcement has been saved as draft.',
-        [
-          {
-            text: 'OK',
-            onPress: () => {
-              setIsSavingDraft(false);
-              onExit();
-            }
-          }
-        ]
-      );
-    } catch (error) {
-      console.error('Error saving draft:', error);
-      setIsSavingDraft(false);
-      Alert.alert('Error', 'Failed to save draft. Please try again.');
-    }
-  };
-
   const handlePreview = async () => {
     if (isLoadingPreview) return;
+
+    // Validate that title is not empty
+    if (!draftTitle.trim()) {
+      Alert.alert('Title Required', 'Please enter a title for your announcement.');
+      return;
+    }
 
     try {
       setIsLoadingPreview(true);
@@ -669,10 +341,11 @@ const keyboardHeightRef = useKeyboardHeight();
           content: currentContent.trim(),
           authorName: currentUserName,
           announcementId: announcementId,
+          attachedMediaFiles: JSON.stringify(attachedMediaFiles),
+          roomId: roomId, // Pass roomId to preview page
           announcementMode: announcementMode,
-          hasCoverImage: hasCoverImage ? 'true' : 'false',
-          departmentTags: JSON.stringify(selectedDepartments),
-          attachedMediaFiles: JSON.stringify(attachedMediaFiles)
+          announcementStatus: announcementStatus,
+          hasCoverImage: hasCoverImage ? 'true' : 'false'
         }
       });
     } catch (error) {
@@ -683,119 +356,7 @@ const keyboardHeightRef = useKeyboardHeight();
     }
   };
 
-  const handleSchedule = () => {
-    if (!selectedDate || !selectedTime) {
-      Alert.alert('Error', 'Please select both date and time to schedule the announcement.');
-      return;
-    }
-
-    const [hours, minutes] = selectedTime.split(':').map(Number);
-    const scheduledDateTime = new Date(selectedDate);
-    scheduledDateTime.setHours(hours, minutes, 0, 0);
-
-    if (scheduledDateTime <= new Date()) {
-      Alert.alert('Error', 'Scheduled time must be in the future.');
-      return;
-    }
-
-    setShowSchedulePicker(false);
-    Alert.alert(
-      'Schedule Announcement',
-      `Are you sure you want to schedule this announcement for ${scheduledDateTime.toLocaleString()}?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Schedule',
-          onPress: () => performSchedule(scheduledDateTime.toISOString())
-        }
-      ]
-    );
-  };
-
-  const performSchedule = async (scheduledAt: string) => {
-    if (!announcementId || !currentUserId || isScheduling) return;
-
-    try {
-      setIsScheduling(true);
-      const { currentTitle, currentContent } = await getCurrentContent();
-
-      if (isReschedule) {
-        // For editing scheduled announcements, use reschedule
-        await rescheduleAnnouncement(
-          announcementId,
-          currentTitle,
-          currentContent,
-          currentUserId,
-          selectedDepartments,
-          scheduledAt
-        );
-        Alert.alert('Success', 'Announcement rescheduled successfully!');
-      } else {
-        // For new drafts, use schedule
-        await scheduleDraft(
-          announcementId,
-          currentTitle,
-          currentContent,
-          currentUserId,
-          selectedDepartments,
-          scheduledAt
-        );
-        Alert.alert('Success', 'Announcement scheduled successfully!');
-      }
-
-      onExit();
-    } catch (error) {
-      console.error('Error scheduling announcement:', error);
-      Alert.alert('Error', 'Failed to schedule announcement. Please try again.');
-    } finally {
-      setIsScheduling(false);
-    }
-  };
-
-  const renderDepartmentItem = (department: Department) => {
-    const isSelected = selectedDepartments.includes(department.departmentName);
-
-    return (
-      <TouchableOpacity
-        key={department.departmentName}
-        onPress={() => toggleDepartmentSelection(department.departmentName)}
-        className={`flex-row items-center p-4 border-b border-gray-100 ${isSelected ? 'bg-blue-50' : 'bg-white'
-          }`}
-      >
-        <Checkbox
-          value={isSelected}
-          onValueChange={() => toggleDepartmentSelection(department.departmentName)}
-          className="mr-3"
-          color={isSelected ? '#0284c7' : undefined}
-        />
-
-        <View className="w-12 h-12 rounded-full justify-center items-center mr-3 bg-blue-100">
-          <Ionicons name="business" size={24} color="#0284c7" />
-        </View>
-
-        <View className="flex-1">
-          <Text className="text-base font-medium text-gray-800">
-            {department.departmentName}
-          </Text>
-          <Text className="text-sm text-gray-500">
-            Department
-          </Text>
-        </View>
-      </TouchableOpacity>
-    );
-  };
-
-  const isFormValid = draftTitle.trim() !== '' && selectedDepartments.length > 0;
-  const allFilteredSelected = filteredDepartments.length > 0 &&
-    filteredDepartments.every(dept => selectedDepartments.includes(dept.departmentName));
-
-  if (isLoadingAnnouncementData) {
-    return (
-      <View className="flex-1 bg-white items-center justify-center">
-        <Text className="text-gray-500">Loading announcement data...</Text>
-      </View>
-    );
-  }
+  const isFormValid = draftTitle.trim() !== '';
 
   return (
     <View className="flex-1 bg-white">
@@ -806,7 +367,7 @@ const keyboardHeightRef = useKeyboardHeight();
         </TouchableOpacity>
 
         <Text className="text-lg font-semibold text-gray-900">
-          {isEdit ? 'Edit Announcement' : isDraft? "Edit Draft": 'Create Announcement'}
+          Create Announcement
         </Text>
 
         <View className="w-8" />
@@ -867,58 +428,6 @@ const keyboardHeightRef = useKeyboardHeight();
             </View>
           </View>
 
-          {/* Cover Image Section */}
-          {/*
-          <View className="mb-8">
-            <Text className="text-xl font-bold text-gray-900 mb-4">Cover Image <Text className="text-gray-500 font-normal">(optional)</Text></Text>
-            <View className="items-center">
-              <TouchableOpacity
-                onPress={handleSelectCoverImage}
-                disabled={isUploadingCover}
-                className="relative"
-              >
-                <View className="w-[200px] h-[200px] bg-gray-200 rounded-lg overflow-hidden">
-                  {coverImageLoading && (
-                    <View className="absolute inset-0 bg-gray-300 flex items-center justify-center z-10">
-                      <ActivityIndicator size="large" color="#6b7280" />
-                    </View>
-                  )}
-                  
-                  <Image
-                    source={{ uri: coverImageUri }}
-                    className="w-full h-full"
-                    resizeMode="cover"
-                    onLoadEnd={() => setCoverImageLoading(false)}
-                    onError={() => {
-                      setCoverImageLoading(false);
-                      setCoverImageUri(`${API_URL}/media/defaultcoverimage.png`);
-                    }}
-                  />
-
-                  {isUploadingCover && (
-                    <View className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center z-20">
-                      <View className="bg-white bg-opacity-90 p-4 rounded-lg items-center">
-                        <Text className="text-gray-800 text-sm mb-2">Uploading...</Text>
-                        <View className="w-32 h-2 bg-gray-300 rounded-full overflow-hidden">
-                          <View
-                            className="h-full bg-blue-500 rounded-full transition-all duration-300"
-                            style={{ width: `${uploadProgress}%` }}
-                          />
-                        </View>
-                        <Text className="text-gray-600 text-xs mt-1">{uploadProgress}%</Text>
-                      </View>
-                    </View>
-                  )}
-                </View>
-
-                <Text className="text-sm text-gray-600 mt-2 text-center">
-                  {hasCoverImage ? 'Tap to change cover image' : 'Tap to add cover image'}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-          */}
-
           {/* Media Files Section */}
           <View className="mb-8">
             <Text className="text-xl font-bold text-gray-900 mb-4">Attach Media Files <Text className="text-gray-500 font-normal">(optional)</Text></Text>
@@ -929,207 +438,40 @@ const keyboardHeightRef = useKeyboardHeight();
             />
           </View>
 
-          {/* Department Selection Section */}
-          <View className="mb-8">
-            <Text className="text-xl font-bold text-gray-900 mb-4">Select Departments</Text>
-
-            {/* Search Bar */}
-            {filteredDepartments.length > 1 && (
-              <View className="flex-row items-center bg-gray-100 rounded-lg px-3 py-2 mb-3">
-                <Ionicons name="search" size={20} color="#6b7280" />
-                <TextInput
-                  className="flex-1 ml-2 text-base"
-                  placeholder="Search departments..."
-                  value={searchQuery}
-                  onChangeText={setSearchQuery}
-                />
-                {searchQuery.length > 0 && (
-                  <TouchableOpacity onPress={() => setSearchQuery('')}>
-                    <Ionicons name="close-circle" size={20} color="#6b7280" />
-                  </TouchableOpacity>
-                )}
-              </View>
-            )}
-
-            {/* Select All Button */}
-            {filteredDepartments.length > 1 && (
-              <TouchableOpacity
-                onPress={selectAllDepartments}
-                className="flex-row items-center p-3 bg-gray-50 rounded-lg mb-3"
-              >
-                <View className="mr-3">
-                  <Checkbox
-                    value={allFilteredSelected}
-                    onValueChange={selectAllDepartments}
-                    color={allFilteredSelected ? '#0284c7' : undefined}
-                  />
-                </View>
-                <Text className="text-gray-700 font-medium">
-                  {allFilteredSelected ? 'Deselect All' : 'Select All'}
-                  {searchQuery ? ' (Filtered)' : ''}
-                </Text>
-              </TouchableOpacity>
-            )}
-
-            {/* Department List */}
-            {isLoadingDepartments ? (
-              <View className="justify-center items-center p-8">
-                <ActivityIndicator size="large" color="#0284c7" />
-                <Text className="text-gray-500 mt-2">Loading departments...</Text>
-              </View>
-            ) : (
-              <View className="border border-gray-200 rounded-lg overflow-hidden">
-                {filteredDepartments.length === 0 ? (
-                  <View className="justify-center items-center p-8">
-                    <Ionicons name="business-outline" size={60} color="#d1d5db" />
-                    <Text className="text-gray-500 mt-4 text-center">
-                      {searchQuery.length > 0
-                        ? "No departments match your search"
-                        : "No departments available"}
-                    </Text>
-                  </View>
-                ) : (
-                  filteredDepartments.map(department => renderDepartmentItem(department))
-                )}
-              </View>
-            )}
-          </View>
-
-          {/* Action Buttons - After Department Selection */}
+          {/* Action Buttons - Preview */}
           <View className="p-4 bg-white border-t border-gray-200 mb-8">
-            <View className="flex-row items-center">
-              {/* Schedule/Reschedule Button - Leftmost */}
-              {(isFresh || isDraft || isReschedule) && (
-                <TouchableOpacity
-                  onPress={() => setShowSchedulePicker(true)}
-                  disabled={!isFormValid || isScheduling}
-                  className={`py-3 px-6 rounded-lg ${(isFormValid && !isScheduling)
-                    ? 'bg-yellow-100'
-                    : 'bg-gray-200'
-                    }`}
-                >
-                  <Text className={`text-center font-bold text-sm ${(isFormValid && !isScheduling)
-                    ? 'text-yellow-700'
-                    : 'text-gray-400'
-                    }`}>
-                    {isScheduling ? (isReschedule ? 'Rescheduling...' : 'Scheduling...') : (isReschedule ? 'Reschedule' : 'Schedule')}
-                  </Text>
-                </TouchableOpacity>
-              )}
-              {/* Gap */}
-              <View className="flex-1" />
-
-              {/* Preview */}
-              <View className="flex-row gap-3">
-                <TouchableOpacity
-                  onPress={handlePreview}
-                  disabled={!isFormValid || isLoadingPreview}
-                  className={`py-3 px-6 rounded-lg ${(isFormValid && !isLoadingPreview)
-                    ? 'bg-blue-100'
-                    : 'bg-gray-200'
-                    }`}
-                >
-                  <Text className={`text-center font-bold text-sm ${(isFormValid && !isLoadingPreview)
-                    ? 'text-blue-700'
-                    : 'text-gray-400'
-                    }`}>
-                    {isLoadingPreview ? 'Loading...' : 'Preview'}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </View>
-
-          {/* Schedule Picker Modal */}
-          {showSchedulePicker && (
-            <Modal
-              animationType="slide"
-              transparent={true}
-              visible={showSchedulePicker}
-              onRequestClose={() => setShowSchedulePicker(false)}
+            <TouchableOpacity
+              onPress={handlePreview}
+              disabled={!isFormValid || isLoadingPreview}
+              className={`py-3 px-6 rounded-lg ${(isFormValid && !isLoadingPreview)
+                ? 'bg-blue-600'
+                : 'bg-gray-400'
+                }`}
             >
-              <View className="flex-1 bg-black/50 justify-center">
-                <View className="bg-white mx-6 rounded-2xl p-6">
-                  <View className="flex-row justify-between items-center mb-4">
-                    <Text className="text-xl font-bold text-gray-800">
-                      {isReschedule ? 'Reschedule Announcement' : 'Schedule Announcement'}
-                    </Text>
-                    <TouchableOpacity
-                      onPress={() => {
-                        setShowSchedulePicker(false);
-                        setSelectedDate(null);
-                        setSelectedTime(null);
-                      }}
-                      className="p-2"
-                    >
-                      <Ionicons name="close" size={24} color="#6B7280" />
-                    </TouchableOpacity>
-                  </View>
-
-                  <Text className="text-gray-600 mb-4">
-                    Select when you want to {isReschedule ? 'reschedule' : 'schedule'} this announcement.
-                  </Text>
-
-                  <DateTimePicker
-                    selectedDate={selectedDate}
-                    setSelectedDate={setSelectedDate}
-                    selectedTime={selectedTime}
-                    setSelectedTime={setSelectedTime}
-                    containerClassName="mb-6"
-                  />
-
-                  <View className="flex-row justify-between space-x-3">
-                    <TouchableOpacity
-                      onPress={() => {
-                        setShowSchedulePicker(false);
-                        setSelectedDate(null);
-                        setSelectedTime(null);
-                      }}
-                      className="flex-1 py-3 px-6 rounded-lg border border-gray-300"
-                    >
-                      <Text className="text-gray-700 text-center font-semibold">Cancel</Text>
-                    </TouchableOpacity>
-                    
-                    <TouchableOpacity
-                      onPress={handleSchedule}
-                      disabled={!selectedDate || !selectedTime || isScheduling}
-                      className={`flex-1 py-3 px-6 rounded-lg ${
-                        selectedDate && selectedTime && !isScheduling
-                          ? 'bg-yellow-600'
-                          : 'bg-gray-400'
-                      }`}
-                    >
-                      <Text className="text-white text-center font-semibold">
-                        {isScheduling 
-                          ? (isReschedule ? 'Rescheduling...' : 'Scheduling...')
-                          : isReschedule ? 'Reschedule' : 'Schedule'
-                        }
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              </View>
-            </Modal>
-          )}
+              <Text className={`text-center font-bold text-white`}>
+                {isLoadingPreview ? 'Loading...' : 'Preview'}
+              </Text>
+            </TouchableOpacity>
+          </View>
         </ScrollView>
 
       </KeyboardAvoidingView>
-          {isEditorFocused && (
-            <View
-              style={
-                {
-                  position: 'absolute',
-                  left: 0,
-                  right: 0,
-                  backgroundColor: 'white',
-                  zIndex: 9999,
-                  bottom: 0
-                }
-              }
-            >
-              <Toolbar editor={editor} items={allowedToolbarItems} />
-            </View>
-          )}
+      {isEditorFocused && (
+        <View
+          style={
+            {
+              position: 'absolute',
+              left: 0,
+              right: 0,
+              backgroundColor: 'white',
+              zIndex: 9999,
+              bottom: 0
+            }
+          }
+        >
+          <Toolbar editor={editor} items={allowedToolbarItems} />
+        </View>
+      )}
     </View>
   );
   

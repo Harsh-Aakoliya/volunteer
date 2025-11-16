@@ -19,7 +19,7 @@ export const fetchChatUsers = async (): Promise<ChatUser[]> => {
       userId: user.userId,
       fullName: user.fullName,
       mobileNumber: user.mobileNumber,
-      departments: user.departments
+      role: user.role
     }));
   } catch (error) {
     console.error("Error fetching chat users:", error);
@@ -105,6 +105,28 @@ export const getScheduledMessages = async (roomId: string) => {
     return response.data;
   } catch (error) {
     console.error("Error fetching scheduled messages:", error);
+    throw error;
+  }
+};
+
+// Get new messages after a timestamp (for sync)
+export const getNewMessages = async (roomId: string, afterTimestamp?: string, limit: number = 50) => {
+  try {
+    const token = await AuthStorage.getToken();
+    const params: any = { limit };
+    if (afterTimestamp) {
+      params.afterTimestamp = afterTimestamp;
+    }
+    
+    const response = await axios.get(`${API_URL}/api/chat/rooms/${roomId}/messages`, {
+      headers: {
+        Authorization: `Bearer ${token}`
+      },
+      params
+    });
+    return response.data.messages || [];
+  } catch (error) {
+    console.error("Error fetching new messages:", error);
     throw error;
   }
 };

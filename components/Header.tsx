@@ -20,7 +20,7 @@ export const Header = ({ onMenuPress }: HeaderProps) => {
       </TouchableOpacity>
       
       <View style={styles.titleContainer}>
-        <Text style={styles.title}>Welcome</Text>
+        <Text style={styles.title}>Sevak App</Text>
       </View>
       
       <View style={styles.rightSpace} />

@@ -1,9 +1,10 @@
-
+// app/(drawer)/_layout.tsx
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Drawer } from 'expo-router/drawer';
-import { CustomDrawer } from '../../components/CustomDrawer';
+import { CustomDrawer } from '@/components/CustomDrawer';
 import React from 'react';
-export default function MainLayout() {
+
+export default function DrawerLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <Drawer
@@ -12,13 +13,19 @@ export default function MainLayout() {
           headerShown: false,
           drawerPosition: 'left',
           drawerType: 'slide',
-          swipeEdgeWidth: 100, // Enable swipe from 100px from left edge
+          swipeEnabled: true,
+          swipeEdgeWidth: 50,
         }}
       >
-        <Drawer.Screen name="(tabs)" />
-        <Drawer.Screen name="announcement-detail" />
-        <Drawer.Screen name="chat-detail" />
+        <Drawer.Screen 
+          name="index" 
+          options={{
+            drawerLabel: 'Chat Rooms',
+            title: 'Chat Rooms'
+          }}
+        />
       </Drawer>
     </GestureHandlerRootView>
   );
 }
+

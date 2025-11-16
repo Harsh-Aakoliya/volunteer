@@ -151,7 +151,7 @@ const createMessageTypeTable = async (client) => {
     }
 
     await client.query(`
-      create type "messageType" as enum('text', 'media', 'poll', 'table');  
+      create type "messageType" as enum('text', 'media', 'poll', 'table','announcement','system');  
     `);
     console.log("MessageType table created successfully");
   } catch (error) {

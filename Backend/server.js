@@ -4,19 +4,12 @@ import cors from "cors";
 import dotenv from "dotenv";
 import { createServer } from "http";
 import { Server } from "socket.io";
-import initDB from "./models/User.js";
-import initChatDB from "./models/Chat.js";
-import initPollDB from "./models/Poll.js";
-import initMediaDB from "./models/Media.js";
-import initTableDB from "./models/Table.js";
-import initDepartmentDB from "./models/Department.js"; 
-import initNotificationTokenDB from "./models/NotificationToken.js";
+import initDB from "./models/initDB.js";
 import { initializeFirebase } from "./config/firebase.js";
-import initializeForeignKeyConstraints from "./models/ForeignKeyConstraints.js"
 import errorHandling from "./middlewares/errorHandler.js";
 import apiRoutes from "./routes/index.js";
 import setupSocketIO from "./socket.js";
-import scheduledPublisher from "./services/scheduledAnnouncementPublisher.js";
+// import scheduledPublisher from "./services/scheduledAnnouncementPublisher.js";
 import scheduledMessageService from "./services/scheduledMessageService.js";
 import os from "os";
 import path from "path";
@@ -42,15 +35,11 @@ app.use(cors());
 app.use(errorHandling);
 app.use("/media",express.static(path.join(process.cwd(), 'media')));
 
-// Initialize database
-// initDB();
-// initChatDB();
-// initPollDB();
-// initMediaDB();
-// initTableDB();
-// initDepartmentDB();
-// initNotificationTokenDB();
-// initializeForeignKeyConstraints();
+// Initialize database - single function creates all tables in correct order
+initDB().catch(error => {
+  console.error("Failed to initialize database:", error);
+  process.exit(1);
+});
 
 // Initialize Firebase for FCM notifications
 initializeFirebase();

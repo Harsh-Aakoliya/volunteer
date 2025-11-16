@@ -638,57 +638,11 @@ export const getReadUsers = async (req, res) => {
 export const deleteAnnouncement = async (req, res) => {
   try {
     const { id } = req.params;
-    const userId = req.user.userId;
     console.log("id get to delete", id);
-    
-    // Check if user has web permissions
-    const webPermissionsResult = await pool.query(`
-      SELECT "accessLevel" FROM webpermissions WHERE "userId" = $1
-    `, [userId]);
-    
-    if (webPermissionsResult.rows.length === 0) {
-      return res.status(403).json({ error: 'You do not have permission to delete announcements' });
-    }
-    
-    const userAccessLevel = webPermissionsResult.rows[0].accessLevel; // 'master' or 'admin'
-    
-    // Get the announcement and its author's access level
-    const announcementResult = await pool.query(`
-      SELECT a.*, wp."accessLevel" as "authorAccessLevel"
-      FROM "announcements" a
-      LEFT JOIN "webpermissions" wp ON a."authorId" = wp."userId"
-      WHERE a."id" = $1
-    `, [id]);
-    
-    if (announcementResult.rows.length === 0) {
-      return res.status(404).json({ error: 'Announcement not found' });
-    }
-    
-    const announcement = announcementResult.rows[0];
-    const authorAccessLevel = announcement.authorAccessLevel;
-    const authorId = announcement.authorId;
-    
-    // Check permissions:
-    // - Master users can delete announcements created by admin users OR their own announcements
-    // - Admin users can only delete announcements created by themselves
-    if (userAccessLevel === 'admin') {
-      if (authorId !== userId) {
-        return res.status(403).json({ error: 'You can only delete your own announcements' });
-      }
-    } else if (userAccessLevel === 'master') {
-      // Master can delete if: author is admin OR it's their own announcement
-      if (authorAccessLevel !== 'admin' && authorId !== userId) {
-        return res.status(403).json({ error: 'You can only delete announcements created by admin users or yourself' });
-      }
-    } else {
-      return res.status(403).json({ error: 'You do not have permission to delete announcements' });
-    }
-    
-    // Delete the announcement
+    // Implement actual deletion logic
     await pool.query('DELETE FROM "announcements" WHERE "id" = $1', [id]);
     res.status(200).json({ message: 'Deleted successfully' });
   } catch (error) {
-    console.error('Error deleting announcement:', error);
     res.status(500).json({ error: 'Failed to delete announcement' });
   }
 };
@@ -698,27 +652,12 @@ export const updateAnnouncementController = async (req, res) => {
   try {
     const { id } = req.params;
     const { title, body, departmentTags = [] } = req.body;
-    const userId = req.user.userId;
     
-    // Check if user has web permissions
-    const webPermissionsResult = await pool.query(`
-      SELECT "accessLevel" FROM webpermissions WHERE "userId" = $1
-    `, [userId]);
-    
-    if (webPermissionsResult.rows.length === 0) {
-      return res.status(403).json({ error: 'You do not have permission to edit announcements' });
-    }
-    
-    const userAccessLevel = webPermissionsResult.rows[0].accessLevel; // 'master' or 'admin'
-    
-    // Get the current announcement and its author's access level
-    const currentResult = await pool.query(`
-      SELECT a.*, u."fullName" as "authorName", wp."accessLevel" as "authorAccessLevel"
-      FROM "announcements" a
-      LEFT JOIN "users" u ON a."authorId" = u."userId"
-      LEFT JOIN "webpermissions" wp ON a."authorId" = wp."userId"
-      WHERE a."id" = $1
-    `, [id]);
+    // Get the current announcement to compare department tags and get author info
+    const currentResult = await pool.query(
+      'SELECT a.*, u."fullName" as "authorName" FROM "announcements" a LEFT JOIN "users" u ON a."authorId" = u."userId" WHERE a."id" = $1',
+      [id]
+    );
     
     if (currentResult.rows.length === 0) {
       return res.status(404).json({ error: 'Announcement not found' });
@@ -728,23 +667,6 @@ export const updateAnnouncementController = async (req, res) => {
     const previousDepartmentTags = currentAnnouncement.departmentTag || [];
     const authorId = currentAnnouncement.authorId;
     const authorName = currentAnnouncement.authorName;
-    const authorAccessLevel = currentAnnouncement.authorAccessLevel;
-    
-    // Check permissions:
-    // - Master users can edit announcements created by admin users OR their own announcements
-    // - Admin users can only edit announcements created by themselves
-    if (userAccessLevel === 'admin') {
-      if (authorId !== userId) {
-        return res.status(403).json({ error: 'You can only edit your own announcements' });
-      }
-    } else if (userAccessLevel === 'master') {
-      // Master can edit if: author is admin OR it's their own announcement
-      if (authorAccessLevel !== 'admin' && authorId !== userId) {
-        return res.status(403).json({ error: 'You can only edit announcements created by admin users or yourself' });
-      }
-    } else {
-      return res.status(403).json({ error: 'You do not have permission to edit announcements' });
-    }
     
     // Update the announcement
     const result = await pool.query(
@@ -1150,14 +1072,12 @@ export const getAnnouncementDetailsController = async (req, res) => {
   try {
     const { id } = req.params;
     
-    // Get announcement details with author's access level
+    // Get announcement details
     const result = await pool.query(`
       SELECT a.*, u."fullName" as "authorName", u."departments" as "authorDepartments",
-             COALESCE(a."departmentTag", '{}') as "departmentTags",
-             wp."accessLevel" as "authorAccessLevel"
+             COALESCE(a."departmentTag", '{}') as "departmentTags"
       FROM "announcements" a
       LEFT JOIN "users" u ON a."authorId" = u."userId"
-      LEFT JOIN "webpermissions" wp ON a."authorId" = wp."userId"
       WHERE a."id" = $1
     `, [id]);
     
@@ -1189,7 +1109,7 @@ export const getAllDepartmentsController = async (req, res) => {
   }
 };
 
-// Get user-specific announcements based on user type (for web users)
+// Get user-specific announcements based on user type
 export const getUserAnnouncementsController = async (req, res) => {
   try {
     // Check if user is authenticated
@@ -1201,59 +1121,60 @@ export const getUserAnnouncementsController = async (req, res) => {
     console.log("req.user", req.user);
     console.log("userId", userId);
     
-    // Check if user has web permissions
-    const webPermissionsResult = await pool.query(`
-      SELECT "accessLevel" FROM webpermissions WHERE "userId" = $1
+    // Get user details to determine user type
+    const userResult = await pool.query(`
+      SELECT "isAdmin", "departments" FROM "users" WHERE "userId" = $1
     `, [userId]);
     
-    if (webPermissionsResult.rows.length === 0) {
-      // If no web permissions, return empty array or handle as needed
-      return res.status(200).json({ announcements: [], departments: [] });
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
     }
     
-    const accessLevel = webPermissionsResult.rows[0].accessLevel; // 'master' or 'admin'
+    const user = userResult.rows[0];
+    const userDepartments = user.departments || [];
+    const isKaryalay = user.isAdmin && userDepartments.includes('Karyalay');
+    const isHOD = user.isAdmin && !userDepartments.includes('Karyalay');
     
     let announcements;
     
-    if (accessLevel === 'master') {
-      // Master users: fetch all announcements where author is master or admin user
+    if (isKaryalay) {
+      // Karyalay users see announcements they created OR where department tag includes 'Karyalay'
+      // Also include scheduled announcements they created
       const result = await pool.query(`
-        SELECT DISTINCT a.*, u."fullName" as "authorName", u."departments" as "authorDepartments", wp."accessLevel" as "authorAccessLevel"
+        SELECT DISTINCT a.*, u."fullName" as "authorName", u."departments" as "authorDepartments"
         FROM "announcements" a
         LEFT JOIN "users" u ON a."authorId" = u."userId"
-        LEFT JOIN "webpermissions" wp ON a."authorId" = wp."userId"
-        WHERE (a."status" = 'published' OR a."status" = 'scheduled')
-        AND (wp."accessLevel" = 'master' OR wp."accessLevel" = 'admin')
-        ORDER BY a."createdAt" DESC
-      `);
-      announcements = result.rows;
-    } else if (accessLevel === 'admin') {
-      // Admin users: fetch all announcements where author is the current admin user
-      const result = await pool.query(`
-        SELECT DISTINCT a.*, u."fullName" as "authorName", u."departments" as "authorDepartments", wp."accessLevel" as "authorAccessLevel"
-        FROM "announcements" a
-        LEFT JOIN "users" u ON a."authorId" = u."userId"
-        LEFT JOIN "webpermissions" wp ON a."authorId" = wp."userId"
-        WHERE (a."status" = 'published' OR a."status" = 'scheduled')
-        AND a."authorId" = $1
+        WHERE (a."status" = 'published' AND (a."authorId" = $1 OR 'Karyalay' = ANY(a."departmentTag")))
+        OR (a."status" = 'scheduled' AND a."authorId" = $1)
         ORDER BY a."createdAt" DESC
       `, [userId]);
       announcements = result.rows;
+    } else if (isHOD) {
+      // HOD users see announcements they created OR where department tag includes any of their departments
+      // Also include scheduled announcements they created
+      const result = await pool.query(`
+        SELECT DISTINCT a.*, u."fullName" as "authorName", u."departments" as "authorDepartments"
+        FROM "announcements" a
+        LEFT JOIN "users" u ON a."authorId" = u."userId"
+        WHERE (a."status" = 'published' AND (a."authorId" = $1 OR (a."departmentTag" && $2)))
+        OR (a."status" = 'scheduled' AND a."authorId" = $1)
+        ORDER BY a."createdAt" DESC
+      `, [userId, userDepartments]);
+      announcements = result.rows;
     } else {
-      // Unknown access level
-      return res.status(200).json({ announcements: [], departments: [] });
+      // Normal users see announcements where department tag includes any of their departments
+      const result = await pool.query(`
+        SELECT DISTINCT a.*, u."fullName" as "authorName", u."departments" as "authorDepartments"
+        FROM "announcements" a
+        LEFT JOIN "users" u ON a."authorId" = u."userId"
+        WHERE a."status" = 'published' 
+        AND (a."departmentTag" && $1)
+        ORDER BY a."createdAt" DESC
+      `, [userDepartments]);
+      announcements = result.rows;
     }
     
-    // Get ALL departments from the departments table (not just from announcements)
-    const departmentsResult = await pool.query(`
-      SELECT DISTINCT "departmentName" 
-      FROM "departments" 
-      ORDER BY "departmentName" ASC
-    `);
-    
-    const departments = departmentsResult.rows.map(row => row.departmentName);
-    
-    res.status(200).json({ announcements, departments });
+    res.status(200).json(announcements);
   } catch (error) {
     console.error('Error fetching user announcements:', error);
     res.status(500).json({ error: 'Failed to fetch user announcements' });
