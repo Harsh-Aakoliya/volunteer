@@ -210,9 +210,9 @@ export const sendChatNotifications = async (message, senderInfo, roomInfo, io, s
     
     // Get all room members except sender
     const membersResult = await pool.query(
-      `SELECT u."userId", u."fullName" FROM chatroomusers cru
-       JOIN "users" u ON cru."userId" = u."userId"
-       WHERE cru."roomId" = $1 AND u."userId" != $2`,
+      `SELECT u.user_id::text as "userId", u.full_name as "fullName" FROM chatroomusers cru
+       JOIN "users" u ON cru."userId" = u.user_id::text
+       WHERE cru."roomId" = $1 AND u.user_id::text != $2`,
       [roomInfo.roomId, senderInfo.userId]
     );
 

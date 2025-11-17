@@ -49,21 +49,16 @@ const login = async (req, res) => {
 
     if (result.rows.length > 0) {
       const user = result.rows[0];
-      const userId = user.user_id;
-      const role = user.role;
-      const isAdmin = role === 'master' || role === 'admin';
       
       const token = jwt.sign(
-        { userId: userId, role: role },
+        { userId: user.user_id, role: user.role },
         process.env.JWT_SECRET
       );
       
       res.json({
         success: true,
-        role: role,
-        isAdmin: isAdmin,
         token: token,
-        userId: userId,
+        user:user,
       });
     } else {
       res.json({

@@ -35,6 +35,7 @@ export interface User {
   userId: string;
   mobileNumber: string;
   isAdmin: boolean;
+  isMaster: boolean;
   fullName?: string;
   xetra?: string;
   mandal?: string;

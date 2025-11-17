@@ -26,85 +26,6 @@ const Announcement = {
     return result.rows[0];
   },
 
-  uploadCoverImage: async (req, res) => {
-    try {
-        const { files, announcementId } = req.body;
-        
-        if (!files || !Array.isArray(files) || files.length === 0) {
-            return res.status(400).json({ error: "No files provided" });
-        }
-
-        if (!announcementId) {
-            return res.status(400).json({ error: "Announcement ID is required" });
-        }
-
-        // Import fs module
-        const fs = await import('fs');
-        
-        const UPLOAD_DIR = path.join(process.cwd(), 'media', 'announcement', `${announcementId}`);
-        
-        if (!fs.default.existsSync(UPLOAD_DIR)) {
-            fs.default.mkdirSync(UPLOAD_DIR, { recursive: true });
-        }
-
-        const uploadedFiles = [];
-        const file = files[0]; // Only take the first file for cover image
-        
-        if (!file.fileData || !file.name || !file.mimeType) {
-            return res.status(400).json({ error: "Invalid file data" });
-        }
-
-        // Check if it's an image
-        if (!file.mimeType.startsWith('image/')) {
-            return res.status(400).json({ error: "Only image files are allowed for cover image" });
-        }
-
-        // Always save as .jpg for consistency
-        const fileName = `coverimage.jpg`;
-        const filePath = path.join(UPLOAD_DIR, fileName);
-
-        try {
-            // Remove existing cover image if it exists
-            if (fs.default.existsSync(filePath)) {
-                fs.default.unlinkSync(filePath);
-            }
-
-            // Convert base64 to buffer and write file
-            const buffer = Buffer.from(file.fileData, 'base64');
-            fs.default.writeFileSync(filePath, buffer);
-
-            // Update the announcement's hasCoverImage flag
-            await pool.query(
-                'UPDATE "announcements" SET "hasCoverImage" = TRUE WHERE "id" = $1',
-                [announcementId]
-            );
-
-            uploadedFiles.push({
-                originalName: file.name,
-                fileName: fileName,
-                mimeType: file.mimeType,
-                size: buffer.length,
-                url: `${process.env.API_URL || 'http://localhost:3000'}/media/announcement/${announcementId}/${fileName}`,
-                caption: ""
-            });
-
-            res.json({
-                success: true,
-                uploadedFiles,
-                message: "Cover image uploaded successfully"
-            });
-
-        } catch (writeError) {
-            console.error(`Error writing file ${file.name}:`, writeError);
-            res.status(500).json({ error: "Failed to write file" });
-        }
-
-    } catch (error) {
-        console.error("Error uploading cover image:", error);
-        res.status(500).json({ error: "Failed to upload cover image", details: error.message });
-    }
-  },
-
   //this will be called when user is on edit-draft screen and clicks on save draft button
   updateDraft: async (id, title, body, authorId, departmentTags = []) => {
     const result = await pool.query(
@@ -235,9 +156,9 @@ const Announcement = {
   getAll: async () => {
     try {
       const result = await pool.query(`
-        SELECT a.*, u."fullName" as "authorName", u."departments" as "authorDepartments"
+        SELECT a.*, u.full_name as "authorName", u.departments as "authorDepartments"
         FROM "announcements" a
-        LEFT JOIN "users" u ON a."authorId" = u."userId"
+        LEFT JOIN "users" u ON a."authorId" = u.user_id::text
         WHERE a."status" = 'published'
         ORDER BY a."createdAt" DESC
       `);
@@ -254,9 +175,9 @@ const Announcement = {
     try {
       // Get announcements for a department by checking if department is in departmentTag array
       const result = await pool.query(`
-        SELECT DISTINCT a.*, u."fullName" as "authorName", u."departments" as "authorDepartments"
+        SELECT DISTINCT a.*, u.full_name as "authorName", u.departments as "authorDepartments"
         FROM "announcements" a
-        LEFT JOIN "users" u ON a."authorId" = u."userId"
+        LEFT JOIN "users" u ON a."authorId" = u.user_id::text
         WHERE a."status" = 'published' 
         AND $1 = ANY(a."departmentTag")
         ORDER BY a."createdAt" DESC
@@ -288,9 +209,9 @@ const Announcement = {
       
       // Get announcements where any of user's departments is in departmentTag
       const result = await pool.query(`
-        SELECT a.*, u."fullName" as "authorName", u."departments" as "authorDepartments"
+        SELECT a.*, u.full_name as "authorName", u.departments as "authorDepartments"
         FROM "announcements" a
-        LEFT JOIN "users" u ON a."authorId" = u."userId"
+        LEFT JOIN "users" u ON a."authorId" = u.user_id::text
         WHERE a."status" = 'published' 
         AND (a."departmentTag" && $1)
         ORDER BY a."createdAt" DESC
@@ -305,9 +226,9 @@ const Announcement = {
   getAllDebug: async () => {
     try {
       const result = await pool.query(`
-        SELECT a.*, u."fullName" as "authorName" 
+        SELECT a.*, u.full_name as "authorName" 
         FROM "announcements" a
-        LEFT JOIN "users" u ON a."authorId" = u."userId"
+        LEFT JOIN "users" u ON a."authorId" = u.user_id::text
         ORDER BY a."createdAt" DESC
       `);
       // console.log("ALL announcements (debug):", result.rows.length);
@@ -655,7 +576,7 @@ export const updateAnnouncementController = async (req, res) => {
     
     // Get the current announcement to compare department tags and get author info
     const currentResult = await pool.query(
-      'SELECT a.*, u."fullName" as "authorName" FROM "announcements" a LEFT JOIN "users" u ON a."authorId" = u."userId" WHERE a."id" = $1',
+      'SELECT a.*, u.full_name as "authorName" FROM "announcements" a LEFT JOIN "users" u ON a."authorId" = u.user_id::text WHERE a."id" = $1',
       [id]
     );
     
@@ -1074,10 +995,10 @@ export const getAnnouncementDetailsController = async (req, res) => {
     
     // Get announcement details
     const result = await pool.query(`
-      SELECT a.*, u."fullName" as "authorName", u."departments" as "authorDepartments",
+      SELECT a.*, u.full_name as "authorName", u.departments as "authorDepartments",
              COALESCE(a."departmentTag", '{}') as "departmentTags"
       FROM "announcements" a
-      LEFT JOIN "users" u ON a."authorId" = u."userId"
+      LEFT JOIN "users" u ON a."authorId" = u.user_id::text
       WHERE a."id" = $1
     `, [id]);
     
@@ -1141,9 +1062,9 @@ export const getUserAnnouncementsController = async (req, res) => {
       // Karyalay users see announcements they created OR where department tag includes 'Karyalay'
       // Also include scheduled announcements they created
       const result = await pool.query(`
-        SELECT DISTINCT a.*, u."fullName" as "authorName", u."departments" as "authorDepartments"
+        SELECT DISTINCT a.*, u.full_name as "authorName", u.departments as "authorDepartments"
         FROM "announcements" a
-        LEFT JOIN "users" u ON a."authorId" = u."userId"
+        LEFT JOIN "users" u ON a."authorId" = u.user_id::text
         WHERE (a."status" = 'published' AND (a."authorId" = $1 OR 'Karyalay' = ANY(a."departmentTag")))
         OR (a."status" = 'scheduled' AND a."authorId" = $1)
         ORDER BY a."createdAt" DESC
@@ -1153,9 +1074,9 @@ export const getUserAnnouncementsController = async (req, res) => {
       // HOD users see announcements they created OR where department tag includes any of their departments
       // Also include scheduled announcements they created
       const result = await pool.query(`
-        SELECT DISTINCT a.*, u."fullName" as "authorName", u."departments" as "authorDepartments"
+        SELECT DISTINCT a.*, u.full_name as "authorName", u.departments as "authorDepartments"
         FROM "announcements" a
-        LEFT JOIN "users" u ON a."authorId" = u."userId"
+        LEFT JOIN "users" u ON a."authorId" = u.user_id::text
         WHERE (a."status" = 'published' AND (a."authorId" = $1 OR (a."departmentTag" && $2)))
         OR (a."status" = 'scheduled' AND a."authorId" = $1)
         ORDER BY a."createdAt" DESC
@@ -1164,9 +1085,9 @@ export const getUserAnnouncementsController = async (req, res) => {
     } else {
       // Normal users see announcements where department tag includes any of their departments
       const result = await pool.query(`
-        SELECT DISTINCT a.*, u."fullName" as "authorName", u."departments" as "authorDepartments"
+        SELECT DISTINCT a.*, u.full_name as "authorName", u.departments as "authorDepartments"
         FROM "announcements" a
-        LEFT JOIN "users" u ON a."authorId" = u."userId"
+        LEFT JOIN "users" u ON a."authorId" = u.user_id::text
         WHERE a."status" = 'published' 
         AND (a."departmentTag" && $1)
         ORDER BY a."createdAt" DESC

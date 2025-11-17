@@ -288,6 +288,7 @@ const createChatMessagesTable = async (client) => {
           "pollId" INTEGER,
           "mediaFilesId" INTEGER,
           "tableId" INTEGER,
+          "announcementId" UUID REFERENCES "announcements"("announcement_id"),
           "isEdited" BOOLEAN DEFAULT FALSE,
           "editedAt" TIMESTAMPTZ DEFAULT (NOW() AT TIME ZONE 'UTC'),
           "editedBy" VARCHAR(50),

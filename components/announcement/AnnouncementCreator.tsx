@@ -51,7 +51,6 @@ export default function AnnouncementCreator({
   onExit,
   announcementMode,
   announcementStatus,
-  hasCoverImage
 }: AnnouncementCreatorProps) {
   // Memoize initial values to prevent unnecessary re-renders
   const memoizedInitialContent = useMemo(() => initialContent, []);
@@ -345,7 +344,6 @@ export default function AnnouncementCreator({
           roomId: roomId, // Pass roomId to preview page
           announcementMode: announcementMode,
           announcementStatus: announcementStatus,
-          hasCoverImage: hasCoverImage ? 'true' : 'false'
         }
       });
     } catch (error) {

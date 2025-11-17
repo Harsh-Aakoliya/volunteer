@@ -43,7 +43,6 @@ import RenderTable from "@/components/chat/Attechments/RenderTable";
 import MediaViewerModal from "@/components/chat/MediaViewerModal";
 import ChatMessageOptions from "@/components/chat/ChatMessageOptions";
 import ForwardMessagesModal from "@/components/chat/ForwardMessagesModal";
-import AttachmentsGrid from "./Attechments-grid";
 import MessageInput from "@/components/chat/MessageInput";
 import AudioRecorder from "@/components/chat/AudioRecorder";
 import AudioMessagePlayer from "@/components/chat/AudioMessagePlayer";
@@ -73,7 +72,6 @@ export default function ChatRoomScreen() {
   const [sending, setSending] = useState(false);
   const [messageText, setMessageText] = useState("");
   const [isGroupAdmin, setIsGroupAdmin] = useState(false);
-  const [isAdmin, setIsAdmin] = useState(false);
   const [onlineUsers, setOnlineUsers] = useState<string[]>([]);
   const [currentUser, setCurrentUser] = useState<{
     userId: string;
@@ -558,12 +556,12 @@ export default function ChatRoomScreen() {
 
       // Get current user
       const userData = await AuthStorage.getUser();
+      console.log("userData in loadRoomDetails", userData);
       if (userData) {
         setCurrentUser({
           userId: userData.userId,
           fullName: userData.fullName || null
         });
-        setIsAdmin(userData.isAdmin || false);
       }
 
       // Fetch room details

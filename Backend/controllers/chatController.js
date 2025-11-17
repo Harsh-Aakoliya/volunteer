@@ -974,9 +974,9 @@ const chatController = {
 
       // Get scheduled messages for this room
       const result = await pool.query(
-        `SELECT cm.*, u."fullName" as "senderName"
+        `SELECT cm.*, u.full_name as "senderName"
         FROM chatmessages cm
-        JOIN users u ON cm."senderId" = u."userId"
+        JOIN users u ON cm."senderId" = u.user_id::text
         WHERE cm."roomId" = $1 AND cm."isScheduled" = TRUE AND cm."createdAt" > NOW() AT TIME ZONE 'UTC'
         ORDER BY cm."createdAt" ASC`,
         [roomIdInt]
@@ -997,9 +997,9 @@ const chatController = {
     try {
       // Get the scheduled message
       const result = await pool.query(
-        `SELECT cm.*, u."fullName" as "senderName"
+        `SELECT cm.*, u.full_name as "senderName"
         FROM chatmessages cm
-        JOIN users u ON cm."senderId" = u."userId"
+        JOIN users u ON cm."senderId" = u.user_id::text
         WHERE cm."id" = $1 AND cm."isScheduled" = TRUE`,
         [messageId]
       );
@@ -1467,10 +1467,10 @@ const chatController = {
       let newLastMessage = null;
       if (needToUpdateLastMessage) {
         const newLastMessageResult = await client.query(
-          `SELECT m.*, u."fullName" as "senderName",
+          `SELECT m.*, u.full_name as "senderName",
                   m."createdAt"
           FROM chatmessages m 
-          JOIN "users" u ON m."senderId" = u."userId"
+          JOIN "users" u ON m."senderId" = u.user_id::text
           WHERE m."roomId" = $1 
           ORDER BY m."createdAt" DESC 
           LIMIT 1`,
@@ -1607,18 +1607,18 @@ const chatController = {
 
       // Get all room members
       const membersResult = await pool.query(
-        `SELECT u."userId", u."fullName"
+        `SELECT u.user_id::text as "userId", u.full_name as "fullName"
          FROM chatroomusers cru
-         JOIN "users" u ON cru."userId" = u."userId"
+         JOIN "users" u ON cru."userId" = u.user_id::text
          WHERE cru."roomId" = $1 AND cru."userId" != $2`,
         [roomId, message.senderId] // Exclude sender from read status
       );
 
       // Get read status for each member
       const readStatusResult = await pool.query(
-        `SELECT mrs."userId", mrs."readAt" as "readAt", u."fullName"
+        `SELECT mrs."userId", mrs."readAt" as "readAt", u.full_name as "fullName"
          FROM messagereadstatus mrs
-         JOIN "users" u ON mrs."userId" = u."userId"
+         JOIN "users" u ON mrs."userId" = u.user_id::text
          WHERE mrs."messageId" = $1`,
         [messageIdInt]
       );
@@ -1753,15 +1753,15 @@ const chatController = {
                 m."isEdited", 
                 m."editedAt", 
                 m."editedBy", m."replyMessageId",
-                u."userId" as "senderId", u."fullName" as "senderName",
-                e."fullName" as "editorName",
+                u.user_id::text as "senderId", u.full_name as "senderName",
+                e.full_name as "editorName",
                 rm."messageText" as "replyMessageText", rm."messageType" as "replyMessageType",
-                ru."fullName" as "replySenderName"
+                ru.full_name as "replySenderName"
         FROM chatmessages m
-        JOIN "users" u ON m."senderId" = u."userId"
-        LEFT JOIN "users" e ON m."editedBy" = e."userId"
+        JOIN "users" u ON m."senderId" = u.user_id::text
+        LEFT JOIN "users" e ON m."editedBy" = e.user_id::text
         LEFT JOIN chatmessages rm ON m."replyMessageId" = rm."id"
-        LEFT JOIN "users" ru ON rm."senderId" = ru."userId"
+        LEFT JOIN "users" ru ON rm."senderId" = ru.user_id::text
         WHERE m."roomId" = $1
       `;
       

@@ -126,8 +126,6 @@ const getUserProfile = async (req, res) => {
       userProfile.dateOfBirth = convertDateToDDMMYYYY(userProfile.dateOfBirth);
     }
     
-    // Add isAdmin field based on role for backward compatibility
-    userProfile.isAdmin = userProfile.role === 'master' || userProfile.role === 'admin';
     
     res.json(userProfile);
   } catch (error) {

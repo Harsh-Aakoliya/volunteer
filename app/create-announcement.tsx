@@ -20,7 +20,6 @@ const Announcement = () => {
   const initialBody = (params.body || params.content) as string;
   const announcementMode = params.announcementMode as string;
   const announcementStatus = params.announcementStatus as string;
-  const hasCoverImage = params.hasCoverImage as string;
   const roomId = params.roomId as string; // Get roomId if coming from chat
   
   console.log("params", params);
@@ -32,14 +31,14 @@ const Announcement = () => {
   const checkAuthorization = async () => {
     try {
       const userData = await AuthStorage.getUser();
-      if (!userData || !userData.isAdmin) {
+      if (!userData || userData.role !== 'master' && userData.role !== 'admin') {
         Alert.alert(
           'Access Denied', 
-          'Only HODs and Karyalay users can create announcements.',
+          'Only Master and Admin users can create announcements.',
           [
             {
               text: 'OK',
-              onPress: () => router.replace('/chat')
+              onPress: () => router.replace('/(drawer)')
             }
           ]
         );
@@ -54,7 +53,7 @@ const Announcement = () => {
         [
           {
             text: 'OK',
-            onPress: () => router.replace('/chat')
+            onPress: () => router.replace('/(drawer)')
           }
         ]
       );
@@ -85,7 +84,7 @@ const Announcement = () => {
       router.replace(`/chat/${roomId}`);
     } else {
       // Navigate to announcement list otherwise
-      router.replace('/chat');
+      router.replace('/(drawer)');
     }
   };
 
@@ -97,7 +96,6 @@ const Announcement = () => {
         announcementId={announcementId ? Number(announcementId) : undefined}
         announcementMode={announcementMode}
         announcementStatus={announcementStatus}
-        hasCoverImage={hasCoverImage === 'true' || hasCoverImage === 'TRUE'}
         roomId={roomId} // Pass roomId to AnnouncementCreator
         onExit={handleExit}
       />

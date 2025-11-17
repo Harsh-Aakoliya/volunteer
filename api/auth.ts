@@ -2,7 +2,6 @@
 import axios from "axios";
 import { API_URL } from "../constants/api";
 import { AuthStorage } from "@/utils/authStorage";
-import { User } from "@/types/type";
 import { router } from "expo-router";
 import * as Notifications from "expo-notifications";
 import Constants from "expo-constants";
@@ -106,42 +105,29 @@ export const login = async (mobileNumber: string, password: string) => {
     if (response.data.success) {
       // Store token
       await AuthStorage.storeToken(response.data.token);
-      
-      // If no user data in response, fetch user profile
-      let userData: User;
-      try {
-        const profileResponse = await axios.get(
-          `${API_URL}/api/users/${response.data.userId}/profile`,
-          {
-            headers: {
-              Authorization: `Bearer ${response.data.token}`,
-            },
-          }
-        );
-        userData = profileResponse.data;
-        console.log("User data from profile:", userData);
-      } catch (profileError) {
-        console.error("Error fetching user profile:", profileError);
-        alert("Error fetching user profile. Please try again.");
-        return null;
-      }
-
-      // Store user data if available
-      if (userData) {
-        await AuthStorage.storeUser(userData);
-      }
-
-      // Store admin status
-      console.log("response.data.isAdmin", userData.isAdmin);
-      await AuthStorage.storeAdminStatus(userData.isAdmin);
-
+      const userData = response.data.user;
+      await AuthStorage.storeUser({
+        userId: userData.user_id,
+        mobileNumber: userData.mobile_number,
+        isMaster: userData.role === 'master',
+        isAdmin: userData.role === 'admin',
+        fullName: userData.full_name,
+        xetra: userData.xetra,
+        mandal: userData.mandal,
+        role: userData.role,
+        totalSabha: userData.total_sabha,
+        presentCount: userData.present_count,
+        absentCount: userData.absent_count,
+        isApproved: userData.password !== null && userData.password !== '',
+      });
+      await AuthStorage.storeUserRole(userData.role);
       // Generate and store notification token after successful login
-      generateAndStoreNotificationToken(userData.userId).catch(error => {
+      generateAndStoreNotificationToken(userData.user_id).catch(error => {
         console.error('Error handling notification token after login:', error);
       });
 
       // Redirect to announcement page on successful login
-      router.replace("/(main)/(tabs)/announcement");
+      router.replace("/(drawer)");
       return userData;
     } else {
       return response.data;

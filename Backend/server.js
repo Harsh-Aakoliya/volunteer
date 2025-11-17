@@ -36,10 +36,10 @@ app.use(errorHandling);
 app.use("/media",express.static(path.join(process.cwd(), 'media')));
 
 // Initialize database - single function creates all tables in correct order
-initDB().catch(error => {
-  console.error("Failed to initialize database:", error);
-  process.exit(1);
-});
+// initDB().catch(error => {
+//   console.error("Failed to initialize database:", error);
+//   process.exit(1);
+// });
 
 // Initialize Firebase for FCM notifications
 initializeFirebase();
