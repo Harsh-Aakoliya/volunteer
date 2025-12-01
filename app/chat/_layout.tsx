@@ -28,12 +28,19 @@ export default function ChatLayout() {
             title: 'Room Settings' 
           }} 
         />
-        <Stack.Screen 
-          name="add-members" 
-          options={{ 
-            title: 'Add Members' 
-          }} 
-        />
+      <Stack.Screen 
+        name="add-members" 
+        options={{ 
+          title: 'Add Members' 
+        }} 
+      />
+      <Stack.Screen 
+        name="create-chat-announcement" 
+        options={{ 
+          title: 'Create Announcement',
+          headerShown: false
+        }} 
+      />
     </Stack>
   );
 }

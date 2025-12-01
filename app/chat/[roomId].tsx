@@ -47,8 +47,16 @@ import MessageInput from "@/components/chat/MessageInput";
 import AudioRecorder from "@/components/chat/AudioRecorder";
 import AudioMessagePlayer from "@/components/chat/AudioMessagePlayer";
 import MediaGrid from "@/components/chat/MediaGrid";
+import WebView from 'react-native-webview';
 import { clearRoomNotifications } from "@/utils/chatNotificationHandler";
 import { getScheduledMessages } from "@/api/chat";
+
+// At the top of the file, add:
+import RenderHtml from 'react-native-render-html';
+import { useWindowDimensions } from 'react-native';
+
+// In your component, add this hook:
+const { width: screenWidth } = useWindowDimensions();
 
 interface RoomDetails extends ChatRoom {
   members: ChatUser[];
@@ -1461,60 +1469,167 @@ export default function ChatRoomScreen() {
           
           {/* Render announcement message type */}
           {item.messageType === 'announcement' ? (
-            <TouchableOpacity
-              onPress={() => {
-                try {
-                  const announcementData = JSON.parse(item.messageText);
-                  // Navigate to announcement detail page with inline data
-                  router.push({
-                    pathname: '/announcement/chat-announcement' as any,
-                    params: {
-                      title: announcementData.title,
-                      body: announcementData.body,
-                      authorName: item.senderName,
-                      createdAt: item.createdAt,
-                      attachedMediaFiles: JSON.stringify(announcementData.attachedMediaFiles || [])
-                    }
-                  });
-                } catch (error) {
-                  console.error('Error parsing announcement data:', error);
-                }
+  <View 
+    className={`p-3 rounded-lg ${
+      isOwnMessage ? 'bg-blue-50 border-l-4 border-blue-500' : 'bg-orange-50 border-l-4 border-orange-500'
+    }`}
+  >
+    {/* Announcement Header */}
+    <View className="flex-row items-center mb-2">
+      <Ionicons 
+        name="megaphone" 
+        size={20} 
+        color={isOwnMessage ? '#2563eb' : '#f97316'} 
+      />
+      <Text className={`ml-2 font-bold text-sm ${
+        isOwnMessage ? 'text-blue-600' : 'text-orange-600'
+      }`}>
+        ANNOUNCEMENT
+      </Text>
+    </View>
+
+    {/* Parse and display title and body */}
+    {(() => {
+      const SEPARATOR = "|||ANNOUNCEMENT_SEPARATOR|||";
+      const parts = item.messageText.split(SEPARATOR);
+      const title = parts[0] || 'Untitled';
+      const body = parts[1] || '';
+
+      // Custom tag styles for RenderHtml
+      const tagsStyles = {
+        body: {
+          color: '#1f2937',
+          fontSize: 15,
+          lineHeight: 22,
+        },
+        p: {
+          marginVertical: 4,
+        },
+        h1: {
+          fontSize: 22,
+          fontWeight: '600',
+          marginVertical: 8,
+        },
+        h2: {
+          fontSize: 20,
+          fontWeight: '600',
+          marginVertical: 6,
+        },
+        h3: {
+          fontSize: 18,
+          fontWeight: '600',
+          marginVertical: 4,
+        },
+        ul: {
+          marginVertical: 4,
+          paddingLeft: 20,
+        },
+        ol: {
+          marginVertical: 4,
+          paddingLeft: 20,
+        },
+        li: {
+          marginVertical: 2,
+        },
+        a: {
+          color: '#2563eb',
+          textDecorationLine: 'underline',
+        },
+        blockquote: {
+          borderLeftWidth: 3,
+          borderLeftColor: '#d1d5db',
+          paddingLeft: 12,
+          marginVertical: 8,
+          color: '#6b7280',
+        },
+        pre: {
+          backgroundColor: '#f3f4f6',
+          padding: 12,
+          borderRadius: 4,
+          marginVertical: 8,
+        },
+        code: {
+          backgroundColor: '#f3f4f6',
+          paddingHorizontal: 6,
+          paddingVertical: 2,
+          borderRadius: 4,
+          fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+          fontSize: 13,
+        },
+        img: {
+          maxWidth: '100%',
+        },
+        table: {
+          borderWidth: 1,
+          borderColor: '#d1d5db',
+        },
+        th: {
+          backgroundColor: '#f3f4f6',
+          padding: 8,
+          borderWidth: 1,
+          borderColor: '#d1d5db',
+        },
+        td: {
+          padding: 8,
+          borderWidth: 1,
+          borderColor: '#d1d5db',
+        },
+        strong: {
+          fontWeight: '600',
+        },
+        em: {
+          fontStyle: 'italic',
+        },
+        u: {
+          textDecorationLine: 'underline',
+        },
+        s: {
+          textDecorationLine: 'line-through',
+        },
+      };
+
+      // Calculate content width (accounting for padding)
+      const contentWidth = screenWidth - 100; // Adjust based on your layout
+
+      return (
+        <>
+          {/* Title */}
+          <Text className={`text-lg font-bold mb-2 ${
+            isOwnMessage ? 'text-blue-900' : 'text-gray-900'
+          }`}>
+            {title}
+          </Text>
+
+          {/* Body - Render HTML using react-native-render-html */}
+          {body && body.trim() !== '' && body !== '<p></p>' && body !== '<p><br></p>' && (
+            <View 
+              className="mb-2 p-2 rounded-lg"
+              style={{ 
+                backgroundColor: isOwnMessage ? '#eff6ff' : '#fff7ed',
               }}
-              className={`p-3 rounded-lg ${
-                isOwnMessage ? 'bg-blue-200' : 'bg-gray-200'
-              }`}
             >
-              <View className="flex-row items-center mb-2">
-                <Ionicons 
-                  name="megaphone" 
-                  size={20} 
-                  color={isOwnMessage ? '#1e40af' : '#374151'} 
-                />
-                <Text className={`ml-2 font-bold text-base ${
-                  isOwnMessage ? 'text-blue-800' : 'text-gray-800'
-                }`}>
-                  Announcement
-                </Text>
-              </View>
-              <Text className={`text-base font-semibold ${
-                isOwnMessage ? 'text-blue-900' : 'text-gray-900'
-              }`} numberOfLines={2}>
-                {(() => {
-                  try {
-                    const announcementData = JSON.parse(item.messageText);
-                    return announcementData.title || 'Untitled Announcement';
-                  } catch {
-                    return 'Untitled Announcement';
-                  }
-                })()}
-              </Text>
-              <Text className={`text-xs mt-1 ${
-                isOwnMessage ? 'text-blue-600' : 'text-gray-600'
-              }`}>
-                Tap to view full announcement
-              </Text>
-            </TouchableOpacity>
-          ) : item.messageText ? (
+              <RenderHtml
+                contentWidth={contentWidth}
+                source={{ html: body }}
+                tagsStyles={tagsStyles}
+                enableExperimentalMarginCollapsing={true}
+                enableExperimentalBRCollapsing={true}
+                defaultTextProps={{
+                  selectable: true,
+                }}
+                renderersProps={{
+                  img: {
+                    enableExperimentalPercentWidth: true,
+                  },
+                }}
+              />
+            </View>
+          )}
+        </>
+      );
+    })()}
+  </View>
+) : item.messageText ? (
             <View>
               <Text className={`text-base leading-5 ${
                 isOwnMessage ? "text-gray-900" : "text-gray-800"

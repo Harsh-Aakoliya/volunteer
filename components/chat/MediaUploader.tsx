@@ -121,6 +121,7 @@ export default function MediaUploadApp() {
           ...file,
           mimeType: result.assets[idx].mimeType ?? "",
         }));
+        console.log("newFiles",newFiles);
 
         setMediaFiles((prev) => [...prev, ...newFiles]);
         console.log("response got after upload",response.data);

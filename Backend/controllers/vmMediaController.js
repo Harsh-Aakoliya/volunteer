@@ -327,6 +327,107 @@ const VmMediaController = {
         }
     },
 
+    // Move files to chat with announcement support
+    moveToChatAnnouncement: async (req, res) => {
+        const client = await pool.connect();
+        
+        try {
+            await client.query('BEGIN');
+
+            const { tempFolderId, roomId, senderId, filesWithCaptions, messageText, messageType } = req.body;
+            
+            if (!tempFolderId || !roomId || !senderId || !filesWithCaptions || !messageText) {
+                return res.status(400).json({ error: "Missing required parameters" });
+            }
+
+            // Create the chat message entry with announcement type
+            const messageResult = await client.query(
+                `INSERT INTO chatmessages ("roomId", "senderId", "messageText", "messageType")
+                VALUES ($1, $2, $3, $4)
+                RETURNING *`,
+                [roomId, senderId, messageText, messageType || "announcement"]
+            );
+
+            const messageId = messageResult.rows[0].id;
+            const createdAt = messageResult.rows[0].createdAt;
+            
+            // Create permanent folder name
+            const timestamp = new Date(createdAt).toISOString().replace(/[:.]/g, '-');
+            const permanentFolderName = `${timestamp}_${roomId}_${senderId}_${messageId}`;
+            
+            const tempFolderPath = path.join(process.cwd(), 'media', 'chat', `temp_${tempFolderId}`);
+            const permanentFolderPath = path.join(process.cwd(), 'media', 'chat', permanentFolderName);
+
+            // Create permanent folder
+            if (!fs.existsSync(permanentFolderPath)) {
+                fs.mkdirSync(permanentFolderPath, { recursive: true });
+            }
+
+            // Move files and create driveUrlObject
+            const driveUrlObject = [];
+            
+            for (const fileInfo of filesWithCaptions) {
+                const tempFilePath = path.join(tempFolderPath, fileInfo.fileName);
+                const permanentFilePath = path.join(permanentFolderPath, fileInfo.fileName);
+                
+                if (fs.existsSync(tempFilePath)) {
+                    // Move file
+                    fs.renameSync(tempFilePath, permanentFilePath);
+                    
+                    // Add to driveUrlObject
+                    driveUrlObject.push({
+                        url: `${permanentFolderName}/${fileInfo.fileName}`,
+                        filename: fileInfo.fileName,
+                        originalName: fileInfo.originalName || fileInfo.fileName,
+                        caption: fileInfo.caption || "",
+                        mimeType: fileInfo.mimeType || "",
+                        size: fileInfo.size || 0
+                    });
+                }
+            }
+
+            // Create media entry
+            const mediaResult = await client.query(
+                `INSERT INTO media ("roomId", "senderId", "createdAt", "messageId", "driveUrlObject")
+                VALUES ($1, $2, $3, $4, $5)
+                RETURNING *`,
+                [roomId, senderId, createdAt, messageId, JSON.stringify(driveUrlObject)]
+            );
+
+            const mediaId = mediaResult.rows[0].id;
+
+            // Update chat message with mediaFilesId
+            await client.query(
+                `UPDATE chatmessages SET "mediaFilesId" = $1 WHERE "id" = $2`,
+                [mediaId, messageId]
+            );
+
+            // Delete temp folder
+            if (fs.existsSync(tempFolderPath)) {
+                fs.rmSync(tempFolderPath, { recursive: true, force: true });
+            }
+
+            await client.query('COMMIT');
+
+            res.json({
+                success: true,
+                messageId,
+                mediaId,
+                createdAt,
+                permanentFolderName,
+                driveUrlObject,
+                message: "Announcement with media sent successfully"
+            });
+
+        } catch (error) {
+            await client.query('ROLLBACK');
+            console.error("Error moving announcement files to chat:", error);
+            res.status(500).json({ error: "Failed to send announcement", details: error.message });
+        } finally {
+            client.release();
+        }
+    },
+
     // Get file content (for serving files)
     getFile: async (req, res) => {
         try {

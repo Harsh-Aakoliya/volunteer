@@ -304,6 +304,8 @@ export default function MediaUploadApp() {
             },
           }
         );
+
+        console.log("response got after upload",response.data);
   
         if (response.data.success) {
           setTempFolderId(response.data.tempFolderId);

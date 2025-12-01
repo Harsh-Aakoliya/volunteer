@@ -19,6 +19,7 @@ router.get("/temp/:tempFolderId", vmMediaController.getTempFiles);
 router.delete("/temp/:tempFolderId/:fileName", vmMediaController.deleteFile);
 router.delete("/temp/:tempFolderId", vmMediaController.deleteTempFolder);
 router.post("/move-to-chat", vmMediaController.moveToChat);
+router.post("/move-to-chat-announcement", vmMediaController.moveToChatAnnouncement);
 router.get("/media/:mediaId", vmMediaController.getMediaById);
 router.get("/file/:folderName/:fileName", vmMediaController.getFile);
 

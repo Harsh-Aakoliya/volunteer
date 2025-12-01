@@ -47,7 +47,7 @@ const handleCreateRoom = async () => {
     );
 
     // Navigate to chat rooms
-    router.replace('/chat');
+    router.replace('/(drawer)');
   } catch (error) {
     console.error('Error creating room:', error);
     alert('Failed to create chat room. Please try again.');

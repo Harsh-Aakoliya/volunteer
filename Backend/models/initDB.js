@@ -37,9 +37,6 @@ const initDB = async () => {
     // 10. Create Notification_tokens table (depends on: users)
     await createNotificationTokenTable(client);
 
-    // 11. Create Announcements table (depends on: chatrooms, users)
-    await createAnnouncementsTable(client);
-
     // 12. Add foreign key constraints after all tables are created
     await addForeignKeyConstraints(client);
 
@@ -288,7 +285,6 @@ const createChatMessagesTable = async (client) => {
           "pollId" INTEGER,
           "mediaFilesId" INTEGER,
           "tableId" INTEGER,
-          "announcementId" UUID REFERENCES "announcements"("announcement_id"),
           "isEdited" BOOLEAN DEFAULT FALSE,
           "editedAt" TIMESTAMPTZ DEFAULT (NOW() AT TIME ZONE 'UTC'),
           "editedBy" VARCHAR(50),
@@ -358,35 +354,6 @@ const createNotificationTokenTable = async (client) => {
   }
 };
 
-// 11. Create Announcements table
-const createAnnouncementsTable = async (client) => {
-  try {
-    const exists = await tableExists(client, 'announcements');
-    if (exists) {
-      console.log("✅ Announcements table already exists");
-      return;
-    }
-
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS "announcements" (
-          "announcement_id" SERIAL PRIMARY KEY,
-          "room_id" INTEGER NOT NULL,
-          "title" VARCHAR(255) NOT NULL,
-          "body" TEXT NOT NULL,
-          "author_id" VARCHAR(50) NOT NULL,
-          "created_at" TIMESTAMPTZ DEFAULT (NOW() AT TIME ZONE 'UTC'),
-          "updated_at" TIMESTAMPTZ DEFAULT (NOW() AT TIME ZONE 'UTC'),
-          "updated_by" VARCHAR(50),
-          "liked_by" JSONB DEFAULT '[]',
-          "read_by" JSONB DEFAULT '[]'
-      );
-    `);
-    console.log("✅ Announcements table created successfully");
-  } catch (error) {
-    console.error("❌ Error while creating announcements table:", error);
-    throw error;
-  }
-};
 
 // 12. Add foreign key constraints
 const addForeignKeyConstraints = async (client) => {
@@ -504,25 +471,6 @@ const addForeignKeyConstraints = async (client) => {
        ADD CONSTRAINT fk_messagereadstatus_room 
        FOREIGN KEY ("roomId") REFERENCES chatrooms("roomId") ON DELETE CASCADE`
     );
-
-    // Note: userId in messagereadstatus references user_id (UUID) 
-    // but is stored as VARCHAR(50). Handled at application level.
-
-    // Notification_tokens foreign key
-    // Note: userId in notification_tokens references user_id (UUID) 
-    // but is stored as VARCHAR(50). Handled at application level.
-
-    // Announcements foreign keys
-    await safeAddConstraint(
-      'announcements',
-      'fk_announcements_room',
-      `ALTER TABLE announcements 
-       ADD CONSTRAINT fk_announcements_room 
-       FOREIGN KEY ("room_id") REFERENCES chatrooms("roomId") ON DELETE CASCADE`
-    );
-
-    // Note: author_id and updated_by in announcements reference user_id (UUID) 
-    // but are stored as VARCHAR(50). Handled at application level.
 
     console.log("✅ All foreign key constraints added successfully");
   } catch (error) {

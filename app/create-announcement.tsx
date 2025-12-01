@@ -19,7 +19,6 @@ const Announcement = () => {
   const initialTitle = params.title as string;
   const initialBody = (params.body || params.content) as string;
   const announcementMode = params.announcementMode as string;
-  const announcementStatus = params.announcementStatus as string;
   const roomId = params.roomId as string; // Get roomId if coming from chat
   
   console.log("params", params);
@@ -91,11 +90,10 @@ const Announcement = () => {
   return (
     <SafeAreaView className="flex-1 bg-white">
       <AnnouncementCreator 
+        announcementId={announcementId ? Number(announcementId) : undefined}
         initialTitle={initialTitle || ''} 
         initialContent={initialBody || ''}
-        announcementId={announcementId ? Number(announcementId) : undefined}
-        announcementMode={announcementMode}
-        announcementStatus={announcementStatus}
+        announcementMode={announcementMode}//either edit or create
         roomId={roomId} // Pass roomId to AnnouncementCreator
         onExit={handleExit}
       />

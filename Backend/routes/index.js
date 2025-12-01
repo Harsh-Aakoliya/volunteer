@@ -2,7 +2,6 @@ import express from 'express';
 import authRoutes from './authRoutes.js';
 import chatRoutes from './chatRoutes.js';
 import userRoutes from './userRoutes.js';
-import announcementRoutes from './announcementRoutes.js';
 // import uploadRoutes from './uploadRoutes.js';
 import { authenticateToken } from '../middlewares/auth.js';
 import pollRoutes from './pollRoutes.js';
@@ -30,7 +29,6 @@ router.use('/version', versionRoutes);
 // Protected routes - all below require authentication
 router.use('/chat', chatRoutes);
 router.use('/users', userRoutes);
-router.use('/announcements', announcementRoutes);
 // router.use('/media', uploadRoutes);
 router.use('/poll', pollRoutes);
 router.use('/table',tableRoutes);

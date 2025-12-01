@@ -68,7 +68,7 @@ export default function AttachmentsGrid({ roomId, userId, onOptionSelect, onAudi
       
       {/* Announcement */}
       <View className="w-1/3 items-center justify-center">
-        <TouchableOpacity onPress={() => handleOptionPress("/create-announcement", { roomId, userId })}>
+        <TouchableOpacity onPress={() => handleOptionPress("/chat/create-chat-announcement", { roomId, userId })}>
           <View className="w-15 h-15 bg-blue-500 rounded-full items-center justify-center">
             <Ionicons name="megaphone" size={30} color="white" />
           </View>
