@@ -41,14 +41,14 @@ export default function AttachmentsGrid({ roomId, userId, onOptionSelect, onAudi
       </View>
       
       {/* Audio Recording */}
-      <View className="w-1/3 items-center justify-center">
+      {/* <View className="w-1/3 items-center justify-center">
         <TouchableOpacity onPress={handleAudioPress}>
           <View className="w-15 h-15 bg-green-500 rounded-full items-center justify-center">
             <Ionicons name="mic" size={30} color="white" />
           </View>
           <Text className="text-center text-sm mt-2">Audio</Text>
         </TouchableOpacity>
-      </View>
+      </View> */}
       
       {/* Poll */}
       <View className="w-1/3 items-center justify-center">
@@ -69,9 +69,7 @@ export default function AttachmentsGrid({ roomId, userId, onOptionSelect, onAudi
       {/* Announcement */}
       <View className="w-1/3 items-center justify-center">
         <TouchableOpacity onPress={() => handleOptionPress("/chat/create-chat-announcement", { roomId, userId })}>
-          <View className="w-15 h-15 bg-blue-500 rounded-full items-center justify-center">
-            <Ionicons name="megaphone" size={30} color="white" />
-          </View>
+        <SVGComponent color="black" height={60} width={60} />
           <Text className="text-center text-sm mt-2">Announcement</Text>
         </TouchableOpacity>
       </View>

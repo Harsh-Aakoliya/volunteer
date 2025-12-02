@@ -23,7 +23,6 @@ import {
   PanGestureHandler,
   GestureHandlerRootView
 } from 'react-native-gesture-handler';
-import { useHideTabBar } from '@/hooks/useHideTabBar';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, router, useNavigation } from "expo-router";
@@ -50,13 +49,8 @@ import MediaGrid from "@/components/chat/MediaGrid";
 import WebView from 'react-native-webview';
 import { clearRoomNotifications } from "@/utils/chatNotificationHandler";
 import { getScheduledMessages } from "@/api/chat";
-
-// At the top of the file, add:
 import RenderHtml from 'react-native-render-html';
 import { useWindowDimensions } from 'react-native';
-
-// In your component, add this hook:
-const { width: screenWidth } = useWindowDimensions();
 
 interface RoomDetails extends ChatRoom {
   members: ChatUser[];
@@ -71,7 +65,7 @@ interface MentionSegment {
 }
 
 export default function ChatRoomScreen() {
-  useHideTabBar();
+  const { width: screenWidth } = useWindowDimensions();
   const { roomId } = useLocalSearchParams();
   const [room, setRoom] = useState<RoomDetails | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);

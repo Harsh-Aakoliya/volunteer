@@ -68,11 +68,11 @@ export const handleChatNotificationTap = async (data: any) => {
     
     // Always navigate to chat tab (index.tsx) instead of specific room
     // This allows user to see all rooms with unread counts and last messages
-    router.push('/(tabs)/chat');
+    router.push('/(drawer)');
   } catch (error) {
     console.error('Error handling chat notification tap:', error);
     // Fallback navigation
-    router.push('/(tabs)/chat');
+    router.push('/(drawer)');
   }
 };
 

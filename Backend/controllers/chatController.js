@@ -1243,11 +1243,11 @@ const chatController = {
 
       // Get sender information
       const senderResult = await pool.query(
-        `SELECT "fullName" FROM users WHERE "userId" = $1`,
+        `SELECT "full_name" as "fullName" FROM users WHERE "user_id"::text = $1`,
         [message.senderId]
       );
       
-      const senderName = senderResult.rows[0]?.fullName || 'Unknown User';
+      const senderName = senderResult.rows[0]?.full_name || 'Unknown User';
 
       // Get editor information (if different from sender)
       let editorName = null;

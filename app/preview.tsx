@@ -21,9 +21,9 @@ import { AuthStorage } from '@/utils/authStorage';
 import { API_URL } from '@/constants/api';
 import { formatISTDate } from '@/utils/dateUtils';
 import axios from 'axios';
-import ImageViewer from '@/components/texteditor/ImageViewer';
-import VideoViewer from '@/components/texteditor/VideoViewer';
-import AudioViewer from '@/components/texteditor/AudioViewer';
+import ImageViewer from '@/components/chat/announcement/ImageViewer';
+import VideoViewer from '@/components/chat/announcement/VideoViewer';
+import AudioViewer from '@/components/chat/announcement/AudioViewer';
 import DateTimePicker from '@/components/chat/DateTimePicker';
 import { WebView } from 'react-native-webview';
 const AnnouncementPreviewScreen = () => {

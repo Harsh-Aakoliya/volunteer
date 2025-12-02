@@ -273,7 +273,7 @@ const loadRoomSettings = async () => {
               );
               
               alert('Room deleted successfully');
-              router.replace('/chat');
+              router.replace('/(drawer)');
             } catch (error) {
               console.error('Error deleting room:', error);
               alert('Failed to delete room');

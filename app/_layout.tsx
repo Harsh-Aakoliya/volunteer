@@ -45,7 +45,6 @@ import { AuthStorage } from '@/utils/authStorage';
 import "../global.css";
 import { initializeNotifications } from '@/utils/notificationSetup';
 import { requestChatNotificationPermissions } from '@/utils/chatNotificationHandler';
-import { requestAnnouncementNotificationPermissions } from '@/utils/announcementNotificationHandler';
 import useNetworkStatus from '@/hooks/userNetworkStatus';
 import OfflinePopup from '@/components/OfflinePopup';
 
@@ -74,7 +73,6 @@ export default function RootLayout() {
         // 🛠️ STEP 2: Initialize notifications and listeners
         await initializeNotifications();
         await requestChatNotificationPermissions();
-        await requestAnnouncementNotificationPermissions();
 
         // ✅ STEP 3: Any other app bootstrap logic (if needed)
         // e.g., await AuthStorage.loadUser(), load settings, etc.

@@ -4,10 +4,9 @@ import { router } from "expo-router";
 import { AuthStorage } from "@/utils/authStorage";
 import socketService from "@/utils/socketService";
 import { handleChatNotificationTap } from "./chatNotificationHandler";
-import { handleAnnouncementNotificationTap } from "./announcementNotificationHandler";
 
 export interface NotificationData {
-  type: 'announcement' | 'announcement_published' | 'chat' | 'chat_message';
+  type: 'chat' | 'chat_message';
   announcementId?: string;
   roomId?: string;
   title?: string;
@@ -117,9 +116,7 @@ export class NotificationHandler {
       // Mark as processed
       this.processedNotifications.add(notificationKey);
 
-      if ((data.type === 'announcement' || data.type === 'announcement_published') && data.announcementId) {
-        await handleAnnouncementNotificationTap(data);
-      } else if ((data.type === 'chat' || data.type === 'chat_message') && data.roomId) {
+      if ((data.type === 'chat' || data.type === 'chat_message') && data.roomId) {
         await handleChatNotificationTap(data);
       } else if (data.route) {
         // Fallback to direct route navigation
@@ -162,7 +159,7 @@ export const notificationHandler = NotificationHandler.getInstance();
 
 // Helper function to create notification data
 export const createNotificationData = (
-  type: 'announcement' | 'announcement_published' | 'chat' | 'chat_message',
+  type: 'chat' | 'chat_message',
   options: {
     announcementId?: number;
     roomId?: string;
@@ -176,6 +173,6 @@ export const createNotificationData = (
     roomId: options.roomId,
     title: options.title,
     body: options.body,
-    route: (type === 'announcement' || type === 'announcement_published') ? `/(tabs)/announcement` : type === 'chat' ? '/(tabs)/chat' : `/chat/${options.roomId}`
+    route: type === 'chat' ? '/(drawer)' : `/chat/${options.roomId}`
   };
 };

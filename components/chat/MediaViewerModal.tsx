@@ -18,9 +18,9 @@ import { VideoView, useVideoPlayer } from "expo-video";
 import { API_URL } from "@/constants/api";
 import { AuthStorage } from "@/utils/authStorage";
 import axios from "axios";
-import ImageViewer from '@/components/texteditor/ImageViewer';
-import VideoViewer from '@/components/texteditor/VideoViewer';
-import AudioViewer from '@/components/texteditor/AudioViewer';
+import ImageViewer from '@/components/chat/announcement/ImageViewer';
+import VideoViewer from '@/components/chat/announcement/VideoViewer';
+import AudioViewer from '@/components/chat/announcement/AudioViewer';
 
 interface MediaFile {
   url: string;
