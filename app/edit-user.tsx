@@ -31,6 +31,10 @@ export default function EditUserScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   
+  // Current user role check
+  const [currentUserRole, setCurrentUserRole] = useState<string>('');
+  const [isCurrentUserMaster, setIsCurrentUserMaster] = useState(false);
+  
   // Department management states
   const [filters, setFilters] = useState<SearchFiltersResponse | null>(null);
   const [selectedDepartments, setSelectedDepartments] = useState<string[]>([]);
@@ -92,6 +96,7 @@ export default function EditUserScreen() {
         userId: freshUserData.userId || '',
         mobileNumber: freshUserData.mobileNumber || '',
         fullName: freshUserData.fullName || '',
+        role: freshUserData.role || 'sevak',
         isAdmin: freshUserData.isAdmin || false,
         gender: freshUserData.gender || '',
         dateOfBirth: freshUserData.dateOfBirth || '',
@@ -102,6 +107,11 @@ export default function EditUserScreen() {
         emergencyContact: freshUserData.emergencyContact || '',
         email: freshUserData.email || '',
         address: freshUserData.address || '',
+        usagePermission: Array.isArray(freshUserData.usagePermission) 
+          ? freshUserData.usagePermission 
+          : freshUserData.usagePermission 
+            ? [freshUserData.usagePermission] 
+            : ['mobile'],
       };
       
       setEditedUser(initialEditData);
@@ -131,6 +141,21 @@ export default function EditUserScreen() {
     }
   };
 
+  // Check current user role
+  useEffect(() => {
+    const checkCurrentUserRole = async () => {
+      try {
+        const currentUser = await AuthStorage.getUser();
+        const role = currentUser?.role || '';
+        setCurrentUserRole(role);
+        setIsCurrentUserMaster(role === 'master');
+      } catch (error) {
+        console.error('Error checking current user role:', error);
+      }
+    };
+    checkCurrentUserRole();
+  }, []);
+
   // Initialize form data
   useEffect(() => {
     if (userData) {
@@ -146,6 +171,7 @@ export default function EditUserScreen() {
       const formChanges = (
         originalUser.mobileNumber !== editedUser.mobileNumber ||
         originalUser.fullName !== editedUser.fullName ||
+        originalUser.role !== editedUser.role ||
         originalUser.isAdmin !== editedUser.isAdmin ||
         originalUser.gender !== editedUser.gender ||
         originalUser.dateOfBirth !== editedUser.dateOfBirth ||
@@ -155,7 +181,9 @@ export default function EditUserScreen() {
         originalUser.whatsappNumber !== editedUser.whatsappNumber ||
         originalUser.emergencyContact !== editedUser.emergencyContact ||
         originalUser.email !== editedUser.email ||
-        originalUser.address !== editedUser.address
+        originalUser.address !== editedUser.address ||
+        JSON.stringify((Array.isArray(originalUser.usagePermission) ? originalUser.usagePermission : originalUser.usagePermission ? [originalUser.usagePermission] : []).sort()) !== 
+        JSON.stringify((Array.isArray(editedUser.usagePermission) ? editedUser.usagePermission : editedUser.usagePermission ? [editedUser.usagePermission] : []).sort())
       );
       
       // Compare department changes
@@ -240,10 +268,25 @@ export default function EditUserScreen() {
       setIsSaving(true);
       
       // Prepare the data for the API
-      const updateData = {
-        ...editedUser,
+      const updateData: any = {
+        mobileNumber: editedUser.mobileNumber,
+        fullName: editedUser.fullName,
+        gender: editedUser.gender,
+        dateOfBirth: editedUser.dateOfBirth,
+        bloodGroup: editedUser.bloodGroup,
+        education: editedUser.education,
+        whatsappNumber: editedUser.whatsappNumber,
+        emergencyContact: editedUser.emergencyContact,
+        email: editedUser.email,
+        address: editedUser.address,
         departmentIds: selectedDepartments
       };
+
+      // Only include role and usagePermission if current user is master
+      if (isCurrentUserMaster) {
+        updateData.role = editedUser.role;
+        updateData.usagePermission = editedUser.usagePermission;
+      }
 
       await updateUserWithSubdepartments(originalUser.userId, updateData);
       
@@ -359,18 +402,71 @@ export default function EditUserScreen() {
             />
           </View>
 
-           {/* Admin Toggle */}
-           <View className="mb-4">
-             <View className="flex-row items-center justify-between bg-white p-3 rounded-lg border border-gray-200">
-               <Text className="text-sm font-medium text-gray-700">Make HOD</Text>
-               <TouchableOpacity
-                 onPress={handleHODToggle}
-                 className={`w-12 h-6 rounded-full ${editedUser.isAdmin ? 'bg-blue-500' : 'bg-gray-300'}`}
-               >
-                 <View className={`w-5 h-5 rounded-full bg-white mt-0.5 ${editedUser.isAdmin ? 'ml-6' : 'ml-1'}`} />
-               </TouchableOpacity>
+           {/* Role Selection - Only for Master Users */}
+           {isCurrentUserMaster && (
+             <View className="mb-4">
+               <Text className="text-sm font-medium text-gray-700 mb-2">User Role</Text>
+               <View className="flex-row">
+                 {['master', 'admin', 'sevak'].map((role) => (
+                   <TouchableOpacity
+                     key={role}
+                     onPress={() => handleFieldChange('role', role)}
+                     className={`flex-1 p-3 rounded-lg border mr-2 ${editedUser.role === role ? 'bg-blue-100 border-blue-500' : 'bg-white border-gray-200'}`}
+                   >
+                     <Text className={`text-center capitalize ${editedUser.role === role ? 'text-blue-600 font-medium' : 'text-gray-700'}`}>
+                       {role}
+                     </Text>
+                   </TouchableOpacity>
+                 ))}
+               </View>
              </View>
-           </View>
+           )}
+
+           {/* Usage Permission - Only for Master Users */}
+           {isCurrentUserMaster && (
+             <View className="mb-4">
+               <Text className="text-sm font-medium text-gray-700 mb-2">Usage Permission</Text>
+               <Text className="text-xs text-gray-500 mb-2">Select one or both platforms</Text>
+               <View className="flex-row">
+                 {['mobile', 'web'].map((permission) => {
+                   const isSelected = Array.isArray(editedUser.usagePermission) 
+                     ? editedUser.usagePermission.includes(permission)
+                     : editedUser.usagePermission === permission;
+                   return (
+                     <TouchableOpacity
+                       key={permission}
+                       onPress={() => {
+                         const currentPermissions = Array.isArray(editedUser.usagePermission) 
+                           ? editedUser.usagePermission 
+                           : editedUser.usagePermission 
+                             ? [editedUser.usagePermission] 
+                             : [];
+                         
+                         const newPermissions = isSelected
+                           ? currentPermissions.filter((p: string) => p !== permission)
+                           : [...currentPermissions, permission];
+                         
+                         // Ensure at least one permission is selected
+                         if (newPermissions.length > 0) {
+                           handleFieldChange('usagePermission', newPermissions);
+                         }
+                       }}
+                       className={`flex-1 p-3 rounded-lg border mr-2 ${isSelected ? 'bg-blue-100 border-blue-500' : 'bg-white border-gray-200'}`}
+                     >
+                       <Text className={`text-center capitalize ${isSelected ? 'text-blue-600 font-medium' : 'text-gray-700'}`}>
+                         {permission}
+                       </Text>
+                     </TouchableOpacity>
+                   );
+                 })}
+               </View>
+               {Array.isArray(editedUser.usagePermission) && editedUser.usagePermission.length > 0 && (
+                 <Text className="text-xs text-gray-500 mt-2">
+                   Selected: {editedUser.usagePermission.join(', ')}
+                 </Text>
+               )}
+             </View>
+           )}
 
            {/* Department Management - Only for Karyalay users */}
            {isKaryalay && (

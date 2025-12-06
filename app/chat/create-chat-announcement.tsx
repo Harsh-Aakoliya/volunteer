@@ -1,5 +1,4 @@
 // app/chat/create-chat-announcement.tsx
-// Combined Media Uploader + Announcement Creator for Chat
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
@@ -26,7 +25,6 @@ import { AuthStorage } from "@/utils/authStorage";
 import { API_URL } from "@/constants/api";
 import socketService from "@/utils/socketService";
 
-// Styled components
 const ForwardedRichEditor = React.forwardRef<RichEditor, any>((props, ref) => (
   <RichEditor {...props} ref={ref} />
 ));
@@ -105,7 +103,6 @@ export default function CreateChatAnnouncement() {
     initializeData();
   }, []);
 
-  // Handle keyboard visibility
   useEffect(() => {
     const keyboardDidShowListener = Keyboard.addListener('keyboardDidShow', () => {
       setIsKeyboardVisible(true);
@@ -120,7 +117,6 @@ export default function CreateChatAnnouncement() {
     };
   }, []);
 
-  // Prevent accidental exit
   useEffect(() => {
     const unsubscribe = navigation.addListener('beforeRemove', (e) => {
       if (isSuccessfullySent || (title.trim() === '' && body.trim() === '' && vmMediaFiles.length === 0)) {
@@ -162,7 +158,6 @@ export default function CreateChatAnnouncement() {
   };
 
   const handleEditorInitialized = useCallback(() => {
-    console.log('Rich editor initialized');
     setTimeout(() => {
       setIsEditorReady(true);
     }, 200);
@@ -172,7 +167,6 @@ export default function CreateChatAnnouncement() {
     setBody(html);
   }, []);
 
-  // File selection and upload
   const handleSelectFiles = async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
@@ -281,12 +275,9 @@ export default function CreateChatAnnouncement() {
     setSending(true);
     try {
       const token = await AuthStorage.getToken();
-      
-      // Combine title and body with separator
       const messageText = `${title.trim()}${SEPARATOR}${body.trim()}`;
       
       if (vmMediaFiles.length > 0) {
-        // If there are media files, use vm-media flow
         const filesWithCaptions = vmMediaFiles.map(f => ({
           fileName: f.fileName,
           originalName: f.originalName,
@@ -302,7 +293,7 @@ export default function CreateChatAnnouncement() {
             roomId,
             senderId: userId,
             filesWithCaptions,
-            messageText, // Title + separator + body
+            messageText,
             messageType: 'announcement'
           },
           {
@@ -311,7 +302,6 @@ export default function CreateChatAnnouncement() {
         );
 
         if (response.data.success) {
-          // Emit socket event for real-time update
           if (currentUser && socketService.socket?.connected) {
             socketService.sendMessage(roomId as string, {
               id: response.data.messageId,
@@ -334,7 +324,6 @@ export default function CreateChatAnnouncement() {
           ]);
         }
       } else {
-        // No media files, just send as announcement message
         const response = await axios.post(
           `${API_URL}/api/chat/rooms/${roomId}/messages`,
           { 
@@ -346,7 +335,6 @@ export default function CreateChatAnnouncement() {
 
         const newMessage = response.data;
 
-        // Emit socket event
         if (currentUser && socketService.socket?.connected) {
           socketService.sendMessage(roomId as string, {
             ...newMessage,
@@ -383,163 +371,187 @@ export default function CreateChatAnnouncement() {
   };
 
   return (
-    <View className="flex-1 bg-white">
+    <View className="flex-1 bg-gray-50">
       {/* Header */}
-      <View className="flex-row items-center justify-between px-4 py-3 border-b border-gray-200 bg-white">
-        <TouchableOpacity onPress={() => router.back()} className="p-2">
-          <Ionicons name="arrow-back" size={24} color="#374151" />
+      <View className="flex-row items-center justify-between px-4 py-4 bg-white border-b border-gray-200">
+        <TouchableOpacity 
+          onPress={() => router.back()} 
+          className="w-10 h-10 items-center justify-center -ml-2"
+        >
+          <Ionicons name="close" size={24} color="#374151" />
         </TouchableOpacity>
 
         <Text className="text-lg font-semibold text-gray-900">
-          Create Announcement
+          New Announcement
         </Text>
 
-        <View className="w-8" />
+        <TouchableOpacity
+          onPress={sendAnnouncement}
+          disabled={!title.trim() || !body.trim() || sending}
+          className={`px-4 py-2 rounded-full ${
+            (title.trim() && body.trim()) && !sending 
+              ? 'bg-blue-500' 
+              : 'bg-gray-300'
+          }`}
+        >
+          {sending ? (
+            <ActivityIndicator size="small" color="white" />
+          ) : (
+            <Text className="text-white font-semibold text-sm">Post</Text>
+          )}
+        </TouchableOpacity>
       </View>
 
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         className="flex-1"
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
       >
-        <ScrollView
-          className="flex-1 px-4 py-2"
-          contentContainerStyle={{ paddingBottom: Platform.OS === 'ios' ? 120 : 100 }}
+        <ScrollView 
+          className="flex-1"
+          contentContainerClassName="pb-32"
+          showsVerticalScrollIndicator={false}
         >
-          {/* Title Input */}
-          <TextInput
-            ref={titleInputRef}
-            value={title}
-            onChangeText={setTitle}
-            placeholder="Enter announcement title..."
-            className="text-xl font-semibold text-gray-900 py-2 mb-1"
-            placeholderTextColor="#9ca3af"
-            multiline={true}
-            numberOfLines={3}
-            onFocus={() => setIsTitleFocused(true)}
-            onBlur={() => setIsTitleFocused(false)}
-          />
+          {/* Form Container */}
+          <View className="bg-white mt-2 mx-4 rounded-xl overflow-hidden shadow-sm">
+            {/* Title Input */}
+            <View className="px-4 py-3 border-b border-gray-100">
+              <TextInput
+                ref={titleInputRef}
+                value={title}
+                onChangeText={setTitle}
+                placeholder="Announcement title"
+                placeholderTextColor="#9ca3af"
+                className="text-base text-gray-900 font-medium"
+                onFocus={() => setIsTitleFocused(true)}
+                onBlur={() => setIsTitleFocused(false)}
+              />
+            </View>
 
-          {/* Rich Text Editor with Loading Overlay */}
-          <View className="relative">
-            <StyledRichEditor
-              className="min-h-60 bg-white"
-              placeholder="Write announcement content..."
-              initialHeight={300}
-              ref={richText}
-              onChange={handleContentChange}
-              androidHardwareAccelerationDisabled={true}
-              androidLayerType="software"
-              onEditorInitialized={handleEditorInitialized}
-              editorStyle={{
-                contentCSSText: `
-                  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-                  font-size: 16px;
-                  margin: 0px;
-                  border: none;
-                  min-height: 200px;
-                `
-              }}
-            />
-            
-            {/* Loading Overlay
-            {!isEditorReady && (
-              <View className="absolute inset-0 min-h-60 p-4 bg-gray-50/95 flex items-center justify-center rounded-lg border border-gray-200">
-                <ActivityIndicator size="large" color="#0284c7" />
-                <Text className="text-gray-500 mt-2">Preparing editor...</Text>
-              </View>
-            )} */}
+            {/* Body Input - Rich Editor */}
+            <View className="min-h-[200px]">
+              <StyledRichEditor
+                className="bg-white"
+                placeholder="Write your announcement here..."
+                initialHeight={200}
+                ref={richText}
+                onChange={handleContentChange}
+                androidHardwareAccelerationDisabled={true}
+                androidLayerType="software"
+                onEditorInitialized={handleEditorInitialized}
+                editorStyle={{
+                  backgroundColor: '#ffffff',
+                  placeholderColor: '#9ca3af',
+                  contentCSSText: `
+                    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+                    font-size: 16px;
+                    line-height: 24px;
+                    padding: 16px;
+                    margin: 0;
+                    min-height: 180px;
+                    color: #1f2937;
+                  `
+                }}
+              />
+            </View>
           </View>
 
           {/* Media Section */}
-          <View className="mt-6 mb-4">
-            <Text className="text-lg font-semibold mb-3">Attach Media (optional)</Text>
-            
+          <View className="bg-white mt-3 mx-4 rounded-xl overflow-hidden shadow-sm">
             <TouchableOpacity 
               onPress={handleSelectFiles}
-              className={`py-3 px-4 rounded-lg mb-4 ${uploading ? 'bg-gray-400' : 'bg-blue-500'}`}
               disabled={uploading}
+              className="flex-row items-center px-4 py-4"
             >
-              <Text className="text-white font-semibold text-center">
-                {uploading ? "Uploading..." : "Select Images/Videos"}
+              <View className={`w-10 h-10 rounded-full items-center justify-center ${
+                uploading ? 'bg-gray-100' : 'bg-blue-50'
+              }`}>
+                {uploading ? (
+                  <ActivityIndicator size="small" color="#3b82f6" />
+                ) : (
+                  <Ionicons name="image-outline" size={20} color="#3b82f6" />
+                )}
+              </View>
+              <Text className={`ml-3 text-base ${
+                uploading ? 'text-gray-400' : 'text-gray-700'
+              }`}>
+                {uploading ? "Uploading..." : "Add photos or videos"}
               </Text>
             </TouchableOpacity>
 
+            {/* Uploading Progress */}
             {uploadingFiles.length > 0 && (
-              <View className="mb-4">
+              <View className="px-4 pb-4">
                 {uploadingFiles.map((file, index) => (
-                  <View key={index} className="mb-2">
-                    <View className="flex-row justify-between mb-1">
-                      <Text className="text-sm" numberOfLines={1}>{file.name}</Text>
-                      <Text className="text-sm text-blue-600">{formatBytes(file.size)}</Text>
+                  <View key={index} className="mb-2 bg-gray-50 p-3 rounded-lg">
+                    <View className="flex-row justify-between mb-2">
+                      <Text className="text-sm text-gray-600 flex-1 mr-2" numberOfLines={1}>
+                        {file.name}
+                      </Text>
+                      <Text className="text-xs text-gray-400">{formatBytes(file.size)}</Text>
                     </View>
-                    <View className="h-2 bg-gray-200 rounded-full overflow-hidden">
-                      <View className="h-full bg-blue-500 w-full" />
+                    <View className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                      <View className="h-full bg-blue-500 w-full rounded-full" />
                     </View>
                   </View>
                 ))}
               </View>
             )}
 
+            {/* Uploaded Files Grid */}
             {vmMediaFiles.length > 0 && (
-              <View className="flex-row flex-wrap gap-2">
-                {vmMediaFiles.map((file, index) => (
-                  <View key={index} className="w-24 h-24 rounded-lg overflow-hidden relative bg-gray-100">
-                    <TouchableOpacity className="w-full h-full" onPress={() => openImageModal(file)}>
-                      {file.mimeType.startsWith("image") && (
-                        <Image 
-                          source={{ uri: `${API_URL}/media/chat/temp_${tempFolderId}/${file.fileName}` }} 
-                          className="w-full h-full" 
-                          resizeMode="cover"
-                        />
-                      )}
-                      {file.mimeType.startsWith("video") && (
-                        <View className="w-full h-full bg-red-500 justify-center items-center">
-                          <Text className="text-2xl">🎬</Text>
-                        </View>
-                      )}
-                    </TouchableOpacity>
-                    
-                    <TouchableOpacity
-                      className="absolute top-1 right-1 bg-red-500 rounded-full w-6 h-6 justify-center items-center"
-                      onPress={() => removeFile(file)}
+              <View className="px-4 pb-4">
+                <View className="flex-row flex-wrap gap-2">
+                  {vmMediaFiles.map((file, index) => (
+                    <View 
+                      key={index} 
+                      className="w-24 h-24 rounded-lg overflow-hidden bg-gray-100 relative"
                     >
-                      <Text className="text-white text-xs font-bold">×</Text>
-                    </TouchableOpacity>
-                  </View>
-                ))}
+                      <TouchableOpacity 
+                        className="w-full h-full" 
+                        onPress={() => openImageModal(file)}
+                        activeOpacity={0.8}
+                      >
+                        {file.mimeType.startsWith("image") && (
+                          <Image 
+                            source={{ uri: `${API_URL}/media/chat/temp_${tempFolderId}/${file.fileName}` }} 
+                            className="w-full h-full" 
+                            resizeMode="cover"
+                          />
+                        )}
+                        {file.mimeType.startsWith("video") && (
+                          <View className="w-full h-full bg-gray-800 justify-center items-center">
+                            <Ionicons name="play-circle" size={28} color="white" />
+                          </View>
+                        )}
+                      </TouchableOpacity>
+                      
+                      <TouchableOpacity
+                        className="absolute top-1 right-1 w-6 h-6 bg-black/60 rounded-full items-center justify-center"
+                        onPress={() => removeFile(file)}
+                      >
+                        <Ionicons name="close" size={14} color="white" />
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                </View>
               </View>
             )}
           </View>
 
-          {/* Send Button */}
-          <TouchableOpacity
-            className={`py-3 px-4 rounded-lg mt-4 ${(title.trim() && body.trim()) && !sending ? 'bg-green-500' : 'bg-gray-400'}`}
-            onPress={sendAnnouncement}
-            disabled={!title.trim() || !body.trim() || sending}
-          >
-            {sending ? (
-              <View className="flex-row justify-center items-center">
-                <ActivityIndicator size="small" color="white" className="mr-2" />
-                <Text className="text-white font-semibold text-center">Sending...</Text>
-              </View>
-            ) : (
-              <Text className="text-white font-semibold text-center">Send Announcement</Text>
-            )}
-          </TouchableOpacity>
+          {/* Info Text */}
+          <Text className="text-center text-gray-400 text-xs mt-4 px-8">
+            Announcements will be visible to all members of this chat
+          </Text>
         </ScrollView>
 
         {/* Floating Toolbar */}
         {isKeyboardVisible && !isTitleFocused && (
-          <View 
-            className="left-0 right-0 bg-white border-t border-gray-300 shadow-lg"
-            style={{ bottom: 0 }}
-          >
+          <View className="absolute left-0 right-0 bottom-0 bg-white border-t border-gray-200 shadow-lg">
             <StyledRichToolbar
               editor={richText}
               className="bg-white"
-              selectedIconTint="#2563EB"
-              iconTint="#6B7280"
+              selectedIconTint="#3b82f6"
+              iconTint="#6b7280"
               actions={[
                 actions.setBold,
                 actions.setItalic,
@@ -549,8 +561,6 @@ export default function CreateChatAnnouncement() {
                 actions.alignLeft,
                 actions.alignCenter,
                 actions.alignRight,
-                actions.undo,
-                actions.redo,
               ]}
             />
           </View>
@@ -564,12 +574,18 @@ export default function CreateChatAnnouncement() {
         onRequestClose={() => setShowImageModal(false)}
       >
         <View className="flex-1 bg-black">
-          <View className="flex-row justify-end p-5 pt-12">
+          <View className="flex-row justify-between items-center px-4 pt-12 pb-4">
+            <View className="w-16" />
+            <Text className="text-white font-medium" numberOfLines={1}>
+              {selectedFile?.originalName || 'Preview'}
+            </Text>
             <TouchableOpacity
-              className="bg-black/60 p-3 rounded-full"
+              className="w-16 items-end"
               onPress={() => setShowImageModal(false)}
             >
-              <Text className="text-white text-base">Close</Text>
+              <View className="bg-white/20 px-3 py-1.5 rounded-full">
+                <Text className="text-white text-sm">Done</Text>
+              </View>
             </TouchableOpacity>
           </View>
           {selectedFile && (
@@ -586,4 +602,3 @@ export default function CreateChatAnnouncement() {
     </View>
   );
 }
-

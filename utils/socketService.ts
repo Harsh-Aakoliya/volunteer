@@ -37,6 +37,7 @@ interface NewMessageEvent {
   pollId?: number;
   tableId?: number;
   replyMessageId?: number;
+  isForwarded?: boolean;
   sender: {
     userId: string;
     userName: string;
@@ -210,6 +211,26 @@ class SocketService {
     }
   }
 
+  // Set user online status (global)
+  setUserOnline(userId: string): void {
+    if (this.ensureConnection()) {
+      console.log("✅ Setting user online:", userId);
+      this.socket!.emit("userOnline", { userId });
+    } else {
+      console.error("❌ Cannot set user online: Socket not connected");
+    }
+  }
+
+  // Set user offline status (global)
+  setUserOffline(userId: string): void {
+    if (this.ensureConnection()) {
+      console.log("❌ Setting user offline:", userId);
+      this.socket!.emit("userOffline", { userId });
+    } else {
+      console.error("❌ Cannot set user offline: Socket not connected");
+    }
+  }
+
   // Request room data (unread counts and last messages)
   requestRoomData(userId: string): void {
     if (this.ensureConnection()) {
@@ -343,6 +364,13 @@ class SocketService {
     }
   }
 
+  // Listen for global user online status updates
+  onUserOnlineStatusUpdate(callback: (data: { userId: string; isOnline: boolean }) => void): void {
+    if (this.socket) {
+      this.socket.on("userOnlineStatusUpdate", callback);
+    }
+  }
+
   // Remove event listeners
   removeListeners(): void {
     if (this.socket) {
@@ -354,6 +382,7 @@ class SocketService {
       this.socket.off("roomUpdate");
       this.socket.off("messagesDeleted");
       this.socket.off("messageEdited");
+      this.socket.off("userOnlineStatusUpdate");
     }
   }
 

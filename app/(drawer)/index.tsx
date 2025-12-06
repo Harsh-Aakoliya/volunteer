@@ -155,6 +155,7 @@ export default function ChatRooms() {
         socket.off("lastMessage");
         socket.off("unreadCounts");
         socket.off("roomUpdate");
+        socket.off("onlineUsers");
 
         // Set up lastMessage listener
         socket.on("lastMessage", (data: LastMessageResponse) => {
@@ -245,6 +246,29 @@ export default function ChatRooms() {
                 return room;
               });
               return sortRoomsByRecent(updatedRooms);
+            });
+          }
+        });
+
+        // Listen for online users updates - update online count in real-time
+        socket.on("onlineUsers", (data: { roomId: string; onlineUsers: string[]; onlineCount: number; totalMembers: number }) => {
+          console.log("👥 Received onlineUsers event for room:", data.roomId, "Online:", data.onlineCount);
+
+          if (data && data.roomId) {
+            const roomIdStr = data.roomId.toString();
+
+            // Update the onlineCount for this room immediately
+            setChatRooms(prevRooms => {
+              return prevRooms.map(room => {
+                if (room.roomId?.toString() === roomIdStr) {
+                  console.log(`🔄 Updating online count for ${room.roomName}: ${room.onlineCount} -> ${data.onlineCount}`);
+                  return {
+                    ...room,
+                    onlineCount: data.onlineCount
+                  };
+                }
+                return room;
+              });
             });
           }
         });
@@ -686,7 +710,7 @@ export default function ChatRooms() {
     <View className="flex-1 bg-gray-50">
       {/* Header */}
       <LinearGradient
-        colors={["#6366f1", "#8b5cf6", "#a855f7"]}
+        colors={["#3b82f6", "#3b82f6", "#3b82f6"]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 0 }}
         className="flex-row items-center justify-between h-[60px] px-4"

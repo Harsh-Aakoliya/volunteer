@@ -17,17 +17,17 @@ export default function ChatLayout() {
         }} 
       />
       <Stack.Screen 
+        name="room-info" 
+        options={{ 
+          headerShown: false
+        }} 
+      />
+      <Stack.Screen 
         name="create-room" 
         options={{ 
           title: 'Select Users' 
         }} 
       />
-        <Stack.Screen 
-          name="room-settings" 
-          options={{ 
-            title: 'Room Settings' 
-          }} 
-        />
       <Stack.Screen 
         name="add-members" 
         options={{ 

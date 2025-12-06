@@ -7,7 +7,6 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   ScrollView,
-  Keyboard,
   Modal,
   Pressable
 } from 'react-native';
@@ -96,35 +95,10 @@ export default function MessageInput({
     }
   }, [autoFocus]);
 
-  // Handle keyboard events
-  useEffect(() => {
-    const keyboardDidShowListener = Keyboard.addListener(
-      'keyboardDidShow',
-      () => {
-        if (showAttachmentsGrid) {
-          setShowAttachmentsGrid(false);
-        }
-      }
-    );
-
-    return () => {
-      keyboardDidShowListener?.remove();
-    };
-  }, [showAttachmentsGrid]);
-
   // Handle attachments grid toggle
   const toggleAttachmentsGrid = () => {
-    if (showAttachmentsGrid) {
-      // Hide attachments grid and show keyboard
-      setShowAttachmentsGrid(false);
-      setTimeout(() => {
-        textInputRef.current?.focus();
-      }, 100);
-    } else {
-      // Show attachments grid and hide keyboard
-      Keyboard.dismiss();
-      setShowAttachmentsGrid(true);
-    }
+    // Simply toggle the attachments grid without affecting keyboard
+    setShowAttachmentsGrid(!showAttachmentsGrid);
   };
 
   // Handle mention functionality
@@ -284,9 +258,7 @@ export default function MessageInput({
   };
 
   const handleInputFocus = () => {
-    if (showAttachmentsGrid) {
-      setShowAttachmentsGrid(false);
-    }
+    // Keep attachments grid visible when input is focused
     onFocus && onFocus();
   };
 
@@ -373,7 +345,7 @@ export default function MessageInput({
           </TouchableOpacity> */}
           
           {/* Text Input */}
-          <View className="flex-1 bg-gray-100 rounded-2xl px-4 py-2 min-h-[40px] max-h-[120px]">
+          <View className="flex-1 bg-gray-100 rounded-lg px-4 py-2 min-h-[40px] max-h-[120px]">
             <TextInput
               ref={textInputRef}
               className="text-base text-gray-900"
@@ -404,7 +376,7 @@ export default function MessageInput({
               )}
               
               {/* Camera button */}
-              <TouchableOpacity
+              {/* <TouchableOpacity
                 className="mr-3 pb-1"
                 onPress={() => {
                   // TODO: Implement in next release
@@ -412,24 +384,24 @@ export default function MessageInput({
                 }}
               >
                 <Ionicons name="camera-outline" size={24} color="#6b7280" />
-              </TouchableOpacity>
+              </TouchableOpacity> */}
               
               {/* Attachments button */}
               {showAttachments && (
                 <TouchableOpacity
-                  className="mr-3 pb-1"
+                  className="mr-3 pb-1.5"
                   onPress={toggleAttachmentsGrid}
                 >
                   <Ionicons 
                     name={showAttachmentsGrid ? "close-circle" : "add-circle-outline"} 
-                    size={24} 
+                    size={30} 
                     color={showAttachmentsGrid ? "#ef4444" : "#6b7280"} 
                   />
                 </TouchableOpacity>
               )}
               
               {/* Microphone button */}
-              <TouchableOpacity
+              {/* <TouchableOpacity
                 className="pb-1"
                 onPress={() => {
                   // This will trigger audio recording - handled by parent component
@@ -439,7 +411,7 @@ export default function MessageInput({
                 }}
               >
                 <Ionicons name="mic-outline" size={24} color="#6b7280" />
-              </TouchableOpacity>
+              </TouchableOpacity> */}
             </View>
           ) : (
             <View className="ml-3">
@@ -469,7 +441,7 @@ export default function MessageInput({
 
         {/* Attachments Grid */}
         {showAttachmentsGrid && showAttachments && roomId && (
-          <View className="border-t border-gray-200 bg-gray-50 px-4 py-3">
+          <View className="mt-2">
             <AttachmentsGrid 
               roomId={roomId} 
               userId={currentUser?.userId || ""} 

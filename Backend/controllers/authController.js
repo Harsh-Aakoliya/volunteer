@@ -18,10 +18,10 @@ const register = async (req, res) => {
     if (result.rows.length > 0) {
       res.json({ success: false, message: "Mobile number already registed" });
     } else {
-      // Create user with default role 'sevak' - admin/master can update role later
+      // Create user with default role 'sevak' and default usage_permission ['mobile']
       const result = await pool.query(
-        `INSERT INTO "users" ("mobile_number", "full_name", "role") VALUES ($1, $2, $3) RETURNING *`,
-        [mobileNumber, fullName, 'sevak']
+        `INSERT INTO "users" ("mobile_number", "full_name", "role", "usage_permission") VALUES ($1, $2, $3, $4) RETURNING *`,
+        [mobileNumber, fullName, 'sevak', ['mobile']]
       );
       console.log("result",result.rows);
       console.log("inserted successfully");
@@ -37,8 +37,8 @@ const register = async (req, res) => {
 
 // controllers/authController.js
 const login = async (req, res) => {
-  const { mobileNumber, password } = req.body;
-  console.log("Login attempt:", mobileNumber, password);
+  const { mobileNumber, password, platform } = req.body;
+  console.log("Login attempt:", mobileNumber, password, "Platform:", platform);
   
   try {
     const result = await pool.query(
@@ -49,6 +49,20 @@ const login = async (req, res) => {
 
     if (result.rows.length > 0) {
       const user = result.rows[0];
+      
+      // Check usage permission (now an array)
+      const permissions =Array.isArray(user.usage_permission) 
+        ? user.usage_permission 
+        : [user.usage_permission].filter(Boolean);
+
+      console.log("permissions",permissions);
+      console.log("platform",platform);
+      if (!permissions.includes(platform)) {
+        return res.json({
+          success: false,
+          message: `Access denied. Not able to access from ${platform} `,
+        });
+      }
       
       const token = jwt.sign(
         { userId: user.user_id, role: user.role },

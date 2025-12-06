@@ -37,6 +37,9 @@ const initDB = async () => {
     // 10. Create Notification_tokens table (depends on: users)
     await createNotificationTokenTable(client);
 
+    // 11. Add new columns to users table if they don't exist
+    await addUsersTableColumns(client);
+
     // 12. Add foreign key constraints after all tables are created
     await addForeignKeyConstraints(client);
 
@@ -89,6 +92,7 @@ const createUsersTable = async (client) => {
           full_name VARCHAR(100) NOT NULL,
           password VARCHAR(255) NOT NULL,
           role VARCHAR(10) NOT NULL CHECK (role IN ('master', 'admin', 'sevak')),
+          usage_permission TEXT[] NOT NULL DEFAULT ARRAY['mobile']::TEXT[],
           -- Profile Information
           gender VARCHAR(20),
           date_of_birth DATE,
@@ -350,6 +354,109 @@ const createNotificationTokenTable = async (client) => {
     console.log("✅ Notification_tokens table created successfully");
   } catch (error) {
     console.error("❌ Error while creating notification_tokens table:", error);
+    throw error;
+  }
+};
+
+// 11. Add usage_permission column to users table if it doesn't exist
+const addUsersTableColumns = async (client) => {
+  try {
+    console.log("🔧 Checking for usage_permission column in users table...");
+
+    // Check if usagePermission column exists
+    const usagePermissionCheck = await client.query(`
+      SELECT column_name 
+      FROM information_schema.columns 
+      WHERE table_name = 'users' AND column_name = 'usage_permission'
+    `);
+
+    if (usagePermissionCheck.rows.length === 0) {
+      // Add column as TEXT[] array type
+      await client.query(`
+        ALTER TABLE users 
+        ADD COLUMN usage_permission TEXT[]
+      `);
+      
+      // Set default value for existing rows (convert single value to array)
+      await client.query(`
+        UPDATE users 
+        SET usage_permission = CASE 
+          WHEN usage_permission IS NULL THEN ARRAY['mobile']::TEXT[]
+          WHEN usage_permission::TEXT = 'mobile' THEN ARRAY['mobile']::TEXT[]
+          WHEN usage_permission::TEXT = 'web' THEN ARRAY['web']::TEXT[]
+          ELSE ARRAY[usage_permission::TEXT]::TEXT[]
+        END
+      `);
+      
+      // Set default for new rows
+      await client.query(`
+        ALTER TABLE users 
+        ALTER COLUMN usage_permission SET DEFAULT ARRAY['mobile']::TEXT[]
+      `);
+      
+      // Now make it NOT NULL
+      await client.query(`
+        ALTER TABLE users 
+        ALTER COLUMN usage_permission SET NOT NULL
+      `);
+      
+      console.log("  ✅ Added usage_permission column to users table");
+    } else {
+      // Check if column is already TEXT[] or needs conversion
+      const columnTypeCheck = await client.query(`
+        SELECT data_type 
+        FROM information_schema.columns 
+        WHERE table_name = 'users' AND column_name = 'usage_permission'
+      `);
+      
+      if (columnTypeCheck.rows.length > 0 && columnTypeCheck.rows[0].data_type !== 'ARRAY') {
+        // Convert existing VARCHAR column to TEXT[] array
+        console.log("  🔄 Converting usage_permission from VARCHAR to TEXT[] array...");
+        
+        // Create a temporary column
+        await client.query(`
+          ALTER TABLE users 
+          ADD COLUMN usage_permission_new TEXT[]
+        `);
+        
+        // Migrate data: convert single values to arrays
+        await client.query(`
+          UPDATE users 
+          SET usage_permission_new = CASE 
+            WHEN usage_permission::TEXT = 'mobile' THEN ARRAY['mobile']::TEXT[]
+            WHEN usage_permission::TEXT = 'web' THEN ARRAY['web']::TEXT[]
+            ELSE ARRAY[usage_permission::TEXT]::TEXT[]
+          END
+        `);
+        
+        // Drop old column
+        await client.query(`
+          ALTER TABLE users 
+          DROP COLUMN usage_permission
+        `);
+        
+        // Rename new column
+        await client.query(`
+          ALTER TABLE users 
+          RENAME COLUMN usage_permission_new TO usage_permission
+        `);
+        
+        // Set default and NOT NULL
+        await client.query(`
+          ALTER TABLE users 
+          ALTER COLUMN usage_permission SET DEFAULT ARRAY['mobile']::TEXT[],
+          ALTER COLUMN usage_permission SET NOT NULL
+        `);
+        
+        console.log("  ✅ Converted usage_permission to TEXT[] array");
+      } else {
+        console.log("  ⏭️  usage_permission column already exists as array type");
+      }
+    }
+
+    console.log("✅ Users table columns check completed");
+  } catch (error) {
+    console.error("❌ Error while adding columns to users table:", error);
     throw error;
   }
 };

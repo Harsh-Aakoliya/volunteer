@@ -16,6 +16,9 @@ const setupSocketIO = (io, app) => {
   // Track socket to user mapping
   const socketToUser = new Map(); // socketId -> {userId, userName, currentRooms, isOnChatTab}
   const userToSockets = new Map(); // userId -> Set of socketIds
+  
+  // Global online users tracking (userId -> boolean)
+  const globalOnlineUsers = new Set(); // Set of online userIds
 
   // Initialize unread counts and last messages from database
   const initializeRoomData = async () => {
@@ -92,6 +95,48 @@ const setupSocketIO = (io, app) => {
 
   // Call initialization on startup
   initializeRoomData();
+
+  // Helper function to calculate online count for a specific room
+  const getOnlineCountForRoom = async (roomId) => {
+    try {
+      const pool = await import("./config/database.js").then((m) => m.default);
+      const membersResult = await pool.query(
+        'SELECT "userId" FROM chatroomusers WHERE "roomId" = $1',
+        [roomId]
+      );
+      
+      const memberIds = membersResult.rows.map(row => row.userId);
+      const onlineCount = memberIds.filter(userId => globalOnlineUsers.has(userId)).length;
+      
+      return {
+        onlineCount,
+        totalMembers: memberIds.length,
+        onlineUsers: memberIds.filter(userId => globalOnlineUsers.has(userId))
+      };
+    } catch (error) {
+      console.error("Error calculating online count for room:", roomId, error);
+      return { onlineCount: 0, totalMembers: 0, onlineUsers: [] };
+    }
+  };
+
+  // Helper function to broadcast online count to ALL users for a specific room
+  const broadcastRoomOnlineCount = async (roomId) => {
+    try {
+      const onlineInfo = await getOnlineCountForRoom(roomId);
+      
+      console.log(`📢 Broadcasting online count for room ${roomId}: ${onlineInfo.onlineCount}/${onlineInfo.totalMembers}`);
+      
+      // Emit to ALL connected clients (not just those in the room)
+      io.emit("onlineUsers", {
+        roomId: roomId.toString(),
+        onlineUsers: onlineInfo.onlineUsers,
+        onlineCount: onlineInfo.onlineCount,
+        totalMembers: onlineInfo.totalMembers
+      });
+    } catch (error) {
+      console.error("Error broadcasting room online count:", error);
+    }
+  };
 
   // Helper function to send unread counts to a user
   const sendUnreadCountsToUser = (userId) => {
@@ -206,13 +251,14 @@ const setupSocketIO = (io, app) => {
           [userId]
         );
 
-        const userRoomIds = userRoomsResult.rows.map(row => row.roomId.toString());
+        const userRoomIds = userRoomsResult.rows.map(row => row.roomId);
         
         // Filter last messages for user's rooms only
         const userLastMessages = {};
         userRoomIds.forEach(roomId => {
-          if (lastMessageByRoom[roomId]) {
-            userLastMessages[roomId] = lastMessageByRoom[roomId];
+          const roomIdStr = roomId.toString();
+          if (lastMessageByRoom[roomIdStr]) {
+            userLastMessages[roomIdStr] = lastMessageByRoom[roomIdStr];
           }
         });
 
@@ -221,6 +267,17 @@ const setupSocketIO = (io, app) => {
 
         // Send unread counts for this user
         sendUnreadCountsToUser(userId);
+
+        // Send initial online counts for all user's rooms
+        for (const roomId of userRoomIds) {
+          const onlineInfo = await getOnlineCountForRoom(roomId);
+          socket.emit("onlineUsers", {
+            roomId: roomId.toString(),
+            onlineUsers: onlineInfo.onlineUsers,
+            onlineCount: onlineInfo.onlineCount,
+            totalMembers: onlineInfo.totalMembers
+          });
+        }
 
         console.log(`✅ Sent room data to user ${userId} for ${userRoomIds.length} rooms`);
 
@@ -237,6 +294,8 @@ const setupSocketIO = (io, app) => {
           return;
         }
 
+        console.log(`👤 User ${userName} (${userId}) joining room ${roomId}`);
+
         // Update socket user info
         const userInfo = socketToUser.get(socket.id) || { userId, userName, currentRooms: [], isOnChatTab: false };
         userInfo.userName = userName;
@@ -248,17 +307,6 @@ const setupSocketIO = (io, app) => {
 
         // Join the socket room
         socket.join(`room-${roomId}`);
-        
-        // Initialize room in onlineUsers if not exists
-        if (!onlineUsersByRoom[roomId]) {
-          onlineUsersByRoom[roomId] = new Set();
-        }
-
-        // Add user to online users for this room
-        onlineUsersByRoom[roomId].add(userId);
-
-        console.log(`User ${userName} (${userId}) joined room ${roomId}`);
-        console.log(`Room ${roomId} online users:`, Array.from(onlineUsersByRoom[roomId]));
 
         // Clear unread messages for this user in this room
         if (unreadMessagesByUser[userId] && unreadMessagesByUser[userId][roomId]) {
@@ -267,35 +315,14 @@ const setupSocketIO = (io, app) => {
           sendUnreadCountsToUser(userId);
         }
 
-        // Get all members for this room from the database
-        const pool = await import("./config/database.js").then((m) => m.default);
-        const membersResult = await pool.query(
-          `SELECT u."user_id"::text as "userId", u."full_name" as "fullName", cru."isAdmin" 
-          FROM chatroomusers cru
-          JOIN "users" u ON cru."userId" = u."user_id"::text
-          WHERE cru."roomId" = $1`,
-          [roomId]
-        );
+        // Broadcast current online count for this room (using global status)
+        await broadcastRoomOnlineCount(roomId);
 
-        // Create members list with online status
-        const members = membersResult.rows.map((member) => ({
-          ...member,
-          isOnline: onlineUsersByRoom[roomId]?.has(member.userId) || false,
-        }));
+        // Update room members with online status
+        await updateRoomMembersStatus(roomId, io);
 
-        // Emit updated online users to all clients in the room
-        io.to(`room-${roomId}`).emit("onlineUsers", {
-          roomId,
-          onlineUsers: Array.from(onlineUsersByRoom[roomId]),
-          onlineCount: onlineUsersByRoom[roomId].size,
-          totalMembers: members.length,
-        });
+        console.log(`✅ User ${userName} successfully joined room ${roomId}`);
 
-        // Emit the full members list with online status
-        io.to(`room-${roomId}`).emit("roomMembers", {
-          roomId,
-          members,
-        });
       } catch (error) {
         console.error("Error in joinRoom event:", error);
       }
@@ -309,44 +336,22 @@ const setupSocketIO = (io, app) => {
           return;
         }
 
+        console.log(`👤 User ${userId} leaving room ${roomId}`);
+
         socket.leave(`room-${roomId}`);
 
         // Update socket user info
         const userInfo = socketToUser.get(socket.id);
         if (userInfo) {
           userInfo.currentRooms = userInfo.currentRooms.filter(r => r !== roomId);
-          // If user has no more rooms, they might still be on chat tab (main screen)
-          // We'll let the frontend tell us when they leave chat tab completely
           socketToUser.set(socket.id, userInfo);
         }
 
-        // Check if user has any other sockets in this room
-        const userSockets = userToSockets.get(userId) || new Set();
-        let userStillInRoom = false;
-        
-        for (const socketId of userSockets) {
-          if (socketId !== socket.id) {
-            const otherUserInfo = socketToUser.get(socketId);
-            if (otherUserInfo && otherUserInfo.currentRooms.includes(roomId)) {
-              userStillInRoom = true;
-              break;
-            }
-          }
-        }
+        console.log(`✅ User ${userId} left room ${roomId}`);
 
-        // Only remove user from online list if they have no other sockets in this room
-        if (!userStillInRoom && onlineUsersByRoom[roomId]) {
-          onlineUsersByRoom[roomId].delete(userId);
+        // Note: We don't change global online status when leaving a room
+        // The user is still online globally, just not viewing this specific room anymore
 
-          // If room is empty, clean up
-          if (onlineUsersByRoom[roomId].size === 0) {
-            delete onlineUsersByRoom[roomId];
-          } else {
-            await updateRoomMembersStatus(roomId, io);
-          }
-        }
-
-        console.log(`User ${userId} left room ${roomId}`);
       } catch (error) {
         console.error("Error in leaveRoom event:", error);
       }
@@ -486,6 +491,90 @@ const setupSocketIO = (io, app) => {
       }
     });
 
+    // Handle global user online status
+    socket.on("userOnline", async ({ userId }) => {
+      try {
+        if (!userId) {
+          console.error("Invalid userOnline parameters:", { userId });
+          return;
+        }
+
+        console.log(`✅ User ${userId} is now ONLINE (globally)`);
+        
+        // Add to global online users
+        globalOnlineUsers.add(userId);
+
+        // Get all rooms this user is part of
+        const pool = await import("./config/database.js").then((m) => m.default);
+        const userRoomsResult = await pool.query(
+          'SELECT "roomId" FROM chatroomusers WHERE "userId" = $1',
+          [userId]
+        );
+
+        const userRoomIds = userRoomsResult.rows.map(row => row.roomId);
+
+        console.log(`📢 User ${userId} is in ${userRoomIds.length} rooms, broadcasting to ALL users`);
+
+        // Broadcast online status update to ALL connected users globally
+        io.emit("userOnlineStatusUpdate", {
+          userId,
+          isOnline: true
+        });
+
+        // Update and broadcast online count for each room this user is part of
+        for (const roomId of userRoomIds) {
+          await broadcastRoomOnlineCount(roomId);
+          // Also update room members with new online status
+          await updateRoomMembersStatus(roomId, io);
+        }
+
+      } catch (error) {
+        console.error("Error in userOnline event:", error);
+      }
+    });
+
+    // Handle global user offline status
+    socket.on("userOffline", async ({ userId }) => {
+      try {
+        if (!userId) {
+          console.error("Invalid userOffline parameters:", { userId });
+          return;
+        }
+
+        console.log(`❌ User ${userId} is now OFFLINE (globally)`);
+        
+        // Remove from global online users
+        globalOnlineUsers.delete(userId);
+
+        // Get all rooms this user is part of
+        const pool = await import("./config/database.js").then((m) => m.default);
+        const userRoomsResult = await pool.query(
+          'SELECT "roomId" FROM chatroomusers WHERE "userId" = $1',
+          [userId]
+        );
+
+        const userRoomIds = userRoomsResult.rows.map(row => row.roomId);
+
+        console.log(`📢 User ${userId} went offline, broadcasting to ALL users`);
+
+        // Broadcast offline status update to ALL connected users globally
+        io.emit("userOnlineStatusUpdate", {
+          userId,
+          isOnline: false
+        });
+
+        // Update and broadcast online count for each room this user is part of
+        for (const roomId of userRoomIds) {
+          await broadcastRoomOnlineCount(roomId);
+          // Also update room members with new online status
+          await updateRoomMembersStatus(roomId, io);
+        }
+
+      } catch (error) {
+        console.error("Error in userOffline event:", error);
+      }
+    });
+
     // Handle disconnection
     socket.on("disconnect", async () => {
       console.log("Client disconnected:", socket.id);
@@ -506,18 +595,34 @@ const setupSocketIO = (io, app) => {
           // Check if user has other connected sockets
           const hasOtherSockets = userToSockets.has(userId) && userToSockets.get(userId).size > 0;
 
-          // Clean up rooms only if user has no other connected sockets
+          // Clean up global online status only if user has no other connected sockets
           if (!hasOtherSockets) {
-            for (const roomId of currentRooms) {
-              if (onlineUsersByRoom[roomId]) {
-                onlineUsersByRoom[roomId].delete(userId);
+            console.log(`❌ User ${userId} has no more connected sockets, setting offline globally`);
+            
+            // Remove from global online users
+            globalOnlineUsers.delete(userId);
 
-                if (onlineUsersByRoom[roomId].size === 0) {
-                  delete onlineUsersByRoom[roomId];
-                } else {
-                  await updateRoomMembersStatus(roomId, io);
-                }
-              }
+            // Get all rooms this user is part of
+            const pool = await import("./config/database.js").then((m) => m.default);
+            const userRoomsResult = await pool.query(
+              'SELECT "roomId" FROM chatroomusers WHERE "userId" = $1',
+              [userId]
+            );
+
+            const userRoomIds = userRoomsResult.rows.map(row => row.roomId);
+
+            console.log(`📢 Broadcasting offline status for user ${userId} across ${userRoomIds.length} rooms`);
+
+            // Broadcast offline status to ALL users globally
+            io.emit("userOnlineStatusUpdate", {
+              userId,
+              isOnline: false
+            });
+
+            // Update and broadcast online count for all rooms this user was part of
+            for (const roomId of userRoomIds) {
+              await broadcastRoomOnlineCount(roomId);
+              await updateRoomMembersStatus(roomId, io);
             }
           }
 
@@ -529,7 +634,7 @@ const setupSocketIO = (io, app) => {
       }
     });
 
-    // Helper function to update room members status
+    // Helper function to update room members status (using global online status)
     const updateRoomMembersStatus = async (roomId, io) => {
       try {
         const pool = await import("./config/database.js").then((m) => m.default);
@@ -541,16 +646,22 @@ const setupSocketIO = (io, app) => {
           [roomId]
         );
 
+        // Use global online status instead of per-room tracking
         const members = membersResult.rows.map((member) => ({
           ...member,
-          isOnline: onlineUsersByRoom[roomId]?.has(member.userId) || false,
+          isOnline: globalOnlineUsers.has(member.userId),
         }));
+
+        // Calculate online users for this room based on global status
+        const onlineUsersInRoom = members
+          .filter(m => globalOnlineUsers.has(m.userId))
+          .map(m => m.userId);
 
         // Emit updated online users to all clients in the room
         io.to(`room-${roomId}`).emit("onlineUsers", {
           roomId,
-          onlineUsers: Array.from(onlineUsersByRoom[roomId] || []),
-          onlineCount: (onlineUsersByRoom[roomId] || new Set()).size,
+          onlineUsers: onlineUsersInRoom,
+          onlineCount: onlineUsersInRoom.length,
           totalMembers: members.length,
         });
 

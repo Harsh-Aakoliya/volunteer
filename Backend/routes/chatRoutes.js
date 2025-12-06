@@ -20,9 +20,13 @@ router.delete('/rooms/:roomId', chatController.deleteChatRoom);
 
 // Room settings
 router.put('/rooms/:roomId/settings', chatController.updateRoomSettings);
+router.put('/rooms/:roomId/admins', chatController.updateGroupAdmins);
+router.put('/rooms/:roomId/messaging-permissions', chatController.updateMessagingPermissions);
+router.post('/rooms/:roomId/leave', chatController.leaveRoom);
 
 // Room members
 router.post('/rooms/:roomId/members', chatController.addRoomMembers);
+router.put('/rooms/:roomId/members', chatController.updateRoomMembers);
 router.put('/rooms/:roomId/members/:memberId', chatController.updateRoomMember);
 router.delete('/rooms/:roomId/members/:memberId', chatController.removeRoomMember);
 

@@ -179,6 +179,23 @@ export const getAllSearchData = async (): Promise<{
   }
 };
 
+// Get all users for dashboard (admin/master only)
+export const getAllUsersForDashboard = async (): Promise<User[]> => {
+  try {
+    const token = await AuthStorage.getToken();
+    if (!token) throw new Error('No authentication token');
+
+    const response = await axios.get(`${API_URL}/api/users/all`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching all users for dashboard:', error);
+    throw error;
+  }
+};
+
 // Get specific user profile by ID
 export const getUserProfileById = async (userId: string) => {
   try {

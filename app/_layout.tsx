@@ -36,8 +36,8 @@
 
 // app/_layout.tsx
 import { Stack } from 'expo-router';
-import { useEffect, useState } from 'react';
-import { Text, ToastAndroid, View } from 'react-native';
+import { useEffect, useState, useRef } from 'react';
+import { Text, ToastAndroid, View, AppState, AppStateStatus } from 'react-native';
 import * as FileSystem from 'expo-file-system';
 import * as React from 'react';
 
@@ -47,10 +47,13 @@ import { initializeNotifications } from '@/utils/notificationSetup';
 import { requestChatNotificationPermissions } from '@/utils/chatNotificationHandler';
 import useNetworkStatus from '@/hooks/userNetworkStatus';
 import OfflinePopup from '@/components/OfflinePopup';
+import socketService from '@/utils/socketService';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 export default function RootLayout() {
   const [isReady, setIsReady] = useState(true);
   const isConnected = useNetworkStatus();
+  const appState = useRef<AppStateStatus>(AppState.currentState);
 
   useEffect(() => {
     const bootstrap = async () => {
@@ -87,6 +90,57 @@ export default function RootLayout() {
     bootstrap();
   }, []);
 
+  // Track app state for global online/offline status
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', async (nextAppState) => {
+      console.log('📱 AppState changed:', appState.current, '->', nextAppState);
+
+      // App coming to foreground (from background or inactive)
+      if (appState.current.match(/inactive|background/) && nextAppState === 'active') {
+        console.log('✅ App came to foreground');
+        
+        // Check if user is logged in
+        const userData = await AuthStorage.getUser();
+        if (userData && userData.userId) {
+          console.log('👤 User is logged in, setting online status');
+          
+          // Connect socket if not connected
+          if (!socketService.socket?.connected) {
+            socketService.connect();
+          }
+          
+          // Set user as online globally
+          if (socketService.socket?.connected) {
+            socketService.identify(userData.userId);
+            socketService.setUserOnline(userData.userId);
+          }
+        }
+      }
+
+      // App going to background or inactive
+      if (appState.current === 'active' && nextAppState.match(/inactive|background/)) {
+        console.log('❌ App going to background');
+        
+        // Check if user is logged in
+        const userData = await AuthStorage.getUser();
+        if (userData && userData.userId) {
+          console.log('👤 User was logged in, setting offline status');
+          
+          // Set user as offline globally
+          if (socketService.socket?.connected) {
+            socketService.setUserOffline(userData.userId);
+          }
+        }
+      }
+
+      appState.current = nextAppState;
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, []);
+
   if (!isReady) {
     return (
       <View className="flex-1 items-center justify-center bg-blue-500">
@@ -99,8 +153,12 @@ export default function RootLayout() {
 
   return (
     <>
-      <Stack screenOptions={{ headerShown: false }} />
+        <GestureHandlerRootView style={{ flex: 1 }}>
+
+      <Stack screenOptions={{ headerShown: false, statusBarStyle: "light", statusBarBackgroundColor: "#3b82f6"}} />
       <OfflinePopup isVisible={!isConnected} />
+      </GestureHandlerRootView>
+
     </>
   );
 }

@@ -166,6 +166,7 @@ export interface Message {
   editedAt?: string;
   editedBy?: string;
   editorName?: string;
+  isForwarded?: boolean;
 }
 
 export interface ChatRoom {

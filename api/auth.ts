@@ -1,5 +1,6 @@
 // api/auth.ts
 import axios from "axios";
+import { Platform } from "react-native";
 import { API_URL } from "../constants/api";
 import { AuthStorage } from "@/utils/authStorage";
 import { router } from "expo-router";
@@ -94,9 +95,13 @@ const removeNotificationToken = async (userId: string) => {
 
 export const login = async (mobileNumber: string, password: string) => {
   try {
+    // Detect platform - 'web' for web, 'mobile' for iOS/Android
+    const platform = Platform.OS === 'web' ? 'web' : 'mobile';
+    
     const response = await axios.post(`${API_URL}/api/auth/login`, {
       mobileNumber,
       password,
+      platform,
     });
 
     console.log("Login response:", response.data);
@@ -125,6 +130,26 @@ export const login = async (mobileNumber: string, password: string) => {
       generateAndStoreNotificationToken(userData.user_id).catch(error => {
         console.error('Error handling notification token after login:', error);
       });
+
+      // Set user as online after successful login
+      try {
+        const { default: socketService } = await import('@/utils/socketService');
+        
+        // Connect socket if not connected
+        if (!socketService.socket?.connected) {
+          socketService.connect();
+        }
+        
+        // Set user as online globally
+        setTimeout(() => {
+          if (socketService.socket?.connected) {
+            socketService.identify(userData.user_id);
+            socketService.setUserOnline(userData.user_id);
+          }
+        }, 1000);
+      } catch (error) {
+        console.error('Error setting user online after login:', error);
+      }
 
       // Redirect to announcement page on successful login
       router.replace("/(drawer)");
@@ -185,6 +210,22 @@ export const logout = async () => {
     const userData = await AuthStorage.getUser();
     
     if (userData?.userId) {
+      // Set user offline before logging out
+      try {
+        const { default: socketService } = await import('@/utils/socketService');
+        if (socketService.socket?.connected) {
+          socketService.setUserOffline(userData.userId);
+          
+          // Wait a bit for the offline status to be broadcast
+          await new Promise(resolve => setTimeout(resolve, 500));
+          
+          // Disconnect socket after offline status is sent
+          socketService.disconnect();
+        }
+      } catch (error) {
+        console.error('Error setting user offline during logout:', error);
+      }
+      
       // Remove notification token from backend
       await removeNotificationToken(userData.userId);
     }

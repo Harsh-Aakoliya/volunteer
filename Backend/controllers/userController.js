@@ -28,8 +28,19 @@ const convertDDMMYYYYToDate = (dateString) => {
 };
 
 // Utility function to convert YYYY-MM-DD to DD/MM/YYYY for frontend
-const convertDateToDDMMYYYY = (dateString) => {
-  if (!dateString) return null;
+const convertDateToDDMMYYYY = (dateInput) => {
+  if (!dateInput) return null;
+  
+  // Handle Date objects
+  if (dateInput instanceof Date) {
+    const day = dateInput.getDate().toString().padStart(2, '0');
+    const month = (dateInput.getMonth() + 1).toString().padStart(2, '0');
+    const year = dateInput.getFullYear();
+    return `${day}/${month}/${year}`;
+  }
+  
+  // Convert to string if not already
+  const dateString = String(dateInput);
   
   // Check if it's already in DD/MM/YYYY format
   if (/^\d{2}\/\d{2}\/\d{4}$/.test(dateString)) {
@@ -109,7 +120,8 @@ const getUserProfile = async (req, res) => {
         "whatsapp_number" as "whatsappNumber",
         "emergency_contact" as "emergencyContact",
         "email",
-        "address"
+        "address",
+        "usage_permission" as "usagePermission"
       FROM "users" 
       WHERE "user_id"::text = $1`,
       [userId]
@@ -181,7 +193,8 @@ const updateUserProfile = async (req, res) => {
         "whatsapp_number" as "whatsappNumber",
         "emergency_contact" as "emergencyContact",
         "email",
-        "address"`,
+        "address",
+        "usage_permission" as "usagePermission"`,
       [fullName, role, gender, formattedDateOfBirth, bloodGroup, education, whatsappNumber, emergencyContact, email, address, userId]
     );
     
@@ -228,6 +241,7 @@ const getAllUsers = async (req, res) => {
         "emergency_contact" as "emergencyContact",
         "email",
         "address",
+        "usage_permission" as "usagePermission",
         "created_at" as "createdAt",
         "updated_at" as "updatedAt"
       FROM "users" 
@@ -264,7 +278,8 @@ const updateUser = async (req, res) => {
       whatsappNumber,
       emergencyContact,
       email,
-      address
+      address,
+      usagePermission
     } = req.body;
 
     // Convert dateOfBirth from DD/MM/YYYY to YYYY-MM-DD for database storage
@@ -272,15 +287,40 @@ const updateUser = async (req, res) => {
     
     // Check if the requesting user is admin or master
     const requestingUserRole = req.user.role;
+    const isMaster = requestingUserRole === 'master';
     const isAdmin = requestingUserRole === 'master' || requestingUserRole === 'admin';
     
     if (!isAdmin) {
       return res.status(403).json({ message: "Access denied. Admin privileges required." });
     }
     
+    // Only master can change role and usagePermission
+    if (role && !isMaster) {
+      return res.status(403).json({ message: "Access denied. Only master can change user role." });
+    }
+    
+    if (usagePermission && !isMaster) {
+      return res.status(403).json({ message: "Access denied. Only master can change usage permission." });
+    }
+    
     // Validate role if being updated
     if (role && !['master', 'admin', 'sevak'].includes(role)) {
       return res.status(400).json({ message: "Invalid role. Must be 'master', 'admin', or 'sevak'" });
+    }
+    
+    // Validate usagePermission if being updated (now an array)
+    if (usagePermission) {
+      if (!Array.isArray(usagePermission)) {
+        return res.status(400).json({ message: "usagePermission must be an array" });
+      }
+      if (usagePermission.length === 0) {
+        return res.status(400).json({ message: "usagePermission must contain at least one value" });
+      }
+      const validPermissions = ['web', 'mobile'];
+      const invalidPermissions = usagePermission.filter(p => !validPermissions.includes(p));
+      if (invalidPermissions.length > 0) {
+        return res.status(400).json({ message: `Invalid usagePermission values: ${invalidPermissions.join(', ')}. Must be 'web' or 'mobile'` });
+      }
     }
     
     const result = await pool.query(
@@ -297,8 +337,9 @@ const updateUser = async (req, res) => {
         "emergency_contact" = COALESCE($9, "emergency_contact"),
         "email" = COALESCE($10, "email"),
         "address" = COALESCE($11, "address"),
+        "usage_permission" = COALESCE($12, "usage_permission"),
         "updated_at" = CURRENT_TIMESTAMP
-       WHERE "user_id"::text = $12 
+       WHERE "user_id"::text = $13 
        RETURNING 
         "user_id" as "userId",
         "mobile_number" as "mobileNumber",
@@ -311,8 +352,9 @@ const updateUser = async (req, res) => {
         "whatsapp_number" as "whatsappNumber",
         "emergency_contact" as "emergencyContact",
         "email",
-        "address"`,
-      [mobileNumber, fullName, role, gender, formattedDateOfBirth, bloodGroup, education, whatsappNumber, emergencyContact, email, address, userId]
+        "address",
+        "usage_permission" as "usagePermission"`,
+      [mobileNumber, fullName, role, gender, formattedDateOfBirth, bloodGroup, education, whatsappNumber, emergencyContact, email, address, usagePermission, userId]
     );
     
     if (result.rows.length === 0) {
@@ -326,6 +368,7 @@ const updateUser = async (req, res) => {
     }
     // Add isAdmin for backward compatibility
     updatedUser.isAdmin = updatedUser.role === 'master' || updatedUser.role === 'admin';
+    updatedUser.isMaster = updatedUser.role === 'master';
     
     res.json(updatedUser);
   } catch (error) {
@@ -502,22 +545,48 @@ const updateUserWithSubdepartments = async (req, res) => {
       whatsappNumber,
       emergencyContact,
       email,
-      address
+      address,
+      usagePermission
     } = req.body;
 
     // Convert dateOfBirth from DD/MM/YYYY to YYYY-MM-DD for database storage
     const formattedDateOfBirth = convertDDMMYYYYToDate(dateOfBirth);
     
     const requestingUserRole = req.user.role;
+    const isMaster = requestingUserRole === 'master';
     const isAdmin = requestingUserRole === 'master' || requestingUserRole === 'admin';
 
     if (!isAdmin) {
       return res.status(403).json({ message: 'Only admins can update users' });
     }
 
+    // Only master can change role and usagePermission
+    if (role && !isMaster) {
+      return res.status(403).json({ message: 'Access denied. Only master can change user role.' });
+    }
+    
+    if (usagePermission && !isMaster) {
+      return res.status(403).json({ message: 'Access denied. Only master can change usage permission.' });
+    }
+
     // Validate role if being updated
     if (role && !['master', 'admin', 'sevak'].includes(role)) {
       return res.status(400).json({ message: "Invalid role. Must be 'master', 'admin', or 'sevak'" });
+    }
+    
+    // Validate usagePermission if being updated (now an array)
+    if (usagePermission) {
+      if (!Array.isArray(usagePermission)) {
+        return res.status(400).json({ message: "usagePermission must be an array" });
+      }
+      if (usagePermission.length === 0) {
+        return res.status(400).json({ message: "usagePermission must contain at least one value" });
+      }
+      const validPermissions = ['web', 'mobile'];
+      const invalidPermissions = usagePermission.filter(p => !validPermissions.includes(p));
+      if (invalidPermissions.length > 0) {
+        return res.status(400).json({ message: `Invalid usagePermission values: ${invalidPermissions.join(', ')}. Must be 'web' or 'mobile'` });
+      }
     }
 
     // Update user basic info
@@ -535,8 +604,9 @@ const updateUserWithSubdepartments = async (req, res) => {
         "emergency_contact" = COALESCE($9, "emergency_contact"),
         "email" = COALESCE($10, "email"),
         "address" = COALESCE($11, "address"),
+        "usage_permission" = COALESCE($12, "usage_permission"),
         "updated_at" = CURRENT_TIMESTAMP
-       WHERE "user_id"::text = $12 
+       WHERE "user_id"::text = $13 
        RETURNING 
         "user_id" as "userId",
         "mobile_number" as "mobileNumber",
@@ -549,10 +619,11 @@ const updateUserWithSubdepartments = async (req, res) => {
         "whatsapp_number" as "whatsappNumber",
         "emergency_contact" as "emergencyContact",
         "email",
-        "address"`
+        "address",
+        "usage_permission" as "usagePermission"`
       ,
       [fullName, mobileNumber, role, gender, formattedDateOfBirth, bloodGroup, education, whatsappNumber, 
-       emergencyContact, email, address, userId]
+       emergencyContact, email, address, usagePermission, userId]
     );
 
     if (result.rows.length === 0) {
@@ -564,8 +635,9 @@ const updateUserWithSubdepartments = async (req, res) => {
     if (updatedUser.dateOfBirth) {
       updatedUser.dateOfBirth = convertDateToDDMMYYYY(updatedUser.dateOfBirth);
     }
-    // Add isAdmin for backward compatibility
+    // Add isAdmin and isMaster for backward compatibility
     updatedUser.isAdmin = updatedUser.role === 'master' || updatedUser.role === 'admin';
+    updatedUser.isMaster = updatedUser.role === 'master';
     
     res.json(updatedUser);
   } catch (error) {

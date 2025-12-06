@@ -130,3 +130,124 @@ export const getNewMessages = async (roomId: string, afterTimestamp?: string, li
     throw error;
   }
 };
+
+// Room Settings APIs
+
+// Update group admins
+export const updateGroupAdmins = async (roomId: string, adminUserIds: string[]) => {
+  try {
+    const token = await AuthStorage.getToken();
+    const response = await axios.put(
+      `${API_URL}/api/chat/rooms/${roomId}/admins`,
+      { adminUserIds },
+      {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      }
+    );
+    return response.data;
+  } catch (error) {
+    console.error("Error updating group admins:", error);
+    throw error;
+  }
+};
+
+// Update room members (add/remove)
+export const updateRoomMembers = async (roomId: string, memberUserIds: string[]) => {
+  try {
+    const token = await AuthStorage.getToken();
+    const response = await axios.put(
+      `${API_URL}/api/chat/rooms/${roomId}/members`,
+      { memberUserIds },
+      {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      }
+    );
+    return response.data;
+  } catch (error) {
+    console.error("Error updating room members:", error);
+    throw error;
+  }
+};
+
+// Update messaging permissions
+export const updateMessagingPermissions = async (roomId: string, allowedUserIds: string[]) => {
+  try {
+    const token = await AuthStorage.getToken();
+    const response = await axios.put(
+      `${API_URL}/api/chat/rooms/${roomId}/messaging-permissions`,
+      { allowedUserIds },
+      {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      }
+    );
+    return response.data;
+  } catch (error) {
+    console.error("Error updating messaging permissions:", error);
+    throw error;
+  }
+};
+
+// Rename room
+export const renameRoom = async (roomId: string, roomName: string, roomDescription?: string) => {
+  try {
+    const token = await AuthStorage.getToken();
+    const response = await axios.put(
+      `${API_URL}/api/chat/rooms/${roomId}/settings`,
+      { roomName, roomDescription },
+      {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      }
+    );
+    return response.data;
+  } catch (error) {
+    console.error("Error renaming room:", error);
+    throw error;
+  }
+};
+
+// Leave room
+export const leaveRoom = async (roomId: string) => {
+  try {
+    const token = await AuthStorage.getToken();
+    const response = await axios.post(
+      `${API_URL}/api/chat/rooms/${roomId}/leave`,
+      {},
+      {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      }
+    );
+    return response.data;
+  } catch (error) {
+    console.error("Error leaving room:", error);
+    throw error;
+  }
+};
+
+// Delete room
+export const deleteRoom = async (roomId: string) => {
+  try {
+    const token = await AuthStorage.getToken();
+    const response = await axios.delete(
+      `${API_URL}/api/chat/rooms/${roomId}`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      }
+    );
+    return response.data;
+  } catch (error) {
+    console.error("Error deleting room:", error);
+    throw error;
+  }
+};

@@ -4,6 +4,7 @@ import { DrawerContentComponentProps } from '@react-navigation/drawer';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { fetchUserProfile, logout } from '@/api/user';
+import { AuthStorage } from '@/utils/authStorage';
 
 export const CustomDrawer = (props: DrawerContentComponentProps) => {
   const router = useRouter();
@@ -45,9 +46,18 @@ export const CustomDrawer = (props: DrawerContentComponentProps) => {
     );
   };
 
-  const handleProfilePress = () => {
+  const handleProfilePress = async () => {
     props.navigation.closeDrawer();
-    router.push('/profile');
+    // Get current logged-in user data
+    const currentUser = await AuthStorage.getUser();
+    if (currentUser) {
+      router.push({
+        pathname: '/user-profile',
+        params: {
+          userData: JSON.stringify(currentUser)
+        }
+      });
+    }
   };
 
   const handleDashboardPress = () => {
@@ -60,8 +70,9 @@ export const CustomDrawer = (props: DrawerContentComponentProps) => {
     router.push("/(departments)" as any);
   };
 
-  const isKaryalay = userProfile?.departments?.includes('Karyalay') || false;
-  const isHOD = userProfile?.isAdmin && !isKaryalay;
+  const isMaster = userProfile?.role === 'master' || userProfile?.isMaster;
+  const isAdmin = userProfile?.role === 'admin' || userProfile?.isAdmin;
+  const roleText = isMaster ? 'Master' : isAdmin ? 'Admin' : 'Sevak';
 
   return (
     <View style={styles.container}>
@@ -73,9 +84,7 @@ export const CustomDrawer = (props: DrawerContentComponentProps) => {
         >
           <View style={styles.userInfo}>
             <View style={styles.avatarContainer}>
-              <Text style={styles.avatarText}>
-                {userProfile?.fullName?.charAt(0) || userProfile?.full_name?.charAt(0) || 'U'}
-              </Text>
+              <Ionicons name="person" size={24} color="#3b82f6" />
             </View>
             <View style={styles.userDetails}>
               <Text style={styles.fullName} numberOfLines={1}>
@@ -92,46 +101,33 @@ export const CustomDrawer = (props: DrawerContentComponentProps) => {
         {/* Divider */}
         <View style={styles.divider} />
 
-        {/* Role and Departments Section */}
+        {/* Role Section */}
         <View style={styles.roleSection}>
-          <Text style={styles.roleText}>
-            {userProfile?.isAdmin ? "HOD" : "Sevak"}
-          </Text>
-          {userProfile?.departments && userProfile.departments.length > 0 && (
-            <View style={styles.departmentsContainer}>
-              {userProfile.departments.map((dept: string, index: number) => (
-                <View key={index} style={styles.departmentChip}>
-                  <Text style={styles.departmentText}>{dept}</Text>
-                </View>
-              ))}
-            </View>
-          )}
+          <Text style={styles.roleText}>{roleText}</Text>
         </View>
 
         {/* Divider */}
         <View style={styles.divider} />
 
-        {/* Menu Items */}
-        {(isKaryalay || isHOD) && (
-          <View style={styles.menuSection}>
-            {isKaryalay && (
-              <TouchableOpacity style={styles.menuItem} onPress={handleDashboardPress}>
-                <Ionicons name="stats-chart" size={24} color="#6366f1" />
-                <Text style={styles.menuText}>Dashboard</Text>
-              </TouchableOpacity>
-            )}
-            <TouchableOpacity style={styles.menuItem} onPress={handleDepartmentsPress}>
-              <Ionicons name="business" size={24} color="#6366f1" />
-              <Text style={styles.menuText}>Departments</Text>
+        {/* Dashboard Option - Only for Master/Admin */}
+        {(isMaster || isAdmin) && (
+          <>
+            <TouchableOpacity 
+              style={styles.menuItem}
+              onPress={handleDashboardPress}
+            >
+              <Ionicons name="stats-chart" size={20} color="#3b82f6" />
+              <Text style={styles.menuText}>Dashboard</Text>
             </TouchableOpacity>
-          </View>
+            <View style={styles.divider} />
+          </>
         )}
+
       </ScrollView>
 
       {/* Logout Button */}
       <View style={styles.footer}>
         <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-          <Ionicons name="log-out-outline" size={24} color="#fff" />
           <Text style={styles.logoutText}>Logout</Text>
         </TouchableOpacity>
       </View>
@@ -149,7 +145,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     padding: 30,
-    backgroundColor: '#6366f1',
+    backgroundColor: '#3b82f6',
   },
   userInfo: {
     flexDirection: 'row',
@@ -164,11 +160,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
-  },
-  avatarText: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#fff',
   },
   userDetails: {
     flex: 1,
@@ -195,27 +186,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#333',
-    marginBottom: 12,
-  },
-  departmentsContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-  },
-  departmentChip: {
-    backgroundColor: '#f3f4f6',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    marginRight: 8,
-    marginBottom: 8,
-  },
-  departmentText: {
-    fontSize: 14,
-    color: '#6366f1',
-    fontWeight: '500',
-  },
-  menuSection: {
-    paddingTop: 8,
   },
   menuItem: {
     flexDirection: 'row',
@@ -234,17 +204,13 @@ const styles = StyleSheet.create({
     borderTopColor: '#e0e0e0',
   },
   logoutButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#E74C3C',
-    padding: 15,
-    borderRadius: 8,
+    alignItems: 'flex-start',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
   },
   logoutText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-    marginLeft: 10,
+    color: '#8B0000',
+    fontSize: 14,
+    fontWeight: '500',
   },
 });

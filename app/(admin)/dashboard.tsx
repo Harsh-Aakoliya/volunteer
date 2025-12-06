@@ -1,37 +1,39 @@
 // app/admin/dashboard.tsx
-import { View, Text, FlatList, RefreshControl, Alert } from "react-native";
+import { View, Text, FlatList, RefreshControl, Alert, TextInput, TouchableOpacity, ActivityIndicator } from "react-native";
 import { useEffect, useState } from "react";
 import { router } from "expo-router";
-import CustomButton from "@/components/ui/CustomButton";
 import { AuthStorage } from "@/utils/authStorage";
-import { getPendingUsers, approveUser } from "@/api/admin";
-import Checkbox from "expo-checkbox";
+import { getAllUsersForDashboard } from "@/api/user";
 import { Ionicons } from '@expo/vector-icons';
 import React from "react";
-// Define a type for pending users
-interface PendingUser {
-  fullName: string;
-  mobileNumber: string;
-  userId: string;
+import { User } from '@/types/type';
+
+interface UserWithRole extends User {
+  role: 'master' | 'admin' | 'sevak';
 }
 
 export default function AdminDashboard() {
-  const [pendingUsers, setPendingUsers] = useState<PendingUser[]>([]);
-  const [selectedUsers, setSelectedUsers] = useState<Set<string>>(new Set());
+  const [allUsers, setAllUsers] = useState<UserWithRole[]>([]);
+  const [filteredUsers, setFilteredUsers] = useState<UserWithRole[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  
+  // Collapsible states
+  const [masterExpanded, setMasterExpanded] = useState(true);
+  const [adminExpanded, setAdminExpanded] = useState(true);
+  const [sevakExpanded, setSevakExpanded] = useState(true);
 
   // Check admin status on mount
   useEffect(() => {
     const checkAdminStatus = async () => {
       try {
         const userData = await AuthStorage.getUser();
-        const adminStatus = userData?.isAdmin || false;
+        const userRole = userData?.role;
+        const adminStatus = userRole === 'master' || userRole === 'admin';
         setIsAdmin(adminStatus);
-        console.log("Admin status:", adminStatus);
         
-        // Redirect if not admin
         if (!adminStatus) {
           Alert.alert(
             "Access Denied",
@@ -48,22 +50,37 @@ export default function AdminDashboard() {
     checkAdminStatus();
   }, []);
 
-  // Fetch pending users
+  // Fetch all users
   useEffect(() => {
     if (isAdmin) {
-      fetchPendingUsers();
+      fetchAllUsers();
     }
   }, [isAdmin]);
 
-  const fetchPendingUsers = async () => {
+  // Filter users based on search query
+  useEffect(() => {
+    if (!searchQuery.trim()) {
+      setFilteredUsers(allUsers);
+      return;
+    }
+
+    const query = searchQuery.toLowerCase();
+    const filtered = allUsers.filter(user =>
+      user.fullName?.toLowerCase().includes(query) ||
+      user.mobileNumber?.includes(query)
+    );
+    setFilteredUsers(filtered);
+  }, [searchQuery, allUsers]);
+
+  const fetchAllUsers = async () => {
     try {
       setIsLoading(true);
-      const users = await getPendingUsers();
-      console.log("Fetched Pending Users:", users);
-      setPendingUsers(users);
+      const users = await getAllUsersForDashboard();
+      setAllUsers(users as UserWithRole[]);
+      setFilteredUsers(users as UserWithRole[]);
     } catch (error) {
       console.error("Error fetching users:", error);
-      Alert.alert("Error", "Failed to fetch pending users. Please try again.");
+      Alert.alert("Error", "Failed to fetch users. Please try again.");
     } finally {
       setIsLoading(false);
     }
@@ -71,152 +88,200 @@ export default function AdminDashboard() {
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await fetchPendingUsers();
+    await fetchAllUsers();
     setRefreshing(false);
   };
 
-  const handleApproveAll = async () => {
-    if (selectedUsers.size === 0) {
-      Alert.alert("No Selection", "Please select users to approve.");
-      return;
-    }
-
-    try {
-      const usersToApprove = Array.from(selectedUsers);
-      console.log("Approving Users:", usersToApprove);
-
-      await Promise.all(
-        usersToApprove.map((userId) => approveUser(userId))
-      );
-
-      setSelectedUsers(new Set());
-      await fetchPendingUsers();
-      
-      Alert.alert(
-        "Success", 
-        `Successfully approved ${usersToApprove.length} user(s).`
-      );
-    } catch (error) {
-      console.error("Error approving users:", error);
-      Alert.alert("Error", "Failed to approve users. Please try again.");
-    }
-  };
-
-  const toggleSelection = (userId: string) => {
-    setSelectedUsers((prevSelected) => {
-      const newSelected = new Set(prevSelected);
-      if (newSelected.has(userId)) {
-        newSelected.delete(userId);
-      } else {
-        newSelected.add(userId);
+  const handleUserPress = (user: UserWithRole) => {
+    router.push({
+      pathname: '/user-profile',
+      params: {
+        userData: JSON.stringify(user)
       }
-      return newSelected;
     });
   };
 
-  // If not admin, don't render anything
+  // Categorize users
+  const masterUsers = filteredUsers.filter(u => u.role === 'master');
+  const adminUsers = filteredUsers.filter(u => u.role === 'admin');
+  const sevakUsers = filteredUsers.filter(u => u.role === 'sevak');
+
+  const renderUserItem = ({ item }: { item: UserWithRole }) => (
+    <TouchableOpacity
+      onPress={() => handleUserPress(item)}
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        padding: 12,
+        backgroundColor: '#fff',
+        marginBottom: 8,
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: '#E5E7EB',
+      }}
+      activeOpacity={0.7}
+    >
+      <View style={{
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        backgroundColor: '#DBEAFE',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginRight: 12,
+        position: 'relative',
+      }}>
+        <Ionicons name="person" size={20} color="#3B82F6" />
+        {(item.role === 'master' || item.role === 'admin') && (
+          <View style={{
+            position: 'absolute',
+            bottom: -2,
+            right: -2,
+            width: 18,
+            height: 18,
+            borderRadius: 9,
+            backgroundColor: '#F59E0B',
+            alignItems: 'center',
+            justifyContent: 'center',
+            borderWidth: 2,
+            borderColor: '#fff',
+          }}>
+            <Ionicons 
+              name={item.role === 'master' ? 'star' : 'shield'} 
+              size={10} 
+              color="#fff" 
+            />
+          </View>
+        )}
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={{ fontSize: 16, fontWeight: '600', color: '#111827' }}>
+          {item.fullName || 'Unknown'}
+        </Text>
+        <Text style={{ fontSize: 14, color: '#6B7280', marginTop: 2 }}>
+          {item.mobileNumber}
+        </Text>
+      </View>
+      <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
+    </TouchableOpacity>
+  );
+
+  const renderCategory = (
+    title: string,
+    users: UserWithRole[],
+    expanded: boolean,
+    onToggle: () => void
+  ) => {
+    if (users.length === 0) return null;
+
+    return (
+      <View style={{ marginBottom: 16 }}>
+        <TouchableOpacity
+          onPress={onToggle}
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: 12,
+            backgroundColor: '#F9FAFB',
+            borderRadius: 8,
+            marginBottom: 8,
+          }}
+          activeOpacity={0.7}
+        >
+          <Text style={{ fontSize: 16, fontWeight: '600', color: '#111827' }}>
+            {title} ({users.length})
+          </Text>
+          <Ionicons
+            name={expanded ? 'chevron-down' : 'chevron-forward'}
+            size={20}
+            color="#6B7280"
+          />
+        </TouchableOpacity>
+        {expanded && (
+          <FlatList
+            data={users}
+            renderItem={renderUserItem}
+            keyExtractor={(item) => item.userId}
+            scrollEnabled={false}
+          />
+        )}
+      </View>
+    );
+  };
+
   if (!isAdmin) {
     return null;
   }
 
+  if (isLoading) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator size="large" color="#3B82F6" />
+        <Text style={{ marginTop: 12, color: '#6B7280' }}>Loading users...</Text>
+      </View>
+    );
+  }
+
   return (
-    <View className="flex-1 bg-gray-50">
+    <View style={{ flex: 1, backgroundColor: '#F9FAFB' }}>
       {/* Header */}
-      <View className="bg-white px-6 py-4 border-b border-gray-200">
-        <View className="flex-row justify-between items-center">
-          <View>
-            <Text className="text-2xl font-bold text-gray-800">Admin Dashboard</Text>
-            <Text className="text-gray-500">Manage pending approvals</Text>
-          </View>
+      <View style={{ backgroundColor: '#fff', padding: 16, borderBottomWidth: 1, borderBottomColor: '#E5E7EB' }}>
+        <Text style={{ fontSize: 24, fontWeight: 'bold', color: '#111827', marginBottom: 4 }}>
+          Dashboard
+        </Text>
+        <Text style={{ fontSize: 14, color: '#6B7280' }}>Manage all users</Text>
+      </View>
+
+      {/* Search Bar */}
+      <View style={{ padding: 16, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#E5E7EB' }}>
+        <View style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          backgroundColor: '#F3F4F6',
+          borderRadius: 10,
+          paddingHorizontal: 12,
+          paddingVertical: 10,
+        }}>
+          <Ionicons name="search" size={20} color="#6B7280" />
+          <TextInput
+            style={{ flex: 1, marginLeft: 8, fontSize: 15, color: '#111827' }}
+            placeholder="Search by name or mobile number..."
+            placeholderTextColor="#9CA3AF"
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity onPress={() => setSearchQuery('')}>
+              <Ionicons name="close-circle" size={20} color="#9CA3AF" />
+            </TouchableOpacity>
+          )}
         </View>
       </View>
 
-      {/* Stats Section */}
-      <View className="flex-row p-4 justify-between">
-        <View className="bg-white p-4 rounded-xl shadow-sm flex-1 mr-2">
-          <View className="flex-row items-center">
-            <View className="bg-blue-100 p-2 rounded-full mr-2">
-              <Ionicons name="people-outline" size={24} color="#3B82F6" />
-            </View>
-            <Text className="text-gray-600">Pending Users</Text>
-          </View>
-          <Text className="text-2xl font-bold mt-2">{pendingUsers.length}</Text>
-        </View>
-        <View className="bg-white p-4 rounded-xl shadow-sm flex-1 ml-2">
-          <View className="flex-row items-center">
-            <View className="bg-green-100 p-2 rounded-full mr-2">
-              <Ionicons name="checkmark-circle-outline" size={24} color="#10B981" />
-            </View>
-            <Text className="text-gray-600">Selected</Text>
-          </View>
-          <Text className="text-2xl font-bold mt-2">{selectedUsers.size}</Text>
-        </View>
-      </View>
-
-      {/* Main Content */}
+      {/* Users List */}
       <FlatList
-        className="px-4"
-        data={pendingUsers}
-        keyExtractor={(item) => item.userId}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-        }
+        style={{ flex: 1 }}
+        contentContainerStyle={{ padding: 16 }}
+        data={[]}
+        renderItem={() => null}
+        keyExtractor={() => 'dummy'}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         ListHeaderComponent={
-          <View className="flex-row justify-between items-center py-4">
-            <Text className="text-lg font-semibold text-gray-700">
-              Pending Approvals ({pendingUsers.length})
-            </Text>
-            <CustomButton
-              title="Approve Selected"
-              onPress={handleApproveAll}
-              bgVariant="primary"
-              textVariant="primary"
-              disabled={selectedUsers.size === 0}
-            />
-          </View>
+          <>
+            {renderCategory('Master', masterUsers, masterExpanded, () => setMasterExpanded(!masterExpanded))}
+            {renderCategory('Admin', adminUsers, adminExpanded, () => setAdminExpanded(!adminExpanded))}
+            {renderCategory('Sevak', sevakUsers, sevakExpanded, () => setSevakExpanded(!sevakExpanded))}
+          </>
         }
         ListEmptyComponent={
-          <View className="bg-white p-8 rounded-xl shadow-sm border border-gray-100 items-center">
-            <Ionicons name="checkmark-circle-outline" size={48} color="#10B981" />
-            <Text className="text-gray-600 text-center mt-4 text-lg">
-              No pending approvals
-            </Text>
-            <Text className="text-gray-500 text-center mt-2">
-              All users have been approved or there are no new registrations.
+          <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+            <Ionicons name="people-outline" size={48} color="#D1D5DB" />
+            <Text style={{ marginTop: 12, color: '#6B7280', fontSize: 16 }}>
+              {searchQuery ? 'No users found' : 'No users available'}
             </Text>
           </View>
         }
-        renderItem={({ item }) => (
-          <View className="bg-white p-4 rounded-xl mb-3 shadow-sm border border-gray-100">
-            <View className="flex-row items-center">
-              <Checkbox
-                value={selectedUsers.has(item.userId)}
-                onValueChange={() => toggleSelection(item.userId)}
-                className="mr-4"
-              />
-              <View className="flex-1">
-                <View className="flex-row items-center mb-1">
-                  <Ionicons name="person-outline" size={16} color="#6B7280" />
-                  <Text className="text-gray-800 font-semibold ml-2">
-                    {item.fullName || 'Unknown User'}
-                  </Text>
-                </View>
-                <View className="flex-row items-center mb-1">
-                  <Ionicons name="call-outline" size={16} color="#6B7280" />
-                  <Text className="text-gray-600 ml-2">
-                    {item.mobileNumber}
-                  </Text>
-                </View>
-                <View className="flex-row items-center">
-                  <Ionicons name="card-outline" size={16} color="#6B7280" />
-                  <Text className="text-gray-600 ml-2">
-                    ID: {item.userId}
-                  </Text>
-                </View>
-              </View>
-            </View>
-          </View>
-        )}
       />
     </View>
   );

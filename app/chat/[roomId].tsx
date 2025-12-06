@@ -34,9 +34,7 @@ import * as FileSystem from 'expo-file-system';
 import { API_URL } from "@/constants/api";
 import { useFocusEffect } from "@react-navigation/native";
 import socketService from "@/utils/socketService";
-import OnlineUsersIndicator from "@/components/chat/OnlineUsersIndicator";
-import MembersModal from "@/components/chat/MembersModal";
-import MessageStatus from "@/components/chat/MessageStatus";
+import MessageStatus from "@/components/chat/MessageStatus";  
 import GlobalPollModal from "@/components/chat/GlobalPollModal";
 import RenderTable from "@/components/chat/Attechments/RenderTable";
 import MediaViewerModal from "@/components/chat/MediaViewerModal";
@@ -496,33 +494,44 @@ export default function ChatRoomScreen() {
     if (room) {
       // Set header options and hide tabs
       navigation.setOptions({
-        title: room.roomName,
-        tabBarStyle: { display: 'none' }, // Hide tabs
-        headerRight: () =>
-          isGroupAdmin ? ( // Only show room settings icon if user is group admin
-            <TouchableOpacity
-              onPressIn={() => {
-                console.log("Navigating to room settings with roomId:", roomId);
-                router.push({
-                  pathname: "/chat/room-settings",
-                  params: { roomId },
-                });
-              }}
-              className="mr-2"
-            >
-              <Ionicons name="settings-outline" size={24} color="#0284c7" />
-            </TouchableOpacity>
-          ):<></>
+        tabBarStyle: { display: 'none' },
+        headerTitle: () => (
+          <TouchableOpacity 
+            onPress={() => {
+              router.push({
+                pathname: "/chat/room-info",
+                params: { roomId },
+              });
+            }}
+            className="flex-row items-center flex-1"
+          >
+            {/* Group Icon */}
+            <View className="w-10 h-10 bg-blue-100 rounded-full items-center justify-center mr-3">
+              <Ionicons name="people" size={20} color="#3b82f6" />
+            </View>
+            
+            {/* Room Name and Members Info */}
+            <View className="flex-1">
+              <Text className="text-base font-semibold text-gray-900" numberOfLines={1}>
+                {room.roomName}
+              </Text>
+              <Text className="text-xs text-gray-500">
+                {onlineUsers.length}/{roomMembers.length} online
+              </Text>
+            </View>
+          </TouchableOpacity>
+        ),
+        headerRight: () => null,
       });
     } else if (isLoading) {
       // Show connecting state while loading and hide tabs
       navigation.setOptions({
         title: "Connecting...",
-        tabBarStyle: { display: 'none' }, // Hide tabs
-        headerRight: () => <></>
+        tabBarStyle: { display: 'none' },
+        headerRight: () => null
       });
     }
-  }, [room, isGroupAdmin, navigation, isLoading]); // Added isLoading dependency
+  }, [room, onlineUsers.length, roomMembers.length, navigation, isLoading, roomId]);
 
   // Cleanup effect to restore tabs when leaving the room
   useEffect(() => {
@@ -1803,13 +1812,7 @@ export default function ChatRoomScreen() {
             currentUser={currentUser}
             onMessageEdited={handleMessageEdited}
           />
-        ) : (
-          <OnlineUsersIndicator
-            onlineCount={onlineUsers.length}
-            totalCount={roomMembers.length}
-            onPress={() => setShowMembersModal(true)}
-          />
-        )}
+        ):<></>}
 
         {/* Messages list */}
         <FlatList
@@ -1927,7 +1930,7 @@ export default function ChatRoomScreen() {
 
         {/* Message input - Only show for group admins */}
         {isGroupAdmin && (
-          <View className="px-4 py-2 bg-white border-t border-gray-200">
+          <View className="px-4 py-2 bg-white">
             <MessageInput
               messageText={messageText}
               onChangeText={setMessageText}
@@ -1974,19 +1977,6 @@ export default function ChatRoomScreen() {
             </Text>
           </View>
         )}
-
-        {/* Members Modal to show who are currently online in this room */}
-        <MembersModal
-          visible={showMembersModal}
-          onClose={() => setShowMembersModal(false)}
-          members={roomMembers.map((member) => ({
-            userId: member.userId,
-            fullName: member.fullName || "Unknown User",
-            isAdmin: Boolean(member.isAdmin),
-            isOnline: Boolean(member.isOnline),
-          }))}
-          currentUserId={currentUser?.userId || ""}
-        />
 
         {/* Media Viewer Modal */}
         {showMediaViewer && (

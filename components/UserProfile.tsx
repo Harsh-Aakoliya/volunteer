@@ -26,7 +26,7 @@ interface UserProfileProps {
 const UserProfile: React.FC<UserProfileProps> = ({ 
   user, 
   onEdit, 
-  showEditButton = true,
+  showEditButton = false,
   onRefresh,
   isRefreshing = false,
   attendanceData = []
@@ -370,7 +370,7 @@ const UserProfile: React.FC<UserProfileProps> = ({
                   {user?.fullName || 'User Name'}
                 </Text>
                 <Text className="text-white/80 text-sm" numberOfLines={1}>
-                  {user?.isAdmin ? "HOD" : "Sevak"} ({user?.departments?.join(', ') || 'No Department Alloted'})
+                  {user?.role === 'master' ? 'Master' : user?.role === 'admin' ? 'Admin' : 'Sevak'}
                 </Text>
               </View>
             </View>

@@ -312,7 +312,121 @@ const chatController = {
       res.status(500).json({ message: "Server error", error: error.message });
     }
   },
-  // Update the addRoomMembers function in your chatController.js
+  // Add and Remove room members in one operation
+  async updateRoomMembers(req, res) {
+    const client = await pool.connect();
+    
+    try {
+      await client.query('BEGIN');
+      
+      const { roomId } = req.params;
+      const { memberUserIds } = req.body; // Array of userIds who should be members
+      const userId = req.user.userId;
+      
+      const roomIdInt = parseInt(roomId, 10);
+      
+      console.log("Updating room members:", {
+        roomId: roomIdInt,
+        memberUserIds,
+        requestingUser: userId
+      });
+
+      // Check if user is an admin of this room
+      const adminCheck = await client.query(
+        `SELECT * FROM chatroomusers 
+        WHERE "roomId" = $1 AND "userId" = $2 AND "isAdmin" = TRUE`,
+        [roomIdInt, userId]
+      );
+
+      if (adminCheck.rows.length === 0) {
+        return res.status(403).json({ 
+          message: "Only group admins can manage room members" 
+        });
+      }
+
+      // Get current members
+      const currentMembersResult = await client.query(
+        `SELECT "userId", "isAdmin" FROM chatroomusers WHERE "roomId" = $1`,
+        [roomIdInt]
+      );
+
+      const currentMemberIds = currentMembersResult.rows.map(row => row.userId);
+      const currentAdmins = currentMembersResult.rows.filter(row => row.isAdmin).map(row => row.userId);
+
+      // Ensure requesting admin cannot remove themselves
+      if (!memberUserIds.includes(userId)) {
+        return res.status(400).json({
+          message: "You cannot remove yourself from the room"
+        });
+      }
+
+      // Ensure all admins remain in the room
+      const missingAdmins = currentAdmins.filter(adminId => !memberUserIds.includes(adminId));
+      if (missingAdmins.length > 0) {
+        return res.status(400).json({
+          message: "Cannot remove admin users. Please demote them first or use the leave room option."
+        });
+      }
+
+      // Check if all new userIds exist
+      const userCheckResult = await client.query(
+        `SELECT "user_id" FROM "users" WHERE "user_id"::text = ANY($1)`,
+        [memberUserIds]
+      );
+
+      const foundUserIds = userCheckResult.rows.map(row => row.user_id.toString());
+      const missingUserIds = memberUserIds.filter(id => !foundUserIds.includes(id.toString()));
+
+      if (missingUserIds.length > 0) {
+        return res.status(400).json({
+          message: `Some user IDs do not exist: ${missingUserIds.join(', ')}`
+        });
+      }
+
+      // Determine who to add and who to remove
+      const toAdd = memberUserIds.filter(id => !currentMemberIds.includes(id.toString()));
+      const toRemove = currentMemberIds.filter(id => !memberUserIds.includes(id.toString()));
+
+      console.log("Members to add:", toAdd);
+      console.log("Members to remove:", toRemove);
+
+      // Add new members
+      for (const memberId of toAdd) {
+        await client.query(
+          `INSERT INTO chatroomusers ("roomId", "userId", "isAdmin", "canSendMessage")
+          VALUES ($1, $2, FALSE, FALSE)`,
+          [roomIdInt, memberId.toString()]
+        );
+      }
+
+      // Remove members
+      for (const memberId of toRemove) {
+        await client.query(
+          `DELETE FROM chatroomusers 
+          WHERE "roomId" = $1 AND "userId" = $2`,
+          [roomIdInt, memberId]
+        );
+      }
+
+      await client.query('COMMIT');
+
+      res.json({
+        success: true,
+        message: "Room members updated successfully",
+        added: toAdd,
+        removed: toRemove
+      });
+
+    } catch (error) {
+      await client.query('ROLLBACK');
+      console.error('Error updating room members:', error);
+      res.status(500).json({ message: "Server error", error: error.message });
+    } finally {
+      client.release();
+    }
+  },
+
+  // Legacy: Add members only (kept for backward compatibility)
   async addRoomMembers(req, res) {
     const client = await pool.connect();
     
@@ -607,16 +721,16 @@ const chatController = {
       // Convert roomId to integer
       const roomIdInt = parseInt(roomId, 10);
 
-      // Check if user is the creator of this room
-      const creatorCheck = await client.query(
-        `SELECT 1 FROM chatrooms 
-        WHERE "roomId" = $1 AND "createdBy" = $2`,
+      // Check if user is a group admin of this room
+      const adminCheck = await client.query(
+        `SELECT 1 FROM chatroomusers 
+        WHERE "roomId" = $1 AND "userId" = $2 AND "isAdmin" = TRUE`,
         [roomIdInt, userId]
       );
 
-      if (creatorCheck.rows.length === 0) {
+      if (adminCheck.rows.length === 0) {
         return res.status(403).json({ 
-          message: "Only the room creator can delete this room" 
+          message: "Only group admins can delete this room" 
         });
       }
 
@@ -1723,6 +1837,217 @@ const chatController = {
       res.status(500).json({ message: "Server error", error: error.message });
     }
   },
+  // Assign/Remove Group Admins
+  async updateGroupAdmins(req, res) {
+    const client = await pool.connect();
+    
+    try {
+      await client.query('BEGIN');
+      
+      const { roomId } = req.params;
+      const { adminUserIds } = req.body; // Array of userIds who should be admins
+      const userId = req.user.userId;
+      
+      const roomIdInt = parseInt(roomId, 10);
+      
+      console.log('Updating group admins:', { roomId: roomIdInt, adminUserIds, requestingUser: userId });
+
+      // Check if requesting user is an admin of this room
+      const adminCheck = await client.query(
+        `SELECT 1 FROM chatroomusers 
+        WHERE "roomId" = $1 AND "userId" = $2 AND "isAdmin" = TRUE`,
+        [roomIdInt, userId]
+      );
+
+      if (adminCheck.rows.length === 0) {
+        return res.status(403).json({ 
+          message: "Only group admins can manage admin roles" 
+        });
+      }
+
+      // Get all current members
+      const membersResult = await client.query(
+        `SELECT "userId", "isAdmin" FROM chatroomusers WHERE "roomId" = $1`,
+        [roomIdInt]
+      );
+
+      const currentMembers = membersResult.rows;
+
+      // Ensure at least one admin is selected
+      if (!adminUserIds || adminUserIds.length === 0) {
+        return res.status(400).json({
+          message: "Room must have at least one admin"
+        });
+      }
+
+      // Update admin status for all members
+      for (const member of currentMembers) {
+        const shouldBeAdmin = adminUserIds.includes(member.userId);
+        
+        if (member.isAdmin !== shouldBeAdmin) {
+          await client.query(
+            `UPDATE chatroomusers 
+            SET "isAdmin" = $1, "canSendMessage" = $2
+            WHERE "roomId" = $3 AND "userId" = $4`,
+            [shouldBeAdmin, shouldBeAdmin, roomIdInt, member.userId]
+          );
+        }
+      }
+
+      await client.query('COMMIT');
+
+      res.json({
+        success: true,
+        message: "Group admins updated successfully"
+      });
+
+    } catch (error) {
+      await client.query('ROLLBACK');
+      console.error('Error updating group admins:', error);
+      res.status(500).json({ message: "Server error", error: error.message });
+    } finally {
+      client.release();
+    }
+  },
+
+  // Update messaging permissions for members
+  async updateMessagingPermissions(req, res) {
+    const client = await pool.connect();
+    
+    try {
+      await client.query('BEGIN');
+      
+      const { roomId } = req.params;
+      const { allowedUserIds } = req.body; // Array of userIds who can send messages
+      const userId = req.user.userId;
+      
+      const roomIdInt = parseInt(roomId, 10);
+      
+      console.log('Updating messaging permissions:', { roomId: roomIdInt, allowedUserIds, requestingUser: userId });
+
+      // Check if requesting user is an admin of this room
+      const adminCheck = await client.query(
+        `SELECT 1 FROM chatroomusers 
+        WHERE "roomId" = $1 AND "userId" = $2 AND "isAdmin" = TRUE`,
+        [roomIdInt, userId]
+      );
+
+      if (adminCheck.rows.length === 0) {
+        return res.status(403).json({ 
+          message: "Only group admins can manage messaging permissions" 
+        });
+      }
+
+      // Get all current members
+      const membersResult = await client.query(
+        `SELECT "userId", "isAdmin" FROM chatroomusers WHERE "roomId" = $1`,
+        [roomIdInt]
+      );
+
+      const currentMembers = membersResult.rows;
+
+      // Update messaging permissions for all non-admin members
+      for (const member of currentMembers) {
+        // Admins always have messaging permission
+        if (member.isAdmin) {
+          continue;
+        }
+        
+        const canSendMessage = allowedUserIds.includes(member.userId);
+        
+        await client.query(
+          `UPDATE chatroomusers 
+          SET "canSendMessage" = $1
+          WHERE "roomId" = $2 AND "userId" = $3`,
+          [canSendMessage, roomIdInt, member.userId]
+        );
+      }
+
+      await client.query('COMMIT');
+
+      res.json({
+        success: true,
+        message: "Messaging permissions updated successfully"
+      });
+
+    } catch (error) {
+      await client.query('ROLLBACK');
+      console.error('Error updating messaging permissions:', error);
+      res.status(500).json({ message: "Server error", error: error.message });
+    } finally {
+      client.release();
+    }
+  },
+
+  // Leave room (user removes themselves)
+  async leaveRoom(req, res) {
+    const client = await pool.connect();
+    
+    try {
+      await client.query('BEGIN');
+      
+      const { roomId } = req.params;
+      const userId = req.user.userId;
+      
+      const roomIdInt = parseInt(roomId, 10);
+      
+      console.log('User leaving room:', { roomId: roomIdInt, userId });
+
+      // Check if user is a member
+      const memberCheck = await client.query(
+        `SELECT "isAdmin" FROM chatroomusers 
+        WHERE "roomId" = $1 AND "userId" = $2`,
+        [roomIdInt, userId]
+      );
+
+      if (memberCheck.rows.length === 0) {
+        return res.status(404).json({ 
+          message: "You are not a member of this room" 
+        });
+      }
+
+      const isUserAdmin = memberCheck.rows[0].isAdmin;
+
+      // If user is admin, check if there are other admins
+      if (isUserAdmin) {
+        const adminsResult = await client.query(
+          `SELECT COUNT(*) as "adminCount" FROM chatroomusers 
+          WHERE "roomId" = $1 AND "isAdmin" = TRUE`,
+          [roomIdInt]
+        );
+
+        const adminCount = parseInt(adminsResult.rows[0].adminCount);
+
+        if (adminCount <= 1) {
+          return res.status(400).json({
+            message: "Cannot leave room. You are the only admin. Please assign another admin first or delete the room."
+          });
+        }
+      }
+
+      // Remove user from room
+      await client.query(
+        `DELETE FROM chatroomusers 
+        WHERE "roomId" = $1 AND "userId" = $2`,
+        [roomIdInt, userId]
+      );
+
+      await client.query('COMMIT');
+
+      res.json({
+        success: true,
+        message: "Successfully left the room"
+      });
+
+    } catch (error) {
+      await client.query('ROLLBACK');
+      console.error('Error leaving room:', error);
+      res.status(500).json({ message: "Server error", error: error.message });
+    } finally {
+      client.release();
+    }
+  },
+
   // Get new messages after a timestamp (for sync)
   async getNewMessages(req, res) {
     try {
