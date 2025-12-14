@@ -18,7 +18,7 @@ import { API_URL, setApiUrl, updateDevIP } from "@/constants/api";
 import useNetworkStatus from '@/hooks/userNetworkStatus';
 import socketService from '@/utils/socketService';
 import * as React from 'react';
-const DEV_IP = "http://10.63.20.242:8080";
+const DEV_IP = "http://10.152.91.242:8080";
 const INTERNAL_IP = "http://192.168.2.134:3000";
 const EXTERNAL_IP = "http://103.47.172.58:50160";
 

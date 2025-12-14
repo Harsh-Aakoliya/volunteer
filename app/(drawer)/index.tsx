@@ -17,7 +17,6 @@ import { AuthStorage } from "@/utils/authStorage";
 import { ChatRoom } from "@/types/type";
 import { useFocusEffect } from "@react-navigation/native";
 import socketService from "@/utils/socketService";
-import { formatDistanceToNow } from "date-fns";
 import eventEmitter from "@/utils/eventEmitter";
 import { getRelativeTimeIST, formatISTTime } from "@/utils/dateUtils";
 import { LinearGradient } from "expo-linear-gradient";
@@ -159,10 +158,8 @@ export default function ChatRooms() {
 
         // Set up lastMessage listener
         socket.on("lastMessage", (data: LastMessageResponse) => {
-          console.log("📨 Received lastMessage event:", data);
 
           if (data && data.lastMessageByRoom) {
-            console.log("📋 Updating last messages:", Object.keys(data.lastMessageByRoom));
 
             // Update lastMessages state
             setLastMessages(prevMessages => ({
@@ -177,13 +174,11 @@ export default function ChatRooms() {
                 return prevRooms;
               }
 
-              console.log("🔄 Updating chat rooms with last messages");
               const updatedRooms = updateRoomsWithData(prevRooms, {
                 ...lastMessages,
                 ...data.lastMessageByRoom
               }, unreadCounts);
               const sortedRooms = sortRoomsByRecent(updatedRooms);
-              console.log("✅ Updated rooms count:", sortedRooms.length);
               return sortedRooms;
             });
           }
@@ -191,7 +186,6 @@ export default function ChatRooms() {
 
         // Set up unreadCounts listener
         socket.on("unreadCounts", (data: UnreadCountsEvent) => {
-          console.log("📊 Received unreadCounts event:", data);
 
           if (data && data.unreadCounts) {
             // Update unreadCounts state
@@ -217,7 +211,6 @@ export default function ChatRooms() {
 
         // Set up roomUpdate listener for real-time updates
         socket.on("roomUpdate", (data: RoomUpdateEvent) => {
-          console.log("🔄 Received roomUpdate event:", data);
 
           if (data && data.roomId) {
             const roomIdStr = data.roomId.toString();
@@ -252,7 +245,6 @@ export default function ChatRooms() {
 
         // Listen for online users updates - update online count in real-time
         socket.on("onlineUsers", (data: { roomId: string; onlineUsers: string[]; onlineCount: number; totalMembers: number }) => {
-          console.log("👥 Received onlineUsers event for room:", data.roomId, "Online:", data.onlineCount);
 
           if (data && data.roomId) {
             const roomIdStr = data.roomId.toString();
@@ -261,7 +253,6 @@ export default function ChatRooms() {
             setChatRooms(prevRooms => {
               return prevRooms.map(room => {
                 if (room.roomId?.toString() === roomIdStr) {
-                  console.log(`🔄 Updating online count for ${room.roomName}: ${room.onlineCount} -> ${data.onlineCount}`);
                   return {
                     ...room,
                     onlineCount: data.onlineCount
@@ -289,11 +280,9 @@ export default function ChatRooms() {
   // Load chat rooms and apply last messages
   const loadChatRooms = useCallback(async () => {
     try {
-      console.log("📥 Loading chat rooms...");
       setIsLoading(true);
 
       const rooms = await fetchChatRooms();
-      console.log("📋 Fetched rooms:", rooms.length);
 
       const extendedRooms: ExtendedChatRoom[] = rooms.map((room) => ({
         ...room,
@@ -308,7 +297,6 @@ export default function ChatRooms() {
 
       setChatRooms(sortedRooms);
       setFilteredChatRooms(sortedRooms);
-      console.log("✅ Chat rooms loaded and sorted");
 
       // Check admin status
       const userData = await AuthStorage.getUser();
@@ -344,10 +332,8 @@ export default function ChatRooms() {
       const roomExists = chatRooms.some(room => room.roomId?.toString() === roomId);
 
       if (roomExists) {
-        console.log('✅ Room found in list, navigating to:', roomId);
         router.push(`/chat/${roomId}`);
       } else {
-        console.log('🔄 Room not found in list, refreshing rooms and then navigating...');
         // Refresh rooms first, then navigate
         loadChatRooms().then(() => {
           setTimeout(() => {
@@ -376,7 +362,6 @@ export default function ChatRooms() {
       setAppState(nextAppState);
 
       if (appState.match(/inactive|background/) && nextAppState === "active") {
-        console.log("📱 App came to foreground, refreshing...");
         loadChatRooms();
         initializeSocket();
       }
@@ -390,7 +375,6 @@ export default function ChatRooms() {
   // Main focus effect - runs when component comes into focus
   useFocusEffect(
     useCallback(() => {
-      console.log("🎯 Chat routes focused");
 
       // Load rooms first
       loadChatRooms();
@@ -411,7 +395,6 @@ export default function ChatRooms() {
       const notifyTimer = setTimeout(notifyChatTabEntry, 1500);
 
       return () => {
-        console.log("🧹 Chat routes unfocused, cleaning up");
         clearTimeout(socketTimer);
         clearTimeout(notifyTimer);
 
