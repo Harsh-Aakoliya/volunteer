@@ -1,5 +1,5 @@
 // app/chat/index.tsx - Fixed version
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import {
   View,
   Text,
@@ -7,8 +7,8 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
-  AppState,
   TextInput,
+  AppState,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useNavigation, usePathname } from "expo-router";
@@ -20,6 +20,7 @@ import socketService from "@/utils/socketService";
 import eventEmitter from "@/utils/eventEmitter";
 import { getRelativeTimeIST, formatISTTime } from "@/utils/dateUtils";
 import { LinearGradient } from "expo-linear-gradient";
+import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 
 import { DrawerActions } from "@react-navigation/native";
 interface LastMessageResponse {
@@ -75,11 +76,13 @@ export default function ChatRooms() {
   const [isAdmin,setIsAdmin] = useState(false);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [refreshing, setRefreshing] = useState(false);
-  const [appState, setAppState] = useState(AppState.currentState);
   const [lastMessages, setLastMessages] = useState<{ [key: string]: LastMessageData }>({});
   const [unreadCounts, setUnreadCounts] = useState<{ [key: string]: number }>({});
+  const [appState, setAppState] = useState(AppState.currentState);
   const pathname = usePathname();
   const navigation = useNavigation();
+  const { setUserOnline } = useOnlineStatus();
+  const hasSetOnline = useRef(false);
   // Search functionality
   const handleSearch = (query: string) => {
     setSearchQuery(query);
@@ -150,24 +153,42 @@ export default function ChatRooms() {
         console.log("✅ Socket connected, identifying user:", userData.userId);
         socketService.identify(userData.userId);
 
+        // ✅ Set user as globally online after identifying
+        if (!hasSetOnline.current) {
+          console.log("🟢 Setting user online globally:", userData.userId);
+          socketService.setUserOnline(userData.userId);
+          hasSetOnline.current = true;
+        }
+
         // Clear existing listeners to prevent duplicates
         socket.off("lastMessage");
         socket.off("unreadCounts");
         socket.off("roomUpdate");
         socket.off("onlineUsers");
+        socket.off("userOnlineStatusUpdate");
+
+        // Listen for user online status updates
+        socket.on("userOnlineStatusUpdate", (data: { userId: string; isOnline: boolean }) => {
+          console.log("👤 User online status update:", data);
+          
+          // Update chat rooms with new online status
+          setChatRooms(prevRooms => {
+            return prevRooms.map(room => {
+              // The onlineCount will be updated via the onlineUsers event
+              // This is just for immediate UI feedback if needed
+              return room;
+            });
+          });
+        });
 
         // Set up lastMessage listener
         socket.on("lastMessage", (data: LastMessageResponse) => {
-
           if (data && data.lastMessageByRoom) {
-
-            // Update lastMessages state
             setLastMessages(prevMessages => ({
               ...prevMessages,
               ...data.lastMessageByRoom
             }));
 
-            // Update chat rooms with new last messages
             setChatRooms(prevRooms => {
               if (prevRooms.length === 0) {
                 console.log("⚠️ No rooms to update yet");
@@ -186,15 +207,12 @@ export default function ChatRooms() {
 
         // Set up unreadCounts listener
         socket.on("unreadCounts", (data: UnreadCountsEvent) => {
-
           if (data && data.unreadCounts) {
-            // Update unreadCounts state
             setUnreadCounts(prevCounts => ({
               ...prevCounts,
               ...data.unreadCounts
             }));
 
-            // Update chat rooms with new unread counts
             setChatRooms(prevRooms => {
               if (prevRooms.length === 0) {
                 return prevRooms;
@@ -211,11 +229,9 @@ export default function ChatRooms() {
 
         // Set up roomUpdate listener for real-time updates
         socket.on("roomUpdate", (data: RoomUpdateEvent) => {
-
           if (data && data.roomId) {
             const roomIdStr = data.roomId.toString();
 
-            // Update both last messages and unread counts
             setLastMessages(prevMessages => ({
               ...prevMessages,
               [roomIdStr]: data.lastMessage
@@ -226,7 +242,6 @@ export default function ChatRooms() {
               [roomIdStr]: data.unreadCount
             }));
 
-            // Update chat rooms
             setChatRooms(prevRooms => {
               const updatedRooms = prevRooms.map(room => {
                 if (room.roomId?.toString() === roomIdStr) {
@@ -245,13 +260,11 @@ export default function ChatRooms() {
 
         // Listen for online users updates - update online count in real-time
         socket.on("onlineUsers", (data: { roomId: string; onlineUsers: string[]; onlineCount: number; totalMembers: number }) => {
-
           if (data && data.roomId) {
             const roomIdStr = data.roomId.toString();
 
-            // Update the onlineCount for this room immediately
             setChatRooms(prevRooms => {
-              return prevRooms.map(room => {
+              const updatedRooms = prevRooms.map(room => {
                 if (room.roomId?.toString() === roomIdStr) {
                   return {
                     ...room,
@@ -260,6 +273,17 @@ export default function ChatRooms() {
                 }
                 return room;
               });
+
+              if (searchQuery.trim() === '') {
+                setFilteredChatRooms(updatedRooms);
+              } else {
+                const filtered = updatedRooms.filter(room =>
+                  room.roomName?.toLowerCase().includes(searchQuery.toLowerCase())
+                );
+                setFilteredChatRooms(filtered);
+              }
+
+              return updatedRooms;
             });
           }
         });
@@ -275,8 +299,9 @@ export default function ChatRooms() {
     } catch (error) {
       console.error("❌ Error initializing socket:", error);
     }
-  }, [lastMessages, unreadCounts]);
+  }, [lastMessages, unreadCounts, searchQuery]);
 
+  
   // Load chat rooms and apply last messages
   const loadChatRooms = useCallback(async () => {
     try {
@@ -358,19 +383,43 @@ export default function ChatRooms() {
 
   // Handle app state changes
   useEffect(() => {
-    const subscription = AppState.addEventListener("change", (nextAppState) => {
-      setAppState(nextAppState);
-
+    const subscription = AppState.addEventListener("change", async (nextAppState) => {
+      const userData = await AuthStorage.getUser();
+      
       if (appState.match(/inactive|background/) && nextAppState === "active") {
+        console.log("📱 App came to foreground");
         loadChatRooms();
         initializeSocket();
+        
+        // Set user online when app comes to foreground
+        if (userData && socketService.isConnected()) {
+          console.log("🟢 Setting user online (foreground):", userData.userId);
+          socketService.setUserOnline(userData.userId);
+        }
+      } else if (appState === "active" && nextAppState.match(/inactive|background/)) {
+        // App went to background - set user offline
+        console.log("📱 App went to background");
+        if (userData && socketService.isConnected()) {
+          console.log("🔴 Setting user offline (background):", userData.userId);
+          socketService.setUserOffline(userData.userId);
+        }
       }
+      
+      setAppState(nextAppState);
     });
 
     return () => {
       subscription.remove();
     };
-  }, [appState, currentUser, loadChatRooms, initializeSocket]);
+  }, [appState, loadChatRooms, initializeSocket]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      // Don't set offline on unmount - only on app background
+      hasSetOnline.current = false;
+    };
+  }, []);
 
   // Main focus effect - runs when component comes into focus
   useFocusEffect(
@@ -389,6 +438,8 @@ export default function ChatRooms() {
         const userData = await AuthStorage.getUser();
         if (userData && socketService.socket?.connected) {
           socketService.enterChatTab(userData.userId);
+          // Ensure user is marked as online
+          await setUserOnline(userData.userId);
         }
       };
 
@@ -412,6 +463,7 @@ export default function ChatRooms() {
           socketService.socket.off("lastMessage");
           socketService.socket.off("unreadCounts");
           socketService.socket.off("roomUpdate");
+          socketService.socket.off("userOnlineStatusUpdate");
         }
       };
     }, []) // Empty dependency array is intentional

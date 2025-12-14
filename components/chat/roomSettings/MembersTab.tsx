@@ -47,9 +47,14 @@ export default function MembersTab({ members: initialMembers, roomId }: MembersT
       }
     };
 
-    // Subscribe to online status updates
-    socketService.onUserOnlineStatusUpdate(handleOnlineStatusUpdate);
-    socketService.onRoomMembers(handleRoomMembers);
+    // Subscribe to online status updates using the proper method
+    if (socketService.socket) {
+      socketService.socket.off("userOnlineStatusUpdate", handleOnlineStatusUpdate);
+      socketService.socket.off("roomMembers", handleRoomMembers);
+
+      socketService.socket.on("userOnlineStatusUpdate", handleOnlineStatusUpdate);
+      socketService.socket.on("roomMembers", handleRoomMembers);
+    }
 
     return () => {
       // Cleanup listeners when component unmounts

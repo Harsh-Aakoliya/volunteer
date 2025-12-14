@@ -36,24 +36,23 @@
 
 // app/_layout.tsx
 import { Stack } from 'expo-router';
-import { useEffect, useState, useRef } from 'react';
-import { Text, ToastAndroid, View, AppState, AppStateStatus } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Text, ToastAndroid, View } from 'react-native';
 import * as FileSystem from 'expo-file-system';
 import * as React from 'react';
 
-import { AuthStorage } from '@/utils/authStorage';
 import "../global.css";
 import { initializeNotifications } from '@/utils/notificationSetup';
 import { requestChatNotificationPermissions } from '@/utils/chatNotificationHandler';
 import useNetworkStatus from '@/hooks/userNetworkStatus';
 import OfflinePopup from '@/components/OfflinePopup';
-import socketService from '@/utils/socketService';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 
 export default function RootLayout() {
   const [isReady, setIsReady] = useState(true);
   const isConnected = useNetworkStatus();
-  const appState = useRef<AppStateStatus>(AppState.currentState);
+  const { initializeOnlineStatus } = useOnlineStatus();
 
   useEffect(() => {
     const bootstrap = async () => {
@@ -77,8 +76,8 @@ export default function RootLayout() {
         await initializeNotifications();
         await requestChatNotificationPermissions();
 
-        // ✅ STEP 3: Any other app bootstrap logic (if needed)
-        // e.g., await AuthStorage.loadUser(), load settings, etc.
+        // ✅ STEP 3: Initialize online status if user is already logged in
+        await initializeOnlineStatus();
 
       } catch (error) {
         console.error('Bootstrap error:', error);
@@ -88,57 +87,6 @@ export default function RootLayout() {
     };
 
     bootstrap();
-  }, []);
-
-  // Track app state for global online/offline status
-  useEffect(() => {
-    const subscription = AppState.addEventListener('change', async (nextAppState) => {
-      console.log('📱 AppState changed:', appState.current, '->', nextAppState);
-
-      // App coming to foreground (from background or inactive)
-      if (appState.current.match(/inactive|background/) && nextAppState === 'active') {
-        console.log('✅ App came to foreground');
-        
-        // Check if user is logged in
-        const userData = await AuthStorage.getUser();
-        if (userData && userData.userId) {
-          console.log('👤 User is logged in, setting online status');
-          
-          // Connect socket if not connected
-          if (!socketService.socket?.connected) {
-            socketService.connect();
-          }
-          
-          // Set user as online globally
-          if (socketService.socket?.connected) {
-            socketService.identify(userData.userId);
-            socketService.setUserOnline(userData.userId);
-          }
-        }
-      }
-
-      // App going to background or inactive
-      if (appState.current === 'active' && nextAppState.match(/inactive|background/)) {
-        console.log('❌ App going to background');
-        
-        // Check if user is logged in
-        const userData = await AuthStorage.getUser();
-        if (userData && userData.userId) {
-          console.log('👤 User was logged in, setting offline status');
-          
-          // Set user as offline globally
-          if (socketService.socket?.connected) {
-            socketService.setUserOffline(userData.userId);
-          }
-        }
-      }
-
-      appState.current = nextAppState;
-    });
-
-    return () => {
-      subscription.remove();
-    };
   }, []);
 
   if (!isReady) {
@@ -153,8 +101,7 @@ export default function RootLayout() {
 
   return (
     <>
-        <GestureHandlerRootView style={{ flex: 1 }}>
-
+      <GestureHandlerRootView style={{ flex: 1 }}>
       <Stack screenOptions={{ headerShown: false, statusBarStyle: "light", statusBarBackgroundColor: "#3b82f6"}} />
       <OfflinePopup isVisible={!isConnected} />
       </GestureHandlerRootView>

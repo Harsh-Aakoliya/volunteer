@@ -244,5 +244,7 @@ export const useChatRoom = ({ roomId }: UseChatRoomOptions) => {
     removeTempMessages,
     setMessages,
     setMessagesSet,
+    setRoomMembers,
+    setOnlineUsers,
   };
 };

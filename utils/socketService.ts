@@ -364,11 +364,42 @@ class SocketService {
     }
   }
 
-  // Listen for global user online status updates
   onUserOnlineStatusUpdate(callback: (data: { userId: string; isOnline: boolean }) => void): void {
     if (this.socket) {
+      // Remove existing listener to prevent duplicates
+      this.socket.off("userOnlineStatusUpdate");
       this.socket.on("userOnlineStatusUpdate", callback);
     }
+  }
+
+  // Auto-connect and set online (call this on app startup)
+  async connectAndSetOnline(userId: string): Promise<Socket | null> {
+    const socket = this.connect();
+    if (socket) {
+      // Wait for connection to be established
+      return new Promise((resolve) => {
+        if (socket.connected) {
+          this.identify(userId);
+          this.setUserOnline(userId);
+          resolve(socket);
+        } else {
+          socket.once("connect", () => {
+            this.identify(userId);
+            this.setUserOnline(userId);
+            resolve(socket);
+          });
+
+          // Timeout after 5 seconds
+          setTimeout(() => {
+            if (!socket.connected) {
+              console.error("❌ Socket connection timeout");
+              resolve(null);
+            }
+          }, 5000);
+        }
+      });
+    }
+    return null;
   }
 
   // Remove event listeners
@@ -383,6 +414,52 @@ class SocketService {
       this.socket.off("messagesDeleted");
       this.socket.off("messageEdited");
       this.socket.off("userOnlineStatusUpdate");
+    }
+  }
+
+  // Wait until socket is connected or timeout
+  async waitForConnection(timeout: number = 5000): Promise<boolean> {
+    if (this.socket?.connected) {
+      return true;
+    }
+
+    return new Promise((resolve) => {
+      const startTime = Date.now();
+
+      const checkConnection = () => {
+        if (this.socket?.connected) {
+          resolve(true);
+        } else if (Date.now() - startTime >= timeout) {
+          resolve(false);
+        } else {
+          setTimeout(checkConnection, 100);
+        }
+      };
+
+      checkConnection();
+    });
+  }
+
+  // Safely ensure user is marked online
+  async setUserOnlineSafe(userId: string): Promise<boolean> {
+    try {
+      if (!this.socket?.connected) {
+        this.connect();
+      }
+
+      const connected = await this.waitForConnection(5000);
+      if (!connected) {
+        console.error("❌ Could not connect to set user online");
+        return false;
+      }
+
+      this.identify(userId);
+      this.setUserOnline(userId);
+      console.log("✅ User set online successfully:", userId);
+      return true;
+    } catch (error) {
+      console.error("❌ Error setting user online:", error);
+      return false;
     }
   }
 

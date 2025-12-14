@@ -20,6 +20,7 @@ import { useChatRoom } from '@/hooks/chat/useChatRoom';
 import { useMessageHandlers } from '@/hooks/chat/useMessageHandlers';
 import { useMessageSelection } from '@/hooks/chat/useMessageSelection';
 import { useScrollBehavior } from '@/hooks/chat/useScrollBehavior';
+import socketService from '@/utils/socketService';
 
 // Components
 import MessagesList from '@/components/chat/MessagesList';
@@ -56,6 +57,8 @@ export default function ChatRoomScreen() {
     removeTempMessages,
     setMessages,
     setMessagesSet,
+    setRoomMembers,
+    setOnlineUsers,
   } = useChatRoom({ roomId: roomId! });
 
   // Reply state
@@ -238,6 +241,29 @@ export default function ChatRoomScreen() {
       }, 100);
     }
   }, [isNearBottom, messages.length]);
+
+  // Listen for user online status updates
+  useEffect(() => {
+    const handleUserStatus = (data: { userId: string; isOnline: boolean }) => {
+      setRoomMembers(prevMembers =>
+        prevMembers.map(member =>
+          member.userId === data.userId ? { ...member, isOnline: data.isOnline } : member
+        )
+      );
+
+      if (data.isOnline) {
+        setOnlineUsers(prev => (prev.includes(data.userId) ? prev : [...prev, data.userId]));
+      } else {
+        setOnlineUsers(prev => prev.filter(id => id !== data.userId));
+      }
+    };
+
+    socketService.socket?.on("userOnlineStatusUpdate", handleUserStatus);
+
+    return () => {
+      socketService.socket?.off("userOnlineStatusUpdate", handleUserStatus);
+    };
+  }, [setRoomMembers, setOnlineUsers]);
 
   // Loading state
   if (isLoading) {

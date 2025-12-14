@@ -16,7 +16,6 @@ import CustomInput from '@/components/ui/CustomInput';
 import CustomButton from '@/components/ui/CustomButton';
 import { API_URL, setApiUrl, updateDevIP } from "@/constants/api";
 import useNetworkStatus from '@/hooks/userNetworkStatus';
-import socketService from '@/utils/socketService';
 import * as React from 'react';
 const DEV_IP = "http://10.152.91.242:8080";
 const INTERNAL_IP = "http://192.168.2.134:3000";
@@ -219,24 +218,7 @@ export default function Index() {
       console.log("Token:", token);
       if (token) {
         console.log("Redirecting to chat");
-        
-        // Get user data and set as online if logged in
-        const userData = await AuthStorage.getUser();
-        if (userData && userData.userId) {
-          // Connect socket if not connected
-          if (!socketService.socket?.connected) {
-            socketService.connect();
-          }
-          
-          // Set user as online globally
-          setTimeout(() => {
-            if (socketService.socket?.connected) {
-              socketService.identify(userData.userId);
-              socketService.setUserOnline(userData.userId);
-            }
-          }, 1000);
-        }
-        
+        // Online status is handled by _layout.tsx via useOnlineStatus hook
         router.replace("/(drawer)");
       } else {
         console.log("Redirecting to login");
