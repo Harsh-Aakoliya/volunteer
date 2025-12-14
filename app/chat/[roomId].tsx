@@ -151,8 +151,18 @@ export default function ChatRoomScreen() {
         tabBarStyle: { display: 'none' },
         headerTitle: () => (
           <TouchableOpacity
-            onPress={() => router.push({ pathname: '/chat/room-info', params: { roomId } })}
-            className="flex-row items-center flex-1"
+          onPress={() => router.push({ 
+            pathname: '/chat/room-info', 
+            params: { 
+              roomId,
+              roomName: room.roomName,
+              roomDescription: room.roomDescription || '',
+              membersData: JSON.stringify(roomMembers),
+              onlineUsersData: JSON.stringify(onlineUsers),
+              isGroupAdmin: isGroupAdmin ? 'true' : 'false',
+            } 
+          })}
+          className="flex-row items-center flex-1"
           >
             <View className="w-10 h-10 bg-blue-100 rounded-full items-center justify-center mr-3">
               <Ionicons name="people" size={20} color="#3b82f6" />

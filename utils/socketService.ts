@@ -417,6 +417,12 @@ class SocketService {
     }
   }
 
+  getRoomOnlineUsers(roomId: string) {
+    if (this.socket?.connected) {
+      this.socket.emit('getRoomOnlineUsers', { roomId });
+    }
+  }
+
   // Wait until socket is connected or timeout
   async waitForConnection(timeout: number = 5000): Promise<boolean> {
     if (this.socket?.connected) {

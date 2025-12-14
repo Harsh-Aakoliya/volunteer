@@ -441,6 +441,15 @@ const setupSocketIO = (io, app) => {
       }
     });
 
+    socket.on('getRoomOnlineUsers', async ({ roomId }) => {
+      try {
+        const onlineUsers = await getOnlineUsersForRoom(roomId);
+        socket.emit('roomOnlineUsers', { roomId, onlineUsers });
+      } catch (error) {
+        console.error('Error getting room online users:', error);
+      }
+    });
+
     // Handle sending messages
     socket.on("sendMessage", async ({ roomId, message, sender }) => {
       try {

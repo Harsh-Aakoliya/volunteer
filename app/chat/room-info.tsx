@@ -1,5 +1,5 @@
 // app/chat/room-info.tsx
-import React, { useState, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -21,6 +21,7 @@ import MediaTab from '@/components/chat/roomSettings/MediaTab';
 import PollTab from '@/components/chat/roomSettings/PollTab';
 import TableTab from '@/components/chat/roomSettings/TableTab';
 import RoomSettingsMenu from '@/components/chat/roomSettings/RoomSettingsMenu';
+import socketService from '@/utils/socketService';
 
 // Bottom Sheet imports
 import BottomSheet, {
@@ -28,21 +29,74 @@ import BottomSheet, {
   BottomSheetBackdrop,
 } from '@gorhom/bottom-sheet';
 
+interface Member {
+  userId: string;
+  fullName: string | null;
+  isAdmin: boolean;
+  isOnline: boolean;
+}
+
 export default function RoomInfo() {
   const layout = useWindowDimensions();
-  const { roomId } = useLocalSearchParams();
+  const { 
+    roomId, 
+    roomName: initialRoomName,
+    roomDescription: initialDescription,
+    membersData,
+    onlineUsersData,
+    isGroupAdmin: isGroupAdminParam,
+  } = useLocalSearchParams<{
+    roomId: string;
+    roomName?: string;
+    roomDescription?: string;
+    membersData?: string;
+    onlineUsersData?: string;
+    isGroupAdmin?: string;
+  }>();
+
+  // Parse initial data from params
+  const parsedInitialMembers = useMemo(() => {
+    if (membersData) {
+      try {
+        return JSON.parse(membersData) as Member[];
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  }, [membersData]);
+
+  const parsedOnlineUsers = useMemo(() => {
+    if (onlineUsersData) {
+      try {
+        return JSON.parse(onlineUsersData) as string[];
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  }, [onlineUsersData]);
+
   const [roomDetails, setRoomDetails] = useState<any>(null);
-  const [members, setMembers] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [roomName, setRoomName] = useState('');
+  const [members, setMembers] = useState<Member[]>(parsedInitialMembers);
+  const [onlineUsers, setOnlineUsers] = useState<string[]>(parsedOnlineUsers);
+  const [isLoading, setIsLoading] = useState(parsedInitialMembers.length === 0);
+  const [roomName, setRoomName] = useState(initialRoomName || '');
+  const [roomDescription, setRoomDescription] = useState(initialDescription || '');
   const [currentUser, setCurrentUser] = useState<any>(null);
-  const [isGroupAdmin, setIsGroupAdmin] = useState(false);
+  const [isGroupAdmin, setIsGroupAdmin] = useState(isGroupAdminParam === 'true');
   const [isCreator, setIsCreator] = useState(false);
 
-  // Bottom Sheet ref
+  // Refs
   const bottomSheetRef = useRef<BottomSheet>(null);
+  const membersRef = useRef<Member[]>(parsedInitialMembers);
 
-  // Snap points for bottom sheet (percentage of screen height)
+  // Keep ref in sync
+  useEffect(() => {
+    membersRef.current = members;
+  }, [members]);
+
+  // Snap points for bottom sheet
   const snapPoints = useMemo(() => ['50%', '75%', '90%'], []);
 
   // Tab view state
@@ -55,9 +109,23 @@ export default function RoomInfo() {
     { key: 'table', title: 'Table' },
   ]);
 
-  // Load room info
-  const loadRoomInfo = async () => {
+  // Apply online status to members
+  const membersWithOnlineStatus = useMemo(() => {
+    return members.map(member => ({
+      ...member,
+      isOnline: onlineUsers.includes(member.userId),
+    }));
+  }, [members, onlineUsers]);
+
+  // Load room info (only if not passed via params)
+  const loadRoomInfo = useCallback(async (forceRefresh = false) => {
     try {
+      // Skip loading if we have initial data and not forcing refresh
+      if (!forceRefresh && parsedInitialMembers.length > 0 && roomName) {
+        setIsLoading(false);
+        return;
+      }
+
       setIsLoading(true);
 
       // Get current user
@@ -73,6 +141,7 @@ export default function RoomInfo() {
       setRoomDetails(response.data);
       setMembers(response.data.members || []);
       setRoomName(response.data.roomName || '');
+      setRoomDescription(response.data.roomDescription || '');
 
       // Check if current user is group admin
       const isUserGroupAdmin = response.data.members.some(
@@ -82,66 +151,108 @@ export default function RoomInfo() {
       setIsCreator(response.data.isCreator || false);
     } catch (error) {
       console.error('Error loading room info:', error);
-      alert('Failed to load room info');
-      router.back();
+      if (parsedInitialMembers.length === 0) {
+        alert('Failed to load room info');
+        router.back();
+      }
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [roomId, parsedInitialMembers.length, roomName]);
+
+  // Initialize current user
+  useEffect(() => {
+    const initUser = async () => {
+      const userData = await AuthStorage.getUser();
+      setCurrentUser(userData);
+    };
+    initUser();
+  }, []);
+
+  // Socket listeners for online status
+  useEffect(() => {
+    const handleUserOnlineStatus = (data: { userId: string; isOnline: boolean }) => {
+      console.log('🟢 Room-info: Online status update:', data);
+      
+      if (data.isOnline) {
+        setOnlineUsers(prev => 
+          prev.includes(data.userId) ? prev : [...prev, data.userId]
+        );
+      } else {
+        setOnlineUsers(prev => prev.filter(id => id !== data.userId));
+      }
+    };
+
+    const handleRoomOnlineUsers = (data: { roomId: string; onlineUsers: string[] }) => {
+      console.log('🟢 Room-info: Room online users:', data);
+      if (data.roomId === roomId) {
+        setOnlineUsers(data.onlineUsers);
+      }
+    };
+
+    // Subscribe to socket events
+    if (socketService.socket) {
+      socketService.socket.on('userOnlineStatusUpdate', handleUserOnlineStatus);
+      socketService.socket.on('roomOnlineUsers', handleRoomOnlineUsers);
+
+      // Request current online users for this room
+      socketService.socket.emit('getRoomOnlineUsers', { roomId });
+    }
+
+    return () => {
+      if (socketService.socket) {
+        socketService.socket.off('userOnlineStatusUpdate', handleUserOnlineStatus);
+        socketService.socket.off('roomOnlineUsers', handleRoomOnlineUsers);
+      }
+    };
+  }, [roomId]);
 
   useFocusEffect(
     useCallback(() => {
       if (roomId) {
         loadRoomInfo();
+
+        // Request fresh online status when focusing
+        if (socketService.socket?.connected) {
+          socketService.socket.emit('getRoomOnlineUsers', { roomId });
+        }
       }
       return () => {};
-    }, [roomId])
+    }, [roomId, loadRoomInfo])
   );
 
-  // Render scene
-  const renderScene = ({ route }: { route: { key: string } }) => {
+  // Render scene with memoization
+  const renderScene = useCallback(({ route }: { route: { key: string } }) => {
     switch (route.key) {
       case 'members':
-        return <MembersTab members={members} roomId={roomId as string} />;
+        return (
+          <MembersTab 
+            members={membersWithOnlineStatus} 
+            roomId={roomId as string}
+            onlineUsers={onlineUsers}
+          />
+        );
       case 'announcements':
-        return <AnnouncementsTab />;
+        return <AnnouncementsTab roomId={roomId as string} />;
       case 'media':
-        return <MediaTab />;
+        return <MediaTab roomId={roomId as string} />;
       case 'poll':
-        return <PollTab />;
+        return <PollTab roomId={roomId as string} />;
       case 'table':
-        return <TableTab />;
+        return <TableTab roomId={roomId as string} />;
       default:
         return null;
     }
-  };
+  }, [membersWithOnlineStatus, roomId, onlineUsers]);
 
   // Custom TabBar render
-  const renderTabBar = (props: any) => (
+  const renderTabBar = useCallback((props: any) => (
     <TabBar
       {...props}
-      indicatorStyle={{
-        backgroundColor: '#3b82f6',
-        height: 3,
-        borderRadius: 1.5,
-      }}
-      style={{
-        backgroundColor: '#fff',
-        elevation: 2,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.1,
-        shadowRadius: 2,
-      }}
-      tabStyle={{
-        width: 'auto',
-        paddingHorizontal: 16,
-      }}
-      labelStyle={{
-        fontWeight: '600',
-        fontSize: 13,
-        textTransform: 'none',
-      }}
+      indicatorStyle={styles.tabIndicator}
+      style={styles.tabBar}
+      tabStyle={styles.tab}
+      labelStyle={styles.tabLabel}
       inactiveColor="#6b7280"
       activeColor="#3b82f6"
       scrollEnabled={true}
@@ -149,7 +260,7 @@ export default function RoomInfo() {
       pressColor="rgba(59, 130, 246, 0.1)"
       gap={8}
     />
-  );
+  ), []);
 
   // Bottom sheet handlers
   const handleOpenBottomSheet = useCallback(() => {
@@ -178,10 +289,7 @@ export default function RoomInfo() {
   const renderHandle = useCallback(
     () => (
       <View style={styles.handleContainer}>
-        {/* Drag Indicator */}
         <View style={styles.dragIndicator} />
-
-        {/* Header */}
         <View style={styles.sheetHeader}>
           <Text style={styles.sheetTitle}>Room Settings</Text>
           <TouchableOpacity
@@ -197,6 +305,11 @@ export default function RoomInfo() {
     [handleCloseBottomSheet]
   );
 
+  // Handle refresh from bottom sheet
+  const handleRefresh = useCallback(() => {
+    loadRoomInfo(true);
+  }, [loadRoomInfo]);
+
   if (isLoading) {
     return (
       <View className="flex-1 justify-center items-center bg-white">
@@ -209,20 +322,22 @@ export default function RoomInfo() {
     <View className="flex-1 bg-white">
       {/* Custom Header */}
       <View className="bg-white border-b border-gray-200 px-4 py-3 flex-row items-center justify-between">
-        {/* Back Button */}
         <TouchableOpacity onPress={() => router.back()} className="p-2">
           <Ionicons name="arrow-back" size={24} color="#374151" />
         </TouchableOpacity>
 
-        {/* Room Name */}
-        <Text
-          className="flex-1 text-lg font-semibold text-gray-900 mx-4"
-          numberOfLines={1}
-        >
-          {roomName}
-        </Text>
+        <View className="flex-1 mx-4">
+          <Text
+            className="text-lg font-semibold text-gray-900"
+            numberOfLines={1}
+          >
+            {roomName}
+          </Text>
+          <Text className="text-xs text-gray-500">
+            {onlineUsers.length} online • {members.length} members
+          </Text>
+        </View>
 
-        {/* Menu Button - Only show for group admins */}
         {isGroupAdmin ? (
           <TouchableOpacity
             onPress={handleOpenBottomSheet}
@@ -243,7 +358,7 @@ export default function RoomInfo() {
         initialLayout={{ width: layout.width }}
         renderTabBar={renderTabBar}
         lazy={true}
-        lazyPreloadDistance={1}
+        lazyPreloadDistance={0}
         swipeEnabled={true}
       />
 
@@ -262,13 +377,13 @@ export default function RoomInfo() {
           <RoomSettingsMenu
             roomId={roomId as string}
             roomName={roomName}
-            roomDescription={roomDetails?.roomDescription}
+            roomDescription={roomDescription}
             members={members}
             currentUserId={currentUser?.userId || ''}
             isCreator={isCreator}
             isGroupAdmin={isGroupAdmin}
             onClose={handleCloseBottomSheet}
-            onRefresh={loadRoomInfo}
+            onRefresh={handleRefresh}
           />
         </BottomSheetView>
       </BottomSheet>
@@ -323,5 +438,27 @@ const styles = StyleSheet.create({
   sheetContent: {
     flex: 1,
     paddingTop: 8,
+  },
+  tabIndicator: {
+    backgroundColor: '#3b82f6',
+    height: 3,
+    borderRadius: 1.5,
+  },
+  tabBar: {
+    backgroundColor: '#fff',
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+  },
+  tab: {
+    width: 'auto',
+    paddingHorizontal: 16,
+  },
+  tabLabel: {
+    fontWeight: '600',
+    fontSize: 13,
+    textTransform: 'none',
   },
 });
