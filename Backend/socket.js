@@ -119,6 +119,12 @@ const setupSocketIO = (io, app) => {
     }
   };
 
+  // Helper to return online userIds for a room
+  const getOnlineUsersForRoom = async (roomId) => {
+    const { onlineUsers } = await getOnlineCountForRoom(roomId);
+    return onlineUsers;
+  };
+
   // Helper function to broadcast online count to ALL users for a specific room
   const broadcastRoomOnlineCount = async (roomId) => {
     try {
