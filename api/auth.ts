@@ -1,6 +1,6 @@
 // api/auth.ts
 import axios from "axios";
-import { Platform } from "react-native";
+import { Alert, Platform } from "react-native";
 import { API_URL } from "../constants/api";
 import { AuthStorage } from "@/utils/authStorage";
 import { router } from "expo-router";
@@ -9,10 +9,11 @@ import Constants from "expo-constants";
 import { setUserOnlineGlobal, setUserOfflineGlobal, resetOnlineStatusState } from '@/hooks/useOnlineStatus';
 import socketService from '@/utils/socketService';
 
-// Helper function to check internet connectivity (using same approach as useNetworkStatus hook)
+// ==================== HELPER FUNCTIONS ====================
+
+// Helper function to check internet connectivity
 const checkInternetConnectivity = async (): Promise<boolean> => {
   try {
-    // Try to ping a fast, reliable endpoint (same as your useNetworkStatus hook)
     const response = await fetch("https://www.google.com", { method: "HEAD" });
     return response.ok;
   } catch (error) {
@@ -21,41 +22,25 @@ const checkInternetConnectivity = async (): Promise<boolean> => {
   }
 };
 
+// ==================== NOTIFICATION FUNCTIONS ====================
+
 const generateAndStoreNotificationToken = async (userId: string) => {
   try {
-    // Check internet connectivity first
     const isConnected = await checkInternetConnectivity();
     if (!isConnected) {
       console.log('No internet connection available for notification token generation');
       return;
     }
 
-    // Request notification permissions
     const { status } = await Notifications.requestPermissionsAsync();
     if (status !== 'granted') {
       console.log('Notification permission not granted');
       return;
     }
 
-    // FCM token
     const { data: rawFcm } = await Notifications.getDevicePushTokenAsync();
     console.log("FCM token:", rawFcm);
 
-    // Get Expo push token
-    // const expoPushToken = (
-    //   await Notifications.getExpoPushTokenAsync({
-    //     projectId: Constants?.expoConfig?.extra?.eas?.projectId,
-    //   })
-    // ).data;
-
-    // if (!expoPushToken) {
-    //   console.log('Failed to get Expo push token');
-    //   return;
-    // }
-
-    // console.log('Generated Expo push token:', expoPushToken);
-
-    // Store token in backend
     const token = await AuthStorage.getToken();
     if (token) {
       const response = await axios.post(`${API_URL}/api/notifications/store-token`, {
@@ -95,94 +80,273 @@ const removeNotificationToken = async (userId: string) => {
   }
 };
 
-export const login = async (mobileNumber: string, password: string) => {
+// ==================== AUTH CHECK FUNCTIONS ====================
+
+// Check if user is already authenticated
+export const checkAuthStatus = async (): Promise<{
+  isAuthenticated: boolean;
+  token: string | null;
+  user: any | null;
+}> => {
   try {
-    // Detect platform - 'web' for web, 'mobile' for iOS/Android
-    const platform = Platform.OS === 'web' ? 'web' : 'mobile';
-    
-    const response = await axios.post(`${API_URL}/api/auth/login`, {
-      mobileNumber,
-      password,
-      platform,
-    });
+    const token = await AuthStorage.getToken();
+    const user = await AuthStorage.getUser();
+    const sevakData = await AuthStorage.getSevakData();
 
-    console.log("Login response:", response.data);
-    console.log("Token get from backend", response.data.token);
-
-    if (response.data.success) {
-      // Store token
-      await AuthStorage.storeToken(response.data.token);
-      const userData = response.data.user;
-      await AuthStorage.storeUser({
-        userId: userData.user_id,
-        mobileNumber: userData.mobile_number,
-        isMaster: userData.role === 'master',
-        isAdmin: userData.role === 'admin',
-        fullName: userData.full_name,
-        xetra: userData.xetra,
-        mandal: userData.mandal,
-        role: userData.role,
-        totalSabha: userData.total_sabha,
-        presentCount: userData.present_count,
-        absentCount: userData.absent_count,
-        isApproved: userData.password !== null && userData.password !== '',
-      });
-      await AuthStorage.storeUserRole(userData.role);
-      // Generate and store notification token after successful login
-      generateAndStoreNotificationToken(userData.user_id).catch(error => {
-        console.error('Error handling notification token after login:', error);
-      });
-
-      // Set user as online after successful login
-      setTimeout(async () => {
-        try {
-          await setUserOnlineGlobal(userData.user_id);
-        } catch (error) {
-          console.error('Error setting user online after login:', error);
-        }
-      }, 1500);
-
-      // Redirect to announcement page on successful login
-      router.replace("/(drawer)");
-      return userData;
-    } else {
-      return response.data;
+    if (token && (user || sevakData)) {
+      return {
+        isAuthenticated: true,
+        token,
+        user: user || sevakData,
+      };
     }
-  } catch (error: any) {
-    console.error("Login error", error);
-    
-    // Check if user doesn't exist (needs to register)
-    if (error.response && error.response.status === 404) {
-      alert("User not found. Please register first.");
-      router.replace("/signup");
-      return null;
-    }
-    
-    // Check if user exists but not approved
-    if (error.response && error.response.status === 401) {
-      if (error.response.data && error.response.data.message && 
-          error.response.data.message.includes("not approved")) {
-        alert("Your registration is pending. Please wait for admin approval.");
-        router.replace("/login");
 
-        return null;
-      } else {
-        alert("Invalid credentials. Please try again.");
-        router.replace("/login");
-
-        return null;
-      }
-    }
-    
-    // Network or other errors
-    alert("Error while logging in. Please try again later.");
-    router.replace("/login");
-
-    return null;
+    return {
+      isAuthenticated: false,
+      token: null,
+      user: null,
+    };
+  } catch (error) {
+    console.error("Error checking auth status:", error);
+    return {
+      isAuthenticated: false,
+      token: null,
+      user: null,
+    };
   }
 };
 
-export const register = async (mobileNumber: string, userId: string, fullName: string) => {
+// ==================== MOBILE CHECK FUNCTION ====================
+
+export interface CheckMobileResponse {
+  exists: boolean;
+  isPasswordSet: boolean;
+  message?: string;
+  canlogin: number;
+}
+
+export const checkMobileExists = async (
+  mobileNumber: string
+): Promise<CheckMobileResponse> => {
+  try {
+    // Check internet connectivity first
+    const isConnected = await checkInternetConnectivity();
+    if (!isConnected) {
+      throw new Error("NO_INTERNET");
+    }
+
+    const response = await fetch(`${API_URL}/api/auth/check-mobile`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ mobileNumber }),
+    });
+    // console.log("response in check mobile exists", await response.json());
+
+    if (!response.ok) {
+      // console.log("response in check mobile exists", await response.json());
+      const errorData = await response.json();
+      throw new Error(errorData.message || "SERVER_ERROR");
+    }
+
+    const data = await response.json();
+    return {
+      exists: data.exists ?? false,
+      isPasswordSet: data.isPasswordSet ?? data.ispasswordSet ?? false,
+      canlogin: data.canlogin ?? 0,
+      message: data.message,
+    };
+  } catch (error: any) {
+    console.error("Check mobile error:", error);
+    
+    if (error.message === "NO_INTERNET") {
+      throw new Error("No internet connection. Please check your network.");
+    }
+    
+    if (error.message === "SERVER_ERROR") {
+      throw new Error("Server error. Please try again later.");
+    }
+    
+    throw new Error("Failed to verify mobile number. Please try again.");
+  }
+};
+
+// ==================== LOGIN FUNCTION ====================
+
+export interface LoginResponse {
+  success: boolean;
+  message?: string;
+  token?: string;
+  sevak?: any;
+}
+
+export const login = async (
+  mobileNumber: string,
+  password: string
+): Promise<LoginResponse> => {
+  try {
+    // Check internet connectivity first
+    const isConnected = await checkInternetConnectivity();
+    if (!isConnected) {
+      return {
+        success: false,
+        message: "No internet connection. Please check your network.",
+      };
+    }
+
+    const response = await axios.post(`${API_URL}/api/auth/login`, {
+      mobileNumber,
+      password,
+    });
+
+    console.log("Response in login:", response.data);
+
+    if (response.data.success) {
+      const { token, sevak } = response.data;
+
+      // Store authentication data
+      await AuthStorage.storeToken(token);
+      await AuthStorage.storeSevakData(sevak);
+      await AuthStorage.storeUser({
+        userId: sevak.seid,
+        mobileNumber: sevak.mobileno,
+        name: sevak.sename || sevak.fullName,
+        role: sevak.usertype,
+      });
+      await AuthStorage.storeUserRole(sevak.usertype);
+
+      // Generate notification token after successful login
+      generateAndStoreNotificationToken(sevak.seid).catch((error) => {
+        console.error("Error generating notification token:", error);
+      });
+
+      return {
+        success: true,
+        token,
+        sevak,
+      };
+    } else {
+      console.log("response in login", response.data);
+      return {
+        success: false,
+        message: response.data.message || "Login failed. Please try again.",
+      };
+    }
+  } catch (error: any) {
+    // console.error("Login error:", error);
+
+    if (error.response) {
+      // Server responded with error
+      return {
+        success: false,
+        message: error.response.data?.message || "Invalid credentials. Please try again.",
+      };
+    } else if (error.request) {
+      // No response received
+      return {
+        success: false,
+        message: "Unable to connect to server. Please check your internet connection.",
+      };
+    } else {
+      // Other error
+      return {
+        success: false,
+        message: "Something went wrong. Please try again.",
+      };
+    }
+  }
+};
+
+// ==================== SET PASSWORD FUNCTION ====================
+
+export interface SetPasswordResponse {
+  success: boolean;
+  message?: string;
+  token?: string;
+  sevak?: any;
+}
+
+export const setPassword = async (
+  mobileNumber: string,
+  password: string
+): Promise<SetPasswordResponse> => {
+  try {
+    // Check internet connectivity first
+    const isConnected = await checkInternetConnectivity();
+    if (!isConnected) {
+      return {
+        success: false,
+        message: "No internet connection. Please check your network.",
+      };
+    }
+
+    const response = await axios.post(`${API_URL}/api/auth/set-password`, {
+      mobileNumber,
+      password,
+    });
+
+    console.log("Response in set password:", response.data);
+
+    if (response.data.success) {
+      const { token, sevak } = response.data;
+
+      // Store authentication data
+      await AuthStorage.storeToken(token);
+      await AuthStorage.storeSevakData(sevak);
+      await AuthStorage.storeUser({
+        userId: sevak.seid,
+        mobileNumber: sevak.mobileno,
+        name: sevak.sename || sevak.fullName,
+        role: sevak.usertype,
+      });
+      await AuthStorage.storeUserRole(sevak.usertype);
+
+      // Generate notification token after successful password set
+      generateAndStoreNotificationToken(sevak.seid).catch((error) => {
+        console.error("Error generating notification token:", error);
+      });
+
+      return {
+        success: true,
+        token,
+        sevak,
+      };
+    } else {
+      return {
+        success: false,
+        message: response.data.message || "Failed to set password. Please try again.",
+      };
+    }
+  } catch (error: any) {
+    console.error("Set password error:", error);
+
+    if (error.response) {
+      return {
+        success: false,
+        message: error.response.data?.message || "Failed to set password. Please try again.",
+      };
+    } else if (error.request) {
+      return {
+        success: false,
+        message: "Unable to connect to server. Please check your internet connection.",
+      };
+    } else {
+      return {
+        success: false,
+        message: "Something went wrong. Please try again.",
+      };
+    }
+  }
+};
+
+// ==================== REGISTER FUNCTION ====================
+
+export const register = async (
+  mobileNumber: string,
+  userId: string,
+  fullName: string
+) => {
   try {
     const response = await axios.post(`${API_URL}/api/auth/register`, {
       mobileNumber,
@@ -192,73 +356,71 @@ export const register = async (mobileNumber: string, userId: string, fullName: s
     return response.data;
   } catch (error: any) {
     console.error("Registration error", error);
+    return {
+      success: false,
+      message: error.response?.data?.message || "Registration failed.",
+    };
   }
 };
+
+// ==================== LOGOUT FUNCTION ====================
 
 export const logout = async () => {
   try {
-    // Get current user data before clearing storage
     const userData = await AuthStorage.getUser();
-    
+
     if (userData?.userId) {
-      // Set user offline before logging out
       try {
         await setUserOfflineGlobal(userData.userId);
-        
-        // Wait a bit for the offline status to be broadcast
-        await new Promise(resolve => setTimeout(resolve, 500));
-        
-        // Disconnect socket
+        await new Promise((resolve) => setTimeout(resolve, 500));
         socketService.disconnect();
       } catch (error) {
-        console.error('Error setting user offline during logout:', error);
+        console.error("Error setting user offline during logout:", error);
       }
-      
-      // Remove notification token from backend
+
       await removeNotificationToken(userData.userId);
     }
 
-    // Reset online status state
     resetOnlineStatusState();
+    await AuthStorage.clear();
+    router.replace({
+      pathname: "/(auth)/login",
+      params: { from: "logout" }
+    });
 
-    // Clear local storage
-    await AuthStorage.clear();
-    
-    // Redirect to login page
-    router.replace("/login");
-    
-    console.log('Logout successful');
+    console.log("Logout successful");
   } catch (error) {
-    console.error('Error during logout:', error);
-    // Clear storage anyway in case of error
+    console.error("Error during logout:", error);
     await AuthStorage.clear();
     resetOnlineStatusState();
-    router.replace("/login");
+    router.replace({
+      pathname: "/(auth)/login",
+      params: { from: "logout" }
+    });
   }
 };
 
-// Function to handle token generation when app starts and user is already logged in
+// ==================== APP START HANDLER ====================
+
 export const handleAppStartNotificationToken = async () => {
   try {
     const userData = await AuthStorage.getUser();
     const token = await AuthStorage.getToken();
-    
+
     if (userData?.userId && token) {
-      // Check internet connectivity before generating notification token
       const isConnected = await checkInternetConnectivity();
       if (isConnected) {
-        // User is already logged in, generate and store notification token
-        generateAndStoreNotificationToken(userData.userId).catch(error => {
-          console.error('Error handling notification token on app start:', error);
+        generateAndStoreNotificationToken(userData.userId).catch((error) => {
+          console.error("Error handling notification token on app start:", error);
         });
       } else {
-        console.log('No internet connection available for notification token generation on app start');
+        console.log("No internet connection available for notification token generation on app start");
       }
     }
   } catch (error) {
-    console.error('Error checking login status for notification token:', error);
+    console.error("Error checking login status for notification token:", error);
   }
 };
 
-// Export the connectivity check function for use in other parts of the app
+// Export the connectivity check function
 export { checkInternetConnectivity };

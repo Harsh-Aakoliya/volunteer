@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { fetchUserProfile, logout } from '@/api/user';
 import { AuthStorage } from '@/utils/authStorage';
+import { login } from '@/api/auth';
 
 export const CustomDrawer = (props: DrawerContentComponentProps) => {
   const router = useRouter();
@@ -20,6 +21,7 @@ export const CustomDrawer = (props: DrawerContentComponentProps) => {
       setIsLoading(true);
       const profileData = await fetchUserProfile();
       setUserProfile(profileData);
+      console.log("userProfile in profile screen of drawer from backend", profileData);
     } catch (error) {
       console.error('Error loading user profile:', error);
     } finally {
@@ -52,7 +54,7 @@ export const CustomDrawer = (props: DrawerContentComponentProps) => {
     const currentUser = await AuthStorage.getUser();
     if (currentUser) {
       router.push({
-        pathname: '/user-profile',
+        pathname: '/(drawerOptions)/user-profile',
         params: {
           userData: JSON.stringify(currentUser)
         }
@@ -70,9 +72,9 @@ export const CustomDrawer = (props: DrawerContentComponentProps) => {
     router.push("/(departments)" as any);
   };
 
-  const isMaster = userProfile?.role === 'master' || userProfile?.isMaster;
-  const isAdmin = userProfile?.role === 'admin' || userProfile?.isAdmin;
-  const roleText = isMaster ? 'Master' : isAdmin ? 'Admin' : 'Sevak';
+  // const isMaster = userProfile?.role === 'master' || userProfile?.isMaster;
+  // const isAdmin = userProfile?.role === 'admin' || userProfile?.isAdmin;
+  // const roleText = isMaster ? 'Master' : isAdmin ? 'Admin' : 'Sevak';
 
   return (
     <View style={styles.container}>
@@ -88,29 +90,43 @@ export const CustomDrawer = (props: DrawerContentComponentProps) => {
             </View>
             <View style={styles.userDetails}>
               <Text style={styles.fullName} numberOfLines={1}>
-                {userProfile?.fullName || userProfile?.full_name || 'User Name'}
+                {userProfile?.sevakname || 'User Name'}
               </Text>
               <Text style={styles.mobileNumber} numberOfLines={1}>
-                {userProfile?.mobileNumber || 'No mobile number'}
+                {userProfile?.mobileno || 'No mobile number'}
               </Text>
             </View>
           </View>
-          <Ionicons name="chevron-forward" size={24} color="#666" />
+          {/* <Ionicons name="chevron-forward" size={24} color="#666" /> */}
         </TouchableOpacity>
 
         {/* Divider */}
         <View style={styles.divider} />
 
+        {/* logout option */}
+        <TouchableOpacity style={styles.menuItem} onPress={handleLogout}>
+          <Ionicons name="log-out" size={20} color="#3b82f6" />
+          <Text style={styles.menuText}>Logout</Text>
+        </TouchableOpacity>
+
+
+        {/* { Profil page option} */}
+        <TouchableOpacity style={styles.menuItem} onPress={handleProfilePress}>
+          <Ionicons name="person" size={20} color="#3b82f6" />
+          <Text style={styles.menuText}>Profile</Text>
+        </TouchableOpacity>
+        <View style={styles.divider} />
+
         {/* Role Section */}
-        <View style={styles.roleSection}>
+        {/* <View style={styles.roleSection}>
           <Text style={styles.roleText}>{roleText}</Text>
-        </View>
+        </View> */}
 
         {/* Divider */}
         <View style={styles.divider} />
 
         {/* Dashboard Option - Only for Master/Admin */}
-        {(isMaster || isAdmin) && (
+        {/* {(isMaster || isAdmin) && (
           <>
             <TouchableOpacity 
               style={styles.menuItem}
@@ -121,16 +137,9 @@ export const CustomDrawer = (props: DrawerContentComponentProps) => {
             </TouchableOpacity>
             <View style={styles.divider} />
           </>
-        )}
+        )} */}
 
       </ScrollView>
-
-      {/* Logout Button */}
-      <View style={styles.footer}>
-        <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-          <Text style={styles.logoutText}>Logout</Text>
-        </TouchableOpacity>
-      </View>
     </View>
   );
 };
@@ -156,7 +165,7 @@ const styles = StyleSheet.create({
     width: 50,
     height: 50,
     borderRadius: 25,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    backgroundColor: 'rgba(255, 255, 255, 0.5)',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,

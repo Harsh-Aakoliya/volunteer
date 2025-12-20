@@ -104,38 +104,50 @@ const approveUser = async (req, res) => {
 
 // Get user profile
 const getUserProfile = async (req, res) => {
+//   CREATE TABLE IF NOT EXISTS "SevakMaster" (
+//     seid integer PRIMARY KEY,
+//     sevakname VARCHAR(100),
+//     mobileno VARCHAR(15),
+//     isactive integer DEFAULT 0,
+//     password VARCHAR(255),
+//     canlogin integer DEFAULT 0,
+//     isadmin integer DEFAULT 0,
+//     deptname VARCHAR(100),
+//     usertype varchar(100),
+//     createdon TIMESTAMPTZ DEFAULT (NOW() AT TIME ZONE 'UTC'),
+//     createdby character varying(100),
+//     modifiedon TIMESTAMPTZ DEFAULT (NOW() AT TIME ZONE 'UTC'),
+//     modifiedby character varying(100),
+//     birthdate DATE,
+//     bloodgroup VARCHAR(10),
+//     emergencycontact1 VARCHAR(100),
+//     emrgencycontactno1 VARCHAR(15),
+//     emergencycontact2 VARCHAR(100),
+//     emrgencycontactno2 VARCHAR(15),
+//     sevakid varchar(50)
+// );
   try {
     const { userId } = req.params;
+    console.log("userId", userId);
     
     const result = await pool.query(
-      `SELECT 
-        "user_id" as "userId", 
-        "mobile_number" as "mobileNumber", 
-        "full_name" as "fullName", 
-        "role",
-        "gender",
-        "date_of_birth" as "dateOfBirth",
-        "blood_group" as "bloodGroup",
-        "education",
-        "whatsapp_number" as "whatsappNumber",
-        "emergency_contact" as "emergencyContact",
-        "email",
-        "address",
-        "usage_permission" as "usagePermission"
-      FROM "users" 
-      WHERE "user_id"::text = $1`,
+      `SELECT * FROM "SevakMaster" 
+      WHERE "seid" = $1`,
       [userId]
     );
+
+    console.log("result", result.rows);
 
     if (result.rows.length === 0) {
       return res.status(404).json({ message: "User not found" });
     }
     
     const userProfile = result.rows[0];
+    console.log("userProfile", userProfile);
     
     // Convert date_of_birth to DD/MM/YYYY format for frontend
-    if (userProfile.dateOfBirth) {
-      userProfile.dateOfBirth = convertDateToDDMMYYYY(userProfile.dateOfBirth);
+    if (userProfile.birthdate) {
+      userProfile.birthdate = convertDateToDDMMYYYY(userProfile.birthdate);
     }
     
     

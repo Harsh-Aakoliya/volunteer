@@ -88,15 +88,20 @@
 //   },
 // });
 
-import { View, Text } from 'react-native';
-import { Link } from 'expo-router';
+import { TouchableOpacity, View } from 'react-native';
 import LoginForm from '@/components/auth/LoginForm';
 import * as React from 'react';
+import { Ionicons } from '@expo/vector-icons';
+import { router } from 'expo-router';
+import { useEffect, useState } from 'react';
+import { useLocalSearchParams } from 'expo-router';
 
 export default function Login() {
   return (
-    <View className="flex-1 justify-center items-center p-6 bg-white">
-      <LoginForm />
-    </View>
+    <>
+      <View className="flex-1 bg-white">
+        <LoginForm />
+      </View>
+    </>
   );
 }

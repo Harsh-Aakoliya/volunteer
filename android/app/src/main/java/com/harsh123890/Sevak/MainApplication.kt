@@ -1,4 +1,4 @@
-package com.sevak
+package com.harsh123890.Sevak
 
 import android.app.Application
 import android.content.res.Configuration

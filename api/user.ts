@@ -9,16 +9,20 @@ export const fetchUserProfile = async () => {
   try {
     const token = await AuthStorage.getToken();
     const storedUser = await AuthStorage.getUser();
-    
+
+    console.log("token", token);
+    console.log("storedUser", storedUser);
+
+    // return storedUser as any;
     if (!token) {
       throw new Error('No authentication token');
     }
 
-    if (!storedUser || !storedUser.userId) {
+    if (!storedUser || !storedUser.seid) {
       throw new Error('No user userId found');
     }
 
-    const response = await axios.get(`${API_URL}/api/users/${storedUser.userId}/profile`, {
+    const response = await axios.get(`${API_URL}/api/users/${storedUser.seid}/profile`, {
       headers: {
         Authorization: `Bearer ${token}`
       }
@@ -205,7 +209,7 @@ export const getUserProfileById = async (userId: string) => {
     const response = await axios.get(`${API_URL}/api/users/${userId}/profile`, {
       headers: { Authorization: `Bearer ${token}` }
     });
-
+    console.log("response got after featching userprofile by id",response.data);
     return response.data;
   } catch (error) {
     console.error('Error fetching user profile by ID:', error);

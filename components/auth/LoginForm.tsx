@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+// components/forms/LoginForm.tsx
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   View,
   Text,
@@ -10,26 +11,395 @@ import {
   ScrollView,
   TextInput,
   Modal,
-  SafeAreaView,
+  ActivityIndicator,
+  Animated,
+  StyleSheet,
 } from "react-native";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import CustomButton from "../ui/CustomButton";
 import CustomInput from "../ui/CustomInput";
-import { login } from "@/api/auth";
+import {
+  login,
+  checkMobileExists,
+  setPassword as setPasswordAPI,
+  checkAuthStatus,
+} from "@/api/auth";
 import { updateDevIP } from "@/constants/api";
 import { getDefaultDevIP } from "@/app/index";
+import { useSimCards } from "@/hooks/useSimCards";
+
+interface SimCard {
+  phoneNumber: string;
+  carrierName: string;
+  slotIndex: number;
+}
+
+type LoginStep = "password" | "setPassword";
 
 export default function LoginForm() {
+  // ==================== STATE MANAGEMENT ====================
+  
+  // Step management
+  const [currentStep, setCurrentStep] = useState<LoginStep>("password");
+
+  // Form fields
   const [mobileNumber, setMobileNumber] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+
+  // Loading states
   const [isLoading, setIsLoading] = useState(false);
+  const [isCheckingMobile, setIsCheckingMobile] = useState(false);
+  const [isSettingPassword, setIsSettingPassword] = useState(false);
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+  const [verificationStatus, setVerificationStatus] = useState<"idle" | "pending" | "success" | "failed">("idle");
+  const [verificationMessage, setVerificationMessage] = useState("");
+  const [isMobileAllowed, setIsMobileAllowed] = useState(false);
+  const [mobileCheckMessage, setMobileCheckMessage] = useState("");
+  const [hasMobileCheckResult, setHasMobileCheckResult] = useState(false);
+
+  // UI states
   const [showPassword, setShowPassword] = useState(false);
-  const [touched, setTouched] = useState({ mobile: false, password: false });
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [touched, setTouched] = useState({
+    mobile: false,
+    password: false,
+    confirmPassword: false,
+  });
+
+  // SIM related states
+  const [availableSimCards, setAvailableSimCards] = useState<SimCard[]>([]);
+  const [showSimPickerModal, setShowSimPickerModal] = useState(false);
+
+  // Dev mode states
   const [devIP, setDevIP] = useState(getDefaultDevIP());
   const [showIPModal, setShowIPModal] = useState(false);
 
-  const handleLongPressSignIn = () => {
+  // Animation
+  const [fadeAnim] = useState(new Animated.Value(1));
+
+  // Hook for SIM cards
+  const {
+    fetchSimCards,
+    isLoading: isFetchingSim,
+  } = useSimCards();
+
+  // Track last checked number to avoid duplicate calls
+  const lastCheckedNumberRef = useRef<string>("");
+
+  // ==================== AUTH CHECK ON MOUNT ====================
+
+  useEffect(() => {
+    checkExistingAuth();
+  }, []);
+
+  const checkExistingAuth = async () => {
+    try {
+      setIsCheckingAuth(true);
+      const authStatus = await checkAuthStatus();
+
+      if (authStatus.isAuthenticated) {
+        // User is already logged in, redirect to success page
+        console.log("User already authenticated, redirecting...");
+        router.replace("/(drawer)");
+        return;
+      }
+
+      // User not authenticated, proceed with login flow
+      setIsCheckingAuth(false);
+      // Fetch mobile numbers after auth check
+      handleFetchMobileNumbers();
+    } catch (error) {
+      console.error("Error checking auth status:", error);
+      setIsCheckingAuth(false);
+      handleFetchMobileNumbers();
+    }
+  };
+
+  // ==================== ANIMATIONS ====================
+
+  const animateStepChange = (callback: () => void) => {
+    Animated.sequence([
+      Animated.timing(fadeAnim, {
+        toValue: 0,
+        duration: 150,
+        useNativeDriver: true,
+      }),
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 150,
+        useNativeDriver: true,
+      }),
+    ]).start();
+
+    setTimeout(callback, 150);
+  };
+
+  // ==================== SIM CARD FUNCTIONS ====================
+
+  const handleFetchMobileNumbers = useCallback(async () => {
+    Keyboard.dismiss();
+    setVerificationStatus("idle");
+    setVerificationMessage("");
+    setHasMobileCheckResult(false);
+    setIsMobileAllowed(false);
+
+    try {
+      const simCards = await fetchSimCards();
+
+      if (simCards.length === 0) {
+        Alert.alert(
+          "Not Supported",
+          "Automatic mobile number fetch is not supported on this device. Please enter your mobile number manually.",
+          [{ text: "OK" }]
+        );
+        return;
+      }
+
+      if (simCards.length === 1) {
+        setMobileNumber(simCards[0].phoneNumber);
+        setAvailableSimCards(simCards);
+      } else {
+        setAvailableSimCards(simCards);
+        setShowSimPickerModal(true);
+      }
+    } catch (error) {
+      setVerificationStatus("failed");
+      setVerificationMessage("Automatic mobile number fetch is not supported on this device.");
+      Alert.alert(
+        "Not Supported",
+        "Automatic mobile number fetch is not supported on this device. Please enter your mobile number manually.",
+        [{ text: "OK" }]
+      );
+    }
+  }, [fetchSimCards]);
+
+  const handleSelectSimCard = (simCard: SimCard) => {
+    setMobileNumber(simCard.phoneNumber);
+    setShowSimPickerModal(false);
+  };
+
+  // ==================== MOBILE VERIFICATION ====================
+
+  const verifyMobileNumber = useCallback(
+    async (number: string) => {
+      const cleanedNumber = number.replace(/[^0-9]/g, "");
+      if (cleanedNumber.length < 10 || lastCheckedNumberRef.current === cleanedNumber) {
+        return;
+      }
+
+      try {
+        setIsCheckingMobile(true);
+        setMobileCheckMessage("");
+        setVerificationStatus("pending");
+        setVerificationMessage(`Verifying ${cleanedNumber}...`);
+
+        const response = await checkMobileExists(cleanedNumber);
+        console.log("Response in check mobile exists:", response);
+        setHasMobileCheckResult(true);
+        lastCheckedNumberRef.current = cleanedNumber;
+
+        if (!response.exists) {
+          setIsMobileAllowed(false);
+          const message = `Mobile number ${cleanedNumber} is not registered. Please contact your administrator.`;
+          setMobileCheckMessage(message);
+          setVerificationStatus("failed");
+          setVerificationMessage(message);
+          setCurrentStep("password");
+          return;
+        }
+
+        if (response.canlogin !== 1) {
+          setIsMobileAllowed(false);
+          const message = "Login not allowed. Please contact your administrator.";
+          setMobileCheckMessage(message);
+          setVerificationStatus("failed");
+          setVerificationMessage(message);
+          setCurrentStep("password");
+          return;
+        }
+
+        // Allowed
+        setIsMobileAllowed(true);
+        setMobileCheckMessage("");
+        setVerificationStatus("success");
+        setVerificationMessage("");
+        setCurrentStep(response.isPasswordSet ? "password" : "setPassword");
+      } catch (error: any) {
+        console.error("Check mobile error:", error);
+        setIsMobileAllowed(false);
+        setHasMobileCheckResult(true);
+        const message = error.message || "Unable to verify mobile number. Please try again.";
+        setMobileCheckMessage(message);
+        setVerificationStatus("failed");
+        setVerificationMessage(message);
+      } finally {
+        setIsCheckingMobile(false);
+      }
+    },
+    []
+  );
+
+  useEffect(() => {
+    if (!mobileNumber) return;
+    verifyMobileNumber(mobileNumber);
+  }, [mobileNumber, verifyMobileNumber]);
+
+  const handleBackToMobile = () => {
+    animateStepChange(() => {
+      setCurrentStep("password");
+      setPassword("");
+      setConfirmPassword("");
+      setShowPassword(false);
+      setShowConfirmPassword(false);
+      setTouched({
+        mobile: false,
+        password: false,
+        confirmPassword: false,
+      });
+    });
+  };
+
+  // ==================== LOGIN HANDLER ====================
+
+  const handleLogin = async () => {
+    Keyboard.dismiss();
+    setTouched((prev) => ({ ...prev, password: true }));
+
+    if (!isMobileAllowed) {
+      Alert.alert("Error", mobileCheckMessage || "This mobile number is not allowed to login.");
+      return;
+    }
+
+    if (!password.trim()) {
+      Alert.alert("Error", "Please enter your password");
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+
+      const cleanedNumber = mobileNumber.replace(/[^0-9]/g, "");
+      const response = await login(cleanedNumber, password);
+
+      console.log("Login response:", response);
+
+      if (response.success) {
+        router.replace("/(drawer)");
+      } else {
+        Alert.alert(
+          "Login Failed",
+          response.message || "Incorrect password. Please check your mobile number or enter the correct password.",
+          [
+            {
+              text: "Try Again",
+              style: "default",
+            },
+            // {
+            //   text: "Change Number",
+            //   onPress: handleBackToMobile,
+            //   style: "cancel",
+            // },
+          ]
+        );
+      }
+    } catch (error: any) {
+      console.error("Login error:", error);
+      Alert.alert(
+        "Error",
+        "Something went wrong. Please try again."
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // ==================== SET PASSWORD HANDLER ====================
+
+  const validatePassword = (pwd: string): { valid: boolean; message: string } => {
+    if (pwd.length < 4) {
+      return { valid: false, message: "Password must be at least 4 characters" };
+    }
+    if (pwd.length > 20) {
+      return { valid: false, message: "Password must be less than 20 characters" };
+    }
+    return { valid: true, message: "" };
+  };
+
+  const handleSetPassword = async () => {
+    Keyboard.dismiss();
+    setTouched((prev) => ({
+      ...prev,
+      password: true,
+      confirmPassword: true,
+    }));
+
+    if (!isMobileAllowed) {
+      Alert.alert("Error", mobileCheckMessage || "This mobile number is not allowed to login.");
+      return;
+    }
+
+    if (!password.trim()) {
+      Alert.alert("Error", "Please enter a password");
+      return;
+    }
+
+    const validation = validatePassword(password);
+    if (!validation.valid) {
+      Alert.alert("Error", validation.message);
+      return;
+    }
+
+    if (!confirmPassword.trim()) {
+      Alert.alert("Error", "Please confirm your password");
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      Alert.alert("Error", "Passwords do not match");
+      return;
+    }
+
+    try {
+      setIsSettingPassword(true);
+
+      const cleanedNumber = mobileNumber.replace(/[^0-9]/g, "");
+      const response = await setPasswordAPI(cleanedNumber, password);
+
+      console.log("Set password response:", response);
+
+      if (response.success) {
+        // Show password reminder alert
+        Alert.alert(
+          "",
+          "Password Set Successfully",
+          [
+            { text: "Continue", onPress: () => {
+              router.replace("/(drawer)");
+            } },
+          ]
+        );
+      } else {
+        Alert.alert(
+          "Error",
+          response.message || "Failed to set password. Please try again."
+        );
+      }
+    } catch (error: any) {
+      console.error("Set password error:", error);
+      Alert.alert(
+        "Error",
+        "Something went wrong. Please try again."
+      );
+    } finally {
+      setIsSettingPassword(false);
+    }
+  };
+
+  // ==================== DEV MODE ====================
+
+  const handleLongPressButton = () => {
     Keyboard.dismiss();
     Alert.alert(
       "🔧 Developer Mode",
@@ -41,36 +411,408 @@ export default function LoginForm() {
     );
   };
 
-  const handleLogin = async () => {
-    // First dismiss keyboard
-    Keyboard.dismiss();
-
-    // Set touched state for validation
-    setTouched({ mobile: true, password: true });
-
-    if (!mobileNumber || !password) {
-      Alert.alert("Error", "Please fill in all fields");
-      return;
-    }
-
-    try {
-      setIsLoading(true);
-      const response = await login(mobileNumber, password);
-      if (response && response.message) {
-        Alert.alert("Error", response.message);
-      }
-    } catch (error) {
-      console.error("Login error:", error);
-      Alert.alert("Error", "Login failed. Please try again.");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Handle background press to dismiss keyboard
   const handleBackgroundPress = () => {
     Keyboard.dismiss();
   };
+
+  // ==================== HEADER CONFIG ====================
+
+  const getHeaderConfig = () => {
+    switch (currentStep) {
+      case "password":
+        return {
+          title: "Welcome",
+          subtitle: hasMobileCheckResult
+            ? isMobileAllowed
+              ? "Enter your password to sign in"
+              : mobileCheckMessage || "Unable to login with this number"
+            : verificationMessage || "Verifying your mobile number...",
+          icon: "lock-closed" as const,
+          iconBgColor: "bg-blue-500",
+        };
+      case "setPassword":
+        return {
+          title: "Set Password",
+          subtitle: "Set a password for your account",
+          icon: "key" as const,
+          iconBgColor: "bg-blue-500",
+        };
+    }
+  };
+
+  // ==================== RENDER LOADING ====================
+
+  if (isCheckingAuth) {
+    return (
+      <View className="flex-1 bg-white items-center justify-center">
+        <ActivityIndicator size="large" color="#3B82F6" />
+        <Text className="mt-4 text-gray-500">Checking authentication...</Text>
+      </View>
+    );
+  }
+
+  // ==================== RENDER STEPS ====================
+
+  const renderPasswordStep = () => (
+    <View pointerEvents={verificationStatus !== "success" ? "none" : "auto"}>
+      {/* Mobile Number Display */}
+      <CustomInput
+          label=""
+          placeholder="Enter 10-digit mobile number"
+          value={mobileNumber}
+          onChangeText={setMobileNumber}
+          editable={false}
+          keyboardType="phone-pad"
+          maxLength={10}
+          leftIcon={
+            <Ionicons name="call-outline" size={20} color="#6B7280" />
+          }
+          rightIcon={
+            <Pressable
+              onPress={handleFetchMobileNumbers}
+              disabled={isFetchingSim}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              className="bg-blue-100 p-2 rounded-lg"
+            >
+              {isFetchingSim ? (
+                <ActivityIndicator size="small" color="#3B82F6" />
+              ) : (
+                <Ionicons
+                  name="phone-portrait-outline"
+                  size={20}
+                  color="#3B82F6"
+                />
+              )}
+            </Pressable>
+          }
+          error={
+            !mobileNumber && touched.mobile ? "Mobile number is required" : ""
+          }
+          touched={touched.mobile}
+          onBlur={() => setTouched((prev) => ({ ...prev, mobile: true }))}
+        />
+      {isCheckingMobile && (
+        <View className="flex-row items-center mt-2">
+          <ActivityIndicator size="small" color="#3B82F6" />
+          <Text className="ml-2 text-xs text-gray-500">Verifying mobile number...</Text>
+        </View>
+      )}
+      {!!mobileCheckMessage && (
+        <Text className="mt-2 text-sm text-red-500">{mobileCheckMessage}</Text>
+      )}
+
+      {/* Password Input */}
+      <View className="mb-6 mt-4">
+        <CustomInput
+          label=""
+          placeholder="Enter password"
+          value={password}
+          onChangeText={setPassword}
+          secureTextEntry={!showPassword}
+          editable={isMobileAllowed && !isCheckingMobile}
+          leftIcon={
+            <Ionicons name="lock-closed-outline" size={20} color="#6B7280" />
+          }
+          rightIcon={
+            <Pressable
+              onPress={() => setShowPassword(!showPassword)}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Ionicons
+                name={showPassword ? "eye-outline" : "eye-off-outline"}
+                size={20}
+                color="#6B7280"
+              />
+            </Pressable>
+          }
+          error={!password && touched.password ? "Password is required" : ""}
+          touched={touched.password}
+          onBlur={() => setTouched((prev) => ({ ...prev, password: true }))}
+        />
+        <Pressable
+          onPress={() =>
+            animateStepChange(() => {
+              setCurrentStep("setPassword");
+              setConfirmPassword("");
+              setShowConfirmPassword(false);
+              setTouched((prev) => ({
+                ...prev,
+                password: false,
+                confirmPassword: false,
+              }));
+            })
+          }
+          disabled={!isMobileAllowed || isCheckingMobile}
+          className="mt-2"
+        >
+          <Text className="text-right text-sm text-blue-500 font-JakartaMedium">
+            Forgot password?
+          </Text>
+        </Pressable>
+      </View>
+
+      {/* Sign In Button */}
+      <Pressable
+        onPress={handleLogin}
+        onLongPress={handleLongPressButton}
+        delayLongPress={3000}
+        disabled={isLoading || !isMobileAllowed || isCheckingMobile}
+      >
+        {({ pressed }) => (
+          <View
+            pointerEvents="none"
+            style={{ opacity: pressed ? 0.8 : 1 }}
+          >
+            <CustomButton
+              title="Sign In"
+              onPress={() => {}}
+              loading={isLoading}
+              IconRight={() => (
+                <Ionicons name="arrow-forward" size={20} color="white" />
+              )}
+            />
+          </View>
+        )}
+      </Pressable>
+
+      {/* Back Button */}
+      {/* <Pressable
+        onPress={handleBackToMobile}
+        className="mt-4 flex-row items-center justify-center"
+      >
+        <Ionicons name="arrow-back" size={16} color="#6B7280" />
+        <Text className="text-gray-500 ml-1">Use a different number</Text>
+      </Pressable> */}
+    </View>
+  );
+
+  const renderSetPasswordStep = () => (
+    <View pointerEvents={verificationStatus !== "success" ? "none" : "auto"}>
+      {/* Mobile Number Display */}
+      <CustomInput
+          label=""
+          placeholder="Enter 10-digit mobile number"
+          value={mobileNumber}
+          onChangeText={setMobileNumber}
+          editable={false}
+          keyboardType="phone-pad"
+          maxLength={10}
+          leftIcon={
+            <Ionicons name="call-outline" size={20} color="#6B7280" />
+          }
+          rightIcon={
+            <Pressable
+              onPress={handleFetchMobileNumbers}
+              disabled={isFetchingSim}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              className="bg-blue-100 p-2 rounded-lg"
+            >
+              {isFetchingSim ? (
+                <ActivityIndicator size="small" color="#3B82F6" />
+              ) : (
+                <Ionicons
+                  name="phone-portrait-outline"
+                  size={20}
+                  color="#3B82F6"
+                />
+              )}
+            </Pressable>
+          }
+          error={
+            !mobileNumber && touched.mobile ? "Mobile number is required" : ""
+          }
+          touched={touched.mobile}
+          onBlur={() => setTouched((prev) => ({ ...prev, mobile: true }))}
+        />
+      {isCheckingMobile && (
+        <View className="flex-row items-center mt-2">
+          <ActivityIndicator size="small" color="#3B82F6" />
+          <Text className="ml-2 text-xs text-gray-500">Verifying mobile number...</Text>
+        </View>
+      )}
+      {!!mobileCheckMessage && (
+        <Text className="mt-2 text-sm text-red-500">{mobileCheckMessage}</Text>
+      )}
+
+      {/* New Password Input */}
+      <View className="mb-4 mt-4">
+        <CustomInput
+          label=""
+          placeholder="Enter new password"
+          value={password}
+          onChangeText={setPassword}
+          secureTextEntry={!showPassword}
+          editable={isMobileAllowed && !isCheckingMobile}
+          leftIcon={
+            <Ionicons name="lock-closed-outline" size={20} color="#6B7280" />
+          }
+          rightIcon={
+            <Pressable
+              onPress={() => setShowPassword(!showPassword)}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Ionicons
+                name={showPassword ? "eye-outline" : "eye-off-outline"}
+                size={20}
+                color="#6B7280"
+              />
+            </Pressable>
+          }
+          error={!password && touched.password ? "Password is required" : ""}
+          touched={touched.password}
+          onBlur={() => setTouched((prev) => ({ ...prev, password: true }))}
+        />
+      </View>
+
+      {/* Confirm Password Input */}
+      <View className="mb-6">
+        <CustomInput
+          label=""
+          placeholder="Re-enter password"
+          value={confirmPassword}
+          onChangeText={setConfirmPassword}
+          secureTextEntry={!showConfirmPassword}
+          editable={isMobileAllowed && !isCheckingMobile}
+          leftIcon={
+            <Ionicons name="lock-closed-outline" size={20} color="#6B7280" />
+          }
+          rightIcon={
+            <Pressable
+              onPress={() => setShowConfirmPassword(!showConfirmPassword)}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Ionicons
+                name={showConfirmPassword ? "eye-outline" : "eye-off-outline"}
+                size={20}
+                color="#6B7280"
+              />
+            </Pressable>
+          }
+          error={
+            touched.confirmPassword && confirmPassword && password !== confirmPassword
+              ? "Passwords do not match"
+              : !confirmPassword && touched.confirmPassword
+              ? "Please confirm your password"
+              : ""
+          }
+          touched={touched.confirmPassword}
+          onBlur={() =>
+            setTouched((prev) => ({ ...prev, confirmPassword: true }))
+          }
+        />
+
+        {/* Match indicator */}
+        {confirmPassword.length > 0 && (
+          <View className="flex-row items-center mt-2 ml-1">
+            <Ionicons
+              name={
+                password === confirmPassword
+                  ? "checkmark-circle"
+                  : "close-circle"
+              }
+              size={14}
+              color={password === confirmPassword ? "#22C55E" : "#EF4444"}
+            />
+            <Text
+              className={`text-xs ml-1 ${
+                password === confirmPassword
+                  ? "text-green-600"
+                  : "text-red-500"
+              }`}
+            >
+              {password === confirmPassword
+                ? "Passwords match"
+                : "Passwords do not match"}
+            </Text>
+          </View>
+        )}
+      </View>
+
+            {/* Password Requirements */}
+            <View className="mb-4 ml-1">
+        {/* <Text className="text-xs text-gray-500 mb-2">Password must:</Text>
+         <View className="flex-row items-center mb-1">
+          <Ionicons
+            name={password.length >= 4 ? "checkmark-circle" : "ellipse-outline"}
+            size={14}
+            color={password.length >= 4 ? "#22C55E" : "#9CA3AF"}
+          />
+          <Text
+            className={`text-xs ml-1 ${
+              password.length >= 4 ? "text-green-600" : "text-gray-500"
+            }`}
+          >
+            Be at least 4 characters
+          </Text>
+        </View> */}
+        {/* <View className="flex-row items-center">
+          <Ionicons
+            name={
+              password.length <= 20 && password.length > 0
+                ? "checkmark-circle"
+                : "ellipse-outline"
+            }
+            size={14}
+            color={
+              password.length <= 20 && password.length > 0
+                ? "#22C55E"
+                : "#9CA3AF"
+            }
+          />
+          <Text
+            className={`text-xs ml-1 ${
+              password.length <= 20 && password.length > 0
+                ? "text-green-600"
+                : "text-gray-500"
+            }`}
+          >
+            Be less than 20 characters
+          </Text>
+        </View>  */}
+      </View>
+
+      {/* Set Password Button */}
+      <Pressable
+        onPress={handleSetPassword}
+        onLongPress={handleLongPressButton}
+        delayLongPress={3000}
+          disabled={isSettingPassword || !isMobileAllowed || isCheckingMobile}
+      >
+        {({ pressed }) => (
+          <View
+            pointerEvents="none"
+            style={{ opacity: pressed ? 0.8 : 1 }}
+          >
+            <CustomButton
+              title="Save Password"
+              onPress={() => {}}
+              loading={isSettingPassword}
+              bgVariant="primary"
+              // IconRight={() => (
+              //   <Ionicons name="checkmark-circle" size={20} color="white" />
+              // )}
+            />
+          </View>
+        )}
+      </Pressable>
+
+    </View>
+  );
+
+  const renderCurrentStep = () => {
+    switch (currentStep) {
+      case "password":
+        return renderPasswordStep();
+      case "setPassword":
+        return renderSetPasswordStep();
+      default:
+        return renderPasswordStep();
+    }
+  };
+
+  const headerConfig = getHeaderConfig();
+
+  // ==================== MAIN RENDER ====================
 
   return (
     <KeyboardAvoidingView
@@ -78,138 +820,164 @@ export default function LoginForm() {
       className="flex-1 bg-white"
       keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
     >
+      {/* Full Screen Overlay - Now outside ScrollView for full coverage */}
+      {(verificationStatus === "pending" || verificationStatus === "failed") && (
+        <View
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.4)',
+            zIndex: 100,
+          }}
+          pointerEvents="auto"
+        >
+          {/* Popup positioned below header */}
+          <View 
+            style={{ 
+              marginTop: 190, // Position below Welcome text
+              paddingHorizontal: 20,
+              width: '100%',
+            }}
+          >
+            <View 
+              className="bg-white rounded-2xl px-6 py-5 items-center shadow-lg"
+              style={{
+                shadowColor: "#000",
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.3,
+                shadowRadius: 8,
+                elevation: 10,
+                paddingTop: 90,
+                paddingBottom: 90,
+              }}
+            >
+               {(isCheckingMobile || verificationStatus === "pending") && (
+                <ActivityIndicator size="large" color="#3B82F6" />
+              )}
+              {/* {verificationStatus === "failed" && (
+                <View className="w-16 h-16 rounded-full bg-red-100 items-center justify-center mb-2">
+                  <Ionicons name="close-circle" size={40} color="#EF4444" />
+                </View>
+              )} */}
+              <Text className="text-base font-JakartaSemiBold text-gray-800 text-center mt-3">
+                {verificationMessage || `Verifying ${mobileNumber || "your number"}...`}
+              </Text>
+              
+              {/* Retry button for failed state */}
+              {/* {verificationStatus === "failed" && (
+                <Pressable
+                  onPress={handleFetchMobileNumbers}
+                  className="mt-4 bg-blue-500 px-6 py-3 rounded-xl flex-row items-center"
+                >
+                  <Ionicons name="refresh" size={18} color="white" />
+                  <Text className="text-white font-JakartaSemiBold ml-2">Try Again</Text>
+                </Pressable>
+              )} */}
+            </View>
+          </View>
+        </View>
+      )}
+
       <ScrollView
         contentContainerStyle={{ flexGrow: 1 }}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         bounces={false}
       >
-        {/* Outer Pressable - Dismisses keyboard when tapping outside form */}
         <Pressable
           onPress={handleBackgroundPress}
           className="flex-1 bg-white justify-start"
         >
-          {/* 10% Left Spacing */}
-          <View className="flex-row flex-1">
-            <View className="w-[10%]" />
-
-            {/* 80% Center Container - Login Form */}
-            <View className="w-[80%] pt-8">
-              {/* Header Section */}
-              <View className="items-center mb-8">
-                <View className="w-20 h-20 rounded-2xl bg-blue-500 items-center justify-center mb-5">
-                  <Ionicons name="shield-checkmark" size={40} color="white" />
-                </View>
-                <Text className="text-2xl font-JakartaBold text-gray-800 mb-2">
-                  Welcome Back
-                </Text>
+          <View className="flex-1 px-[10%] pt-8">
+            {/* Header Section */}
+            <View className="items-center mb-8">
+              <View
+                className={`w-20 h-20 rounded-2xl items-center justify-center mb-5 ${headerConfig.iconBgColor}`}
+              >
+                <Ionicons
+                  name={headerConfig.icon}
+                  size={40}
+                  color="white"
+                />
               </View>
-
-              {/* Form Section */}
-              <View>
-                {/* Mobile Input */}
-                <View className="mb-5">
-                  <CustomInput
-                    label="Mobile Number"
-                    placeholder="Enter mobile number"
-                    value={mobileNumber}
-                    onChangeText={setMobileNumber}
-                    keyboardType="phone-pad"
-                    leftIcon={
-                      <Ionicons
-                        name="call-outline"
-                        size={20}
-                        color="#6B7280"
-                      />
-                    }
-                    error={
-                      !mobileNumber && touched.mobile
-                        ? "Mobile number is required"
-                        : ""
-                    }
-                    touched={touched.mobile}
-                    onBlur={() =>
-                      setTouched((prev) => ({ ...prev, mobile: true }))
-                    }
-                  />
-                </View>
-
-                {/* Password Input */}
-                <View className="mb-6">
-                  <CustomInput
-                    label="Password"
-                    placeholder="Enter password"
-                    value={password}
-                    onChangeText={setPassword}
-                    secureTextEntry={!showPassword}
-                    leftIcon={
-                      <Ionicons
-                        name="lock-closed-outline"
-                        size={20}
-                        color="#6B7280"
-                      />
-                    }
-                    rightIcon={
-                      <Pressable
-                        onPress={() => setShowPassword(!showPassword)}
-                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                      >
-                        <Ionicons
-                          name={showPassword ? "eye-outline" : "eye-off-outline"}
-                          size={20}
-                          color="#6B7280"
-                        />
-                      </Pressable>
-                    }
-                    error={
-                      !password && touched.password
-                        ? "Password is required"
-                        : ""
-                    }
-                    touched={touched.password}
-                    onBlur={() =>
-                      setTouched((prev) => ({ ...prev, password: true }))
-                    }
-                  />
-                </View>
-
-                {/* Sign In Button */}
-                <Pressable
-                  onPress={handleLogin}
-                  onLongPress={handleLongPressSignIn}
-                  delayLongPress={3000}
-                  disabled={isLoading}
-                >
-                  {({ pressed }) => (
-                    <View
-                      pointerEvents="none"
-                      style={{ opacity: pressed ? 0.8 : 1 }}
-                    >
-                      <CustomButton
-                        title="Sign In"
-                        onPress={() => {}}
-                        loading={isLoading}
-                        IconRight={() => (
-                          <Ionicons
-                            name="arrow-forward"
-                            size={20}
-                            color="white"
-                          />
-                        )}
-                      />
-                    </View>
-                  )}
-                </Pressable>
-              </View>
+              <Text className="text-2xl font-JakartaBold text-gray-800 mb-2">
+                {headerConfig.title}
+              </Text>
             </View>
 
-            {/* 10% Right Spacing */}
-            <View className="w-[10%]" />
+            {/* Form Section with Animation */}
+            <Animated.View
+              style={{ opacity: fadeAnim }}
+            >
+              {renderCurrentStep()}
+            </Animated.View>
           </View>
         </Pressable>
       </ScrollView>
 
-      {/* IP Modal - Modal Overlay */}
+      {/* SIM Card Picker Modal */}
+      <Modal
+        visible={showSimPickerModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowSimPickerModal(false)}
+      >
+        <Pressable
+          onPress={() => setShowSimPickerModal(false)}
+          className="flex-1 bg-black/50 justify-end"
+        >
+          <Pressable
+            onPress={() => {}}
+            className="bg-white rounded-t-3xl pt-6 pb-8 px-5"
+          >
+            <View className="w-10 h-1 bg-gray-300 rounded-full self-center mb-4" />
+
+            <Text className="text-xl font-JakartaBold text-gray-800 mb-2">
+              Choose Your Number
+            </Text>
+            <Text className="text-sm text-gray-500 mb-5">
+              Multiple SIM cards detected. Please select which number to use.
+            </Text>
+
+            {availableSimCards.map((sim, index) => (
+              <Pressable
+                key={index}
+                onPress={() => handleSelectSimCard(sim)}
+                className="bg-gray-50 border border-gray-200 rounded-xl p-4 mb-3 flex-row items-center active:bg-gray-100"
+              >
+                <View className="bg-blue-500 p-3 rounded-xl mr-4">
+                  <Ionicons name="phone-portrait" size={24} color="white" />
+                </View>
+                <View className="flex-1">
+                  <Text className="text-sm text-gray-500">
+                    SIM {sim.slotIndex + 1} • {sim.carrierName}
+                  </Text>
+                  <Text className="text-lg font-JakartaBold text-gray-800">
+                    {sim.phoneNumber}
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={24} color="#6B7280" />
+              </Pressable>
+            ))}
+
+            <Pressable
+              onPress={() => {
+                setShowSimPickerModal(false);
+                setMobileNumber("");
+              }}
+              className="mt-2 py-3 flex-row items-center justify-center"
+            >
+              <Ionicons name="keypad-outline" size={18} color="#6B7280" />
+              <Text className="text-gray-500 ml-2">Enter number manually</Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* IP Modal - Developer Mode */}
       <Modal
         visible={showIPModal}
         transparent={true}

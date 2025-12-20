@@ -11,37 +11,35 @@ const initDB = async () => {
     await createUsersTable(client);
 
     // 2. Create MessageType enum (type definition, no dependencies)
-    await createMessageTypeEnum(client);
+    // await createMessageTypeEnum(client);
 
     // 3. Create Chatrooms table (no foreign keys initially)
-    await createChatRoomsTable(client);
+    // await createChatRoomsTable(client);
 
     // 4. Create Poll table (referenced by chatmessages)
-    await createPollTable(client);
+    // await createPollTable(client);
 
     // 5. Create Media table (referenced by chatmessages)
-    await createMediaTable(client);
+    // await createMediaTable(client);
 
     // 6. Create Table table (referenced by chatmessages)
-    await createTableTable(client);
+    // await createTableTable(client);
 
     // 7. Create Chatroomusers table (depends on: chatrooms, users)
-    await createChatRoomUsersTable(client);
+    // await createChatRoomUsersTable(client);
 
     // 8. Create Chatmessages table (depends on: messageType, chatrooms, users, poll, media, table)
-    await createChatMessagesTable(client);
+    // await createChatMessagesTable(client);
 
     // 9. Create Messagereadstatus table (depends on: chatmessages, chatrooms)
-    await createMessageReadStatusTable(client);
+    // await createMessageReadStatusTable(client);
 
     // 10. Create Notification_tokens table (depends on: users)
-    await createNotificationTokenTable(client);
+    // await createNotificationTokenTable(client);
 
-    // 11. Add new columns to users table if they don't exist
-    await addUsersTableColumns(client);
 
     // 12. Add foreign key constraints after all tables are created
-    await addForeignKeyConstraints(client);
+    // await addForeignKeyConstraints(client);
 
     console.log("✅ All database tables initialized successfully");
   } catch (error) {
@@ -85,25 +83,27 @@ const createUsersTable = async (client) => {
     }
 
     await client.query(`
-      CREATE TABLE IF NOT EXISTS users (
-          user_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-          mobile_number VARCHAR(15) UNIQUE NOT NULL,
-          email VARCHAR(100),
-          full_name VARCHAR(100) NOT NULL,
-          password VARCHAR(255) NOT NULL,
-          role VARCHAR(10) NOT NULL CHECK (role IN ('master', 'admin', 'sevak')),
-          usage_permission TEXT[] NOT NULL DEFAULT ARRAY['mobile']::TEXT[],
-          -- Profile Information
-          gender VARCHAR(20),
-          date_of_birth DATE,
-          blood_group VARCHAR(10),
-          education VARCHAR(100),
-          -- Contact Information
-          whatsapp_number VARCHAR(15),
-          emergency_contact VARCHAR(15),
-          address TEXT,
-          created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-          updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+      CREATE TABLE IF NOT EXISTS "SevakMaster" (
+          seid integer PRIMARY KEY,
+          sevakname VARCHAR(100),
+          mobileno VARCHAR(15),
+          isactive integer DEFAULT 0,
+          password VARCHAR(255),
+          canlogin integer DEFAULT 0,
+          isadmin integer DEFAULT 0,
+          deptname VARCHAR(100),
+          usertype varchar(100),
+          createdon TIMESTAMPTZ DEFAULT (NOW() AT TIME ZONE 'UTC'),
+          createdby character varying(100),
+          modifiedon TIMESTAMPTZ DEFAULT (NOW() AT TIME ZONE 'UTC'),
+          modifiedby character varying(100),
+          birthdate DATE,
+          bloodgroup VARCHAR(10),
+          emergencycontact1 VARCHAR(100),
+          emrgencycontactno1 VARCHAR(15),
+          emergencycontact2 VARCHAR(100),
+          emrgencycontactno2 VARCHAR(15),
+          sevakid varchar(50)
       );
     `);
     console.log("✅ Users table created successfully");

@@ -52,7 +52,9 @@
           "READ_EXTERNAL_STORAGE",
           "MANAGE_EXTERNAL_STORAGE",
           "REQUEST_INSTALL_PACKAGES",
-          "POST_NOTIFICATIONS"
+          "POST_NOTIFICATIONS",
+          "READ_PHONE_STATE",
+          "READ_PHONE_NUMBERS"
         ]
       },
       "ios": {

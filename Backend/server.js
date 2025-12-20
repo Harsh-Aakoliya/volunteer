@@ -36,10 +36,10 @@ app.use(errorHandling);
 app.use("/media",express.static(path.join(process.cwd(), 'media')));
 
 // Initialize database - single function creates all tables in correct order
-// initDB().catch(error => {
-//   console.error("Failed to initialize database:", error);
-//   process.exit(1);
-// });
+initDB().catch(error => {
+  console.error("Failed to initialize database:", error);
+  process.exit(1);
+});
 
 // Initialize Firebase for FCM notifications
 initializeFirebase();
@@ -70,7 +70,7 @@ const lastMessageByRoom = {};
 app.set('lastMessageByRoom', lastMessageByRoom);
 
 // Set up Socket.IO
-setupSocketIO(io, app);
+// setupSocketIO(io, app);
 
 // API routes
 app.use('/api', apiRoutes);
@@ -148,14 +148,6 @@ app.get("/api/media", (req, res) => {
   }
 });
 
-//checking 
-app.get("/api/test", (req, res) => {
-  const from = req.query.from;
-  const ip = req.query.ip;
-  console.log(`🧪 API Test Request From: ${from}, IP: ${ip}`);
-  res.json({ message: "API is running" });
-});
-
 // Version endpoint
 app.get("/api/version", (req, res) => {
   console.log("version checking req got");
@@ -227,7 +219,7 @@ httpServer.listen(PORT, "0.0.0.0", () => {
   addresses.forEach((addr) => console.log(`http://${addr}:${PORT}`));
   
   // Start scheduled message service
-  scheduledMessageService.start();
+  // scheduledMessageService.start();
 });
 
 

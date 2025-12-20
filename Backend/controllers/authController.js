@@ -1,103 +1,276 @@
 // controllers/authController.js
 import pool from "../config/database.js";
-import jwt from 'jsonwebtoken';
-import bcrypt from 'bcryptjs';
-import { UserDefinedMessageInstance } from "twilio/lib/rest/api/v2010/account/call/userDefinedMessage.js";
-import { useId } from "react";
+import jwt from "jsonwebtoken";
+import bcrypt from "bcryptjs";
 
-const register = async (req, res) => {
-  const { mobileNumber, fullName } = req.body;
-  console.log("register ",mobileNumber);
-  //first checking if user is already exists or not
+// ==================== LOGIN ====================
+const login = async (req, res) => {
+  const { mobileNumber, password } = req.body;
+  console.log("Login attempt:", mobileNumber, password);
+
   try {
+    // Validate input
+    if (!mobileNumber || !password) {
+      return res.status(400).json({
+        success: false,
+        message: "Mobile number and password are required",
+      });
+    }
+
+    // Find user by mobile number
     const result = await pool.query(
-      `SELECT * FROM users WHERE "mobile_number" = $1`,
+      `SELECT * FROM "SevakMaster" WHERE "mobileno" = $1`,
       [mobileNumber]
     );
-    console.log("response",result.rows);
-    if (result.rows.length > 0) {
-      res.json({ success: false, message: "Mobile number already registed" });
-    } else {
-      // Create user with default role 'sevak' and default usage_permission ['mobile']
-      const result = await pool.query(
-        `INSERT INTO "users" ("mobile_number", "full_name", "role", "usage_permission") VALUES ($1, $2, $3, $4) RETURNING *`,
-        [mobileNumber, fullName, 'sevak', ['mobile']]
-      );
-      console.log("result",result.rows);
-      console.log("inserted successfully");
-      res.json({
-        success: true,
-        message: "Registration request sent to admin",
-      });
-    }
-  } catch (error) {
-    res.status(400).json({ success: false, message: error.message });
-  }
-};
 
-// controllers/authController.js
-const login = async (req, res) => {
-  const { mobileNumber, password, platform } = req.body;
-  console.log("Login attempt:", mobileNumber, password, "Platform:", platform);
-  
-  try {
-    const result = await pool.query(
-      `SELECT * FROM users WHERE "mobile_number" = $1 AND "password" = $2`,
-      [mobileNumber, password]
-    );
-    console.log("Database results:", result.rows);
-
-    if (result.rows.length > 0) {
-      const user = result.rows[0];
-      
-      // Check usage permission (now an array)
-      const permissions =Array.isArray(user.usage_permission) 
-        ? user.usage_permission 
-        : [user.usage_permission].filter(Boolean);
-
-      console.log("permissions",permissions);
-      console.log("platform",platform);
-      if (!permissions.includes(platform)) {
-        return res.json({
-          success: false,
-          message: `Access denied. Not able to access from ${platform} `,
-        });
-      }
-      
-      const token = jwt.sign(
-        { userId: user.user_id, role: user.role },
-        process.env.JWT_SECRET
-      );
-      
-      res.json({
-        success: true,
-        token: token,
-        user:user,
-      });
-    } else {
-      res.json({
+    if (result.rows.length === 0) {
+      return res.status(404).json({
         success: false,
-        message: "Invalid credentials. User not found.",
+        message: "Mobile number not registered. Please contact Sevak Karyalay.",
       });
     }
+
+    const sevak = result.rows[0];
+    console.log("Sevak found:", sevak.seid);
+
+    // Check if password is set
+    if (!sevak.password) {
+      console.log("Password not set");
+      return res.status(400).json({
+        success: false,
+        message: "Password not set. Please set your password first.",
+      });
+    }
+
+    // Verify password (comparing plain text - consider using bcrypt for production)
+    if (sevak.password !== password) {
+      console.log("Incorrect password");
+      return res.status(401).json({
+        success: false,
+        message: "Incorrect password. Please check and try again.",
+      });
+    }
+
+    // Check login permission
+    const canlogin = sevak.canlogin;
+    if (canlogin !== 1) {
+      console.log("canlogin", canlogin);
+      console.log("Access denied. Please contact Sevak Karyalay.");
+      return res.status(403).json({
+        success: false,
+        message: "Access denied. Please contact Sevak Karyalay.",
+      });
+    }
+
+    // Generate JWT token
+    const token = jwt.sign(
+      { userId: sevak.seid, role: sevak.usertype },
+      process.env.JWT_SECRET,
+      { expiresIn: "7d" }
+    );
+
+    // Remove sensitive data before sending
+    const sevakData = { ...sevak };
+    delete sevakData.password;
+
+    res.json({
+      success: true,
+      message: "Login successful",
+      token: token,
+      sevak: sevakData,
+    });
   } catch (error) {
     console.error("Login error in backend:", error);
-    res.status(500).json({ success: false, message: "Server error. Please try again." });
+    res.status(500).json({
+      success: false,
+      message: "Server error. Please try again later.",
+    });
   }
 };
 
+// ==================== CHECK MOBILE EXISTS ====================
+const checkMobileExists = async (req, res) => {
+  const { mobileNumber } = req.body;
+  console.log("Check mobile exists request:", mobileNumber);
+
+  try {
+    // Validate input
+    if (!mobileNumber) {
+      return res.status(400).json({
+        success: false,
+        exists: false,
+        isPasswordSet: false,
+        message: "Mobile number is required",
+      });
+    }
+
+    const result = await pool.query(
+      `SELECT "seid", "mobileno", "password", "canlogin" FROM "SevakMaster" WHERE "mobileno" = $1`,
+      [mobileNumber]
+    );
+
+    const isMobileNumberExists = result.rows.length > 0;
+
+    if (isMobileNumberExists) {
+      const sevak = result.rows[0];
+      const isPasswordSet = sevak.password !== null && sevak.password !== "";
+      const canlogin = sevak.canlogin;
+      if(canlogin !== 1) {
+        res.json({
+          success: false,
+          exists: true,
+          isPasswordSet: isPasswordSet,
+          canlogin: canlogin,
+          message: "Access denied. Please contact Sevak Karyalay.",
+        });
+      } 
+      else { // if is possword is set then show password input else show set password input
+        res.json({
+          success: true,
+          exists: true,
+          isPasswordSet: isPasswordSet,
+          canlogin: canlogin,
+          message: "Mobile number found",
+        });
+      }
+    } else {
+      res.json({
+        success: true,
+        exists: false,
+        isPasswordSet: false,
+        canlogin: 0,
+        message: "Mobile number not registered. Please contact Sevak Karyalay.",
+      });
+    }
+  } catch (error) {
+    console.error("Check mobile error:", error);
+    res.status(500).json({
+      success: false,
+      exists: false,
+      isPasswordSet: false,
+      canlogin: 0,
+      message: "Server error. Please try again later.",
+    });
+  }
+};
+
+// ==================== SET PASSWORD ====================
+const setPassword = async (req, res) => {
+  const { mobileNumber, password } = req.body;
+  console.log("Set password request for:", mobileNumber);
+
+  try {
+    // Validate input
+    if (!mobileNumber || !password) {
+      return res.status(400).json({
+        success: false,
+        message: "Mobile number and password are required",
+      });
+    }
+
+    // Validate password length
+    if (password.length < 4) {
+      return res.status(400).json({
+        success: false,
+        message: "Password must be at least 4 characters long",
+      });
+    }
+
+    if (password.length > 20) {
+      return res.status(400).json({
+        success: false,
+        message: "Password must be less than 20 characters",
+      });
+    }
+
+    // Find user by mobile number
+    const findResult = await pool.query(
+      `SELECT * FROM "SevakMaster" WHERE "mobileno" = $1`,
+      [mobileNumber]
+    );
+
+    if (findResult.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Mobile number not registered. Please contact Sevak Karyalay.",
+      });
+    }
+
+    const sevak = findResult.rows[0];
+
+    // Check if password is already set
+    // if (sevak.password !== null && sevak.password !== "") {
+    //   return res.status(409).json({
+    //     success: false,
+    //     message: "Password is already set. Please use login instead.",
+    //   });
+    // }
+
+    // Check login permission
+    if (sevak.canlogin !== 1) {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied. Please contact Sevak Karyalay.",
+      });
+    }
+
+    // Update password in database
+    // Note: For production, consider hashing the password with bcrypt
+    const updateResult = await pool.query(
+      `UPDATE "SevakMaster" SET "password" = $1 WHERE "mobileno" = $2 RETURNING *`,
+      [password, mobileNumber]
+    );
+
+    if (updateResult.rows.length === 0) {
+      return res.status(500).json({
+        success: false,
+        message: "Failed to set password. Please try again.",
+      });
+    }
+
+    const updatedSevak = updateResult.rows[0];
+
+    // Generate JWT token
+    const token = jwt.sign(
+      { userId: updatedSevak.seid, role: updatedSevak.usertype },
+      process.env.JWT_SECRET,
+      { expiresIn: "7d" }
+    );
+
+    // Remove sensitive data before sending
+    const sevakData = { ...updatedSevak };
+    delete sevakData.password;
+
+    console.log("Password set successfully for:", mobileNumber);
+
+    res.json({
+      success: true,
+      message: "Password set successfully",
+      token: token,
+      sevak: sevakData,
+    });
+  } catch (error) {
+    console.error("Set password error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error. Please try again later.",
+    });
+  }
+};
+
+// ==================== CHECK USER ====================
 const checkUser = async (req, res) => {
   const { mobileNumber } = req.body;
-  
+
   try {
     const result = await pool.query(
       'SELECT * FROM "users" WHERE "mobile_number" = $1',
       [mobileNumber]
     );
-    
+
     if (result.rows.length > 0) {
-      res.json({ 
-        exists: true
+      res.json({
+        exists: true,
       });
     } else {
       res.json({ exists: false });
@@ -108,4 +281,23 @@ const checkUser = async (req, res) => {
   }
 };
 
-export default { register, login, checkUser };
+// ==================== REGISTER ====================
+const register = async (req, res) => {
+  const { mobileNumber, userId, fullName } = req.body;
+
+  try {
+    // Add your registration logic here
+    res.json({
+      success: true,
+      message: "Registration successful",
+    });
+  } catch (error) {
+    console.error("Registration error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Registration failed. Please try again.",
+    });
+  }
+};
+
+export default { register, login, checkUser, checkMobileExists, setPassword };

@@ -1,5 +1,5 @@
 // components/UserProfile.tsx
-import React, { useState } from 'react';
+import React, { JSXElementConstructor, useState } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   RefreshControl,
   Linking,
   Alert,
+  RefreshControlProps,
 } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -23,28 +24,28 @@ interface UserProfileProps {
   attendanceData?: any[];
 }
 
-const UserProfile: React.FC<UserProfileProps> = ({ 
+const UserProfile: React.FC<any> = ({ 
   user, 
-  onEdit, 
-  showEditButton = false,
-  onRefresh,
   isRefreshing = false,
   attendanceData = []
 }) => {
   const [activeTab, setActiveTab] = useState('personal'); // 'personal' or 'attendance'
-
-  const handleEdit = () => {
-    if (onEdit) {
-      onEdit();
-    } else {
-      router.push({
-        pathname: '/edit-user',
-        params: {
-          userData: JSON.stringify(user)
-        }
-      });
-    }
-  };
+  const displayName = user?.sevakname || user?.fullName || 'User Name';
+  const mobile = user?.mobileno || user?.mobileNumber || '-';
+  const roleText = user?.usertype || (user?.isadmin ? 'Admin' : 'Sevak');
+  const userId = user?.sevakid || user?.seid || user?.userId || '-';
+  // const handleEdit = () => {
+  //   if (onEdit) {
+  //     onEdit();
+  //   } else {
+  //     router.push({
+  //       pathname: '/edit-user',
+  //       params: {
+  //         userData: JSON.stringify(user)
+  //       }
+  //     });
+  //   }
+  // };
 
   const handlePhoneCall = (phoneNumber: string) => {
     if (phoneNumber && phoneNumber !== '-') {
@@ -170,7 +171,7 @@ const UserProfile: React.FC<UserProfileProps> = ({
       Math.round((user?.presentCount / user?.totalSabha) * 100) : 0;
 
     // Process attendance data for display
-    const processedAttendanceData = attendanceData.map(record => {
+    const processedAttendanceData = attendanceData.map((record:any) => {
       const sabhaDate = new Date(record.sabhaDate);
       const date = sabhaDate.getDate().toString();
       const month = sabhaDate.toLocaleDateString('en-US', { month: 'short' });
@@ -258,7 +259,7 @@ const UserProfile: React.FC<UserProfileProps> = ({
             
             <ScrollView className="max-h-96">
               {processedAttendanceData.length > 0 ? (
-                processedAttendanceData.map((entry, index) => (
+                processedAttendanceData.map((entry:any, index:number) => (
                   <AttendanceEntry
                     key={index}
                     date={entry.date}
@@ -285,64 +286,80 @@ const UserProfile: React.FC<UserProfileProps> = ({
     <View className="px-6 py-6">
       <View className="bg-white rounded-2xl shadow-sm">
         <View className="p-6">
-          <Text className="text-lg font-bold text-gray-800 mb-4">Personal Information</Text>
+          {/* <Text className="text-lg font-bold text-gray-800 mb-4">Personal Information</Text> */}
           
           <PersonalInfoField
             icon="person-outline"
-            label="Gender"
-            value={user?.gender}
-          />
-          
-          <PersonalInfoField
-            icon="calendar-outline"
-            label="Date of Birth"
-            value={user?.dateOfBirth}
-          />
-          
-          <PersonalInfoField
-            icon="water-outline"
-            label="Blood Group"
-            value={user?.bloodGroup}
-          />
-          
-          <PersonalInfoField
-            icon="heart-outline"
-            label="Marital Status"
-            value={user?.maritalStatus}
-          />
-          
-          <PersonalInfoField
-            icon="school-outline"
-            label="Education"
-            value={user?.education}
-          />
-          
-          <PersonalInfoField
-            icon="logo-whatsapp"
-            label="WhatsApp Number"
-            value={user?.whatsappNumber}
-            onPress={() => handleWhatsApp(user?.whatsappNumber)}
-            color="#25D366"
+            label="Full Name"
+            value={displayName}
           />
           
           <PersonalInfoField
             icon="call-outline"
-            label="Emergency Contact"
-            value={user?.emergencyContact}
-            onPress={() => handlePhoneCall(user?.emergencyContact)}
+            label="Mobile Number"
+            value={mobile}
+            onPress={() => handlePhoneCall(mobile)}
+            color="#0284c7"
+          />
+          
+          <PersonalInfoField
+            icon="briefcase-outline"
+            label="Department"
+            value={user?.deptname}
+          />
+
+          <PersonalInfoField
+            icon="finger-print-outline"
+            label="User ID"
+            value={String(userId)}
+          />
+
+          <PersonalInfoField
+            icon="ribbon-outline"
+            label="Role"
+            value={roleText}
+          />
+
+          <PersonalInfoField
+            icon="calendar-outline"
+            label="Birthdate"
+            value={user?.birthdate}
+          />
+
+          <PersonalInfoField
+            icon="water-outline"
+            label="Blood Group"
+            value={user?.bloodgroup}
+          />
+
+          <PersonalInfoField
+            icon="checkmark-circle-outline"
+            label="Active Status"
+            value={user?.isactive === 1 ? 'Active' : 'Inactive'}
+            color={user?.isactive === 1 ? "#10B981" : "#EF4444"}
+          />
+
+          <PersonalInfoField
+            icon="shield-checkmark-outline"
+            label="Admin"
+            value={user?.isadmin === 1 ? 'Yes' : 'No'}
+            color={user?.isadmin === 1 ? "#10B981" : "#6B7280"}
+          />
+
+          <PersonalInfoField
+            icon="call-outline"
+            label={`Emergency Contact 1${user?.emergencycontact1 ? ` (${user?.emergencycontact1})` : ''}`}
+            value={user?.emrgencycontactno1}
+            onPress={() => handlePhoneCall(user?.emrgencycontactno1)}
             color="#EF4444"
           />
-          
+
           <PersonalInfoField
-            icon="mail-outline"
-            label="Email"
-            value={user?.email}
-          />
-          
-          <PersonalInfoField
-            icon="location-outline"
-            label="Address"
-            value={user?.address}
+            icon="call-outline"
+            label={`Emergency Contact 2${user?.emergencycontact2 ? ` (${user?.emergencycontact2})` : ''}`}
+            value={user?.emrgencycontactno2}
+            onPress={() => handlePhoneCall(user?.emrgencycontactno2)}
+            color="#EF4444"
           />
         </View>
       </View>
@@ -362,28 +379,28 @@ const UserProfile: React.FC<UserProfileProps> = ({
             <View className="flex-row items-center flex-1">
               <View className="w-16 h-16 bg-white/20 rounded-full items-center justify-center mr-4">
                 <Text className="text-xl font-bold text-white">
-                  {user?.fullName?.charAt(0) || 'U'}
+                  {displayName?.charAt(0) || 'U'}
                 </Text>
               </View>
               <View className="flex-1">
                 <Text className="text-white text-lg font-bold" numberOfLines={1}>
-                  {user?.fullName || 'User Name'}
+                  {displayName}
                 </Text>
                 <Text className="text-white/80 text-sm" numberOfLines={1}>
-                  {user?.role === 'master' ? 'Master' : user?.role === 'admin' ? 'Admin' : 'Sevak'}
+                  {roleText}
                 </Text>
               </View>
             </View>
             
             {/* Right side - Edit Button */}
-            {showEditButton && (
+            {/* {showEditButton && (
               <TouchableOpacity
                 onPress={handleEdit}
                 className="w-10 h-10 bg-white/20 rounded-full items-center justify-center"
               >
                 <Ionicons name="create-outline" size={20} color="white" />
               </TouchableOpacity>
-            )}
+            )} */}
           </View>
 
           {/* Contact Info - Centered below */}
@@ -394,13 +411,13 @@ const UserProfile: React.FC<UserProfileProps> = ({
               className="mb-2"
             >
               <Text className="text-white/90 text-sm">
-                📞 {user?.mobileNumber || 'No mobile number'}
+                📞 {mobile || 'No mobile number'}
               </Text>
             </TouchableOpacity>
             
             {/* User ID */}
             <Text className="text-white/70 text-xs">
-              ID: {user?.userId || '-'}
+              ID: {userId || '-'}
             </Text>
           </View>
         </LinearGradient>
@@ -436,13 +453,13 @@ const UserProfile: React.FC<UserProfileProps> = ({
         className="flex-1" 
         showsVerticalScrollIndicator={false}
         refreshControl={
-          onRefresh ? (
+          isRefreshing ? (
             <RefreshControl
               refreshing={isRefreshing}
-              onRefresh={onRefresh}
+              onRefresh={() => {}}
               colors={["#0284c7"]}
             />
-          ) : undefined
+          ) : undefined as React.ReactElement<RefreshControlProps, string | JSXElementConstructor<any>> | undefined
         }
       >
          {activeTab === 'personal' ? <PersonalInfoTab /> : <AttendanceTab />}
