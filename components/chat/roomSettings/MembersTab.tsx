@@ -61,8 +61,12 @@ const MemberItem = memo(({ item }: { item: Member }) => {
 MemberItem.displayName = 'MemberItem';
 
 function MembersTab({ members: initialMembers, roomId, onlineUsers: initialOnlineUsers = [] }: MembersTabProps) {
-  const [members, setMembers] = useState<Member[]>(initialMembers);
-  const [onlineUsers, setOnlineUsers] = useState<string[]>(initialOnlineUsers);
+  const normalizeMembers = (list: Member[]) =>
+    list.map(m => ({ ...m, userId: String(m.userId) }));
+  const normalizeOnline = (list: string[]) => list.map(String);
+
+  const [members, setMembers] = useState<Member[]>(normalizeMembers(initialMembers));
+  const [onlineUsers, setOnlineUsers] = useState<string[]>(normalizeOnline(initialOnlineUsers));
   const [isRefreshing, setIsRefreshing] = useState(false);
   const membersRef = useRef<Member[]>(initialMembers);
 
@@ -73,12 +77,12 @@ function MembersTab({ members: initialMembers, roomId, onlineUsers: initialOnlin
 
   // Update members when prop changes
   useEffect(() => {
-    setMembers(initialMembers);
+    setMembers(normalizeMembers(initialMembers));
   }, [initialMembers]);
 
   // Update online users when prop changes
   useEffect(() => {
-    setOnlineUsers(initialOnlineUsers);
+    setOnlineUsers(normalizeOnline(initialOnlineUsers));
   }, [initialOnlineUsers]);
 
   // Listen for online status updates

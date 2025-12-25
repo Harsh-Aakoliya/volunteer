@@ -4,14 +4,14 @@ import pool from "../config/database.js";
 const chatController = {
   async getChatUsers(req, res) {
     try {
-      const authenticatedUserId = req.user.userId;
+      const authenticatedUserId = Number(req.user.userId) || 0;
 
       // Get all users except current user
       const result = await pool.query(
-        `SELECT "user_id" as "userId", "full_name" as "fullName", "mobile_number" as "mobileNumber", "role"
-         FROM "users" 
-         WHERE "user_id"::text != $1 
-         ORDER BY "full_name"`,
+        `SELECT "seid" as "userId", "sevakname" as "fullName", "mobileno" as "mobileNumber", "usertype" as "role"
+         FROM "SevakMaster" 
+         WHERE "seid" != $1::integer 
+         ORDER BY "sevakname"`,
         [authenticatedUserId]
       );
 
@@ -23,17 +23,15 @@ const chatController = {
   },
   async getChatRooms(req, res) {
     try {
-      console.log("request got ", req.user);
-      const userId = req.user.userId;
+      const userId = Number(req.user.userId) || 0;
       
       const result = await pool.query(
-        `SELECT cr."roomId" as id, cr."roomName", cr."roomDescription", cr."isGroup", 
-                cr."createdBy", cr."createdOn", cru."isAdmin", 
-                CASE WHEN cru."isAdmin" = TRUE THEN TRUE ELSE FALSE END as "canSendMessage"
-        FROM chatrooms cr
-        JOIN chatroomusers cru ON cr."roomId" = cru."roomId"
-        WHERE cru."userId" = $1
-        ORDER BY cr."createdOn" DESC`,
+        `SELECT cr."roomId" as id, cr."roomName", cr."isactive", cr."createdby", cr."createdon",
+                cru."isAdmin", cru."canSendMessage"
+         FROM chatrooms cr
+         JOIN chatroomusers cru ON cr."roomId" = cru."roomId"
+         WHERE cru."userId" = $1::integer
+         ORDER BY cr."createdon" DESC`,
         [userId]
       );
     
@@ -51,7 +49,7 @@ const chatController = {
       await client.query('BEGIN');
 
       let { roomName, roomDescription, isGroup, userIds } = req.body;
-      const createdBy = req.user.userId;
+      const createdBy = Number(req.user.userId) || 0;
 
       console.log("Creating room with:", {
         roomName,
@@ -83,7 +81,7 @@ const chatController = {
       }
 
       // Filter out any empty or invalid userIds
-      const validUserIds = Array.from(userIds);
+      const validUserIds = Array.from(userIds).map((id) => Number(id)).filter((id) => Number.isFinite(id));
 
       if (validUserIds.length === 0) {
         throw new Error("No valid user IDs provided after filtering");
@@ -91,7 +89,7 @@ const chatController = {
 
       // Get current user's information
       const currentUserResult = await client.query(
-        `SELECT "user_id", "role" FROM "users" WHERE "user_id"::text = $1`,
+        `SELECT "seid", "usertype" FROM "SevakMaster" WHERE "seid" = $1`,
         [createdBy]
       );
 
@@ -101,12 +99,12 @@ const chatController = {
 
       // Check if all userIds exist
       const userCheckResult = await client.query(
-        `SELECT "user_id" FROM "users" WHERE "user_id"::text = ANY($1)`,
+        `SELECT "seid" FROM "SevakMaster" WHERE "seid" = ANY($1::int[])`,
         [validUserIds]
       );
 
-      const foundUserIds = userCheckResult.rows.map(row => row.user_id.toString());
-      const missingUserIds = validUserIds.filter(id => !foundUserIds.includes(id.toString()));
+      const foundUserIds = userCheckResult.rows.map(row => Number(row.seid));
+      const missingUserIds = validUserIds.filter(id => !foundUserIds.includes(id));
 
       if (missingUserIds.length > 0) {
         throw new Error(`Some user IDs do not exist: ${missingUserIds.join(', ')}`);
@@ -115,10 +113,10 @@ const chatController = {
       // Insert the chat room
       const roomResult = await client.query(
         `INSERT INTO chatrooms 
-        ("roomName", "roomDescription", "isGroup", "createdBy") 
-        VALUES ($1, $2, $3, $4) 
-        RETURNING "roomId"`,
-        [roomName, roomDescription || null, isGroup || false, createdBy]
+        ("roomName", "isactive", "createdon", "createdby") 
+        VALUES ($1, $2, NOW() AT TIME ZONE 'UTC', $3) 
+        RETURNING "roomId", "roomName", "isactive", "createdon", "createdby"`,
+        [roomName, 1, createdBy]
       );
 
       const roomId = roomResult.rows[0].roomId;
@@ -128,20 +126,20 @@ const chatController = {
         const isAdmin = userId === createdBy;
         return client.query(
           `INSERT INTO chatroomusers 
-          ("roomId", "userId", "isAdmin", "canSendMessage") 
-          VALUES ($1, $2, $3, $4)`,
-          [roomId, userId.toString(), isAdmin, isAdmin] // canSendMessage = isAdmin (only admins can send messages)
+          ("roomId", "userId", "isAdmin", "canSendMessage", "joinedAt", createdby) 
+          VALUES ($1, $2, $3, $4, NOW() AT TIME ZONE 'UTC', $5)`,
+          [roomId, userId, isAdmin, isAdmin, createdBy]
         );
       });
 
       // Make sure creator is also added to the room if not already in the list
-      if (!validUserIds.includes(createdBy.toString())) {
+      if (!validUserIds.includes(createdBy)) {
         userInsertPromises.push(
           client.query(
             `INSERT INTO chatroomusers 
-            ("roomId", "userId", "isAdmin", "canSendMessage") 
-            VALUES ($1, $2, $3, $4)`,
-            [roomId, createdBy.toString(), true, true] // Creator is always admin and can send messages
+            ("roomId", "userId", "isAdmin", "canSendMessage", "joinedAt", createdby) 
+            VALUES ($1, $2, $3, $4, NOW() AT TIME ZONE 'UTC', $5)`,
+            [roomId, createdBy, true, true, createdBy] // Creator is always admin and can send messages
           )
         );
       }
@@ -151,9 +149,12 @@ const chatController = {
 
       res.status(201).json({ 
         id: roomId, 
-        roomName, 
-        roomDescription, 
-        isGroup 
+        roomName: roomResult.rows[0].roomName, 
+        roomDescription: null, 
+        isGroup: true,
+        isactive: roomResult.rows[0].isactive,
+        createdBy: roomResult.rows[0].createdby,
+        createdOn: roomResult.rows[0].createdon
       });
     } catch (error) {
       await client.query('ROLLBACK');
@@ -169,7 +170,7 @@ const chatController = {
   async getChatRoomDetails(req, res) {
     try {
       const { roomId } = req.params;
-      const userId = req.user.userId;
+      const userId = Number(req.user.userId) || 0;
       
       // Convert roomId to integer
       const roomIdInt = parseInt(roomId, 10);
@@ -190,11 +191,14 @@ const chatController = {
 
       // Get room details
       const roomResult = await pool.query(
-        `SELECT cr."roomId", cr."roomName", cr."roomDescription", cr."isGroup", 
-                cr."createdOn",
-                u."full_name" as "creatorName", cr."createdBy" = $2 as "isCreator"
+        `SELECT cr."roomId", cr."roomName", cr."isactive", 
+                cr."createdon",
+                cr."createdby",
+                sm."sevakname" as "creatorName", cr."createdby" = $2 as "isCreator",
+                NULL::text as "roomDescription",
+                TRUE as "isGroup"
         FROM chatrooms cr
-        JOIN "users" u ON cr."createdBy" = u."user_id"::text
+        LEFT JOIN "SevakMaster" sm ON cr."createdby" = sm."seid"
         WHERE cr."roomId" = $1`,
         [roomIdInt, userId]
       );
@@ -205,11 +209,11 @@ const chatController = {
 
       // Get room members
       const membersResult = await pool.query(
-        `SELECT u."user_id" as "userId", u."full_name" as "fullName", u."mobile_number" as "mobileNumber", cru."isAdmin", cru."canSendMessage"
+        `SELECT sm."seid" as "userId", sm."sevakname" as "fullName", sm."mobileno" as "mobileNumber", cru."isAdmin", cru."canSendMessage"
         FROM chatroomusers cru
-        JOIN "users" u ON cru."userId" = u."user_id"::text
+        JOIN "SevakMaster" sm ON cru."userId" = sm."seid"
         WHERE cru."roomId" = $1
-        ORDER BY cru."isAdmin" DESC, u."full_name"`,
+        ORDER BY cru."isAdmin" DESC, sm."sevakname"`,
         [roomIdInt]
       );
 
@@ -220,15 +224,15 @@ const chatController = {
                 m."isEdited", 
                 m."editedAt", 
                 m."editedBy", m."replyMessageId",
-                u."user_id"::text as "senderId", u."full_name" as "senderName",
-                e."full_name" as "editorName",
+                sm."seid"::text as "senderId", sm."sevakname" as "senderName",
+                e."sevakname" as "editorName",
                 rm."messageText" as "replyMessageText", rm."messageType" as "replyMessageType",
-                ru."full_name" as "replySenderName"
+                ru."sevakname" as "replySenderName"
         FROM chatmessages m
-        JOIN "users" u ON m."senderId" = u."user_id"::text
-        LEFT JOIN "users" e ON m."editedBy" = e."user_id"::text
+        JOIN "SevakMaster" sm ON m."senderId"::integer = sm."seid"
+        LEFT JOIN "SevakMaster" e ON m."editedBy"::integer = e."seid"
         LEFT JOIN chatmessages rm ON m."replyMessageId" = rm."id"
-        LEFT JOIN "users" ru ON rm."senderId" = ru."user_id"::text
+        LEFT JOIN "SevakMaster" ru ON rm."senderId"::integer = ru."seid"
         WHERE m."roomId" = $1
         ORDER BY m."createdAt" DESC
         LIMIT 20`,
@@ -274,8 +278,8 @@ const chatController = {
   async updateChatRoom(req, res) {
     try {
       const { roomId } = req.params;
-      const { roomName, roomDescription } = req.body;
-      const userId = req.user.userId;
+      const { roomName, roomDescription, isactive } = req.body;
+      const userId = Number(req.user.userId) || 0;
       
       // Convert roomId to integer
       const roomIdInt = parseInt(roomId, 10);
@@ -296,16 +300,20 @@ const chatController = {
       // Update room details
       await pool.query(
         `UPDATE chatrooms 
-        SET "roomName" = $1, "roomDescription" = $2
-        WHERE "roomId" = $3`,
-        [roomName, roomDescription, roomIdInt]
+        SET "roomName" = COALESCE($1, "roomName"), 
+            "isactive" = COALESCE($2, "isactive"),
+            "modifiedon" = NOW() AT TIME ZONE 'UTC',
+            "modifiedby" = $3
+        WHERE "roomId" = $4`,
+        [roomName || null, typeof isactive === "number" ? isactive : null, userId, roomIdInt]
       );
 
       res.json({ 
         message: "Room updated successfully",
         roomId: roomIdInt,
         roomName,
-        roomDescription
+        roomDescription: null,
+        isactive: typeof isactive === "number" ? isactive : undefined
       });
     } catch (error) {
       console.error('Error updating chat room:', error);
@@ -321,13 +329,14 @@ const chatController = {
       
       const { roomId } = req.params;
       const { memberUserIds } = req.body; // Array of userIds who should be members
-      const userId = req.user.userId;
+      const userId = Number(req.user.userId) || 0;
       
       const roomIdInt = parseInt(roomId, 10);
+      const memberIdsInt = (memberUserIds || []).map((id) => Number(id)).filter((id) => Number.isFinite(id));
       
       console.log("Updating room members:", {
         roomId: roomIdInt,
-        memberUserIds,
+        memberUserIds: memberIdsInt,
         requestingUser: userId
       });
 
@@ -350,18 +359,18 @@ const chatController = {
         [roomIdInt]
       );
 
-      const currentMemberIds = currentMembersResult.rows.map(row => row.userId);
-      const currentAdmins = currentMembersResult.rows.filter(row => row.isAdmin).map(row => row.userId);
+      const currentMemberIds = currentMembersResult.rows.map(row => Number(row.userId));
+      const currentAdmins = currentMembersResult.rows.filter(row => row.isAdmin).map(row => Number(row.userId));
 
       // Ensure requesting admin cannot remove themselves
-      if (!memberUserIds.includes(userId)) {
+      if (!memberIdsInt.includes(userId)) {
         return res.status(400).json({
           message: "You cannot remove yourself from the room"
         });
       }
 
       // Ensure all admins remain in the room
-      const missingAdmins = currentAdmins.filter(adminId => !memberUserIds.includes(adminId));
+      const missingAdmins = currentAdmins.filter(adminId => !memberIdsInt.includes(adminId));
       if (missingAdmins.length > 0) {
         return res.status(400).json({
           message: "Cannot remove admin users. Please demote them first or use the leave room option."
@@ -370,12 +379,12 @@ const chatController = {
 
       // Check if all new userIds exist
       const userCheckResult = await client.query(
-        `SELECT "user_id" FROM "users" WHERE "user_id"::text = ANY($1)`,
-        [memberUserIds]
+        `SELECT "seid" FROM "SevakMaster" WHERE "seid" = ANY($1::int[])`,
+        [memberIdsInt]
       );
 
-      const foundUserIds = userCheckResult.rows.map(row => row.user_id.toString());
-      const missingUserIds = memberUserIds.filter(id => !foundUserIds.includes(id.toString()));
+      const foundUserIds = userCheckResult.rows.map(row => Number(row.seid));
+      const missingUserIds = memberIdsInt.filter(id => !foundUserIds.includes(id));
 
       if (missingUserIds.length > 0) {
         return res.status(400).json({
@@ -384,8 +393,8 @@ const chatController = {
       }
 
       // Determine who to add and who to remove
-      const toAdd = memberUserIds.filter(id => !currentMemberIds.includes(id.toString()));
-      const toRemove = currentMemberIds.filter(id => !memberUserIds.includes(id.toString()));
+      const toAdd = memberIdsInt.filter(id => !currentMemberIds.includes(id));
+      const toRemove = currentMemberIds.filter(id => !memberIdsInt.includes(id));
 
       console.log("Members to add:", toAdd);
       console.log("Members to remove:", toRemove);
@@ -393,9 +402,9 @@ const chatController = {
       // Add new members
       for (const memberId of toAdd) {
         await client.query(
-          `INSERT INTO chatroomusers ("roomId", "userId", "isAdmin", "canSendMessage")
-          VALUES ($1, $2, FALSE, FALSE)`,
-          [roomIdInt, memberId.toString()]
+          `INSERT INTO chatroomusers ("roomId", "userId", "isAdmin", "canSendMessage", "joinedAt", createdby)
+          VALUES ($1, $2, FALSE, FALSE, NOW() AT TIME ZONE 'UTC', $3)`,
+          [roomIdInt, memberId, userId]
         );
       }
 
@@ -435,14 +444,15 @@ const chatController = {
       
       const { roomId } = req.params;
       const { userIds } = req.body;
-      const userId = req.user.userId;
+      const userId = Number(req.user.userId) || 0;
       
       // Convert roomId to integer
       const roomIdInt = parseInt(roomId, 10);
+      const newUserIds = (userIds || []).map((id) => Number(id)).filter((id) => Number.isFinite(id));
       
       console.log("Adding members to room:", {
         roomId: roomIdInt,
-        userIds,
+        userIds: newUserIds,
         requestingUser: userId
       });
 
@@ -473,12 +483,12 @@ const chatController = {
 
       // Check if all userIds exist
       const userCheckResult = await client.query(
-        `SELECT "user_id" FROM "users" WHERE "user_id"::text = ANY($1)`,
-        [userIds]
+        `SELECT "seid" FROM "SevakMaster" WHERE "seid" = ANY($1::int[])`,
+        [newUserIds]
       );
 
-      const foundUserIds = userCheckResult.rows.map(row => row.user_id.toString());
-      const missingUserIds = userIds.filter(id => !foundUserIds.includes(id.toString()));
+      const foundUserIds = userCheckResult.rows.map(row => Number(row.seid));
+      const missingUserIds = newUserIds.filter(id => !foundUserIds.includes(id));
 
       if (missingUserIds.length > 0) {
         return res.status(400).json({
@@ -488,12 +498,12 @@ const chatController = {
 
       // Check which users are already members
       const existingMembersResult = await client.query(
-        `SELECT "userId" FROM chatroomusers WHERE "roomId" = $1 AND "userId" = ANY($2)`,
-        [roomIdInt, userIds.map(id => id.toString())]
+        `SELECT "userId" FROM chatroomusers WHERE "roomId" = $1 AND "userId" = ANY($2::int[])`,
+        [roomIdInt, newUserIds]
       );
 
-      const existingMemberIds = existingMembersResult.rows.map(row => row.userId);
-      const newMemberIds = userIds.filter(id => !existingMemberIds.includes(id.toString()));
+      const existingMemberIds = existingMembersResult.rows.map(row => Number(row.userId));
+      const newMemberIds = newUserIds.filter(id => !existingMemberIds.includes(id));
 
       if (newMemberIds.length === 0) {
         return res.status(400).json({
@@ -506,9 +516,9 @@ const chatController = {
       // Add new members
       const insertPromises = newMemberIds.map(memberId => 
         client.query(
-          `INSERT INTO chatroomusers ("roomId", "userId", "isAdmin", "canSendMessage")
-          VALUES ($1, $2, FALSE, FALSE)`,
-          [roomIdInt, memberId.toString()]
+          `INSERT INTO chatroomusers ("roomId", "userId", "isAdmin", "canSendMessage", "joinedAt", createdby)
+          VALUES ($1, $2, FALSE, FALSE, NOW() AT TIME ZONE 'UTC', $3)`,
+          [roomIdInt, memberId, userId]
         )
       );
 
@@ -533,10 +543,11 @@ const chatController = {
     try {
       const { roomId, memberId } = req.params;
       const { isAdmin } = req.body;
-      const userId = req.user.userId;
+      const userId = Number(req.user.userId) || 0;
       
       // Convert roomId to integer
       const roomIdInt = parseInt(roomId, 10);
+      const memberIdInt = parseInt(memberId, 10);
 
       // Check if user is an admin of this room
       const adminCheck = await pool.query(
@@ -554,7 +565,7 @@ const chatController = {
       // Check if the member exists in the room
       const memberCheck = await pool.query(
         `SELECT 1 FROM chatroomusers WHERE "roomId" = $1 AND "userId" = $2`,
-        [roomIdInt, memberId]
+        [roomIdInt, memberIdInt]
       );
 
       if (memberCheck.rows.length === 0) {
@@ -566,7 +577,7 @@ const chatController = {
         `UPDATE chatroomusers 
         SET "isAdmin" = $1
         WHERE "roomId" = $2 AND "userId" = $3`,
-        [isAdmin, roomIdInt, memberId]
+        [isAdmin, roomIdInt, memberIdInt]
       );
 
       res.json({ 
@@ -584,25 +595,19 @@ const chatController = {
   async removeRoomMember(req, res) {
     try {
       const { roomId, memberId } = req.params;
-      let userId = req.user.userId;
+      const userId = Number(req.user.userId) || 0;
+      const memberIdInt = parseInt(memberId, 10);
       
       // Convert roomId to integer
       const roomIdInt = parseInt(roomId, 10);
       console.log("Removing member:", {
         roomId: roomIdInt,
-        memberId,
+        memberId: memberIdInt,
         requestingUser: userId
       });
 
-      // First, let's check what members are actually in the room
-      const allMembersQuery = await pool.query(
-        `SELECT * FROM chatroomusers WHERE "roomId" = $1`,
-        [roomIdInt]
-      );
-      console.log("All members in room:", allMembersQuery.rows);
-
       // Check if user is an admin of this room or is removing themselves
-      if (userId !== memberId) {
+      if (userId !== memberIdInt) {
         const adminCheck = await pool.query(
           `SELECT 1 FROM chatroomusers 
           WHERE "roomId" = $1 AND "userId" = $2 AND "isAdmin" = TRUE`,
@@ -616,79 +621,24 @@ const chatController = {
         }
       }
 
-      // Try different approaches to find the member
-      
-      // 1. Exact match
-      const exactMatchQuery = await pool.query(
+      const memberCheck = await pool.query(
         `SELECT * FROM chatroomusers WHERE "roomId" = $1 AND "userId" = $2`,
-        [roomIdInt, memberId]
+        [roomIdInt, memberIdInt]
       );
-      console.log("Exact match result:", exactMatchQuery.rows);
-      
-      // 2. Case-insensitive match
-      const caseInsensitiveQuery = await pool.query(
-        `SELECT * FROM chatroomusers WHERE "roomId" = $1 AND LOWER("userId") = LOWER($2)`,
-        [roomIdInt, memberId]
-      );
-      console.log("Case insensitive result:", caseInsensitiveQuery.rows);
-      
-      // 3. Trimmed match
-      const trimmedQuery = await pool.query(
-        `SELECT * FROM chatroomusers WHERE "roomId" = $1 AND TRIM("userId") = TRIM($2)`,
-        [roomIdInt, memberId]
-      );
-      console.log("Trimmed result:", trimmedQuery.rows);
-      
-      // 4. Using LIKE
-      const likeQuery = await pool.query(
-        `SELECT * FROM chatroomusers WHERE "roomId" = $1 AND "userId" LIKE $2`,
-        [roomIdInt, memberId]
-      );
-      console.log("LIKE result:", likeQuery.rows);
 
-      // Determine which approach found the member
-      let memberExists = false;
-      let memberRow = null;
-      
-      if (exactMatchQuery.rows.length > 0) {
-        memberExists = true;
-        memberRow = exactMatchQuery.rows[0];
-        console.log("Found member with exact match");
-      } else if (caseInsensitiveQuery.rows.length > 0) {
-        memberExists = true;
-        memberRow = caseInsensitiveQuery.rows[0];
-        console.log("Found member with case-insensitive match");
-      } else if (trimmedQuery.rows.length > 0) {
-        memberExists = true;
-        memberRow = trimmedQuery.rows[0];
-        console.log("Found member with trimmed match");
-      } else if (likeQuery.rows.length > 0) {
-        memberExists = true;
-        memberRow = likeQuery.rows[0];
-        console.log("Found member with LIKE match");
-      }
-
-      if (!memberExists) {
+      if (memberCheck.rows.length === 0) {
         return res.status(404).json({ 
           message: "Member not found in this room" 
         });
       }
 
-      // Use the actual userId from the database for the DELETE operation
-      const actualUserId = memberRow.userId;
-      
-      console.log("Removing member with userId:", actualUserId);
-
-      // Remove the member
       const deleteResult = await pool.query(
         `DELETE FROM chatroomusers 
         WHERE "roomId" = $1 AND "userId" = $2
         RETURNING *`,
-        [roomIdInt, actualUserId]
+        [roomIdInt, memberIdInt]
       );
       
-      console.log("Delete result:", deleteResult.rows);
-
       if (deleteResult.rows.length === 0) {
         return res.status(500).json({ 
           message: "Failed to remove member" 
@@ -698,7 +648,7 @@ const chatController = {
       res.json({ 
         message: "Member removed successfully",
         roomId: roomIdInt,
-        memberId: actualUserId
+        memberId: memberIdInt
       });
     } catch (error) {
       console.error('Error removing room member:', error);
@@ -825,7 +775,7 @@ const chatController = {
       if(!tableId) tableId=null;
       if(!replyMessageId) replyMessageId=null;
       if(!scheduledAt) scheduledAt=null;
-      const senderId = req.user.userId;
+      const senderId = Number(req.user.userId) || 0;
 
       // Convert roomId to integer
       const roomIdInt = parseInt(roomId, 10);
@@ -993,7 +943,7 @@ const chatController = {
       
       // Get sender information
       const senderResult = await pool.query(
-        `SELECT "full_name" as "fullName" FROM users WHERE "user_id"::text = $1`,
+        `SELECT "sevakname" as "fullName" FROM "SevakMaster" WHERE "seid" = $1`,
         [senderId]
       );
       
@@ -1088,9 +1038,9 @@ const chatController = {
 
       // Get scheduled messages for this room
       const result = await pool.query(
-        `SELECT cm.*, u.full_name as "senderName"
+        `SELECT cm.*, sm.sevakname as "senderName"
         FROM chatmessages cm
-        JOIN users u ON cm."senderId" = u.user_id::text
+        JOIN "SevakMaster" sm ON cm."senderId"::integer = sm.seid
         WHERE cm."roomId" = $1 AND cm."isScheduled" = TRUE AND cm."createdAt" > NOW() AT TIME ZONE 'UTC'
         ORDER BY cm."createdAt" ASC`,
         [roomIdInt]
@@ -1111,9 +1061,9 @@ const chatController = {
     try {
       // Get the scheduled message
       const result = await pool.query(
-        `SELECT cm.*, u.full_name as "senderName"
+        `SELECT cm.*, sm.sevakname as "senderName"
         FROM chatmessages cm
-        JOIN users u ON cm."senderId" = u.user_id::text
+        JOIN "SevakMaster" sm ON cm."senderId"::integer = sm.seid
         WHERE cm."id" = $1 AND cm."isScheduled" = TRUE`,
         [messageId]
       );
@@ -1225,9 +1175,9 @@ const chatController = {
       
       // Get all members of the room
       const membersResult = await pool.query(
-        `        SELECT u."user_id" as "userId", u."full_name" as "fullName", cru."isAdmin" 
+        `SELECT sm."seid" as "userId", sm."sevakname" as "fullName", cru."isAdmin" 
         FROM chatroomusers cru
-        JOIN "users" u ON cru."userId" = u."user_id"::text
+        JOIN "SevakMaster" sm ON cru."userId" = sm."seid"
         WHERE cru."roomId" = $1`,
         [roomIdInt]
       );
@@ -1357,17 +1307,17 @@ const chatController = {
 
       // Get sender information
       const senderResult = await pool.query(
-        `SELECT "full_name" as "fullName" FROM users WHERE "user_id"::text = $1`,
-        [message.senderId]
+        `SELECT "sevakname" as "fullName" FROM "SevakMaster" WHERE "seid" = $1`,
+        [Number(message.senderId)]
       );
       
-      const senderName = senderResult.rows[0]?.full_name || 'Unknown User';
+      const senderName = senderResult.rows[0]?.fullName || 'Unknown User';
 
       // Get editor information (if different from sender)
       let editorName = null;
       if (message.senderId !== userId) {
         const editorResult = await pool.query(
-          `SELECT "full_name" as "fullName" FROM users WHERE "user_id"::text = $1`,
+          `SELECT "sevakname" as "fullName" FROM "SevakMaster" WHERE "seid" = $1`,
           [userId]
         );
         editorName = editorResult.rows[0]?.fullName || 'Unknown User';
@@ -1581,10 +1531,10 @@ const chatController = {
       let newLastMessage = null;
       if (needToUpdateLastMessage) {
         const newLastMessageResult = await client.query(
-          `SELECT m.*, u.full_name as "senderName",
+          `SELECT m.*, sm.sevakname as "senderName",
                   m."createdAt"
           FROM chatmessages m 
-          JOIN "users" u ON m."senderId" = u.user_id::text
+          JOIN "SevakMaster" sm ON m."senderId"::integer = sm.seid
           WHERE m."roomId" = $1 
           ORDER BY m."createdAt" DESC 
           LIMIT 1`,
@@ -1721,18 +1671,18 @@ const chatController = {
 
       // Get all room members
       const membersResult = await pool.query(
-        `SELECT u.user_id::text as "userId", u.full_name as "fullName"
+        `SELECT sm.seid::text as "userId", sm.sevakname as "fullName"
          FROM chatroomusers cru
-         JOIN "users" u ON cru."userId" = u.user_id::text
+         JOIN "SevakMaster" sm ON cru."userId" = sm.seid
          WHERE cru."roomId" = $1 AND cru."userId" != $2`,
         [roomId, message.senderId] // Exclude sender from read status
       );
 
       // Get read status for each member
       const readStatusResult = await pool.query(
-        `SELECT mrs."userId", mrs."readAt" as "readAt", u.full_name as "fullName"
+        `SELECT mrs."userId", mrs."readAt" as "readAt", sm.sevakname as "fullName"
          FROM messagereadstatus mrs
-         JOIN "users" u ON mrs."userId" = u.user_id::text
+         JOIN "SevakMaster" sm ON mrs."userId" = sm.seid::text
          WHERE mrs."messageId" = $1`,
         [messageIdInt]
       );
@@ -1770,7 +1720,10 @@ const chatController = {
   async markMessageAsRead(req, res) {
     try {
       const { messageId } = req.params;
-      const userId = req.user.userId;
+      const userId = Number(req.user.userId) || 0;
+
+      console.log("messageId to mark as read", messageId);
+      console.log("userId", userId);
       
       // Convert messageId to integer
       const messageIdInt = parseInt(messageId, 10);
@@ -1788,6 +1741,7 @@ const chatController = {
          WHERE m."id" = $1`,
         [messageIdInt]
       );
+      console.log("messageResult", messageResult.rows);
 
       if (messageResult.rows.length === 0) {
         return res.status(404).json({ 
@@ -1797,6 +1751,7 @@ const chatController = {
 
       const message = messageResult.rows[0];
       const roomId = message.roomId;
+      const senderId = Number(message.senderId);
 
       // Check if user is a member of this room
       const memberCheck = await pool.query(
@@ -1812,9 +1767,23 @@ const chatController = {
       }
 
       // Don't allow sender to mark their own message as read
-      if (message.senderId === userId) {
-        return res.status(400).json({ 
-          message: "You cannot mark your own message as read" 
+      if (senderId === userId) {
+        return res.json({
+          success: true,
+          message: "Message marked as read"
+        });
+      }
+
+      // If already marked read, skip extra write
+      const alreadyRead = await pool.query(
+        `SELECT 1 FROM messagereadstatus WHERE "messageId" = $1 AND "userId" = $2`,
+        [messageIdInt, userId.toString()]
+      );
+
+      if (alreadyRead.rows.length > 0) {
+        return res.json({
+          success: true,
+          message: "Message already marked as read"
         });
       }
 
@@ -1824,9 +1793,9 @@ const chatController = {
          VALUES ($1, $2, $3, NOW() AT TIME ZONE 'UTC')
          ON CONFLICT ("messageId", "userId") 
          DO UPDATE SET "readAt" = NOW() AT TIME ZONE 'UTC'`,
-        [messageIdInt, userId, roomId]
+        [messageIdInt, userId.toString(), roomId]
       );
-
+      // console.log("message read status updated");
       res.json({
         success: true,
         message: "Message marked as read"
@@ -2078,15 +2047,15 @@ const chatController = {
                 m."isEdited", 
                 m."editedAt", 
                 m."editedBy", m."replyMessageId",
-                u.user_id::text as "senderId", u.full_name as "senderName",
-                e.full_name as "editorName",
+                sm.seid::text as "senderId", sm.sevakname as "senderName",
+                e.sevakname as "editorName",
                 rm."messageText" as "replyMessageText", rm."messageType" as "replyMessageType",
-                ru.full_name as "replySenderName"
+                ru.sevakname as "replySenderName"
         FROM chatmessages m
-        JOIN "users" u ON m."senderId" = u.user_id::text
-        LEFT JOIN "users" e ON m."editedBy" = e.user_id::text
+        JOIN "SevakMaster" sm ON m."senderId"::integer = sm.seid
+        LEFT JOIN "SevakMaster" e ON m."editedBy"::integer = e.seid
         LEFT JOIN chatmessages rm ON m."replyMessageId" = rm."id"
-        LEFT JOIN "users" ru ON rm."senderId" = ru.user_id::text
+        LEFT JOIN "SevakMaster" ru ON rm."senderId"::integer = ru.seid
         WHERE m."roomId" = $1
       `;
       

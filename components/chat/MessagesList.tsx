@@ -1,5 +1,5 @@
 // components/chat/MessagesList.tsx
-import React, { useCallback, useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import { FlatList, ViewToken } from 'react-native';
 import { SharedValue } from 'react-native-reanimated';
 import { Message } from '@/types/type';

@@ -88,13 +88,9 @@
 //   },
 // });
 
-import { TouchableOpacity, View } from 'react-native';
+import { View } from 'react-native';
 import LoginForm from '@/components/auth/LoginForm';
 import * as React from 'react';
-import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
-import { useEffect, useState } from 'react';
-import { useLocalSearchParams } from 'expo-router';
 
 export default function Login() {
   return (

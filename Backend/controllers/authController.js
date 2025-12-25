@@ -300,4 +300,62 @@ const register = async (req, res) => {
   }
 };
 
-export default { register, login, checkUser, checkMobileExists, setPassword };
+// ==================== CHANGE PASSWORD ====================
+const changePassword = async (req, res) => {
+  const { mobileNumber, currentPassword, newPassword } = req.body;
+
+  try {
+    if (!mobileNumber || !currentPassword || !newPassword) {
+      return res.status(400).json({
+        success: false,
+        message: "Mobile number, current password, and new password are required",
+      });
+    }
+
+    const userResult = await pool.query(
+      `SELECT * FROM "SevakMaster" WHERE "mobileno" = $1`,
+      [mobileNumber]
+    );
+
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Mobile number not registered. Please contact Sevak Karyalay.",
+      });
+    }
+
+    const sevak = userResult.rows[0];
+
+    if (sevak.canlogin !== 1) {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied. Please contact Sevak Karyalay.",
+      });
+    }
+
+    if (sevak.password !== currentPassword) {
+      return res.status(401).json({
+        success: false,
+        message: "Current password mismatch",
+      });
+    }
+
+    await pool.query(
+      `UPDATE "SevakMaster" SET "password" = $1, "modifiedon" = NOW() WHERE "mobileno" = $2`,
+      [newPassword, mobileNumber]
+    );
+
+    res.json({
+      success: true,
+      message: "Password updated successfully",
+    });
+  } catch (error) {
+    console.error("Change password error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error. Please try again later.",
+    });
+  }
+};
+
+export default { register, login, checkUser, checkMobileExists, setPassword, changePassword };

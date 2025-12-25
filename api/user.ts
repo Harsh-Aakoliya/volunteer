@@ -30,7 +30,7 @@ export const fetchUserProfile = async () => {
     console.log("response got after featching userprofile",response.data);
 
     // Store the updated profile
-    await AuthStorage.storeUser(response.data);
+    await AuthStorage.storeSevakData(response.data);
 
     return response.data;
   } catch (error) {

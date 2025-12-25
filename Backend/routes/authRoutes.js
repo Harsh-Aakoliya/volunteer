@@ -7,6 +7,7 @@ const router = express.Router();
 router.post("/login", authController.login);
 router.post("/check-mobile", authController.checkMobileExists);
 router.post("/set-password", authController.setPassword);
+router.post("/change-password", authController.changePassword);
 router.post("/register", authController.register);
 router.post("/check-user", authController.checkUser);
 export default router; 

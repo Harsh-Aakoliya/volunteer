@@ -11,35 +11,35 @@ const initDB = async () => {
     await createUsersTable(client);
 
     // 2. Create MessageType enum (type definition, no dependencies)
-    // await createMessageTypeEnum(client);
+    await createMessageTypeEnum(client);
 
     // 3. Create Chatrooms table (no foreign keys initially)
-    // await createChatRoomsTable(client);
+    await createChatRoomsTable(client);
 
     // 4. Create Poll table (referenced by chatmessages)
-    // await createPollTable(client);
+    await createPollTable(client);
 
     // 5. Create Media table (referenced by chatmessages)
-    // await createMediaTable(client);
+    await createMediaTable(client);
 
     // 6. Create Table table (referenced by chatmessages)
-    // await createTableTable(client);
+    await createTableTable(client);
 
     // 7. Create Chatroomusers table (depends on: chatrooms, users)
-    // await createChatRoomUsersTable(client);
+    await createChatRoomUsersTable(client);
 
     // 8. Create Chatmessages table (depends on: messageType, chatrooms, users, poll, media, table)
-    // await createChatMessagesTable(client);
+    await createChatMessagesTable(client);
 
     // 9. Create Messagereadstatus table (depends on: chatmessages, chatrooms)
-    // await createMessageReadStatusTable(client);
+    await createMessageReadStatusTable(client);
 
     // 10. Create Notification_tokens table (depends on: users)
-    // await createNotificationTokenTable(client);
+    await createNotificationTokenTable(client);
 
 
     // 12. Add foreign key constraints after all tables are created
-    // await addForeignKeyConstraints(client);
+    await addForeignKeyConstraints(client);
 
     console.log("✅ All database tables initialized successfully");
   } catch (error) {
@@ -101,8 +101,10 @@ const createUsersTable = async (client) => {
           bloodgroup VARCHAR(10),
           emergencycontact1 VARCHAR(100),
           emrgencycontactno1 VARCHAR(15),
+          emergencycontactrelation1 VARCHAR(100),
           emergencycontact2 VARCHAR(100),
           emrgencycontactno2 VARCHAR(15),
+          emergencycontactrelation2 VARCHAR(100),
           sevakid varchar(50)
       );
     `);
@@ -145,10 +147,11 @@ const createChatRoomsTable = async (client) => {
       CREATE TABLE IF NOT EXISTS chatrooms (
           "roomId" SERIAL PRIMARY KEY,
           "roomName" VARCHAR(255) NOT NULL,
-          "roomDescription" TEXT,
-          "createdOn" TIMESTAMPTZ DEFAULT (NOW() AT TIME ZONE 'UTC'),
-          "isGroup" BOOLEAN DEFAULT FALSE,
-          "createdBy" VARCHAR(50)
+          "isactive" integer,
+          "modifiedon" timestamp without time zone,
+          "createdon" timestamp without time zone,
+          "createdby" integer references "SevakMaster"(seid),
+          "modifiedby" integer references "SevakMaster"(seid),
       );
     `);
     console.log("✅ Chatrooms table created successfully");
@@ -256,10 +259,13 @@ const createChatRoomUsersTable = async (client) => {
       CREATE TABLE IF NOT EXISTS chatroomusers (
           "id" SERIAL PRIMARY KEY,
           "roomId" INTEGER,
-          "userId" VARCHAR(50),
+          "userId" INTEGER,
           "isAdmin" BOOLEAN DEFAULT FALSE,
           "canSendMessage" BOOLEAN DEFAULT TRUE,
-          "joinedAt" TIMESTAMPTZ DEFAULT (NOW() AT TIME ZONE 'UTC')
+          "joinedAt" timestamp without time zone,
+          createdby integer references "SevakMaster"(seid),
+          modifiedon timestamp without time zone,
+          modifiedby integer references "SevakMaster"(seid),
       );
     `);
     console.log("✅ Chatroomusers table created successfully");

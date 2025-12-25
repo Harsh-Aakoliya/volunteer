@@ -13,6 +13,7 @@ export const AuthStorage = {
   // ==================== SEVAK DATA ====================
 
   async storeSevakData(sevak: any): Promise<void> {
+    console.log("Storing sevak data in authStorage:", sevak);
     try {
       await AsyncStorage.setItem(KEYS.SEVAK, JSON.stringify(sevak));
       console.log("Sevak data stored successfully");
@@ -61,6 +62,7 @@ export const AuthStorage = {
   // ==================== USER DATA ====================
 
   async storeUser(userData: any): Promise<void> {
+    console.log("Storing user data in authStorage:", userData);
     try {
       await AsyncStorage.setItem(KEYS.USER, JSON.stringify(userData));
       console.log("User data stored successfully");

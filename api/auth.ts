@@ -211,7 +211,7 @@ export const login = async (
       await AuthStorage.storeUser({
         userId: sevak.seid,
         mobileNumber: sevak.mobileno,
-        name: sevak.sename || sevak.fullName,
+        name: sevak.sename || sevak.sevakname,
         role: sevak.usertype,
       });
       await AuthStorage.storeUserRole(sevak.usertype);
@@ -297,7 +297,7 @@ export const setPassword = async (
       await AuthStorage.storeUser({
         userId: sevak.seid,
         mobileNumber: sevak.mobileno,
-        name: sevak.sename || sevak.fullName,
+        name: sevak.sename || sevak.sevakname,
         role: sevak.usertype,
       });
       await AuthStorage.storeUserRole(sevak.usertype);
@@ -337,6 +337,32 @@ export const setPassword = async (
         message: "Something went wrong. Please try again.",
       };
     }
+  }
+};
+
+// ==================== CHANGE PASSWORD FUNCTION ====================
+export const changePassword = async (
+  mobileNumber: string,
+  currentPassword: string,
+  newPassword: string
+): Promise<{ success: boolean; message?: string }> => {
+  try {
+    const token = await AuthStorage.getToken();
+    const response = await axios.post(
+      `${API_URL}/api/auth/change-password`,
+      { mobileNumber, currentPassword, newPassword },
+      { headers: { Authorization: token ? `Bearer ${token}` : "" } }
+    );
+
+    return response.data;
+  } catch (error: any) {
+    if (error.response) {
+      return {
+        success: false,
+        message: error.response.data?.message || "Failed to change password. Please try again.",
+      };
+    }
+    return { success: false, message: "Unable to change password. Please try again." };
   }
 };
 
