@@ -17,8 +17,12 @@
 
 // useNetworkStatus.js
 import { useEffect, useState } from "react";
-
+import { Platform } from "react-native";
 export default function useNetworkStatus(intervalMs = 3000) {
+
+  if(Platform.OS === "web") {
+    return true;
+  }
   const [isConnected, setIsConnected] = useState(true);
 
   useEffect(() => {
@@ -41,7 +45,7 @@ export default function useNetworkStatus(intervalMs = 3000) {
     const interval = setInterval(checkConnection, intervalMs);
 
     return () => {
-      isMounted = false;
+      isMounted = false;  
       clearInterval(interval);
     };
   }, [intervalMs]);

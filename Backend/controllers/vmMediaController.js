@@ -4,23 +4,6 @@ import { v4 as uuidv4 } from 'uuid';
 import pool from "../config/database.js";
 
 const VmMediaController = {  
-    createFolder: async (req, res) => {
-        const { folderName } = req.body;
-        if (!folderName) {
-            return res.status(400).json({ error: "folderName is required" });
-        }
-        
-        const UPLOAD_DIR = path.join(process.cwd(), 'media');
-        const folderPath = path.join(UPLOAD_DIR, String(folderName));
-    
-        if (!fs.existsSync(folderPath)) {
-            fs.mkdirSync(folderPath, { recursive: true });
-            console.log(`Upload directory created: ${folderPath}`);
-        }
-    
-        res.json({ message: "Folder created successfully" });
-    },
-
     // Upload files to temporary folder
     uploadFiles: async (req, res) => {
         try {
@@ -97,45 +80,7 @@ const VmMediaController = {
             res.status(500).json({ error: "Failed to upload files", details: error.message });
         }
     },
-
-    // Get files from temporary folder
-    getTempFiles: async (req, res) => {
-        try {
-            const { tempFolderId } = req.params;
-            
-            if (!tempFolderId) {
-                return res.status(400).json({ error: "tempFolderId is required" });
-            }
-
-            const UPLOAD_DIR = path.join(process.cwd(), 'media', 'chat', `temp_${tempFolderId}`);
-            
-            if (!fs.existsSync(UPLOAD_DIR)) {
-                return res.json({ files: [] });
-            }
-
-            const files = fs.readdirSync(UPLOAD_DIR);
-            const fileDetails = files.map(fileName => {
-                const filePath = path.join(UPLOAD_DIR, fileName);
-                const stats = fs.statSync(filePath);
-                
-                return {
-                    id: path.parse(fileName).name,
-                    fileName: fileName,
-                    originalName: fileName,
-                    size: stats.size,
-                    url: `temp_${tempFolderId}/${fileName}`,
-                    caption: ""
-                };
-            });
-
-            res.json({ files: fileDetails });
-
-        } catch (error) {
-            console.error("Error getting temp files:", error);
-            res.status(500).json({ error: "Failed to get files", details: error.message });
-        }
-    },
-
+    
     // Delete specific file from temporary folder
     deleteFile: async (req, res) => {
         try {
@@ -425,68 +370,6 @@ const VmMediaController = {
             res.status(500).json({ error: "Failed to send announcement", details: error.message });
         } finally {
             client.release();
-        }
-    },
-
-    // Get file content (for serving files)
-    getFile: async (req, res) => {
-        try {
-            console.log("=== FILE REQUEST DEBUG ===");
-            console.log("Full request URL:", req.url);
-            console.log("Request params:", req.params);
-            console.log("Request headers:", req.headers);
-            
-            const { folderName, fileName } = req.params;
-            
-            console.log(`Parsed params - folderName: "${folderName}", fileName: "${fileName}"`);
-            
-            if (!folderName || !fileName) {
-                console.log("Missing folderName or fileName parameters");
-                return res.status(400).json({ error: "folderName and fileName are required" });
-            }
-            
-            const filePath = path.join(process.cwd(), 'media', 'chat', folderName, fileName);
-            
-            console.log(`Constructed file path: ${filePath}`);
-            console.log(`File exists: ${fs.existsSync(filePath)}`);
-            
-            if (!fs.existsSync(filePath)) {
-                console.log(`File not found at: ${filePath}`);
-                // List directory contents for debugging
-                const dirPath = path.join(process.cwd(), 'media', 'chat', folderName);
-                if (fs.existsSync(dirPath)) {
-                    const files = fs.readdirSync(dirPath);
-                    console.log(`Directory contents: ${files.join(', ')}`);
-                } else {
-                    console.log(`Directory does not exist: ${dirPath}`);
-                }
-                return res.status(404).json({ error: "File not found" });
-            }
-
-            // Get file stats
-            const stats = fs.statSync(filePath);
-            const mimeType = getMimeType(fileName);
-            
-            console.log(`Serving file - MIME: ${mimeType}, size: ${stats.size} bytes`);
-            
-            res.setHeader('Content-Type', mimeType);
-            res.setHeader('Content-Length', stats.size);
-            res.setHeader('Cache-Control', 'public, max-age=31536000'); // Cache for 1 year
-            
-            // Add headers for better audio/video streaming support
-            if (mimeType.startsWith('audio/') || mimeType.startsWith('video/')) {
-                res.setHeader('Accept-Ranges', 'bytes');
-                res.setHeader('Access-Control-Allow-Origin', '*');
-                res.setHeader('Access-Control-Allow-Headers', 'Range');
-            }
-            
-            // Stream the file
-            const fileStream = fs.createReadStream(filePath);
-            fileStream.pipe(res);
-
-        } catch (error) {
-            console.error("Error serving file:", error);
-            res.status(500).json({ error: "Failed to serve file", details: error.message });
         }
     }
 };

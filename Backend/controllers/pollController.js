@@ -203,56 +203,6 @@ const pollController = {
             res.status(500).json({ error: "Error toggling poll status" });
         }
     },
-
-    updatePoll: async (req, res) => {
-        const { pollId } = req.params;
-        const { userId, question, options, isMultipleChoiceAllowed, pollEndTime } = req.body;
-
-        try {
-            // First check if user is the creator
-            const pollResult = await pool.query(
-                `SELECT * FROM poll WHERE "id" = $1`,
-                [parseInt(pollId)]
-            );
-
-            if (pollResult.rows.length === 0) {
-                return res.status(404).json({ error: "Poll not found" });
-            }
-
-            const poll = pollResult.rows[0];
-
-            if (poll.createdBy !== userId) {
-                return res.status(403).json({ error: "Only poll creator can edit poll" });
-            }
-
-            // Update the poll
-            const updateResult = await pool.query(
-                `UPDATE poll SET 
-                    "question" = COALESCE($1, "question"),
-                    "options" = COALESCE($2::jsonb, "options"),
-                    "isMultipleChoiceAllowed" = COALESCE($3, "isMultipleChoiceAllowed"),
-                    "pollEndTime" = COALESCE($4, "pollEndTime")
-                WHERE "id" = $5 RETURNING *`,
-                [
-                    question,
-                    options ? JSON.stringify(options) : null,
-                    isMultipleChoiceAllowed,
-                    pollEndTime ? new Date(pollEndTime) : null,
-                    parseInt(pollId)
-                ]
-            );
-
-            res.status(200).json({ 
-                message: "Poll updated successfully", 
-                poll: updateResult.rows[0] 
-            });
-
-        } catch (error) {
-            console.error("Error updating poll:", error);
-            res.status(500).json({ error: "Error updating poll" });
-        }
-    },
-
     reactivatePoll: async (req, res) => {
         const { pollId } = req.params;
         const { userId, pollEndTime } = req.body;

@@ -14,7 +14,7 @@ export default function DrawerLayout() {
           drawerPosition: 'left',
           drawerType: 'slide',
           swipeEnabled: true,
-          swipeEdgeWidth: 50,
+          swipeEdgeWidth: 500,
         }}
       >
         <Drawer.Screen 

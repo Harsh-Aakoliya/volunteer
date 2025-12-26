@@ -8,33 +8,6 @@ const router = express.Router();
 router.use(authenticateToken);
 
 // User profile routes
-router.get('/pending-users', userController.getPendingUsers);
-router.post('/approve-user', userController.approveUser);
-router.get('/:userId/profile', userController.getUserProfile);
-router.put('/:userId/profile', userController.updateUserProfile);
-
-// Sabha attendance routes
-
-
-// Get all users (admin only)
-router.get('/all', userController.getAllUsers);
-
-// Update user (admin only)
-router.put('/update/:userId', userController.updateUser);
-
-// Advanced search with department/subdepartment filtering
-router.get('/search', userController.searchUsers);
-
-// Get search filters (departments/subdepartments)
-router.get('/search-filters', userController.getSearchFilters);
-
-// Get all search data (users, departments, subdepartments) in one call
-router.get('/all-search-data', userController.getAllSearchData);
-
-// Update user with subdepartments
-router.put('/update-with-subdepartments/:userId', userController.updateUserWithSubdepartments);
-
-// Submit attendance
-// router.post('/attendance', userController.submitAttendance);
+router.get('/:userId/profile', userController.getUserProfile);//${API_URL}/api/users/${storedUser.seid}/profile api/user.ts -> fetchUserProfile
 
 export default router; 

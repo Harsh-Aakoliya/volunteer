@@ -88,34 +88,3 @@ export const downloadAPK = async (req, res) => {
     });
   }
 };
-
-// Update version (for admin use)
-export const updateVersion = async (req, res) => {
-  try {
-    const { currentenduserversion } = req.body;
-    
-    if (!currentenduserversion) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'currentenduserversion is required' 
-      });
-    }
-
-    const versionPath = path.join(__dirname, '..', 'apkdistribution', 'version.json');
-    const versionData = { currentenduserversion };
-    
-    fs.writeFileSync(versionPath, JSON.stringify(versionData, null, 2));
-    
-    res.json({
-      success: true,
-      message: 'Version updated successfully',
-      currentVersion: currentenduserversion
-    });
-  } catch (error) {
-    console.error('Error updating version:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Error updating version' 
-    });
-  }
-}; 

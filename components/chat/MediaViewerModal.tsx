@@ -1,3 +1,4 @@
+//components/chat/MediaViewerModal.tsx
 import React, { useState, useEffect, useRef } from "react";
 import {
   View,

@@ -20,7 +20,6 @@ import AnnouncementsTab from '@/components/chat/roomSettings/AnnouncementsTab';
 import MediaTab from '@/components/chat/roomSettings/MediaTab';
 import PollTab from '@/components/chat/roomSettings/PollTab';
 import TableTab from '@/components/chat/roomSettings/TableTab';
-import RoomSettingsMenu from '@/components/chat/roomSettings/RoomSettingsMenu';
 import socketService from '@/utils/socketService';
 
 // Bottom Sheet imports
@@ -41,14 +40,12 @@ export default function RoomInfo() {
   const { 
     roomId, 
     roomName: initialRoomName,
-    roomDescription: initialDescription,
     membersData,
     onlineUsersData,
     isGroupAdmin: isGroupAdminParam,
   } = useLocalSearchParams<{
     roomId: string;
     roomName?: string;
-    roomDescription?: string;
     membersData?: string;
     onlineUsersData?: string;
     isGroupAdmin?: string;
@@ -77,16 +74,10 @@ export default function RoomInfo() {
     return [];
   }, [onlineUsersData]);
 
-  const [roomDetails, setRoomDetails] = useState<any>(null);
   const [members, setMembers] = useState<Member[]>(parsedInitialMembers);
   const [onlineUsers, setOnlineUsers] = useState<string[]>(parsedOnlineUsers);
   const [isLoading, setIsLoading] = useState(parsedInitialMembers.length === 0);
   const [roomName, setRoomName] = useState(initialRoomName || '');
-  const [roomDescription, setRoomDescription] = useState(initialDescription || '');
-  const [currentUser, setCurrentUser] = useState<any>(null);
-  const [isGroupAdmin, setIsGroupAdmin] = useState(isGroupAdminParam === 'true');
-  const [isCreator, setIsCreator] = useState(false);
-
   // Refs
   const bottomSheetRef = useRef<BottomSheet>(null);
   const membersRef = useRef<Member[]>(parsedInitialMembers);
@@ -130,7 +121,6 @@ export default function RoomInfo() {
 
       // Get current user
       const userData = await AuthStorage.getUser();
-      setCurrentUser(userData);
 
       // Fetch room details
       const token = await AuthStorage.getToken();
@@ -138,17 +128,13 @@ export default function RoomInfo() {
         headers: { Authorization: `Bearer ${token}` },
       });
 
-      setRoomDetails(response.data);
       setMembers(response.data.members || []);
       setRoomName(response.data.roomName || '');
-      setRoomDescription(response.data.roomDescription || '');
 
       // Check if current user is group admin
       const isUserGroupAdmin = response.data.members.some(
         (member: any) => member.userId === userData?.userId && member.isAdmin
       );
-      setIsGroupAdmin(isUserGroupAdmin);
-      setIsCreator(response.data.isCreator || false);
     } catch (error) {
       console.error('Error loading room info:', error);
       if (parsedInitialMembers.length === 0) {
@@ -159,15 +145,6 @@ export default function RoomInfo() {
       setIsLoading(false);
     }
   }, [roomId, parsedInitialMembers.length, roomName]);
-
-  // Initialize current user
-  useEffect(() => {
-    const initUser = async () => {
-      const userData = await AuthStorage.getUser();
-      setCurrentUser(userData);
-    };
-    initUser();
-  }, []);
 
   // Socket listeners for online status
   useEffect(() => {
@@ -233,13 +210,13 @@ export default function RoomInfo() {
           />
         );
       case 'announcements':
-        return <AnnouncementsTab roomId={roomId as string} />;
+        return <AnnouncementsTab />;
       case 'media':
-        return <MediaTab roomId={roomId as string} />;
+        return <MediaTab />;
       case 'poll':
-        return <PollTab roomId={roomId as string} />;
+        return <PollTab />;
       case 'table':
-        return <TableTab roomId={roomId as string} />;
+        return <TableTab />;
       default:
         return null;
     }
@@ -261,54 +238,6 @@ export default function RoomInfo() {
       gap={8}
     />
   ), []);
-
-  // Bottom sheet handlers
-  const handleOpenBottomSheet = useCallback(() => {
-    bottomSheetRef.current?.expand();
-  }, []);
-
-  const handleCloseBottomSheet = useCallback(() => {
-    bottomSheetRef.current?.close();
-  }, []);
-
-  // Render backdrop
-  const renderBackdrop = useCallback(
-    (props: any) => (
-      <BottomSheetBackdrop
-        {...props}
-        disappearsOnIndex={-1}
-        appearsOnIndex={0}
-        opacity={0.5}
-        pressBehavior="close"
-      />
-    ),
-    []
-  );
-
-  // Handle component for bottom sheet
-  const renderHandle = useCallback(
-    () => (
-      <View style={styles.handleContainer}>
-        <View style={styles.dragIndicator} />
-        <View style={styles.sheetHeader}>
-          <Text style={styles.sheetTitle}>Room Settings</Text>
-          <TouchableOpacity
-            onPress={handleCloseBottomSheet}
-            style={styles.closeButton}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          >
-            <Ionicons name="close" size={24} color="#374151" />
-          </TouchableOpacity>
-        </View>
-      </View>
-    ),
-    [handleCloseBottomSheet]
-  );
-
-  // Handle refresh from bottom sheet
-  const handleRefresh = useCallback(() => {
-    loadRoomInfo(true);
-  }, [loadRoomInfo]);
 
   if (isLoading) {
     return (
@@ -337,17 +266,6 @@ export default function RoomInfo() {
             {onlineUsers.length} online • {members.length} members
           </Text>
         </View>
-
-        {isGroupAdmin ? (
-          <TouchableOpacity
-            onPress={handleOpenBottomSheet}
-            className="p-2 bg-gray-100 rounded-full"
-          >
-            <Ionicons name="menu" size={24} color="#374151" />
-          </TouchableOpacity>
-        ) : (
-          <View className="w-10" />
-        )}
       </View>
 
       {/* Tab View */}
@@ -361,33 +279,7 @@ export default function RoomInfo() {
         lazyPreloadDistance={0}
         swipeEnabled={true}
       />
-
-      {/* Bottom Sheet */}
-      <BottomSheet
-        ref={bottomSheetRef}
-        index={-1}
-        snapPoints={snapPoints}
-        enablePanDownToClose={true}
-        backdropComponent={renderBackdrop}
-        handleComponent={renderHandle}
-        backgroundStyle={styles.sheetBackground}
-        style={styles.sheet}
-      >
-        <BottomSheetView style={styles.sheetContent}>
-          <RoomSettingsMenu
-            roomId={roomId as string}
-            roomName={roomName}
-            roomDescription={roomDescription}
-            members={members}
-            currentUserId={currentUser?.userId || ''}
-            isCreator={isCreator}
-            isGroupAdmin={isGroupAdmin}
-            onClose={handleCloseBottomSheet}
-            onRefresh={handleRefresh}
-          />
-        </BottomSheetView>
-      </BottomSheet>
-    </View>
+   </View>
   );
 }
 

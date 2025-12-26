@@ -1,3 +1,4 @@
+// app/chat/table.tsx
 import { View, Text, TouchableOpacity, TextInput, ScrollView, Modal, Dimensions, Alert, ActivityIndicator } from 'react-native'
 import React, { useState, useEffect } from 'react'
 import { useLocalSearchParams } from 'expo-router';

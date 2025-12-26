@@ -1,5 +1,4 @@
 // Chat Controller
-// import { stringify } from "postcss";
 import pool from "../config/database.js";
 const chatController = {
   async getChatUsers(req, res) {
@@ -24,7 +23,7 @@ const chatController = {
   async getChatRooms(req, res) {
     try {
       const userId = Number(req.user.userId) || 0;
-      
+
       const result = await pool.query(
         `SELECT cr."roomId" as id, cr."roomName", cr."isactive", cr."createdby", cr."createdon",
                 cru."isAdmin", cru."canSendMessage"
@@ -34,7 +33,7 @@ const chatController = {
          ORDER BY cr."createdon" DESC`,
         [userId]
       );
-    
+
       res.json(result.rows);
     } catch (error) {
       console.error('Error fetching chat rooms:', error);
@@ -62,13 +61,13 @@ const chatController = {
       // Check if user has permission to create rooms (only master or admin)
       const userRole = req.user.role;
       if (userRole !== 'master' && userRole !== 'admin') {
-        return res.status(403).json({ 
-          message: "Only master and admin users can create chat rooms" 
+        return res.status(403).json({
+          message: "Only master and admin users can create chat rooms"
         });
       }
 
-      userIds=new Set(userIds);
-      userIds=Array.from(userIds);
+      userIds = new Set(userIds);
+      userIds = Array.from(userIds);
 
       // Validate that createdBy exists
       if (!createdBy) {
@@ -147,10 +146,10 @@ const chatController = {
       await Promise.all(userInsertPromises);
       await client.query('COMMIT');
 
-      res.status(201).json({ 
-        id: roomId, 
-        roomName: roomResult.rows[0].roomName, 
-        roomDescription: null, 
+      res.status(201).json({
+        id: roomId,
+        roomName: roomResult.rows[0].roomName,
+        roomDescription: null,
         isGroup: true,
         isactive: roomResult.rows[0].isactive,
         createdBy: roomResult.rows[0].createdby,
@@ -159,9 +158,9 @@ const chatController = {
     } catch (error) {
       await client.query('ROLLBACK');
       console.error('Error creating chat room:', error);
-      res.status(500).json({ 
-        message: "Failed to create chat room", 
-        error: error.message 
+      res.status(500).json({
+        message: "Failed to create chat room",
+        error: error.message
       });
     } finally {
       client.release();
@@ -171,7 +170,8 @@ const chatController = {
     try {
       const { roomId } = req.params;
       const userId = Number(req.user.userId) || 0;
-      
+      console.log("userId", userId);
+      console.log("roomId", roomId);
       // Convert roomId to integer
       const roomIdInt = parseInt(roomId, 10);
 
@@ -181,42 +181,36 @@ const chatController = {
         WHERE "roomId" = $1 AND "userId" = $2`,
         [roomIdInt, userId]
       );
-      console.log(memberCheck.rows);
+      console.log("member check in getChatRoomDetails", memberCheck.rows);
 
       if (memberCheck.rows.length === 0) {
-        return res.status(403).json({ 
-          message: "You are not a member of this chat room" 
+        return res.status(403).json({
+          message: "You are not a member of this chat room"
         });
       }
 
       // Get room details
       const roomResult = await pool.query(
-        `SELECT cr."roomId", cr."roomName", cr."isactive", 
-                cr."createdon",
-                cr."createdby",
-                sm."sevakname" as "creatorName", cr."createdby" = $2 as "isCreator",
-                NULL::text as "roomDescription",
-                TRUE as "isGroup"
-        FROM chatrooms cr
-        LEFT JOIN "SevakMaster" sm ON cr."createdby" = sm."seid"
-        WHERE cr."roomId" = $1`,
-        [roomIdInt, userId]
+        `SELECT "roomId", "roomName"
+         FROM chatrooms WHERE "roomId" = $1`,
+        [roomIdInt]
       );
-
+      console.log("room result in getChatRoomDetails", roomResult.rows);
       if (roomResult.rows.length === 0) {
         return res.status(404).json({ message: "Chat room not found" });
       }
 
       // Get room members
       const membersResult = await pool.query(
-        `SELECT sm."seid" as "userId", sm."sevakname" as "fullName", sm."mobileno" as "mobileNumber", cru."isAdmin", cru."canSendMessage"
-        FROM chatroomusers cru
-        JOIN "SevakMaster" sm ON cru."userId" = sm."seid"
-        WHERE cru."roomId" = $1
-        ORDER BY cru."isAdmin" DESC, sm."sevakname"`,
+        `SELECT sm."seid" as "userId", sm."sevakname" as "fullName",
+                cru."isAdmin", cru."canSendMessage"
+         FROM chatroomusers cru
+         JOIN "SevakMaster" sm ON cru."userId" = sm."seid"
+         WHERE cru."roomId" = $1
+         ORDER BY cru."isAdmin" DESC, sm."sevakname"`,
         [roomIdInt]
       );
-
+      console.log("members result in getChatRoomDetails", membersResult.rows);
       // Get recent messages with mediaFiles, edit information, and reply information
       const messagesResult = await pool.query(
         `SELECT m."id", m."messageText", m."messageType", m."mediaFilesId", m."pollId", m."tableId", 
@@ -224,7 +218,7 @@ const chatController = {
                 m."isEdited", 
                 m."editedAt", 
                 m."editedBy", m."replyMessageId",
-                sm."seid"::text as "senderId", sm."sevakname" as "senderName",
+                sm."seid" as "senderId", sm."sevakname" as "senderName",
                 e."sevakname" as "editorName",
                 rm."messageText" as "replyMessageText", rm."messageType" as "replyMessageType",
                 ru."sevakname" as "replySenderName"
@@ -238,7 +232,7 @@ const chatController = {
         LIMIT 20`,
         [roomIdInt]
       );
-      
+      console.log("messages result in getChatRoomDetails", messagesResult.rows);
       // Parse mediaFiles for each message if it exists
       // for (const message of messagesResult.rows) {
       //   if (message.mediaFilesId) {
@@ -257,83 +251,39 @@ const chatController = {
         WHERE "roomId" = $1 AND "userId" = $2`,
         [roomIdInt, userId]
       );
-      
+      console.log("is admin result in getChatRoomDetails", isAdminResult.rows);
       const isAdmin = isAdminResult.rows.length > 0 ? isAdminResult.rows[0].isAdmin : false;
 
       // Combine all data into a single response
+      const roomRow = roomResult.rows[0];
       const roomDetails = {
-        ...roomResult.rows[0],
-        isAdmin,
+        roomId: roomRow.roomId,
+        roomName: roomRow.roomName,
         members: membersResult.rows,
         messages: messagesResult.rows.reverse() // Return in chronological order
       };
 
+      console.log("room details in getChatRoomDetails", roomDetails);
       res.json(roomDetails);
     } catch (error) {
       console.error('Error fetching chat room details:', error);
       res.status(500).json({ message: "Server error", error: error.message });
     }
   },
-  // Update room details
-  async updateChatRoom(req, res) {
-    try {
-      const { roomId } = req.params;
-      const { roomName, roomDescription, isactive } = req.body;
-      const userId = Number(req.user.userId) || 0;
-      
-      // Convert roomId to integer
-      const roomIdInt = parseInt(roomId, 10);
-
-      // Check if user is an admin of this room
-      const adminCheck = await pool.query(
-        `SELECT 1 FROM chatroomusers 
-        WHERE "roomId" = $1 AND "userId" = $2 AND "isAdmin" = TRUE`,
-        [roomIdInt, userId]
-      );
-
-      if (adminCheck.rows.length === 0) {
-        return res.status(403).json({ 
-          message: "You don't have permission to update this room" 
-        });
-      }
-
-      // Update room details
-      await pool.query(
-        `UPDATE chatrooms 
-        SET "roomName" = COALESCE($1, "roomName"), 
-            "isactive" = COALESCE($2, "isactive"),
-            "modifiedon" = NOW() AT TIME ZONE 'UTC',
-            "modifiedby" = $3
-        WHERE "roomId" = $4`,
-        [roomName || null, typeof isactive === "number" ? isactive : null, userId, roomIdInt]
-      );
-
-      res.json({ 
-        message: "Room updated successfully",
-        roomId: roomIdInt,
-        roomName,
-        roomDescription: null,
-        isactive: typeof isactive === "number" ? isactive : undefined
-      });
-    } catch (error) {
-      console.error('Error updating chat room:', error);
-      res.status(500).json({ message: "Server error", error: error.message });
-    }
-  },
   // Add and Remove room members in one operation
   async updateRoomMembers(req, res) {
     const client = await pool.connect();
-    
+
     try {
       await client.query('BEGIN');
-      
+
       const { roomId } = req.params;
       const { memberUserIds } = req.body; // Array of userIds who should be members
       const userId = Number(req.user.userId) || 0;
-      
+
       const roomIdInt = parseInt(roomId, 10);
       const memberIdsInt = (memberUserIds || []).map((id) => Number(id)).filter((id) => Number.isFinite(id));
-      
+
       console.log("Updating room members:", {
         roomId: roomIdInt,
         memberUserIds: memberIdsInt,
@@ -348,8 +298,8 @@ const chatController = {
       );
 
       if (adminCheck.rows.length === 0) {
-        return res.status(403).json({ 
-          message: "Only group admins can manage room members" 
+        return res.status(403).json({
+          message: "Only group admins can manage room members"
         });
       }
 
@@ -434,240 +384,16 @@ const chatController = {
       client.release();
     }
   },
-
-  // Legacy: Add members only (kept for backward compatibility)
-  async addRoomMembers(req, res) {
-    const client = await pool.connect();
-    
-    try {
-      await client.query('BEGIN');
-      
-      const { roomId } = req.params;
-      const { userIds } = req.body;
-      const userId = Number(req.user.userId) || 0;
-      
-      // Convert roomId to integer
-      const roomIdInt = parseInt(roomId, 10);
-      const newUserIds = (userIds || []).map((id) => Number(id)).filter((id) => Number.isFinite(id));
-      
-      console.log("Adding members to room:", {
-        roomId: roomIdInt,
-        userIds: newUserIds,
-        requestingUser: userId
-      });
-
-      // Check if user is an admin of this room
-      const adminCheck = await client.query(
-        `SELECT * FROM chatroomusers 
-        WHERE "roomId" = $1 AND "userId" = $2 AND "isAdmin" = TRUE`,
-        [roomIdInt, userId]
-      );
-      console.log(adminCheck.rows);
-
-      if (adminCheck.rows.length === 0) {
-        console.log("Admin check failed");
-        return res.status(403).json({ 
-          message: "You don't have permission to add members to this room" 
-        });
-      }
-
-      // Check if room exists
-      const roomCheck = await client.query(
-        `SELECT * FROM chatrooms WHERE "roomId" = $1`,
-        [roomIdInt]
-      );
-
-      if (roomCheck.rows.length === 0) {
-        return res.status(404).json({ message: "Chat room not found" });
-      }
-
-      // Check if all userIds exist
-      const userCheckResult = await client.query(
-        `SELECT "seid" FROM "SevakMaster" WHERE "seid" = ANY($1::int[])`,
-        [newUserIds]
-      );
-
-      const foundUserIds = userCheckResult.rows.map(row => Number(row.seid));
-      const missingUserIds = newUserIds.filter(id => !foundUserIds.includes(id));
-
-      if (missingUserIds.length > 0) {
-        return res.status(400).json({
-          message: `Some user IDs do not exist: ${missingUserIds.join(', ')}`
-        });
-      }
-
-      // Check which users are already members
-      const existingMembersResult = await client.query(
-        `SELECT "userId" FROM chatroomusers WHERE "roomId" = $1 AND "userId" = ANY($2::int[])`,
-        [roomIdInt, newUserIds]
-      );
-
-      const existingMemberIds = existingMembersResult.rows.map(row => Number(row.userId));
-      const newMemberIds = newUserIds.filter(id => !existingMemberIds.includes(id));
-
-      if (newMemberIds.length === 0) {
-        return res.status(400).json({
-          message: "All specified users are already members of this room"
-        });
-      }
-
-      console.log("Adding new members:", newMemberIds);
-
-      // Add new members
-      const insertPromises = newMemberIds.map(memberId => 
-        client.query(
-          `INSERT INTO chatroomusers ("roomId", "userId", "isAdmin", "canSendMessage", "joinedAt", createdby)
-          VALUES ($1, $2, FALSE, FALSE, NOW() AT TIME ZONE 'UTC', $3)`,
-          [roomIdInt, memberId, userId]
-        )
-      );
-
-      await Promise.all(insertPromises);
-      await client.query('COMMIT');
-
-      res.status(201).json({
-        message: "Members added successfully",
-        addedMembers: newMemberIds,
-        alreadyMembers: existingMemberIds
-      });
-    } catch (error) {
-      await client.query('ROLLBACK');
-      console.error('Error adding room members:', error);
-      res.status(500).json({ message: "Server error", error: error.message });
-    } finally {
-      client.release();
-    }
-  },
-  // Update member permissions
-  async updateRoomMember(req, res) {
-    try {
-      const { roomId, memberId } = req.params;
-      const { isAdmin } = req.body;
-      const userId = Number(req.user.userId) || 0;
-      
-      // Convert roomId to integer
-      const roomIdInt = parseInt(roomId, 10);
-      const memberIdInt = parseInt(memberId, 10);
-
-      // Check if user is an admin of this room
-      const adminCheck = await pool.query(
-        `SELECT 1 FROM chatroomusers 
-        WHERE "roomId" = $1 AND "userId" = $2 AND "isAdmin" = TRUE`,
-        [roomIdInt, userId]
-      );
-
-      if (adminCheck.rows.length === 0) {
-        return res.status(403).json({ 
-          message: "You don't have permission to update member permissions" 
-        });
-      }
-
-      // Check if the member exists in the room
-      const memberCheck = await pool.query(
-        `SELECT 1 FROM chatroomusers WHERE "roomId" = $1 AND "userId" = $2`,
-        [roomIdInt, memberIdInt]
-      );
-
-      if (memberCheck.rows.length === 0) {
-        return res.status(404).json({ message: "Member not found in this room" });
-      }
-
-      // Update member permissions
-      await pool.query(
-        `UPDATE chatroomusers 
-        SET "isAdmin" = $1
-        WHERE "roomId" = $2 AND "userId" = $3`,
-        [isAdmin, roomIdInt, memberIdInt]
-      );
-
-      res.json({ 
-        message: "Member permissions updated successfully",
-        roomId: roomIdInt,
-        memberId,
-        isAdmin
-      });
-    } catch (error) {
-      console.error('Error updating room member:', error);
-      res.status(500).json({ message: "Server error", error: error.message });
-    }
-  },
-  // Remove a member from a room
-  async removeRoomMember(req, res) {
-    try {
-      const { roomId, memberId } = req.params;
-      const userId = Number(req.user.userId) || 0;
-      const memberIdInt = parseInt(memberId, 10);
-      
-      // Convert roomId to integer
-      const roomIdInt = parseInt(roomId, 10);
-      console.log("Removing member:", {
-        roomId: roomIdInt,
-        memberId: memberIdInt,
-        requestingUser: userId
-      });
-
-      // Check if user is an admin of this room or is removing themselves
-      if (userId !== memberIdInt) {
-        const adminCheck = await pool.query(
-          `SELECT 1 FROM chatroomusers 
-          WHERE "roomId" = $1 AND "userId" = $2 AND "isAdmin" = TRUE`,
-          [roomIdInt, userId]
-        );
-        
-        if (adminCheck.rows.length === 0) {
-          return res.status(403).json({ 
-            message: "You don't have permission to remove this member" 
-          });
-        }
-      }
-
-      const memberCheck = await pool.query(
-        `SELECT * FROM chatroomusers WHERE "roomId" = $1 AND "userId" = $2`,
-        [roomIdInt, memberIdInt]
-      );
-
-      if (memberCheck.rows.length === 0) {
-        return res.status(404).json({ 
-          message: "Member not found in this room" 
-        });
-      }
-
-      const deleteResult = await pool.query(
-        `DELETE FROM chatroomusers 
-        WHERE "roomId" = $1 AND "userId" = $2
-        RETURNING *`,
-        [roomIdInt, memberIdInt]
-      );
-      
-      if (deleteResult.rows.length === 0) {
-        return res.status(500).json({ 
-          message: "Failed to remove member" 
-        });
-      }
-
-      res.json({ 
-        message: "Member removed successfully",
-        roomId: roomIdInt,
-        memberId: memberIdInt
-      });
-    } catch (error) {
-      console.error('Error removing room member:', error);
-      res.status(500).json({ 
-        message: "Server error", 
-        error: error.message 
-      });
-    }
-  },
   // Delete a room
   async deleteChatRoom(req, res) {
     const client = await pool.connect();
-    
+
     try {
       await client.query('BEGIN');
-      
+
       const { roomId } = req.params;
       const userId = req.user.userId;
-      
+
       // Convert roomId to integer
       const roomIdInt = parseInt(roomId, 10);
 
@@ -679,8 +405,8 @@ const chatController = {
       );
 
       if (adminCheck.rows.length === 0) {
-        return res.status(403).json({ 
-          message: "Only group admins can delete this room" 
+        return res.status(403).json({
+          message: "Only group admins can delete this room"
         });
       }
 
@@ -704,7 +430,7 @@ const chatController = {
 
       await client.query('COMMIT');
 
-      res.json({ 
+      res.json({
         message: "Room deleted successfully",
         roomId: roomIdInt
       });
@@ -721,7 +447,7 @@ const chatController = {
       const { roomId } = req.params;
       const { roomName, roomDescription } = req.body;
       const userId = req.user.userId;
-      
+
       // Convert roomId to integer
       const roomIdInt = parseInt(roomId, 10);
 
@@ -733,8 +459,8 @@ const chatController = {
       );
 
       if (adminCheck.rows.length === 0) {
-        return res.status(403).json({ 
-          message: "You don't have permission to update room settings" 
+        return res.status(403).json({
+          message: "You don't have permission to update room settings"
         });
       }
 
@@ -746,7 +472,7 @@ const chatController = {
         [roomName, roomDescription, roomIdInt]
       );
 
-      res.json({ 
+      res.json({
         message: "Room settings updated successfully",
         roomId: roomIdInt,
         roomName,
@@ -760,26 +486,27 @@ const chatController = {
   async sendMessage(req, res) {
     try {
       const { roomId } = req.params;
-      console.log("req body ",req.body);
-      let { messageText, mediaFiles, messageType, mediaFilesId,pollId,tableId, replyMessageId, scheduledAt } = req.body; // Also receive mediaFiles, replyMessageId, and scheduledAt
-      console.log("Message text",messageText);
-      console.log("Media files",mediaFiles);
-      console.log("Message type",messageType);
-      console.log("Media files id",mediaFilesId);
-      console.log("Poll id is ",pollId);
-      console.log("Table id is ",tableId);
-      console.log("Reply message id is ",replyMessageId);
-      console.log("Scheduled at is ",scheduledAt);
-      if(!mediaFilesId) mediaFilesId=null;
-      if(!pollId) pollId=null;
-      if(!tableId) tableId=null;
-      if(!replyMessageId) replyMessageId=null;
-      if(!scheduledAt) scheduledAt=null;
+      console.log("req body ", req.body);
+      let { messageText, mediaFiles, messageType, mediaFilesId, pollId, tableId, replyMessageId, scheduledAt } = req.body; // Also receive mediaFiles, replyMessageId, and scheduledAt
+      console.log("Message text", messageText);
+      console.log("Media files", mediaFiles);
+      console.log("Message type", messageType);
+      console.log("Media files id", mediaFilesId);
+      console.log("Poll id is ", pollId);
+      console.log("Table id is ", tableId);
+      console.log("Reply message id is ", replyMessageId);
+      console.log("Scheduled at is ", scheduledAt);
+      if (!mediaFilesId) mediaFilesId = null;
+      if (!pollId) pollId = null;
+      if (!tableId) tableId = null;
+      if (!replyMessageId) replyMessageId = null;
+      if (!scheduledAt) scheduledAt = null;
       const senderId = Number(req.user.userId) || 0;
+      console.log(typeof(req.user.userId));
 
       // Convert roomId to integer
       const roomIdInt = parseInt(roomId, 10);
-      
+
       // Check if user is a group admin of this room before allowing message sending
       const groupAdminCheck = await pool.query(
         `SELECT "isAdmin" FROM chatroomusers 
@@ -788,18 +515,18 @@ const chatController = {
       );
 
       if (groupAdminCheck.rows.length === 0) {
-        return res.status(403).json({ 
-          message: "You are not a member of this chat room" 
+        return res.status(403).json({
+          message: "You are not a member of this chat room"
         });
       }
 
       const isGroupAdmin = groupAdminCheck.rows[0].isAdmin;
       if (!isGroupAdmin) {
-        return res.status(403).json({ 
-          message: "Only group admins can send messages in this room" 
+        return res.status(403).json({
+          message: "Only group admins can send messages in this room"
         });
       }
-      
+
       let newMessages = [];
 
       // If we have mediaFiles with optional message property,
@@ -816,7 +543,7 @@ const chatController = {
       //       const msgText = mediaFile.message || "";
       //       // Remove the message property from mediaFile to avoid duplication
       //       const { message, ...mediaFileWithoutMessage } = mediaFile;
-            
+
       //       // Insert the message with a single media file
       //       const result = await client.query(
       //         `INSERT INTO chatmessages ("roomId", "senderId", "messageText", "mediaFiles")
@@ -831,7 +558,7 @@ const chatController = {
       //       );
 
       //       const newMessage = result.rows[0];
-            
+
       //       // Parse mediaFiles
       //       if (newMessage.mediaFiles) {
       //         try {
@@ -841,7 +568,7 @@ const chatController = {
       //           newMessage.mediaFiles = [];
       //         }
       //       }
-            
+
       //       newMessages.push(newMessage);
       //     }
 
@@ -853,108 +580,108 @@ const chatController = {
       //     client.release();
       //   }
       // } else {
-        // Traditional single message without media files or with all media files in one message
+      // Traditional single message without media files or with all media files in one message
 
-        //store caption in media table (for old media upload system)
-        if (mediaFiles && messageType !== "media") {
-          // Step 1: Get current driveUrlObject array from DB
-          const { rows } = await pool.query(
-            `SELECT "driveUrlObject" FROM media WHERE id = $1`,
-            [mediaFilesId]
-          );
+      //store caption in media table (for old media upload system)
+      if (mediaFiles && messageType !== "media") {
+        // Step 1: Get current driveUrlObject array from DB
+        const { rows } = await pool.query(
+          `SELECT "driveUrlObject" FROM media WHERE id = $1`,
+          [mediaFilesId]
+        );
 
-          if (rows.length === 0) {
-            throw new Error('Media row not found');
-          }
-
-          let driveUrlObject = rows[0].driveUrlObject;
-
-          // Step 2: Update captions by matching IDs
-          driveUrlObject = driveUrlObject.map((item) => {
-            const match = mediaFiles.find((mf) => mf.id === item.id);
-            if (match) {
-              return { ...item, caption: match.caption };
-            }
-            return item;
-          });
-
-          // Step 3: Save updated JSONB array back to DB
-          await pool.query(
-            `UPDATE media SET "driveUrlObject" = $1 WHERE id = $2`,
-            [JSON.stringify(driveUrlObject), mediaFilesId]
-          );
-
+        if (rows.length === 0) {
+          throw new Error('Media row not found');
         }
-        
-        // For VM media, the media entry and message are already created by vmMediaController
-        // So we don't need to update anything here
 
-        
+        let driveUrlObject = rows[0].driveUrlObject;
 
-        //first insert the basic message
-        let result;
-        if (scheduledAt) {
-          // For scheduled messages, use the scheduledAt time as createdAt
-          result = await pool.query(
-            `INSERT INTO chatmessages ("roomId", "senderId", "messageText","messageType", "replyMessageId", "createdAt", "isScheduled")
+        // Step 2: Update captions by matching IDs
+        driveUrlObject = driveUrlObject.map((item) => {
+          const match = mediaFiles.find((mf) => mf.id === item.id);
+          if (match) {
+            return { ...item, caption: match.caption };
+          }
+          return item;
+        });
+
+        // Step 3: Save updated JSONB array back to DB
+        await pool.query(
+          `UPDATE media SET "driveUrlObject" = $1 WHERE id = $2`,
+          [JSON.stringify(driveUrlObject), mediaFilesId]
+        );
+
+      }
+
+      // For VM media, the media entry and message are already created by vmMediaController
+      // So we don't need to update anything here
+
+
+
+      //first insert the basic message
+      let result;
+      if (scheduledAt) {
+        // For scheduled messages, use the scheduledAt time as createdAt
+        result = await pool.query(
+          `INSERT INTO chatmessages ("roomId", "senderId", "messageText","messageType", "replyMessageId", "createdAt", "isScheduled")
             VALUES ($1, $2, $3, $4, $5, $6, TRUE)
             RETURNING *`,
-            [roomIdInt, senderId, messageText, messageType, replyMessageId, scheduledAt]
-          );
-        } else {
-          // For immediate messages, use current time
-          result = await pool.query(
-            `INSERT INTO chatmessages ("roomId", "senderId", "messageText","messageType", "replyMessageId", "createdAt", "isScheduled")
+          [roomIdInt, senderId, messageText, messageType, replyMessageId, scheduledAt]
+        );
+      } else {
+        // For immediate messages, use current time
+        result = await pool.query(
+          `INSERT INTO chatmessages ("roomId", "senderId", "messageText","messageType", "replyMessageId", "createdAt", "isScheduled")
             VALUES ($1, $2, $3, $4, $5, NOW() AT TIME ZONE 'UTC', FALSE)
             RETURNING *`,
-            [roomIdInt, senderId, messageText, messageType, replyMessageId]
-          );
-        }
-        let newMessage = result.rows[0];
+          [roomIdInt, senderId, messageText, messageType, replyMessageId]
+        );
+      }
+      let newMessage = result.rows[0];
 
-        //then insert the media files id
-        if(mediaFiles || pollId || tableId){
-          console.log("table id here is ",tableId);
-          const here = await pool.query(
-            `UPDATE chatmessages SET "mediaFilesId" = $1, "pollId" = $2, "tableId" = $3 WHERE "id" = $4
+      //then insert the media files id
+      if (mediaFiles || pollId || tableId) {
+        console.log("table id here is ", tableId);
+        const here = await pool.query(
+          `UPDATE chatmessages SET "mediaFilesId" = $1, "pollId" = $2, "tableId" = $3 WHERE "id" = $4
             Returning *
             `,
-            [mediaFilesId,pollId,tableId, result.rows[0].id]
-          );
-          // console.log()
-          console.log("new message after updating is",here.rows[0]);
-          newMessage=here.rows[0];
-          console.log("new message;asdljf;alsdjf",newMessage);
-        }
-        
-        // Parse mediaFiles if exists
-        // if (newMessage.mediaFiles) {
-        //   try {
-        //     newMessage.mediaFiles = JSON.parse(newMessage.mediaFiles);
-        //   } catch (err) {
-        //     console.error('Error parsing mediaFiles:', err);
-        //     newMessage.mediaFiles = [];
-        //   }
-        // }
-        
-        newMessages.push(newMessage);
+          [mediaFilesId, pollId, tableId, result.rows[0].id]
+        );
+        // console.log()
+        console.log("new message after updating is", here.rows[0]);
+        newMessage = here.rows[0];
+        console.log("new message;asdljf;alsdjf", newMessage);
+      }
+
+      // Parse mediaFiles if exists
+      // if (newMessage.mediaFiles) {
+      //   try {
+      //     newMessage.mediaFiles = JSON.parse(newMessage.mediaFiles);
+      //   } catch (err) {
+      //     console.error('Error parsing mediaFiles:', err);
+      //     newMessage.mediaFiles = [];
+      //   }
       // }
-      console.log("new messagess",newMessages);
-      
+
+      newMessages.push(newMessage);
+      // }
+      console.log("new messagess", newMessages);
+
       // Get sender information
       const senderResult = await pool.query(
         `SELECT "sevakname" as "fullName" FROM "SevakMaster" WHERE "seid" = $1`,
         [senderId]
       );
-      
+
       const senderName = senderResult.rows[0]?.fullName || 'Unknown User';
-      
+
       // Add sender name to all messages
       const messagesWithSender = newMessages.map(msg => ({
         ...msg,
         senderName
       }));
-      
+
       // Handle scheduled vs immediate messages differently
       if (scheduledAt) {
         // For scheduled messages, just return success without sending via socket
@@ -971,10 +698,10 @@ const chatController = {
         const io = req.app.get('io');
         const lastMessageByRoom = req.app.get('lastMessageByRoom');
         const unreadMessagesByUser = req.app.get('unreadMessagesByUser');
-        
+
         // If multiple messages were created, use the last one as the last message for the room
         const lastMessage = messagesWithSender[messagesWithSender.length - 1];
-        
+
         // Update last message for this room
         if (lastMessageByRoom) {
           lastMessageByRoom[roomIdInt] = {
@@ -983,8 +710,8 @@ const chatController = {
             createdAt: lastMessage.createdAt,
             messageType: messageType,
             mediaFilesId: mediaFilesId,
-            pollId:pollId,
-            tableId:tableId,
+            pollId: pollId,
+            tableId: tableId,
             replyMessageId: replyMessageId,
             sender: {
               userId: senderId,
@@ -992,20 +719,20 @@ const chatController = {
             }
           };
         }
-        
+
         // Get all members of the room
         const membersResult = await pool.query(
           `SELECT "userId" FROM chatroomusers WHERE "roomId" = $1`,
           [roomIdInt]
         );
-        
+
         const memberIds = membersResult.rows.map(row => row.userId);
-        
+
         // Note: Unread count is now handled by socket.js to avoid double counting
-        
+
         // Note: Message emission is now handled by socket.js to avoid duplicates
         // The socket.js file handles the newMessage emission when sendMessage event is received
-        console.log("Message with sender",messagesWithSender);
+        console.log("Message with sender", messagesWithSender);
         // Return all created messages or just the last message
         // Depending on the use case, you might want to return all or just the last one
         res.status(201).json(messagesWithSender.length === 1 ? messagesWithSender[0] : messagesWithSender);
@@ -1031,8 +758,8 @@ const chatController = {
       );
 
       if (memberCheck.rows.length === 0) {
-        return res.status(403).json({ 
-          message: "You are not a member of this chat room" 
+        return res.status(403).json({
+          message: "You are not a member of this chat room"
         });
       }
 
@@ -1074,7 +801,7 @@ const chatController = {
       }
 
       const message = result.rows[0];
-      
+
       // Update the message to mark it as sent (no longer scheduled)
       await pool.query(
         `UPDATE chatmessages SET "isScheduled" = FALSE WHERE "id" = $1`,
@@ -1109,7 +836,7 @@ const chatController = {
         `SELECT "userId" FROM chatroomusers WHERE "roomId" = $1`,
         [message.roomId]
       );
-      
+
       const memberIds = membersResult.rows.map(row => row.userId);
 
       // Emit the message to all room members
@@ -1160,84 +887,44 @@ const chatController = {
     }
   },
 
-  // Add a new function to get online users for a room
-  async getRoomOnlineUsers(req, res) {
-    try {
-      const { roomId } = req.params;
-      const roomIdInt = parseInt(roomId, 10);
-      
-      // Get the io instance and online users
-      const io = req.app.get('io');
-      const onlineUsersByRoom = req.app.get('onlineUsersByRoom') || {};
-      
-      // Get online users for this room
-      const onlineUsers = Array.from(onlineUsersByRoom[roomIdInt] || []);
-      
-      // Get all members of the room
-      const membersResult = await pool.query(
-        `SELECT sm."seid" as "userId", sm."sevakname" as "fullName", cru."isAdmin" 
-        FROM chatroomusers cru
-        JOIN "SevakMaster" sm ON cru."userId" = sm."seid"
-        WHERE cru."roomId" = $1`,
-        [roomIdInt]
-      );
-      
-      // Mark which members are online
-      const members = membersResult.rows.map(member => ({
-        ...member,
-        isOnline: onlineUsers.includes(member.userId)
-      }));
-      
-      res.json({
-        roomId: roomIdInt,
-        onlineUsers,
-        totalMembers: membersResult.rows.length,
-        members
-      });
-    } catch (error) {
-      console.error('Error getting room online users:', error);
-      res.status(500).json({ message: "Server error", error: error.message });
-    }
-  },
-
   // Edit message function
   async editMessage(req, res) {
     try {
       const { roomId, messageId } = req.params;
       const { messageText } = req.body;
       const userId = req.user.userId;
-      
+
       // Convert IDs to appropriate types
       const roomIdInt = parseInt(roomId, 10);
-      
+
       // Handle both string and number message IDs
       let messageIdInt;
       if (typeof messageId === 'string') {
         // Check if it's a temporary message ID (starts with 'temp-')
         if (messageId.startsWith('temp-')) {
-          return res.status(400).json({ 
-            message: "Cannot edit temporary message" 
+          return res.status(400).json({
+            message: "Cannot edit temporary message"
           });
         }
         messageIdInt = parseInt(messageId, 10);
       } else {
         messageIdInt = messageId;
       }
-      
+
       // Validate that we have valid numbers
       if (isNaN(roomIdInt) || isNaN(messageIdInt)) {
         console.error('Invalid IDs:', { roomId, messageId, roomIdInt, messageIdInt });
-        return res.status(400).json({ 
-          message: `Invalid room ID (${roomId}) or message ID (${messageId})` 
+        return res.status(400).json({
+          message: `Invalid room ID (${roomId}) or message ID (${messageId})`
         });
       }
-      
+
       console.log('Editing message:', { roomId: roomIdInt, messageId: messageIdInt, messageText, userId });
 
       // Validate input
       if (!messageText || !messageText.trim()) {
-        return res.status(400).json({ 
-          message: "Message text cannot be empty" 
+        return res.status(400).json({
+          message: "Message text cannot be empty"
         });
       }
 
@@ -1249,8 +936,8 @@ const chatController = {
       );
 
       if (memberCheck.rows.length === 0) {
-        return res.status(403).json({ 
-          message: "You are not a member of this chat room" 
+        return res.status(403).json({
+          message: "You are not a member of this chat room"
         });
       }
 
@@ -1303,14 +990,14 @@ const chatController = {
       );
 
       const updatedMessage = updateResult.rows[0];
-      console.log("updatedMessage",updatedMessage);
+      console.log("updatedMessage", updatedMessage);
 
       // Get sender information
       const senderResult = await pool.query(
         `SELECT "sevakname" as "fullName" FROM "SevakMaster" WHERE "seid" = $1`,
         [Number(message.senderId)]
       );
-      
+
       const senderName = senderResult.rows[0]?.fullName || 'Unknown User';
 
       // Get editor information (if different from sender)
@@ -1378,7 +1065,7 @@ const chatController = {
     try {
       const allConnectedSockets = await io.fetchSockets();
       const userSocketMap = new Map();
-      
+
       allConnectedSockets.forEach(socket => {
         if (socket.data?.userId) {
           if (!userSocketMap.has(socket.data.userId)) {
@@ -1391,7 +1078,7 @@ const chatController = {
       memberIds.forEach(memberId => {
         const memberSockets = userSocketMap.get(memberId) || [];
         const unreadCount = unreadMessagesByUser[memberId]?.[roomId] || 0;
-        
+
         memberSockets.forEach(memberSocket => {
           // Send last message update
           memberSocket.emit("lastMessage", {
@@ -1416,17 +1103,17 @@ const chatController = {
   // Delete messages function
   async deleteMessages(req, res) {
     const client = await pool.connect();
-    
+
     try {
       await client.query('BEGIN');
-      
+
       const { roomId } = req.params;
       const { messageIds } = req.body;
       const userId = req.user.userId;
-      
+
       // Convert roomId to integer
       const roomIdInt = parseInt(roomId, 10);
-      
+
       console.log('Deleting messages:', { roomId: roomIdInt, messageIds, userId });
 
       // Check if user is a member of this room and get their admin status
@@ -1437,8 +1124,8 @@ const chatController = {
       );
 
       if (memberCheck.rows.length === 0) {
-        return res.status(403).json({ 
-          message: "You are not a member of this chat room" 
+        return res.status(403).json({
+          message: "You are not a member of this chat room"
         });
       }
 
@@ -1471,18 +1158,18 @@ const chatController = {
       // Before deleting messages, we need to handle foreign key constraints
       // First, delete any associated media records that reference these messages
       console.log("Checking for associated media records...");
-      
+
       // Get all media records that reference these messages
       const associatedMediaResult = await client.query(
         `SELECT id FROM media WHERE "messageId" = ANY($1)`,
         [messageIds]
       );
-      
+
       const mediaIdsToDelete = associatedMediaResult.rows.map(row => row.id);
-      
+
       if (mediaIdsToDelete.length > 0) {
         console.log("Found associated media records:", mediaIdsToDelete);
-        
+
         // Step 1: Break the circular foreign key dependency by setting mediaFilesId to NULL
         // in chatmessages table first
         console.log("Breaking foreign key references in chatmessages...");
@@ -1491,19 +1178,19 @@ const chatController = {
            WHERE "id" = ANY($1) AND "mediaFilesId" = ANY($2)`,
           [messageIds, mediaIdsToDelete]
         );
-        
+
         // Step 2: Now we can safely delete the media records
         console.log("Deleting associated media records:", mediaIdsToDelete);
         await client.query(
           `DELETE FROM media WHERE id = ANY($1)`,
           [mediaIdsToDelete]
         );
-        
+
         console.log(`Deleted ${mediaIdsToDelete.length} associated media records`);
       }
 
       // Delete the messages
-      console.log("messageIds and roomId",messageIds,roomIdInt);
+      console.log("messageIds and roomId", messageIds, roomIdInt);
       const deleteResult = await client.query(
         `DELETE FROM chatmessages 
         WHERE "id" = ANY($1) AND "roomId" = $2
@@ -1522,7 +1209,7 @@ const chatController = {
       // Check if we deleted the last message for this room
       let needToUpdateLastMessage = false;
       const currentLastMessage = lastMessageByRoom[roomIdInt];
-      
+
       if (currentLastMessage && messageIds.includes(currentLastMessage.id)) {
         needToUpdateLastMessage = true;
       }
@@ -1557,7 +1244,7 @@ const chatController = {
             tableId: lastMsg.tableId || null,
             roomId: roomIdInt.toString()
           };
-          
+
           // Update last message cache
           lastMessageByRoom[roomIdInt] = newLastMessage;
         } else {
@@ -1571,7 +1258,7 @@ const chatController = {
         `SELECT "userId" FROM chatroomusers WHERE "roomId" = $1`,
         [roomIdInt]
       );
-      
+
       const memberIds = membersResult.rows.map(row => row.userId);
 
       // Update unread counts by decreasing count for deleted messages
@@ -1585,7 +1272,7 @@ const chatController = {
               unreadDeletedCount++;
             }
           });
-          
+
           // Decrease unread count, but don't go below 0
           const currentUnread = unreadMessagesByUser[memberId][roomIdInt];
           unreadMessagesByUser[memberId][roomIdInt] = Math.max(0, currentUnread - unreadDeletedCount);
@@ -1629,13 +1316,13 @@ const chatController = {
     try {
       const { messageId } = req.params;
       const userId = req.user.userId;
-      
+
       // Convert messageId to integer
       const messageIdInt = parseInt(messageId, 10);
-      
+
       if (isNaN(messageIdInt)) {
-        return res.status(400).json({ 
-          message: "Invalid message ID" 
+        return res.status(400).json({
+          message: "Invalid message ID"
         });
       }
 
@@ -1648,8 +1335,8 @@ const chatController = {
       );
 
       if (messageResult.rows.length === 0) {
-        return res.status(404).json({ 
-          message: "Message not found" 
+        return res.status(404).json({
+          message: "Message not found"
         });
       }
 
@@ -1664,8 +1351,8 @@ const chatController = {
       );
 
       if (memberCheck.rows.length === 0) {
-        return res.status(403).json({ 
-          message: "You are not a member of this chat room" 
+        return res.status(403).json({
+          message: "You are not a member of this chat room"
         });
       }
 
@@ -1724,13 +1411,13 @@ const chatController = {
 
       console.log("messageId to mark as read", messageId);
       console.log("userId", userId);
-      
+
       // Convert messageId to integer
       const messageIdInt = parseInt(messageId, 10);
-      
+
       if (isNaN(messageIdInt)) {
-        return res.status(400).json({ 
-          message: "Invalid message ID" 
+        return res.status(400).json({
+          message: "Invalid message ID"
         });
       }
 
@@ -1744,8 +1431,8 @@ const chatController = {
       console.log("messageResult", messageResult.rows);
 
       if (messageResult.rows.length === 0) {
-        return res.status(404).json({ 
-          message: "Message not found" 
+        return res.status(404).json({
+          message: "Message not found"
         });
       }
 
@@ -1761,8 +1448,8 @@ const chatController = {
       );
 
       if (memberCheck.rows.length === 0) {
-        return res.status(403).json({ 
-          message: "You are not a member of this chat room" 
+        return res.status(403).json({
+          message: "You are not a member of this chat room"
         });
       }
 
@@ -1809,16 +1496,16 @@ const chatController = {
   // Assign/Remove Group Admins
   async updateGroupAdmins(req, res) {
     const client = await pool.connect();
-    
+
     try {
       await client.query('BEGIN');
-      
+
       const { roomId } = req.params;
       const { adminUserIds } = req.body; // Array of userIds who should be admins
       const userId = req.user.userId;
-      
+
       const roomIdInt = parseInt(roomId, 10);
-      
+
       console.log('Updating group admins:', { roomId: roomIdInt, adminUserIds, requestingUser: userId });
 
       // Check if requesting user is an admin of this room
@@ -1829,8 +1516,8 @@ const chatController = {
       );
 
       if (adminCheck.rows.length === 0) {
-        return res.status(403).json({ 
-          message: "Only group admins can manage admin roles" 
+        return res.status(403).json({
+          message: "Only group admins can manage admin roles"
         });
       }
 
@@ -1852,7 +1539,7 @@ const chatController = {
       // Update admin status for all members
       for (const member of currentMembers) {
         const shouldBeAdmin = adminUserIds.includes(member.userId);
-        
+
         if (member.isAdmin !== shouldBeAdmin) {
           await client.query(
             `UPDATE chatroomusers 
@@ -1882,16 +1569,16 @@ const chatController = {
   // Update messaging permissions for members
   async updateMessagingPermissions(req, res) {
     const client = await pool.connect();
-    
+
     try {
       await client.query('BEGIN');
-      
+
       const { roomId } = req.params;
       const { allowedUserIds } = req.body; // Array of userIds who can send messages
       const userId = req.user.userId;
-      
+
       const roomIdInt = parseInt(roomId, 10);
-      
+
       console.log('Updating messaging permissions:', { roomId: roomIdInt, allowedUserIds, requestingUser: userId });
 
       // Check if requesting user is an admin of this room
@@ -1902,8 +1589,8 @@ const chatController = {
       );
 
       if (adminCheck.rows.length === 0) {
-        return res.status(403).json({ 
-          message: "Only group admins can manage messaging permissions" 
+        return res.status(403).json({
+          message: "Only group admins can manage messaging permissions"
         });
       }
 
@@ -1921,9 +1608,9 @@ const chatController = {
         if (member.isAdmin) {
           continue;
         }
-        
+
         const canSendMessage = allowedUserIds.includes(member.userId);
-        
+
         await client.query(
           `UPDATE chatroomusers 
           SET "canSendMessage" = $1
@@ -1951,15 +1638,15 @@ const chatController = {
   // Leave room (user removes themselves)
   async leaveRoom(req, res) {
     const client = await pool.connect();
-    
+
     try {
       await client.query('BEGIN');
-      
+
       const { roomId } = req.params;
       const userId = req.user.userId;
-      
+
       const roomIdInt = parseInt(roomId, 10);
-      
+
       console.log('User leaving room:', { roomId: roomIdInt, userId });
 
       // Check if user is a member
@@ -1970,8 +1657,8 @@ const chatController = {
       );
 
       if (memberCheck.rows.length === 0) {
-        return res.status(404).json({ 
-          message: "You are not a member of this room" 
+        return res.status(404).json({
+          message: "You are not a member of this room"
         });
       }
 
@@ -2023,7 +1710,7 @@ const chatController = {
       const { roomId } = req.params;
       const { afterTimestamp, limit = 50 } = req.query;
       const userId = req.user.userId;
-      
+
       // Convert roomId to integer
       const roomIdInt = parseInt(roomId, 10);
 
@@ -2035,8 +1722,8 @@ const chatController = {
       );
 
       if (memberCheck.rows.length === 0) {
-        return res.status(403).json({ 
-          message: "You are not a member of this chat room" 
+        return res.status(403).json({
+          message: "You are not a member of this chat room"
         });
       }
 
@@ -2058,9 +1745,9 @@ const chatController = {
         LEFT JOIN "SevakMaster" ru ON rm."senderId"::integer = ru.seid
         WHERE m."roomId" = $1
       `;
-      
+
       const params = [roomIdInt];
-      
+
       if (afterTimestamp) {
         query += ` AND m."createdAt" > $2`;
         params.push(afterTimestamp);
@@ -2068,14 +1755,14 @@ const chatController = {
       } else {
         query += ` ORDER BY m."createdAt" DESC LIMIT $2`;
       }
-      
+
       params.push(parseInt(limit, 10));
 
       const messagesResult = await pool.query(query, params);
-      
+
       // If afterTimestamp is provided, return in chronological order, otherwise reverse
-      const messages = afterTimestamp 
-        ? messagesResult.rows 
+      const messages = afterTimestamp
+        ? messagesResult.rows
         : messagesResult.rows.reverse();
 
       res.json({

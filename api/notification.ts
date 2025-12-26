@@ -42,23 +42,3 @@ export const deleteNotificationToken = async (userId: string) => {
     throw error;
   }
 };
-
-export const sendTestNotification = async (userId: string, title: string, body: string) => {
-  try {
-    const authToken = await AuthStorage.getToken();
-    if (!authToken) throw new Error('No authentication token');
-
-    const response = await axios.post(`${API_URL}/api/notifications/test`, {
-      userId,
-      title,
-      body
-    }, {
-      headers: { Authorization: `Bearer ${authToken}` }
-    });
-
-    return response.data;
-  } catch (error) {
-    console.error('Error sending test notification:', error);
-    throw error;
-  }
-};

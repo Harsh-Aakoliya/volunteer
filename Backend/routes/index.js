@@ -12,6 +12,7 @@ import notificationRoutes from './notificationRoutes.js';
 const router = express.Router();
 
 // Test route
+// ${API_URL}/api/test components/auth/AppInfo.tsx -> testServer
 router.get("/test", (req, res) => {
   const from = req.query.from;
   const ip = req.query.ip;
@@ -19,17 +20,10 @@ router.get("/test", (req, res) => {
   res.json({ message: "API is running" });
 });
 
-
-// Auth routes (no authentication needed)
 router.use('/auth', authRoutes);
-
-// Version routes (no authentication needed)
 router.use('/version', versionRoutes);
-
-// Protected routes - all below require authentication
 router.use('/chat', chatRoutes);
 router.use('/users', userRoutes);
-// router.use('/media', uploadRoutes);
 router.use('/poll', pollRoutes);
 router.use('/table',tableRoutes);
 router.use('/vm-media', vmMediaRoutes);

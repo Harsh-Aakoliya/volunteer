@@ -1,34 +1,28 @@
-// import { Redirect } from 'expo-router';
-
-// export default function Index() {
-//   return <Redirect href="/(auth)/login" />;
-// }
-
-
 // app/index.tsx
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'expo-router';
 import { AuthStorage } from '@/utils/authStorage';
 import * as Application from 'expo-application';
 import { VersionChecker } from '@/components/VersionChecker';
+
 import { Platform, Alert, TextInput, View, Text, TouchableOpacity } from 'react-native';
 import CustomInput from '@/components/ui/CustomInput';
 import CustomButton from '@/components/ui/CustomButton';
 import { API_URL, setApiUrl, updateDevIP } from "@/constants/api";
 import useNetworkStatus from '@/hooks/userNetworkStatus';
 import * as React from 'react';
-const DEV_IP = "http://10.177.157.242:8080";
-const INTERNAL_IP = "http://192.168.2.134:3000";
-const EXTERNAL_IP = "http://103.47.172.58:50160";
+
 
 // Export dev mode status and DEV_IP for use in other components
 export const getDevModeStatus = () => true; // Set to true to enable manual IP configuration for development
 export const getDefaultDevIP = () => DEV_IP;
 
+const isWeb = Platform.OS === ('web' as any);
+
 export default function Index() {
   const appVersion = Application.nativeApplicationVersion;
   const router = useRouter();
-  const isConnected = useNetworkStatus();
+  const isConnected = useNetworkStatus() || isWeb;
   const [connectivityCheckComplete, setConnectivityCheckComplete] = useState(false);
   const [versionCheckComplete, setVersionCheckComplete] = useState(false);
   const [showDevIpInput, setShowDevIpInput] = useState(false);
@@ -36,18 +30,19 @@ export default function Index() {
   const [hasNavigated, setHasNavigated] = useState(false);
 
   useEffect(() => {
+
     const isDevMode = getDevModeStatus(); // Use exported function for consistency
 
     const pingServer = async (baseUrl: string, from: string, timeoutMs: number = 5000): Promise<boolean> => {
       try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-        
+
         const res = await fetch(`${baseUrl}/api/test?from=${from}&ip=${baseUrl}`, {
           method: 'GET',
           signal: controller.signal,
         });
-        
+
         clearTimeout(timeoutId);
         const data = await res.json();
         return data.message === "API is running";
@@ -65,11 +60,11 @@ export default function Index() {
       try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 5000);
-        
+
         const response = await fetch("https://clients3.google.com/generate_204", {
           signal: controller.signal
         });
-        
+
         clearTimeout(timeoutId);
         return response.status === 204;
       } catch (err: any) {
@@ -79,13 +74,20 @@ export default function Index() {
     };
 
     const setupApiUrl = async () => {
+      if (isWeb) {
+        setApiUrl("http://localhost:8080" as any);
+        console.log("API_URL", API_URL);
+        setConnectivityCheckComplete(true);
+        return;
+      }
       console.log("🔍 Starting server connectivity check...");
 
       // Step 0: Check internet connectivity first
+      console.log("isConnected:", isConnected);
       if (!isConnected) {
         console.log("❌ No internet connection available");
         Alert.alert(
-          "No Internet Connection", 
+          "No Internet Connection",
           "Please connect to the internet via WiFi or mobile data and try again."
         );
         return;
@@ -106,7 +108,7 @@ export default function Index() {
       setApiUrl(INTERNAL_IP);
       const internalOk = await pingServer(INTERNAL_IP, "internal");
       console.log("Internal network result:", internalOk);
-      
+
       if (internalOk) {
         console.log("✅ Connected via Internal IP");
         setApiUrl(INTERNAL_IP);
@@ -119,7 +121,7 @@ export default function Index() {
       setApiUrl(EXTERNAL_IP);
       const externalOk = await pingServer(EXTERNAL_IP, "external");
       console.log("External network result:", externalOk);
-      
+
       if (externalOk) {
         console.log("✅ Connected via External IP");
         setApiUrl(EXTERNAL_IP);
@@ -130,20 +132,20 @@ export default function Index() {
       // Step 4: Both internal and external failed - check internet connectivity
       console.log("❌ Both internal and external connections failed. Checking internet...");
       const hasInternet = await checkInternet();
-      
+
       if (!hasInternet) {
         Alert.alert(
-          "No Internet Connection", 
+          "No Internet Connection",
           "Please connect to the internet via WiFi or mobile data and try again."
         );
       } else {
         Alert.alert(
-          "Server Unreachable", 
+          "Server Unreachable",
           "Server is not reachable. Please contact admin or try again later."
         );
       }
-      
-      return; 
+
+      return;
     };
 
     setupApiUrl();
@@ -162,17 +164,17 @@ export default function Index() {
 
     console.log("⚙️ Testing dev IP:", devIpInput);
     setApiUrl(devIpInput);
-    
+
     const pingServer = async (baseUrl: string, from: string, timeoutMs: number = 5000): Promise<boolean> => {
       try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-        
+
         const res = await fetch(`${baseUrl}/api/test?from=${from}&ip=${baseUrl}`, {
           method: 'GET',
           signal: controller.signal,
         });
-        
+
         clearTimeout(timeoutId);
         const data = await res.json();
         return data.message === "API is running";
@@ -199,7 +201,7 @@ export default function Index() {
   // Step 2: Start version check only after connectivity is established (skip for web)
   useEffect(() => {
     if (!connectivityCheckComplete) return;
-    
+
     if (Platform.OS === "web") {
       console.log("🌐 Web platform detected, skipping version check");
       setVersionCheckComplete(true);
@@ -210,7 +212,7 @@ export default function Index() {
     }
   }, [connectivityCheckComplete]);
 
-  // Step 3: Define auth check function with useCallback at top level
+  // Step 3: Define auth check function with useCallback at top level :TODO
   const checkAuthStatus = useCallback(async () => {
     try {
       setHasNavigated(true); // Prevent multiple navigation attempts
@@ -245,7 +247,7 @@ export default function Index() {
     setClickCount((prevCount) => {
       const newCount = prevCount + 1;
       console.log("newCount", newCount);
-  
+
       if (newCount >= 7) {
         Alert.alert(
           "🔧 Developer Mode Activated",
@@ -266,7 +268,7 @@ export default function Index() {
         );
         return 0; // Reset immediately even if alert dismissed without OK
       }
-  
+
       return newCount;
     });
   };
@@ -296,11 +298,11 @@ export default function Index() {
           autoCorrect={false}
         />
         <View style={{ flexDirection: 'row', gap: 10 }}>
-          <Text 
-            style={{ 
-              backgroundColor: '#007AFF', 
-              color: 'white', 
-              padding: 10, 
+          <Text
+            style={{
+              backgroundColor: '#007AFF',
+              color: 'white',
+              padding: 10,
               borderRadius: 5,
               textAlign: 'center',
               minWidth: 80
@@ -309,11 +311,11 @@ export default function Index() {
           >
             Connect
           </Text>
-          <Text 
-            style={{ 
-              backgroundColor: '#FF3B30', 
-              color: 'white', 
-              padding: 10, 
+          <Text
+            style={{
+              backgroundColor: '#FF3B30',
+              color: 'white',
+              padding: 10,
               borderRadius: 5,
               textAlign: 'center',
               minWidth: 80
@@ -337,53 +339,53 @@ export default function Index() {
           </Text>
         </TouchableOpacity>
         {showIPModal && (
-  <View className="absolute inset-0 bg-black/50 flex justify-center items-center z-50">
-    <View className="bg-white p-6 rounded-xl w-11/12 max-w-md mx-4">
-      <Text className="text-lg font-JakartaBold mb-4">Set Backend IP Address</Text>
-      <CustomInput
-        placeholder="e.g., 192.168.1.100:3000"
-        value={devIP.replace(/^https?:\/\//, '')}
-        onChangeText={(text) => setDevIP(text)}
-        keyboardType="url"
-      />
-      <View className="flex-row justify-between mt-4 space-x-2">
-        <CustomButton
-          title="Cancel"
-          onPress={() => setShowIPModal(false)}
-          bgVariant="secondary"
-          className="flex-1"
-        />
-        <CustomButton
-          title="Save"
-          onPress={() => {
-            if (!devIP.trim()) {
-              Alert.alert("Error", "IP address cannot be empty.");
-              return;
-            }
+          <View className="absolute inset-0 bg-black/50 flex justify-center items-center z-50">
+            <View className="bg-white p-6 rounded-xl w-11/12 max-w-md mx-4">
+              <Text className="text-lg font-JakartaBold mb-4">Set Backend IP Address</Text>
+              <CustomInput
+                placeholder="e.g., 192.168.1.100:3000"
+                value={devIP.replace(/^https?:\/\//, '')}
+                onChangeText={(text) => setDevIP(text)}
+                keyboardType="url"
+              />
+              <View className="flex-row justify-between mt-4 space-x-2">
+                <CustomButton
+                  title="Cancel"
+                  onPress={() => setShowIPModal(false)}
+                  bgVariant="secondary"
+                  className="flex-1"
+                />
+                <CustomButton
+                  title="Save"
+                  onPress={() => {
+                    if (!devIP.trim()) {
+                      Alert.alert("Error", "IP address cannot be empty.");
+                      return;
+                    }
 
-            if (!isConnected) {
-              Alert.alert("No Internet Connection", "Please check your internet connection and try again.");
-              return;
-            }
+                    if (!isConnected) {
+                      Alert.alert("No Internet Connection", "Please check your internet connection and try again.");
+                      return;
+                    }
 
-            let formattedUrl = devIP.trim();
-            if (!formattedUrl.startsWith('http://') && !formattedUrl.startsWith('https://')) {
-              formattedUrl = 'http://' + formattedUrl;
-            }
+                    let formattedUrl = devIP.trim();
+                    if (!formattedUrl.startsWith('http://') && !formattedUrl.startsWith('https://')) {
+                      formattedUrl = 'http://' + formattedUrl;
+                    }
 
-            updateDevIP(formattedUrl);
-            setDevIP(formattedUrl);
-            Alert.alert("Success", `Backend IP updated to:\n${formattedUrl}`);
-            setShowIPModal(false);
-            setClickCount(0); // Fully reset counter
-          }}
-          bgVariant="success"
-          className="flex-1"
-        />
-      </View>
-    </View>
-  </View>
-)}
+                    updateDevIP(formattedUrl);
+                    setDevIP(formattedUrl);
+                    Alert.alert("Success", `Backend IP updated to:\n${formattedUrl}`);
+                    setShowIPModal(false);
+                    setClickCount(0); // Fully reset counter
+                  }}
+                  bgVariant="success"
+                  className="flex-1"
+                />
+              </View>
+            </View>
+          </View>
+        )}
       </View>
     );
   }

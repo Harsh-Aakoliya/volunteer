@@ -12,9 +12,9 @@ const router = express.Router();
 router.use(authenticateToken);
 
 // Store notification token
-router.post('/store-token', storeNotificationToken);
+router.post('/store-token', storeNotificationToken); //api/auth.ts -> generateAndStoreNotificationToken, // api/notification.ts -> storeNotificationToken
 
 // Delete notification token (on logout)
-router.post('/delete-token', deleteNotificationToken);
+router.post('/delete-token', deleteNotificationToken); //api/auth.ts -> removeNotificationToken, // api/notification.ts -> deleteNotificationToken
 
 export default router;

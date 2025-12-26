@@ -75,79 +75,6 @@ setupSocketIO(io, app);
 // API routes
 app.use('/api', apiRoutes);
 
-// Add this to your server.js file, after the existing routes but before the test endpoint
-
-// API endpoint to list media files
-app.get("/media", (req, res) => {
-  try {
-    const mediaDir = path.join(process.cwd(), 'media');
-    
-    // Check if media directory exists
-    if (!fs.existsSync(mediaDir)) {
-      return res.json([]);
-    }
-
-    // Read all files in the media directory
-    const files = fs.readdirSync(mediaDir);
-    
-    // Filter out only media files (optional - you can remove this filter if you want all files)
-    const mediaFiles = files.filter(file => {
-      const ext = path.extname(file).toLowerCase();
-      return [
-        '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', // Images
-        '.mp4', '.mov', '.avi', '.mkv', '.webm', // Videos
-        '.mp3', '.wav', '.aac', '.m4a', '.ogg' // Audio
-      ].includes(ext);
-    });
-
-    console.log('Media files found:', mediaFiles);
-    res.json(mediaFiles);
-  } catch (error) {
-    console.error('Error reading media directory:', error);
-    res.status(500).json({ error: 'Unable to read media directory' });
-  }
-});
-
-// Alternative endpoint with more detailed file information (optional)
-app.get("/api/media", (req, res) => {
-  try {
-    const mediaDir = path.join(process.cwd(), 'media');
-    
-    if (!fs.existsSync(mediaDir)) {
-      return res.json([]);
-    }
-
-    const files = fs.readdirSync(mediaDir);
-    
-    const mediaFiles = files.map(file => {
-      const filePath = path.join(mediaDir, file);
-      const stats = fs.statSync(filePath);
-      const ext = path.extname(file).toLowerCase();
-      
-      let type = 'other';
-      if (['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'].includes(ext)) {
-        type = 'image';
-      } else if (['.mp4', '.mov', '.avi', '.mkv', '.webm'].includes(ext)) {
-        type = 'video';
-      } else if (['.mp3', '.wav', '.aac', '.m4a', '.ogg'].includes(ext)) {
-        type = 'audio';
-      }
-
-      return {
-        name: file,
-        type: type,
-        size: stats.size,
-        modified: stats.mtime
-      };
-    });
-
-    res.json(mediaFiles);
-  } catch (error) {
-    console.error('Error reading media directory:', error);
-    res.status(500).json({ error: 'Unable to read media directory' });
-  }
-});
-
 // Version endpoint
 app.get("/api/version", (req, res) => {
   console.log("version checking req got");
@@ -165,48 +92,6 @@ app.get("/api/version", (req, res) => {
   }
 });
 
-// Scheduled announcement publisher endpoints
-app.get("/api/scheduled-publisher/status", (req, res) => {
-  try {
-    const status = scheduledPublisher.getStatus();
-    res.json({ success: true, status });
-  } catch (error) {
-    console.error('Error getting publisher status:', error);
-    res.status(500).json({ error: 'Unable to get publisher status' });
-  }
-});
-
-app.post("/api/scheduled-publisher/check", async (req, res) => {
-  try {
-    await scheduledPublisher.manualCheck();
-    res.json({ success: true, message: 'Manual check completed' });
-  } catch (error) {
-    console.error('Error during manual check:', error);
-    res.status(500).json({ error: 'Manual check failed' });
-  }
-});
-
-// Scheduled message service endpoints
-app.get("/api/scheduled-messages/status", (req, res) => {
-  try {
-    const status = scheduledMessageService.isRunning;
-    res.json({ success: true, status });
-  } catch (error) {
-    console.error('Error getting scheduled message service status:', error);
-    res.status(500).json({ error: 'Unable to get service status' });
-  }
-});
-
-app.post("/api/scheduled-messages/check", async (req, res) => {
-  try {
-    await scheduledMessageService.triggerCheck();
-    res.json({ success: true, message: 'Manual check completed' });
-  } catch (error) {
-    console.error('Error during manual check:', error);
-    res.status(500).json({ error: 'Manual check failed' });
-  }
-});
-
 // Use httpServer instead of app to listen
 httpServer.listen(PORT, "0.0.0.0", () => {
   const addresses = Object.values(os.networkInterfaces())
@@ -221,7 +106,3 @@ httpServer.listen(PORT, "0.0.0.0", () => {
   // Start scheduled message service
   // scheduledMessageService.start();
 });
-
-
-
-

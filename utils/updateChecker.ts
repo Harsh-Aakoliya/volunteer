@@ -1,3 +1,4 @@
+//utils/updateChecker.ts
 import { Alert, Linking } from 'react-native';
 import * as Application from 'expo-application';
 import * as FileSystem from 'expo-file-system';

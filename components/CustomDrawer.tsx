@@ -32,10 +32,8 @@ export const CustomDrawer = (props: DrawerContentComponentProps) => {
   const loadUserProfile = async () => {
     try {
       setIsLoading(true);
-      const profileData = await AuthStorage.getSevakData();
-      console.log("profileData for custom drawer", profileData);
+      const profileData = await AuthStorage.getUser();
       setUserProfile(profileData);
-      console.log("userProfile in profile screen of drawer from backend", profileData);
     } catch (error) {
       console.error("Error loading user profile:", error);
     } finally {

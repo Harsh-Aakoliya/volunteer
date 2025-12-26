@@ -1,3 +1,4 @@
+// api/chat/message.ts
 import axios from "axios";
 import { API_URL } from "@/constants/api";
 import { AuthStorage } from "@/utils/authStorage";

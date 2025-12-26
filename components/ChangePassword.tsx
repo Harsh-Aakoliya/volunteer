@@ -141,8 +141,7 @@ const [mobileNumber, setMobileNumber] = useState<string>("");
     setIsMobileAllowed(false);
     try {
       const storedUser = await AuthStorage.getUser();
-      const storedSevak = await AuthStorage.getSevakData();
-      const number = storedUser?.mobileNumber || storedSevak?.mobileno || storedSevak?.mobileNumber || "";
+      const number = storedUser?.mobileNumber || storedUser?.mobileno || storedUser?.mobileNumber || "";
       if (number) {
         setMobileNumber(number);
         verifyMobileNumber(number);

@@ -5,38 +5,9 @@ import { User } from "@/types/type";
 const KEYS = {
   TOKEN: "userToken",
   USER: "userData",
-  ROLE: "userRole",
-  SEVAK: "sevakData",
 };
 
 export const AuthStorage = {
-  // ==================== SEVAK DATA ====================
-
-  async storeSevakData(sevak: any): Promise<void> {
-    console.log("Storing sevak data in authStorage:", sevak);
-    try {
-      await AsyncStorage.setItem(KEYS.SEVAK, JSON.stringify(sevak));
-      console.log("Sevak data stored successfully");
-    } catch (error) {
-      console.error("Error storing sevak data:", error);
-      throw error;
-    }
-  },
-
-  async getSevakData(): Promise<any | null> {
-    try {
-      const sevakDataString = await AsyncStorage.getItem(KEYS.SEVAK);
-      if (!sevakDataString) {
-        return null;
-      }
-      console.log("Sevak data retrieved successfully");
-      return JSON.parse(sevakDataString);
-    } catch (error) {
-      console.error("Error getting sevak data:", error);
-      return null;
-    }
-  },
-
   // ==================== TOKEN ====================
 
   async storeToken(token: string): Promise<void> {
@@ -89,37 +60,13 @@ export const AuthStorage = {
     }
   },
 
-  // ==================== USER ROLE ====================
-
-  async storeUserRole(role: string): Promise<void> {
-    try {
-      await AsyncStorage.setItem(KEYS.ROLE, role);
-      console.log("User role stored successfully:", role);
-    } catch (error) {
-      console.error("Error storing user role:", error);
-      throw error;
-    }
-  },
-
-  async getUserRole(): Promise<string | null> {
-    try {
-      const userRole = await AsyncStorage.getItem(KEYS.ROLE);
-      return userRole;
-    } catch (error) {
-      console.error("Error getting user role:", error);
-      return null;
-    }
-  },
-
   // ==================== CLEAR ALL DATA ====================
 
   async clear(): Promise<void> {
     try {
       await AsyncStorage.multiRemove([
         KEYS.TOKEN,
-        KEYS.USER,
-        KEYS.ROLE,
-        KEYS.SEVAK,
+        KEYS.USER
       ]);
       console.log("All auth data cleared successfully");
     } catch (error) {

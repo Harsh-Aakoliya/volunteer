@@ -1,10 +1,10 @@
 // controllers/authController.js
 import pool from "../config/database.js";
 import jwt from "jsonwebtoken";
-import bcrypt from "bcryptjs";
 
+const authController={
 // ==================== LOGIN ====================
-const login = async (req, res) => {
+async login(req, res){
   const { mobileNumber, password } = req.body;
   console.log("Login attempt:", mobileNumber, password);
 
@@ -86,10 +86,10 @@ const login = async (req, res) => {
       message: "Server error. Please try again later.",
     });
   }
-};
+},
 
 // ==================== CHECK MOBILE EXISTS ====================
-const checkMobileExists = async (req, res) => {
+async checkMobileExists(req,res){
   const { mobileNumber } = req.body;
   console.log("Check mobile exists request:", mobileNumber);
 
@@ -152,10 +152,10 @@ const checkMobileExists = async (req, res) => {
       message: "Server error. Please try again later.",
     });
   }
-};
+},
 
 // ==================== SET PASSWORD ====================
-const setPassword = async (req, res) => {
+async setPassword(req,res){
   const { mobileNumber, password } = req.body;
   console.log("Set password request for:", mobileNumber);
 
@@ -256,52 +256,9 @@ const setPassword = async (req, res) => {
       message: "Server error. Please try again later.",
     });
   }
-};
-
-// ==================== CHECK USER ====================
-const checkUser = async (req, res) => {
-  const { mobileNumber } = req.body;
-
-  try {
-    const result = await pool.query(
-      'SELECT * FROM "users" WHERE "mobile_number" = $1',
-      [mobileNumber]
-    );
-
-    if (result.rows.length > 0) {
-      res.json({
-        exists: true,
-      });
-    } else {
-      res.json({ exists: false });
-    }
-  } catch (error) {
-    console.error("Check user error:", error.message);
-    res.status(400).json({ success: false, message: error.message });
-  }
-};
-
-// ==================== REGISTER ====================
-const register = async (req, res) => {
-  const { mobileNumber, userId, fullName } = req.body;
-
-  try {
-    // Add your registration logic here
-    res.json({
-      success: true,
-      message: "Registration successful",
-    });
-  } catch (error) {
-    console.error("Registration error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Registration failed. Please try again.",
-    });
-  }
-};
-
+},
 // ==================== CHANGE PASSWORD ====================
-const changePassword = async (req, res) => {
+async changePassword(req, res){
   const { mobileNumber, currentPassword, newPassword } = req.body;
 
   try {
@@ -356,6 +313,7 @@ const changePassword = async (req, res) => {
       message: "Server error. Please try again later.",
     });
   }
-};
+}
 
-export default { register, login, checkUser, checkMobileExists, setPassword, changePassword };
+}
+export default authController;

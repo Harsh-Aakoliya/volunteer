@@ -4,10 +4,8 @@ import authController from '../controllers/authController.js';
 const router = express.Router();
 
 // Auth routes
-router.post("/login", authController.login);
+router.post("/login", authController.login);// api/auth.ts -> login
 router.post("/check-mobile", authController.checkMobileExists);
-router.post("/set-password", authController.setPassword);
-router.post("/change-password", authController.changePassword);
-router.post("/register", authController.register);
-router.post("/check-user", authController.checkUser);
+router.post("/set-password", authController.setPassword);// api/auth.ts -> setPassword
+router.post("/change-password", authController.changePassword);// api/auth.ts -> changePassword
 export default router; 

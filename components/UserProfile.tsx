@@ -27,20 +27,13 @@ const UserProfile: React.FC<UserProfileProps> = ({ user }) => {
     label,
     value,
     color = "#6B7280",
-    onPress,
   }: {
     icon: any;
     label: string;
     value?: string;
     color?: string;
-    onPress?: () => void;
   }) => (
-    <TouchableOpacity
-      className="flex-row items-center justify-between py-3 border-b border-gray-100"
-      onPress={onPress}
-      disabled={!onPress}
-      activeOpacity={onPress ? 0.7 : 1}
-    >
+    <View className="flex-row items-center justify-between py-3 border-b border-gray-100">
       <View className="flex-row items-center flex-1">
         <View className="w-10 h-10 rounded-full bg-gray-100 items-center justify-center mr-3">
           <Ionicons name={icon} size={20} color={color} />
@@ -50,8 +43,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ user }) => {
           <Text className="text-gray-800 font-medium">{value || "-"}</Text>
         </View>
       </View>
-      {onPress && <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />}
-    </TouchableOpacity>
+    </View>
   );
 
   const ContactInfoField = ({
@@ -69,7 +61,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ user }) => {
   }) => (
     <TouchableOpacity
       className="flex-row items-center justify-between py-3 border-b border-gray-100"
-      onPress={() => handlePhoneCall(contactNumber || "")}
+      onPress={() => Linking.openURL(`tel:${contactNumber}`)}
       disabled={!contactNumber}
       activeOpacity={contactNumber ? 0.7 : 1}
     >
@@ -89,11 +81,6 @@ const UserProfile: React.FC<UserProfileProps> = ({ user }) => {
       {contactNumber && <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />}
     </TouchableOpacity>
   );
-
-  const handlePhoneCall = (phoneNumber: string) => {
-    if (!phoneNumber || phoneNumber === "-") return;
-    Linking.openURL(`tel:${phoneNumber}`);
-  };
 
   return (
     <View className="flex-1 bg-white rounded-t-3xl">

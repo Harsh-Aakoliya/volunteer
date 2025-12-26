@@ -23,7 +23,7 @@ import CustomInput from "../ui/CustomInput";
 import {
   login,
   checkMobileExists,
-  setPassword as setPasswordAPI,
+  setPasswordToBackend,
   checkAuthStatus,
 } from "@/api/auth";
 import { updateDevIP } from "@/constants/api";
@@ -48,7 +48,6 @@ export default function LoginForm() {
   const [mobileNumber, setMobileNumber] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-
   // Loading states
   const [isLoading, setIsLoading] = useState(false);
   const [isCheckingMobile, setIsCheckingMobile] = useState(false);
@@ -366,7 +365,7 @@ export default function LoginForm() {
       setIsSettingPassword(true);
 
       const cleanedNumber = mobileNumber.replace(/[^0-9]/g, "");
-      const response = await setPasswordAPI(cleanedNumber, password);
+      const response = await setPasswordToBackend(cleanedNumber, password);
 
       console.log("Set password response:", response);
 
@@ -730,7 +729,7 @@ export default function LoginForm() {
       </View>
 
             {/* Password Requirements */}
-            <View className="mb-4 ml-1">
+      <View className="mb-4 ml-1">
         {/* <Text className="text-xs text-gray-500 mb-2">Password must:</Text>
          <View className="flex-row items-center mb-1">
           <Ionicons

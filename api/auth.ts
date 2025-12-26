@@ -1,7 +1,7 @@
 // api/auth.ts
 import axios from "axios";
 import { Alert, Platform } from "react-native";
-import { API_URL } from "../constants/api";
+import { API_URL, setApiUrl } from "../constants/api";
 import { AuthStorage } from "@/utils/authStorage";
 import { router } from "expo-router";
 import * as Notifications from "expo-notifications";
@@ -91,13 +91,12 @@ export const checkAuthStatus = async (): Promise<{
   try {
     const token = await AuthStorage.getToken();
     const user = await AuthStorage.getUser();
-    const sevakData = await AuthStorage.getSevakData();
 
-    if (token && (user || sevakData)) {
+    if (token && (user)) {
       return {
         isAuthenticated: true,
         token,
-        user: user || sevakData,
+        user: user,
       };
     }
 
@@ -159,15 +158,15 @@ export const checkMobileExists = async (
     };
   } catch (error: any) {
     console.error("Check mobile error:", error);
-    
+
     if (error.message === "NO_INTERNET") {
       throw new Error("No internet connection. Please check your network.");
     }
-    
+
     if (error.message === "SERVER_ERROR") {
       throw new Error("Server error. Please try again later.");
     }
-    
+
     throw new Error("Failed to verify mobile number. Please try again.");
   }
 };
@@ -185,42 +184,48 @@ export const login = async (
   mobileNumber: string,
   password: string
 ): Promise<LoginResponse> => {
+  console.log("login", mobileNumber, password);
   try {
-    // Check internet connectivity first
-    const isConnected = await checkInternetConnectivity();
-    if (!isConnected) {
-      return {
-        success: false,
-        message: "No internet connection. Please check your network.",
-      };
+    // Check internet connectivity first (skip on web)
+    if (Platform.OS !== "web") {
+      const isConnected = await checkInternetConnectivity();
+      if (!isConnected) {
+        return {
+          success: false,
+          message: "No internet connection. Please check your network.",
+        };
+      }
+      
     }
-
+    if(Platform.OS === "web") {
+      setApiUrl("http://localhost:8080" as any);
+      console.log("API_URL", API_URL);
+    }
     const response = await axios.post(`${API_URL}/api/auth/login`, {
       mobileNumber,
       password,
     });
-
-    console.log("Response in login:", response.data);
 
     if (response.data.success) {
       const { token, sevak } = response.data;
 
       // Store authentication data
       await AuthStorage.storeToken(token);
-      await AuthStorage.storeSevakData(sevak);
       await AuthStorage.storeUser({
         userId: sevak.seid,
         mobileNumber: sevak.mobileno,
-        name: sevak.sename || sevak.sevakname,
+        name: sevak.sevakname,
         role: sevak.usertype,
+        ...sevak
       });
-      await AuthStorage.storeUserRole(sevak.usertype);
+      console.log("after storing",await AuthStorage.getUser());
 
-      // Generate notification token after successful login
-      generateAndStoreNotificationToken(sevak.seid).catch((error) => {
-        console.error("Error generating notification token:", error);
-      });
-
+      if(Platform.OS !== "web") {
+        // Generate notification token after successful login
+        generateAndStoreNotificationToken(sevak.seid).catch((error) => {
+          console.error("Error generating notification token:", error);
+        });
+      }
       return {
         success: true,
         token,
@@ -267,7 +272,7 @@ export interface SetPasswordResponse {
   sevak?: any;
 }
 
-export const setPassword = async (
+export const setPasswordToBackend = async (
   mobileNumber: string,
   password: string
 ): Promise<SetPasswordResponse> => {
@@ -293,14 +298,14 @@ export const setPassword = async (
 
       // Store authentication data
       await AuthStorage.storeToken(token);
-      await AuthStorage.storeSevakData(sevak);
       await AuthStorage.storeUser({
         userId: sevak.seid,
         mobileNumber: sevak.mobileno,
         name: sevak.sename || sevak.sevakname,
         role: sevak.usertype,
+        ...sevak
       });
-      await AuthStorage.storeUserRole(sevak.usertype);
+
 
       // Generate notification token after successful password set
       generateAndStoreNotificationToken(sevak.seid).catch((error) => {
@@ -366,28 +371,6 @@ export const changePassword = async (
   }
 };
 
-// ==================== REGISTER FUNCTION ====================
-
-export const register = async (
-  mobileNumber: string,
-  userId: string,
-  fullName: string
-) => {
-  try {
-    const response = await axios.post(`${API_URL}/api/auth/register`, {
-      mobileNumber,
-      userId,
-      fullName,
-    });
-    return response.data;
-  } catch (error: any) {
-    console.error("Registration error", error);
-    return {
-      success: false,
-      message: error.response?.data?.message || "Registration failed.",
-    };
-  }
-};
 
 // ==================== LOGOUT FUNCTION ====================
 

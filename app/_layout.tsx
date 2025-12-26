@@ -1,43 +1,7 @@
-// import { Slot, useRouter, useSegments } from 'expo-router';
-// import { useEffect, useState } from 'react';
-// import { View, ActivityIndicator } from 'react-native';
-// import { storage } from '../utils/storage';
-
-// export default function RootLayout() {
-//   const [isLoading, setIsLoading] = useState(true);
-//   const router = useRouter();
-//   const segments = useSegments();
-
-//   useEffect(() => {
-//     checkAuth();
-//   }, []);
-
-//   const checkAuth = async () => {
-//     const token = await storage.getToken();
-//     setIsLoading(false);
-
-//     if (!token) {
-//       router.replace('/(auth)/login');
-//     } else if (segments[0] !== '(main)') {
-//       router.replace('/(main)/(tabs)/announcement');
-//     }
-//   };
-
-//   if (isLoading) {
-//     return (
-//       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-//         <ActivityIndicator size="large" color="#4A90E2" />
-//       </View>
-//     );
-//   }
-
-//   return <Slot />;
-// }
-
 // app/_layout.tsx
 import { Stack } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Text, ToastAndroid, View } from 'react-native';
+import { Platform, Text, ToastAndroid, View } from 'react-native';
 import * as FileSystem from 'expo-file-system';
 import * as React from 'react';
 
@@ -50,11 +14,17 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 
 export default function RootLayout() {
+  
   const [isReady, setIsReady] = useState(true);
   const isConnected = useNetworkStatus();
   const { initializeOnlineStatus } = useOnlineStatus();
 
   useEffect(() => {
+    if (Platform.OS === "web") {
+      // Skip native setup on web
+      setIsReady(true);
+      return;
+    }
     const bootstrap = async () => {
       try {
         // 🧹 STEP 1: Clean up leftover APK first
@@ -73,8 +43,10 @@ export default function RootLayout() {
         }
 
         // 🛠️ STEP 2: Initialize notifications and listeners
-        await initializeNotifications();
-        await requestChatNotificationPermissions();
+        if(Platform.OS !== 'web'){
+          await initializeNotifications();
+          await requestChatNotificationPermissions();
+        }
 
         // ✅ STEP 3: Initialize online status if user is already logged in
         await initializeOnlineStatus();
@@ -103,9 +75,8 @@ export default function RootLayout() {
     <>
       <GestureHandlerRootView style={{ flex: 1 }}>
       <Stack screenOptions={{ headerShown: false, statusBarStyle: "light", statusBarBackgroundColor: "#3b82f6"}} />
-      <OfflinePopup isVisible={!isConnected} />
+       { Platform.OS !== 'web' &&<OfflinePopup isVisible={!isConnected} />}
       </GestureHandlerRootView>
-
     </>
   );
 }

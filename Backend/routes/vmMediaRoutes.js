@@ -4,23 +4,15 @@ import { authenticateToken } from '../middlewares/auth.js';
 
 const router = express.Router();
 
-// Test endpoint without auth for debugging
-router.get("/test-file/:folderName/:fileName", vmMediaController.getFile);
-
 // Apply authentication middleware to all other routes
 router.use(authenticateToken);
 
-// Legacy folder creation (keep for backward compatibility)
-router.post("/createfolder", vmMediaController.createFolder);
-
 // VM Media routes for chat
-router.post("/upload", vmMediaController.uploadFiles);
-router.get("/temp/:tempFolderId", vmMediaController.getTempFiles);
-router.delete("/temp/:tempFolderId/:fileName", vmMediaController.deleteFile);
-router.delete("/temp/:tempFolderId", vmMediaController.deleteTempFolder);
-router.post("/move-to-chat", vmMediaController.moveToChat);
-router.post("/move-to-chat-announcement", vmMediaController.moveToChatAnnouncement);
-router.get("/media/:mediaId", vmMediaController.getMediaById);
-router.get("/file/:folderName/:fileName", vmMediaController.getFile);
+router.post("/upload", vmMediaController.uploadFiles);//${API_URL}/api/vm-media/upload app/chat/[roomId].tsx -> uploadAudioFile, handleSelectFiles
+router.delete("/temp/:tempFolderId/:fileName", vmMediaController.deleteFile);//${API_URL}/api/vm-media/temp/${tempFolderId}/${file.fileName} -> app/chat/create-chat-announcement.tsx ->removeFile, // app/chat/MediaUploader.tsx -> removeFile
+router.delete("/temp/:tempFolderId", vmMediaController.deleteTempFolder);//${API_URL}/api/vm-media/temp/${tempFolderId} -> app/chat/create-chat-announcement.tsx ->handleDiscardAndExit, // app/chat/MediaUploader.tsx -> handleDiscardAndExit
+router.post("/move-to-chat", vmMediaController.moveToChat); //${API_URL}/api/vm-media/move-to-chat app/chat/[roomId].tsx -> sendAudioMessage, // app/chat/MediaUploader.tsx -> sendToChat
+router.post("/move-to-chat-announcement", vmMediaController.moveToChatAnnouncement);// app/chat/create-chat-announcement.tsx ->sendAnnouncement
+router.get("/media/:mediaId", vmMediaController.getMediaById);//${API_URL}/api/vm-media/media/${mediaId} components/chat/MediaViewerModal.tsx ->fetchMediaData
 
 export default router;

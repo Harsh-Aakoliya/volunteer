@@ -1,5 +1,5 @@
 // Dynamic API URL configuration
-let currentApiUrl = ""; // Will be set dynamically based on network connectivity
+let currentApiUrl = "http://localhost:8080"; // Will be set dynamically based on network connectivity
 
 // Function to get current API URL
 export const getApiUrl = (): string => currentApiUrl;
