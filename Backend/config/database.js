@@ -31,5 +31,5 @@ const pool = new Pool({
   port: port
 });
 
-pool.on('connect', () => {console.log('Connected to the database');});
+pool.on('connect', () => {});
 export default pool;

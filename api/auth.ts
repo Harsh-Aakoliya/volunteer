@@ -6,8 +6,8 @@ import { AuthStorage } from "@/utils/authStorage";
 import { router } from "expo-router";
 import * as Notifications from "expo-notifications";
 import Constants from "expo-constants";
-import { setUserOnlineGlobal, setUserOfflineGlobal, resetOnlineStatusState } from '@/hooks/useOnlineStatus';
-import socketService from '@/utils/socketService';
+import { setUserOfflineGlobal, resetOnlineStatusState } from '@/hooks/useOnlineStatus';
+import socketManager from '@/utils/socketManager';
 
 // ==================== HELPER FUNCTIONS ====================
 
@@ -384,7 +384,6 @@ export const logout = async () => {
       try {
         await setUserOfflineGlobal(userData.userId);
         await new Promise((resolve) => setTimeout(resolve, 500));
-        socketService.disconnect();
       } catch (error) {
         console.error("Error setting user offline during logout:", error);
       }
@@ -392,6 +391,7 @@ export const logout = async () => {
       await removeNotificationToken(userData.userId);
     }
 
+    // Disconnect socket and reset state
     resetOnlineStatusState();
     await AuthStorage.clear();
     router.replace({

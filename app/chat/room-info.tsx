@@ -1,5 +1,5 @@
 // app/chat/room-info.tsx
-import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -20,13 +20,8 @@ import AnnouncementsTab from '@/components/chat/roomSettings/AnnouncementsTab';
 import MediaTab from '@/components/chat/roomSettings/MediaTab';
 import PollTab from '@/components/chat/roomSettings/PollTab';
 import TableTab from '@/components/chat/roomSettings/TableTab';
-import socketService from '@/utils/socketService';
-
-// Bottom Sheet imports
-import BottomSheet, {
-  BottomSheetView,
-  BottomSheetBackdrop,
-} from '@gorhom/bottom-sheet';
+import { useSocket } from '@/contexts/SocketContext';
+import socketManager from '@/utils/socketManager';
 
 interface Member {
   userId: string;
@@ -37,58 +32,16 @@ interface Member {
 
 export default function RoomInfo() {
   const layout = useWindowDimensions();
-  const { 
-    roomId, 
-    roomName: initialRoomName,
-    membersData,
-    onlineUsersData,
-    isGroupAdmin: isGroupAdminParam,
-  } = useLocalSearchParams<{
-    roomId: string;
-    roomName?: string;
-    membersData?: string;
-    onlineUsersData?: string;
-    isGroupAdmin?: string;
-  }>();
+  const { roomId } = useLocalSearchParams<{ roomId: string }>();
 
-  // Parse initial data from params
-  const parsedInitialMembers = useMemo(() => {
-    if (membersData) {
-      try {
-        return JSON.parse(membersData) as Member[];
-      } catch {
-        return [];
-      }
-    }
-    return [];
-  }, [membersData]);
+  // Socket context
+  const { isConnected, requestOnlineUsers } = useSocket();
 
-  const parsedOnlineUsers = useMemo(() => {
-    if (onlineUsersData) {
-      try {
-        return JSON.parse(onlineUsersData) as string[];
-      } catch {
-        return [];
-      }
-    }
-    return [];
-  }, [onlineUsersData]);
-
-  const [members, setMembers] = useState<Member[]>(parsedInitialMembers);
-  const [onlineUsers, setOnlineUsers] = useState<string[]>(parsedOnlineUsers);
-  const [isLoading, setIsLoading] = useState(parsedInitialMembers.length === 0);
-  const [roomName, setRoomName] = useState(initialRoomName || '');
-  // Refs
-  const bottomSheetRef = useRef<BottomSheet>(null);
-  const membersRef = useRef<Member[]>(parsedInitialMembers);
-
-  // Keep ref in sync
-  useEffect(() => {
-    membersRef.current = members;
-  }, [members]);
-
-  // Snap points for bottom sheet
-  const snapPoints = useMemo(() => ['50%', '75%', '90%'], []);
+  // State
+  const [members, setMembers] = useState<Member[]>([]);
+  const [onlineUsers, setOnlineUsers] = useState<string[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [roomName, setRoomName] = useState('');
 
   // Tab view state
   const [index, setIndex] = useState(0);
@@ -108,21 +61,11 @@ export default function RoomInfo() {
     }));
   }, [members, onlineUsers]);
 
-  // Load room info (only if not passed via params)
-  const loadRoomInfo = useCallback(async (forceRefresh = false) => {
+  // Load room info
+  const loadRoomInfo = useCallback(async () => {
     try {
-      // Skip loading if we have initial data and not forcing refresh
-      if (!forceRefresh && parsedInitialMembers.length > 0 && roomName) {
-        setIsLoading(false);
-        return;
-      }
-
       setIsLoading(true);
 
-      // Get current user
-      const userData = await AuthStorage.getUser();
-
-      // Fetch room details
       const token = await AuthStorage.getToken();
       const response = await axios.get(`${API_URL}/api/chat/rooms/${roomId}`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -131,80 +74,63 @@ export default function RoomInfo() {
       setMembers(response.data.members || []);
       setRoomName(response.data.roomName || '');
 
-      // Check if current user is group admin
-      const isUserGroupAdmin = response.data.members.some(
-        (member: any) => member.userId === userData?.userId && member.isAdmin
-      );
     } catch (error) {
       console.error('Error loading room info:', error);
-      if (parsedInitialMembers.length === 0) {
-        alert('Failed to load room info');
-        router.back();
-      }
+      alert('Failed to load room info');
+      router.back();
     } finally {
       setIsLoading(false);
     }
-  }, [roomId, parsedInitialMembers.length, roomName]);
+  }, [roomId]);
 
-  // Socket listeners for online status
+  // Subscribe to online status updates
   useEffect(() => {
-    const handleUserOnlineStatus = (data: { userId: string; isOnline: boolean }) => {
-      console.log('🟢 Room-info: Online status update:', data);
-      
+    if (!isConnected || !roomId) return;
+
+    // Request current online users
+    requestOnlineUsers(roomId);
+
+    // Subscribe to online users for this room
+    const onlineUsersSub = socketManager.on('onlineUsers', (data: { roomId: string; users: string[] }) => {
+      if (data.roomId === roomId) {
+        setOnlineUsers(data.users);
+      }
+    });
+
+    // Subscribe to user status changes
+    const userStatusSub = socketManager.on('userStatusChange', (data: { userId: string; isOnline: boolean }) => {
       if (data.isOnline) {
-        setOnlineUsers(prev => 
-          prev.includes(data.userId) ? prev : [...prev, data.userId]
-        );
+        setOnlineUsers(prev => prev.includes(data.userId) ? prev : [...prev, data.userId]);
       } else {
         setOnlineUsers(prev => prev.filter(id => id !== data.userId));
       }
-    };
-
-    const handleRoomOnlineUsers = (data: { roomId: string; onlineUsers: string[] }) => {
-      console.log('🟢 Room-info: Room online users:', data);
-      if (data.roomId === roomId) {
-        setOnlineUsers(data.onlineUsers);
-      }
-    };
-
-    // Subscribe to socket events
-    if (socketService.socket) {
-      socketService.socket.on('userOnlineStatusUpdate', handleUserOnlineStatus);
-      socketService.socket.on('roomOnlineUsers', handleRoomOnlineUsers);
-
-      // Request current online users for this room
-      socketService.socket.emit('getRoomOnlineUsers', { roomId });
-    }
+    });
 
     return () => {
-      if (socketService.socket) {
-        socketService.socket.off('userOnlineStatusUpdate', handleUserOnlineStatus);
-        socketService.socket.off('roomOnlineUsers', handleRoomOnlineUsers);
-      }
+      socketManager.off(onlineUsersSub);
+      socketManager.off(userStatusSub);
     };
-  }, [roomId]);
+  }, [isConnected, roomId, requestOnlineUsers]);
 
   useFocusEffect(
     useCallback(() => {
       if (roomId) {
         loadRoomInfo();
-
-        // Request fresh online status when focusing
-        if (socketService.socket?.connected) {
-          socketService.socket.emit('getRoomOnlineUsers', { roomId });
+        if (isConnected) {
+          requestOnlineUsers(roomId);
         }
       }
       return () => {};
-    }, [roomId, loadRoomInfo])
+    }, [roomId, loadRoomInfo, isConnected, requestOnlineUsers])
   );
 
-  // Render scene with memoization
+  // Render scene
   const renderScene = useCallback(({ route }: { route: { key: string } }) => {
     switch (route.key) {
       case 'members':
         return (
-          <MembersTab 
-            members={membersWithOnlineStatus} 
+          <MembersTab
+            members={membersWithOnlineStatus}
             roomId={roomId as string}
             onlineUsers={onlineUsers}
           />
@@ -222,7 +148,7 @@ export default function RoomInfo() {
     }
   }, [membersWithOnlineStatus, roomId, onlineUsers]);
 
-  // Custom TabBar render
+  // Custom TabBar
   const renderTabBar = useCallback((props: any) => (
     <TabBar
       {...props}
@@ -249,17 +175,14 @@ export default function RoomInfo() {
 
   return (
     <View className="flex-1 bg-white">
-      {/* Custom Header */}
+      {/* Header */}
       <View className="bg-white border-b border-gray-200 px-4 py-3 flex-row items-center justify-between">
         <TouchableOpacity onPress={() => router.back()} className="p-2">
           <Ionicons name="arrow-back" size={24} color="#374151" />
         </TouchableOpacity>
 
         <View className="flex-1 mx-4">
-          <Text
-            className="text-lg font-semibold text-gray-900"
-            numberOfLines={1}
-          >
+          <Text className="text-lg font-semibold text-gray-900" numberOfLines={1}>
             {roomName}
           </Text>
           <Text className="text-xs text-gray-500">
@@ -279,58 +202,11 @@ export default function RoomInfo() {
         lazyPreloadDistance={0}
         swipeEnabled={true}
       />
-   </View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  sheet: {
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 20,
-  },
-  sheetBackground: {
-    backgroundColor: '#fff',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-  },
-  handleContainer: {
-    paddingTop: 12,
-    paddingBottom: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
-  },
-  dragIndicator: {
-    width: 40,
-    height: 5,
-    backgroundColor: '#D1D5DB',
-    borderRadius: 3,
-    alignSelf: 'center',
-    marginBottom: 12,
-  },
-  sheetHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingBottom: 8,
-  },
-  sheetTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#111827',
-  },
-  closeButton: {
-    padding: 8,
-    borderRadius: 20,
-    backgroundColor: '#F3F4F6',
-  },
-  sheetContent: {
-    flex: 1,
-    paddingTop: 8,
-  },
   tabIndicator: {
     backgroundColor: '#3b82f6',
     height: 3,

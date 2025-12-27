@@ -11,20 +11,19 @@ import { requestChatNotificationPermissions } from '@/utils/chatNotificationHand
 import useNetworkStatus from '@/hooks/userNetworkStatus';
 import OfflinePopup from '@/components/OfflinePopup';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { useOnlineStatus } from '@/hooks/useOnlineStatus';
+import { SocketProvider, useSocket } from '@/contexts/SocketContext';
 
-export default function RootLayout() {
-  
-  const [isReady, setIsReady] = useState(true);
+// Inner component that uses socket context
+function AppContent() {
+  const [isReady, setIsReady] = useState(false);
   const isConnected = useNetworkStatus();
-  const { initializeOnlineStatus } = useOnlineStatus();
 
   useEffect(() => {
     if (Platform.OS === "web") {
-      // Skip native setup on web
       setIsReady(true);
       return;
     }
+
     const bootstrap = async () => {
       try {
         // 🧹 STEP 1: Clean up leftover APK first
@@ -36,20 +35,20 @@ export default function RootLayout() {
             console.log('🧹 Cleaning leftover update.apk:', apkPath);
             await FileSystem.deleteAsync(apkPath, { idempotent: true });
             console.log('✅ APK cleanup complete');
-            ToastAndroid.show( 'APK cleanup complete', ToastAndroid.SHORT);
+            ToastAndroid.show('APK cleanup complete', ToastAndroid.SHORT);
           }
         } catch (cleanupError) {
           console.warn('⚠️ APK cleanup failed:', cleanupError);
         }
 
         // 🛠️ STEP 2: Initialize notifications and listeners
-        if(Platform.OS !== 'web'){
+        if (Platform.OS !== 'web') {
           await initializeNotifications();
           await requestChatNotificationPermissions();
         }
 
-        // ✅ STEP 3: Initialize online status if user is already logged in
-        await initializeOnlineStatus();
+        // ✅ NOTE: Socket initialization is now done lazily in the chat screens
+        // after API URL is configured in app/index.tsx
 
       } catch (error) {
         console.error('Bootstrap error:', error);
@@ -73,10 +72,18 @@ export default function RootLayout() {
 
   return (
     <>
-      <GestureHandlerRootView style={{ flex: 1 }}>
-      <Stack screenOptions={{ headerShown: false, statusBarStyle: "light", statusBarBackgroundColor: "#3b82f6"}} />
-       { Platform.OS !== 'web' &&<OfflinePopup isVisible={!isConnected} />}
-      </GestureHandlerRootView>
+      <Stack screenOptions={{ headerShown: false, statusBarStyle: "light", statusBarBackgroundColor: "#3b82f6" }} />
+      {Platform.OS !== 'web' && <OfflinePopup isVisible={!isConnected} />}
     </>
+  );
+}
+
+export default function RootLayout() {
+  return (
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SocketProvider>
+        <AppContent />
+      </SocketProvider>
+    </GestureHandlerRootView>
   );
 }

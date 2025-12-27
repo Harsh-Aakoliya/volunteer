@@ -1,158 +1,94 @@
 // hooks/useOnlineStatus.ts
-import { useEffect, useRef, useCallback } from 'react';
-import { AppState, AppStateStatus } from 'react-native';
-import socketService from '@/utils/socketService';
+// Simplified hook that wraps the new SocketManager for backward compatibility
+
+import { useCallback } from 'react';
+import socketManager from '@/utils/socketManager';
 import { AuthStorage } from '@/utils/authStorage';
 
-// Global state to prevent multiple initializations
-let isInitialized = false;
-let currentUserId: string | null = null;
-
+/**
+ * Hook for managing online status
+ * This is a simplified wrapper around the new SocketManager
+ */
 export const useOnlineStatus = () => {
-  const appStateRef = useRef<AppStateStatus>(AppState.currentState);
-  const isSettingStatus = useRef(false);
-
   const setUserOnline = useCallback(async (userId?: string) => {
-    if (isSettingStatus.current) {
-      console.log('⏳ Already setting online status, skipping...');
-      return;
-    }
-
     try {
-      isSettingStatus.current = true;
-      const targetUserId = userId || currentUserId;
+      let userIdToUse = userId;
       
-      if (!targetUserId) {
+      if (!userIdToUse) {
         const userData = await AuthStorage.getUser();
-        if (!userData?.userId) {
-          console.log('❌ No user ID available for online status');
-          return;
-        }
-        currentUserId = userData.userId;
+        userIdToUse = userData?.userId;
+      }
+      
+      if (!userIdToUse) {
+        console.log('❌ [useOnlineStatus] No user ID available');
+        return;
       }
 
-      const userIdToUse = targetUserId || currentUserId;
-      if (!userIdToUse) return;
-
-      console.log('🟢 Setting user online:', userIdToUse);
-      await socketService.setUserOnlineSafe(userIdToUse);
+      socketManager.setUserOnline();
     } catch (error) {
-      console.error('❌ Error in setUserOnline:', error);
-    } finally {
-      isSettingStatus.current = false;
+      console.error('❌ [useOnlineStatus] Error setting user online:', error);
     }
   }, []);
 
   const setUserOffline = useCallback(async (userId?: string) => {
     try {
-      const targetUserId = userId || currentUserId;
-      
-      if (!targetUserId) {
-        const userData = await AuthStorage.getUser();
-        if (!userData?.userId) return;
-        currentUserId = userData.userId;
-      }
-
-      const userIdToUse = targetUserId || currentUserId;
-      if (!userIdToUse) return;
-
-      console.log('🔴 Setting user offline:', userIdToUse);
-      if (socketService.isConnected()) {
-        socketService.setUserOffline(userIdToUse);
-      }
+      socketManager.setUserOffline();
     } catch (error) {
-      console.error('❌ Error in setUserOffline:', error);
+      console.error('❌ [useOnlineStatus] Error setting user offline:', error);
     }
   }, []);
 
   const initializeOnlineStatus = useCallback(async () => {
-    if (isInitialized) {
-      console.log('⏳ Online status already initialized');
-      return;
-    }
-
-    try {
-      const userData = await AuthStorage.getUser();
-      const token = await AuthStorage.getToken();
-
-      if (!userData?.userId || !token) {
-        console.log('❌ User not logged in, skipping online status init');
-        return;
-      }
-
-      currentUserId = userData.userId;
-      isInitialized = true;
-
-      console.log('🚀 Initializing online status for:', userData.userId);
-      await setUserOnline(userData.userId);
-    } catch (error) {
-      console.error('❌ Error initializing online status:', error);
-    }
-  }, [setUserOnline]);
-
-  // Handle app state changes
-  useEffect(() => {
-    const subscription = AppState.addEventListener('change', async (nextAppState) => {
-      const prevState = appStateRef.current;
-      appStateRef.current = nextAppState;
-
-      // Don't process if same state
-      if (prevState === nextAppState) return;
-
-      console.log('📱 App state changed:', prevState, '->', nextAppState);
-
-      // App came to foreground
-      if (prevState.match(/inactive|background/) && nextAppState === 'active') {
-        console.log('✅ App came to foreground');
-        await setUserOnline();
-      }
-
-      // App went to background
-      if (prevState === 'active' && nextAppState.match(/inactive|background/)) {
-        console.log('❌ App went to background');
-        await setUserOffline();
-      }
-    });
-
-    return () => {
-      subscription.remove();
-    };
-  }, [setUserOnline, setUserOffline]);
+    // This is now handled by SocketContext.initialize()
+    // Kept for backward compatibility
+    console.log('⚠️ [useOnlineStatus] initializeOnlineStatus is deprecated, use SocketContext instead');
+  }, []);
 
   return {
     initializeOnlineStatus,
     setUserOnline,
     setUserOffline,
     resetInitialization: () => {
-      isInitialized = false;
-      currentUserId = null;
+      // No-op for backward compatibility
     },
   };
 };
 
-// Export for use in non-hook contexts (like auth.ts)
+/**
+ * Set user online globally (for use in non-hook contexts like auth.ts)
+ */
 export const setUserOnlineGlobal = async (userId: string) => {
   try {
     console.log('🟢 [Global] Setting user online:', userId);
-    currentUserId = userId;
-    await socketService.setUserOnlineSafe(userId);
+    
+    const userData = await AuthStorage.getUser();
+    const user = {
+      id: userId,
+      name: userData?.fullName || userData?.sevakname || 'Unknown',
+    };
+    
+    await socketManager.connect(user);
+    socketManager.setUserOnline();
   } catch (error) {
     console.error('❌ [Global] Error setting user online:', error);
   }
 };
 
+/**
+ * Set user offline globally (for use in non-hook contexts like auth.ts)
+ */
 export const setUserOfflineGlobal = async (userId: string) => {
   try {
     console.log('🔴 [Global] Setting user offline:', userId);
-    if (socketService.isConnected()) {
-      socketService.setUserOffline(userId);
-    }
+    socketManager.setUserOffline();
   } catch (error) {
     console.error('❌ [Global] Error setting user offline:', error);
   }
 };
 
+/**
+ * Reset online status state (called on logout)
+ */
 export const resetOnlineStatusState = () => {
-  isInitialized = false;
-  currentUserId = null;
+  socketManager.disconnect();
 };

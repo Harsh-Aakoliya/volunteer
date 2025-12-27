@@ -1046,7 +1046,7 @@ const chatController = {
 
       // Emit message edit event to all users in the room
       if (io) {
-        io.to(`room-${roomIdInt}`).emit('messageEdited', {
+        io.to(`room_${roomIdInt}`).emit('messageEdited', {
           roomId: roomIdInt.toString(),
           messageId: messageIdInt,
           messageText: messageText.trim(),
@@ -1058,7 +1058,7 @@ const chatController = {
           senderName: senderName
         });
 
-        console.log(`Message edit event sent to room ${roomIdInt}`);
+        console.log(`Message edit event sent to room_${roomIdInt}`);
       }
 
       res.json({
@@ -1296,7 +1296,7 @@ const chatController = {
       // Emit deletion events to all users in the room
       if (io) {
         // Emit message deletion to all users in the room
-        io.to(`room-${roomIdInt}`).emit('messagesDeleted', {
+        io.to(`room_${roomIdInt}`).emit('messagesDeleted', {
           roomId: roomIdInt.toString(),
           messageIds: messageIds,
           deletedBy: userId

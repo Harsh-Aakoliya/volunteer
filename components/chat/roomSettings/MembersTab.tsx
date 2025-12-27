@@ -1,8 +1,9 @@
 // components/chat/roomSettings/MembersTab.tsx
-import React, { useEffect, useState, useCallback, useRef, memo } from 'react';
-import { View, Text, FlatList, ActivityIndicator } from 'react-native';
+import React, { useEffect, useState, useCallback, memo, useMemo } from 'react';
+import { View, Text, FlatList } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import socketService from '@/utils/socketService';
+import { useSocket, useUserOnlineStatus } from '@/contexts/SocketContext';
+import socketManager from '@/utils/socketManager';
 
 interface Member {
   userId: string;
@@ -29,14 +30,14 @@ const MemberItem = memo(({ item }: { item: Member }) => {
             {(item.fullName || 'U').charAt(0).toUpperCase()}
           </Text>
         </View>
-        
+
         {/* Online/Offline status dot - top right */}
-        <View 
+        <View
           className={`absolute top-0 right-0 w-3.5 h-3.5 rounded-full border-2 border-white ${
             item.isOnline ? 'bg-green-500' : 'bg-gray-400'
           }`}
         />
-        
+
         {/* Admin badge - bottom right */}
         {item.isAdmin && (
           <View className="absolute bottom-0 right-0 bg-yellow-400 rounded-full w-5 h-5 items-center justify-center border-2 border-white">
@@ -44,7 +45,7 @@ const MemberItem = memo(({ item }: { item: Member }) => {
           </View>
         )}
       </View>
-      
+
       {/* Member Name and Status */}
       <View className="flex-1">
         <Text className="text-base font-medium text-gray-900">
@@ -61,94 +62,72 @@ const MemberItem = memo(({ item }: { item: Member }) => {
 MemberItem.displayName = 'MemberItem';
 
 function MembersTab({ members: initialMembers, roomId, onlineUsers: initialOnlineUsers = [] }: MembersTabProps) {
-  const normalizeMembers = (list: Member[]) =>
-    list.map(m => ({ ...m, userId: String(m.userId) }));
-  const normalizeOnline = (list: string[]) => list.map(String);
+  const { isConnected, requestOnlineUsers } = useSocket();
 
-  const [members, setMembers] = useState<Member[]>(normalizeMembers(initialMembers));
-  const [onlineUsers, setOnlineUsers] = useState<string[]>(normalizeOnline(initialOnlineUsers));
+  const [members, setMembers] = useState<Member[]>(
+    initialMembers.map(m => ({ ...m, userId: String(m.userId) }))
+  );
+  const [onlineUsers, setOnlineUsers] = useState<string[]>(
+    initialOnlineUsers.map(String)
+  );
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const membersRef = useRef<Member[]>(initialMembers);
-
-  // Keep ref in sync
-  useEffect(() => {
-    membersRef.current = members;
-  }, [members]);
 
   // Update members when prop changes
   useEffect(() => {
-    setMembers(normalizeMembers(initialMembers));
+    setMembers(initialMembers.map(m => ({ ...m, userId: String(m.userId) })));
   }, [initialMembers]);
 
   // Update online users when prop changes
   useEffect(() => {
-    setOnlineUsers(normalizeOnline(initialOnlineUsers));
+    setOnlineUsers(initialOnlineUsers.map(String));
   }, [initialOnlineUsers]);
 
-  // Listen for online status updates
+  // Subscribe to online status updates
   useEffect(() => {
-    const handleOnlineStatusUpdate = (data: { userId: string; isOnline: boolean }) => {
-      console.log('🔄 MembersTab: Online status update:', data);
-      
+    if (!isConnected || !roomId) return;
+
+    // Subscribe to online users for this room
+    const onlineUsersSub = socketManager.on('onlineUsers', (data: { roomId: string; users: string[] }) => {
+      if (data.roomId === roomId) {
+        setOnlineUsers(data.users.map(String));
+      }
+    });
+
+    // Subscribe to user status changes
+    const userStatusSub = socketManager.on('userStatusChange', (data: { userId: string; isOnline: boolean }) => {
+      const userId = String(data.userId);
       if (data.isOnline) {
-        setOnlineUsers(prev => 
-          prev.includes(data.userId) ? prev : [...prev, data.userId]
-        );
+        setOnlineUsers(prev => prev.includes(userId) ? prev : [...prev, userId]);
       } else {
-        setOnlineUsers(prev => prev.filter(id => id !== data.userId));
+        setOnlineUsers(prev => prev.filter(id => id !== userId));
       }
-    };
-
-    const handleRoomOnlineUsers = (data: { roomId: string; onlineUsers: string[] }) => {
-      console.log('🔄 MembersTab: Room online users:', data);
-      if (roomId && data.roomId === roomId.toString()) {
-        setOnlineUsers(data.onlineUsers);
-      }
-    };
-
-    // Subscribe to updates
-    if (socketService.socket) {
-      socketService.socket.on('userOnlineStatusUpdate', handleOnlineStatusUpdate);
-      socketService.socket.on('roomOnlineUsers', handleRoomOnlineUsers);
-
-      // Request current online users
-      if (roomId) {
-        socketService.socket.emit('getRoomOnlineUsers', { roomId });
-      }
-    }
+    });
 
     return () => {
-      if (socketService.socket) {
-        socketService.socket.off('userOnlineStatusUpdate', handleOnlineStatusUpdate);
-        socketService.socket.off('roomOnlineUsers', handleRoomOnlineUsers);
-      }
+      socketManager.off(onlineUsersSub);
+      socketManager.off(userStatusSub);
     };
-  }, [roomId]);
+  }, [isConnected, roomId]);
 
   // Compute members with online status
-  const membersWithStatus = React.useMemo(() => {
+  const membersWithStatus = useMemo(() => {
     const updatedMembers = members.map(member => ({
       ...member,
-      isOnline: onlineUsers.includes(member.userId),
+      isOnline: onlineUsers.includes(String(member.userId)),
     }));
 
     // Sort: online first, then admins, then alphabetically
     return updatedMembers.sort((a, b) => {
-      // Online status first
       if (a.isOnline && !b.isOnline) return -1;
       if (!a.isOnline && b.isOnline) return 1;
-      
-      // Then admin status
       if (a.isAdmin && !b.isAdmin) return -1;
       if (!a.isAdmin && b.isAdmin) return 1;
-      
-      // Then alphabetically
       return (a.fullName || '').localeCompare(b.fullName || '');
     });
   }, [members, onlineUsers]);
 
   // Key extractor
-  const keyExtractor = useCallback((item: Member) => item.userId, []);
+  const keyExtractor = useCallback((item: Member) => String(item.userId), []);
 
   // Render item
   const renderItem = useCallback(({ item }: { item: Member }) => (
@@ -157,7 +136,7 @@ function MembersTab({ members: initialMembers, roomId, onlineUsers: initialOnlin
 
   // Get item layout for better performance
   const getItemLayout = useCallback((data: any, index: number) => ({
-    length: 72, // Approximate height of each item
+    length: 72,
     offset: 72 * index,
     index,
   }), []);
@@ -165,11 +144,11 @@ function MembersTab({ members: initialMembers, roomId, onlineUsers: initialOnlin
   // Refresh handler
   const handleRefresh = useCallback(() => {
     setIsRefreshing(true);
-    if (socketService.socket && roomId) {
-      socketService.socket.emit('getRoomOnlineUsers', { roomId });
+    if (roomId && isConnected) {
+      requestOnlineUsers(roomId);
     }
     setTimeout(() => setIsRefreshing(false), 1000);
-  }, [roomId]);
+  }, [roomId, isConnected, requestOnlineUsers]);
 
   // Stats
   const onlineCount = membersWithStatus.filter(m => m.isOnline).length;

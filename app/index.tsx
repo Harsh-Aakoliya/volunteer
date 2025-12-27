@@ -156,7 +156,7 @@ export default function Index() {
 
   const handleDevIpSubmit = async () => {
     if (!devIpInput.trim()) {
-      Alert.alert("Invalid IP", "Please enter a valid IP address with port (e.g., http://192.168.1.100:3000)");
+      Alert.alert("Invalid IP", "Please enter a valid IP address with port");
       return;
     }
 
@@ -294,7 +294,7 @@ export default function Index() {
             width: '100%',
             borderRadius: 5
           }}
-          placeholder="http://192.168.1.100:3000"
+          placeholder="e.g., x.x.x.x:3000"
           value={devIpInput}
           onChangeText={setDevIpInput}
           autoCapitalize="none"

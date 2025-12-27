@@ -2,7 +2,6 @@
 import * as Notifications from "expo-notifications";
 import { router } from "expo-router";
 import { AuthStorage } from "@/utils/authStorage";
-import socketService from "@/utils/socketService";
 import { handleChatNotificationTap } from "./chatNotificationHandler";
 
 export interface NotificationData {

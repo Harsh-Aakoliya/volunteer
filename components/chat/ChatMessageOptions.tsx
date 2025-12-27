@@ -60,8 +60,10 @@ const ChatMessageOptions: React.FC<ChatMessageOptionProps> = ({
     // Check if user can see info for the selected message (only message sender)
     const canShowInfo = isSingleSelection && selectedMessage?.senderId === currentUser?.userId;
 
-    // Only show this component if user is a group admin
-    if (!isAdmin) {
+    // Show component if there are selected messages
+    // Note: Non-admin users can only select their own messages (enforced in handleMessageLongPress)
+    // Admin users can select any messages
+    if (selectedCount === 0) {
         return null;
     }
 

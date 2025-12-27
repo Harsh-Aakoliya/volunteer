@@ -23,7 +23,7 @@ import axios from "axios";
 import { useLocalSearchParams, router, useNavigation } from "expo-router";
 import { AuthStorage } from "@/utils/authStorage";
 import { API_URL } from "@/constants/api";
-import socketService from "@/utils/socketService";
+import { useSocket } from "@/contexts/SocketContext";
 
 const ForwardedRichEditor = React.forwardRef<RichEditor, any>((props, ref) => (
   <RichEditor {...props} ref={ref} />
@@ -70,6 +70,9 @@ export default function CreateChatAnnouncement() {
   const navigation = useNavigation();
   const richText = useRef<RichEditor>(null);
   const titleInputRef = useRef<TextInput>(null);
+  
+  // Socket context
+  const { isConnected, sendMessage: socketSendMessage } = useSocket();
 
   // Form states
   const [title, setTitle] = useState('');
@@ -302,19 +305,13 @@ export default function CreateChatAnnouncement() {
         );
 
         if (response.data.success) {
-          if (currentUser && socketService.socket?.connected) {
-            socketService.sendMessage(roomId as string, {
+          if (currentUser && isConnected) {
+            socketSendMessage(roomId as string, {
               id: response.data.messageId,
-              roomId: parseInt(roomId as string),
-              senderId: currentUser.userId,
-              senderName: currentUser.fullName || "You",
               messageText: messageText,
               messageType: 'announcement',
               createdAt: response.data.createdAt || new Date().toISOString(),
               mediaFilesId: response.data.mediaId,
-            }, {
-              userId: currentUser.userId,
-              userName: currentUser.fullName || "Anonymous",
             });
           }
 
@@ -335,13 +332,12 @@ export default function CreateChatAnnouncement() {
 
         const newMessage = response.data;
 
-        if (currentUser && socketService.socket?.connected) {
-          socketService.sendMessage(roomId as string, {
-            ...newMessage,
-            senderName: currentUser.fullName || "You",
-          }, {
-            userId: currentUser.userId,
-            userName: currentUser.fullName || "Anonymous",
+        if (currentUser && isConnected) {
+          socketSendMessage(roomId as string, {
+            id: newMessage.id,
+            messageText: newMessage.messageText,
+            messageType: newMessage.messageType,
+            createdAt: newMessage.createdAt,
           });
         }
 
