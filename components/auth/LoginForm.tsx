@@ -15,6 +15,7 @@ import {
   ActivityIndicator,
   Animated,
   StyleSheet,
+  BackHandler,
 } from "react-native";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -29,6 +30,8 @@ import {
 import { updateDevIP } from "@/constants/api";
 import { getDefaultDevIP } from "@/app/index";
 import { useSimCards } from "@/hooks/useSimCards";
+import Constants from 'expo-constants';
+const { DEV_IP, INTERNAL_IP, EXTERNAL_IP } = Constants?.expoConfig?.extra as { DEV_IP: string; INTERNAL_IP: string; EXTERNAL_IP: string };
 
 interface SimCard {
   phoneNumber: string;
@@ -73,7 +76,7 @@ export default function LoginForm() {
   const [showSimPickerModal, setShowSimPickerModal] = useState(false);
 
   // Dev mode states
-  const [devIP, setDevIP] = useState(getDefaultDevIP());
+  const [devIP, setDevIP] = useState(DEV_IP);
   const [showIPModal, setShowIPModal] = useState(false);
 
   // Animation
@@ -813,7 +816,16 @@ export default function LoginForm() {
   const headerConfig = getHeaderConfig();
 
   // ==================== MAIN RENDER ====================
-
+const handleClose = () => {
+  setVerificationStatus("idle");
+  setVerificationMessage("");
+  setMobileNumber("");
+  setPassword("");
+  setConfirmPassword("");
+  setShowPassword(false);
+  setShowConfirmPassword(false);
+  BackHandler.exitApp();
+};
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -825,7 +837,11 @@ export default function LoginForm() {
         visible={verificationStatus === "pending" || verificationStatus === "failed"}
         transparent
         animationType="fade"
-        onRequestClose={() => {}}
+        onRequestClose={() => {
+          if (verificationStatus === "failed") {
+            handleClose();
+          }
+        }}
       >
         <View
           style={[
@@ -853,6 +869,17 @@ export default function LoginForm() {
               {verificationMessage || `Verifying ${mobileNumber || "your number"}...`}
             </Text>
           </View>
+          {verificationStatus === "failed" && (
+            <View className="mt-4 items-center">
+              <Pressable
+                onPress={handleClose}
+                className="px-4 py-2 bg-gray-100 rounded-lg"
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <Text className="text-sm text-gray-700">Close</Text>
+              </Pressable>
+            </View>
+          )}
         </View>
       </Modal>
 
@@ -978,7 +1005,7 @@ export default function LoginForm() {
             </Text>
             <TextInput
               placeholder="e.g., 192.168.1.100:3000"
-              value={devIP.replace(/^https?:\/\//, "")}
+              value={devIP?.replace(/^https?:\/\//, "")}
               onChangeText={(text) => setDevIP(text)}
               keyboardType="url"
               className="border border-gray-300 rounded-lg px-4 py-3 mb-5"

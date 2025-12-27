@@ -8,7 +8,8 @@ import {
   ActivityIndicator,
   ScrollView,
   Modal,
-  Pressable
+  Pressable,
+  StyleSheet,  // ADD THIS
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { ChatUser } from '@/types/type';
@@ -46,6 +47,216 @@ interface MessageInputProps {
   onScheduleMessage?: () => void;
   hasScheduledMessages?: boolean;
 }
+const styles = StyleSheet.create({
+  // Input Bar Container
+  inputBarContainer: {
+    backgroundColor: 'white',
+    paddingHorizontal: 8,
+    paddingVertical: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#E5E5E5',
+  },
+  inputRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+  },
+  inputWrapper: {
+    flex: 1,
+    backgroundColor: '#F2F2F7',
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    minHeight: 40,
+    maxHeight: 120,
+    justifyContent: 'center',
+  },
+  textInput: {
+    fontSize: 16,
+    lineHeight: 20,
+    color: '#000',
+    paddingTop: 0,
+    paddingBottom: 0,
+    maxHeight: 100,
+  },
+  
+  // Right Buttons
+  rightButtonsContainer: {
+    flexDirection: 'row',
+    alignItems: 'center'
+  },
+  iconButton: {
+    padding: 8,
+  },
+  attachButton: {
+    padding: 8,
+  },
+  sendButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#007AFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  sendButtonDisabled: {
+    backgroundColor: '#B0B0B0',
+  },
+  
+  // Attachments Container
+  attachmentsContainer: {
+    marginTop: 8,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#E5E5E5',
+    paddingTop: 8,
+  },
+  
+  // Mention Menu
+  mentionContainer: {
+    paddingHorizontal: 8,
+    paddingBottom: 8,
+  },
+  mentionMenu: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    maxHeight: 180,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 5,
+    overflow: 'hidden',
+  },
+  mentionScrollView: {
+    maxHeight: 180,
+  },
+  mentionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  mentionItemBorder: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#E5E5E5',
+  },
+  mentionAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#007AFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  mentionAvatarText: {
+    color: '#fff',
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  mentionName: {
+    flex: 1,
+    fontSize: 16,
+    color: '#000',
+    fontWeight: '500',
+  },
+  onlineIndicator: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#34C759',
+    marginLeft: 8,
+  },
+  
+  // Modal Styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  
+  // Schedule Menu
+  scheduleMenu: {
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    marginHorizontal: 20,
+    width: '85%',
+    maxWidth: 320,
+    overflow: 'hidden',
+  },
+  scheduleOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#E5E5E5',
+  },
+  scheduleOptionLast: {
+    borderBottomWidth: 0,
+  },
+  scheduleOptionIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#F2F2F7',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 16,
+  },
+  scheduleOptionIconText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#8E8E93',
+  },
+  scheduleOptionText: {
+    fontSize: 16,
+    color: '#000',
+  },
+  
+  // Date Picker Modal
+  datePickerModal: {
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    marginHorizontal: 20,
+    padding: 20,
+    width: '85%',
+    maxWidth: 320,
+  },
+  datePickerTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#000',
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  datePickerButtons: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    marginTop: 16,
+    gap: 16,
+  },
+  datePickerCancelButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  datePickerCancelText: {
+    fontSize: 16,
+    color: '#8E8E93',
+  },
+  datePickerConfirmButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  datePickerConfirmText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#007AFF',
+  },
+  datePickerConfirmTextDisabled: {
+    color: '#B0B0B0',
+  },
+});
 
 export default function MessageInput({
   messageText,
@@ -211,34 +422,41 @@ export default function MessageInput({
     return segments;
   };
 
-  // Render mention menu
-  const renderMentionMenu = () => {
-    if (!showMentionMenu || filteredMembers.length === 0) return null;
+// Render mention menu
+const renderMentionMenu = () => {
+  if (!showMentionMenu || filteredMembers.length === 0) return null;
 
-    return (
-      <View className="bg-white border border-gray-200 rounded-lg shadow-lg max-h-40 mb-2">
-        <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-          {filteredMembers.map((member) => (
-            <TouchableOpacity
-              key={member.userId}
-              onPress={() => selectMention(member)}
-              className="p-3 border-b border-gray-100 flex-row items-center"
-            >
-              <View className="w-8 h-8 bg-blue-500 rounded-full justify-center items-center mr-3">
-                <Text className="text-white font-bold text-sm">
-                  {member.fullName?.charAt(0).toUpperCase() || 'U'}
-                </Text>
-              </View>
-              <Text className="text-gray-800 font-medium">{member.fullName}</Text>
-              {member.isOnline && (
-                <View className="w-2 h-2 bg-green-500 rounded-full ml-auto" />
-              )}
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      </View>
-    );
-  };
+  return (
+    <View style={styles.mentionMenu}>
+      <ScrollView 
+        showsVerticalScrollIndicator={false} 
+        keyboardShouldPersistTaps="handled"
+        style={styles.mentionScrollView}
+      >
+        {filteredMembers.map((member, index) => (
+          <TouchableOpacity
+            key={member.userId}
+            onPress={() => selectMention(member)}
+            style={[
+              styles.mentionItem,
+              index < filteredMembers.length - 1 && styles.mentionItemBorder
+            ]}
+          >
+            <View style={styles.mentionAvatar}>
+              <Text style={styles.mentionAvatarText}>
+                {member.fullName?.charAt(0).toUpperCase() || 'U'}
+              </Text>
+            </View>
+            <Text style={styles.mentionName}>{member.fullName}</Text>
+            {member.isOnline && (
+              <View style={styles.onlineIndicator} />
+            )}
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+    </View>
+  );
+};
 
   // Render whatever user is writing in text input box
   const renderMessageText = (text: string) => {
@@ -322,35 +540,24 @@ export default function MessageInput({
   };
 
   return (
-    <View style={style}>
-      {/* Mention Menu */}
+    <View>
+      {/* Mention Menu - Positioned above input */}
       {showMentionMenu && (
-        <View className="px-4 pb-2">
+        <View style={styles.mentionContainer}>
           {renderMentionMenu()}
         </View>
       )}
       
-      {/* Main Input Container - Telegram-like design */}
-      <View className="bg-white">
-        <View className="flex-row items-end">
-          {/* Emoji button - always on the left */}
-          {/* <TouchableOpacity
-            className="mr-3 pb-1"
-            onPress={() => {
-              // TODO: Implement emoji picker
-              alert("Emoji picker will be implemented in the next release");
-            }}
-          >
-            <Ionicons name="happy-outline" size={24} color="#6b7280" />
-          </TouchableOpacity> */}
-          
-          {/* Text Input */}
-          <View className="flex-1 bg-gray-100 rounded-lg px-4 py-2 min-h-[40px] max-h-[120px]">
+      {/* Main Input Container */}
+      <View style={[styles.inputBarContainer, style]}>
+        <View style={styles.inputRow}>
+          {/* Text Input Container */}
+          <View style={styles.inputWrapper}>
             <TextInput
               ref={textInputRef}
-              className="text-base text-gray-900"
+              style={styles.textInput}
               placeholder={placeholder}
-              placeholderTextColor="#9ca3af"
+              placeholderTextColor="#8E8E93"
               value={messageText}
               onChangeText={handleTextChange}
               onSelectionChange={handleSelectionChange}
@@ -358,90 +565,67 @@ export default function MessageInput({
               onFocus={handleInputFocus}
               onBlur={onBlur}
               editable={!disabled}
-              style={maxHeight ? { maxHeight } : undefined}
+              maxLength={4096}
             />
           </View>
           
-          {/* Right side icons */}
-          {messageText.trim().length === 0 ? (
-            <View className="flex-row items-center ml-3">
-              {/* Schedule button - show if there are scheduled messages */}
-              {hasScheduledMessages && (
-                <TouchableOpacity
-                  className="mr-3 pb-1"
-                  onPress={onScheduleMessage}
-                >
-                  <Ionicons name="time-outline" size={24} color="#6b7280" />
-                </TouchableOpacity>
-              )}
-              
-              {/* Camera button */}
-              {/* <TouchableOpacity
-                className="mr-3 pb-1"
-                onPress={() => {
-                  // TODO: Implement in next release
-                  alert("Camera functionality will be implemented in the next release");
-                }}
-              >
-                <Ionicons name="camera-outline" size={24} color="#6b7280" />
-              </TouchableOpacity> */}
-              
-              {/* Attachments button */}
-              {showAttachments && (
-                <TouchableOpacity
-                  className="mr-3 pb-1.5"
-                  onPress={toggleAttachmentsGrid}
-                >
-                  <Ionicons 
-                    name={showAttachmentsGrid ? "close-circle" : "add-circle-outline"} 
-                    size={30} 
-                    color={showAttachmentsGrid ? "#ef4444" : "#6b7280"} 
-                  />
-                </TouchableOpacity>
-              )}
-              
-              {/* Microphone button */}
-              {/* <TouchableOpacity
-                className="pb-1"
-                onPress={() => {
-                  // This will trigger audio recording - handled by parent component
-                  if (onSend) {
-                    onSend("", "audio");
-                  }
-                }}
-              >
-                <Ionicons name="mic-outline" size={24} color="#6b7280" />
-              </TouchableOpacity> */}
-            </View>
-          ) : (
-            <View className="ml-3">
-              {/* Send button when typing */}
+          {/* Right side - Attachment or Send button */}
+          <View style={styles.rightButtonsContainer}>
+            {messageText.trim().length === 0 ? (
+              <>
+                {/* Schedule indicator */}
+                {hasScheduledMessages && (
+                  <TouchableOpacity
+                    style={styles.iconButton}
+                    onPress={onScheduleMessage}
+                  >
+                    <Ionicons name="time-outline" size={22} color="#8E8E93" />
+                  </TouchableOpacity>
+                )}
+                
+                {/* Attachments button */}
+                {showAttachments && (
+                  <TouchableOpacity
+                    style={styles.attachButton}
+                    onPress={toggleAttachmentsGrid}
+                  >
+                    <Ionicons 
+                      name={showAttachmentsGrid ? "close" : "attach"} 
+                      size={24} 
+                      color={showAttachmentsGrid ? "#FF3B30" : "#8E8E93"} 
+                      style={showAttachmentsGrid ? undefined : { transform: [{ rotate: '45deg' }] }}
+                    />
+                  </TouchableOpacity>
+                )}
+              </>
+            ) : (
+              /* Send button when there's text */
               <TouchableOpacity
-                className={`w-10 h-10 rounded-full items-center justify-center ${
-                  messageText.trim() && !sending && !disabled
-                    ? "bg-blue-500"
-                    : "bg-gray-300"
-                }`}
+                style={[
+                  styles.sendButton,
+                  (!messageText.trim() || sending || disabled) && styles.sendButtonDisabled
+                ]}
                 onPress={() => {
                   if (!isLongPressActive) handleSend();
                 }}
                 onPressIn={handleLongPressStart}
                 onPressOut={handleLongPressEnd}
                 disabled={!messageText.trim() || sending || disabled}
+                activeOpacity={0.7}
               >
                 {sending ? (
-                  <ActivityIndicator size="small" color="white" />
+                  <ActivityIndicator size="small" color="#fff" />
                 ) : (
-                  <Ionicons name="send" size={20} color="white" />
+                  <Ionicons name="send" size={18} color="#fff" />
                 )}
               </TouchableOpacity>
-            </View>
-          )}
+            )}
+          </View>
         </View>
-
+  
         {/* Attachments Grid */}
         {showAttachmentsGrid && showAttachments && roomId && (
-          <View className="mt-2">
+          <View style={styles.attachmentsContainer}>
             <AttachmentsGrid 
               roomId={roomId} 
               userId={currentUser?.userId || ""} 
@@ -451,7 +635,7 @@ export default function MessageInput({
           </View>
         )}
       </View>
-
+  
       {/* Schedule Menu Modal */}
       <Modal
         visible={showScheduleMenu}
@@ -460,73 +644,63 @@ export default function MessageInput({
         onRequestClose={() => setShowScheduleMenu(false)}
       >
         <Pressable 
-          className="flex-1 justify-center items-center bg-black/20"
+          style={styles.modalOverlay}
           onPress={() => setShowScheduleMenu(false)}
         >
-          <View className="bg-white rounded-2xl mx-4 shadow-lg overflow-hidden">
+          <View style={styles.scheduleMenu}>
             <TouchableOpacity
-              className="px-6 py-4 border-b border-gray-100"
+              style={styles.scheduleOption}
               onPress={() => handleScheduleOption(30)}
             >
-              <View className="flex-row items-center">
-                <View className="w-8 h-8 bg-gray-100 rounded-full items-center justify-center mr-4">
-                  <Text className="text-gray-600 font-medium text-xs">30m</Text>
-                </View>
-                <Text className="text-gray-900 text-base">Send in 30 minutes</Text>
+              <View style={styles.scheduleOptionIcon}>
+                <Text style={styles.scheduleOptionIconText}>30m</Text>
               </View>
+              <Text style={styles.scheduleOptionText}>Send in 30 minutes</Text>
             </TouchableOpacity>
             
             <TouchableOpacity
-              className="px-6 py-4 border-b border-gray-100"
+              style={styles.scheduleOption}
               onPress={() => handleScheduleOption(120)}
             >
-              <View className="flex-row items-center">
-                <View className="w-8 h-8 bg-gray-100 rounded-full items-center justify-center mr-4">
-                  <Text className="text-gray-600 font-medium text-xs">2h</Text>
-                </View>
-                <Text className="text-gray-900 text-base">Send in 2 hours</Text>
+              <View style={styles.scheduleOptionIcon}>
+                <Text style={styles.scheduleOptionIconText}>2h</Text>
               </View>
+              <Text style={styles.scheduleOptionText}>Send in 2 hours</Text>
             </TouchableOpacity>
             
             <TouchableOpacity
-              className="px-6 py-4 border-b border-gray-100"
+              style={styles.scheduleOption}
               onPress={() => handleScheduleOption(480)}
             >
-              <View className="flex-row items-center">
-                <View className="w-8 h-8 bg-gray-100 rounded-full items-center justify-center mr-4">
-                  <Text className="text-gray-600 font-medium text-xs">8h</Text>
-                </View>
-                <Text className="text-gray-900 text-base">Send in 8 hours</Text>
+              <View style={styles.scheduleOptionIcon}>
+                <Text style={styles.scheduleOptionIconText}>8h</Text>
               </View>
+              <Text style={styles.scheduleOptionText}>Send in 8 hours</Text>
             </TouchableOpacity>
             
             <TouchableOpacity
-              className="px-6 py-4 border-b border-gray-100"
+              style={styles.scheduleOption}
               onPress={() => handleScheduleOption(525600)}
             >
-              <View className="flex-row items-center">
-                <View className="w-8 h-8 bg-gray-100 rounded-full items-center justify-center mr-4">
-                  <Text className="text-gray-600 font-medium text-xs">1y</Text>
-                </View>
-                <Text className="text-gray-900 text-base">Send in 1 year</Text>
+              <View style={styles.scheduleOptionIcon}>
+                <Text style={styles.scheduleOptionIconText}>1y</Text>
               </View>
+              <Text style={styles.scheduleOptionText}>Send in 1 year</Text>
             </TouchableOpacity>
             
             <TouchableOpacity
-              className="px-6 py-4"
+              style={[styles.scheduleOption, styles.scheduleOptionLast]}
               onPress={handleScheduleAtSpecificTime}
             >
-              <View className="flex-row items-center">
-                <View className="w-8 h-8 bg-gray-100 rounded-full items-center justify-center mr-4">
-                  <Ionicons name="calendar-outline" size={16} color="#6b7280" />
-                </View>
-                <Text className="text-gray-900 text-base">Send at specific date...</Text>
+              <View style={styles.scheduleOptionIcon}>
+                <Ionicons name="calendar-outline" size={16} color="#8E8E93" />
               </View>
+              <Text style={styles.scheduleOptionText}>Send at specific date...</Text>
             </TouchableOpacity>
           </View>
         </Pressable>
       </Modal>
-
+  
       {/* Date Time Picker Modal */}
       <Modal
         visible={showDateTimePicker}
@@ -534,11 +708,9 @@ export default function MessageInput({
         animationType="slide"
         onRequestClose={handleDateTimeCancel}
       >
-        <View className="flex-1 justify-center items-center bg-black/20">
-          <View className="bg-white rounded-2xl mx-4 p-6 w-80">
-            <Text className="text-lg font-semibold text-gray-900 mb-4 text-center">
-              Schedule Message
-            </Text>
+        <View style={styles.modalOverlay}>
+          <View style={styles.datePickerModal}>
+            <Text style={styles.datePickerTitle}>Schedule Message</Text>
             
             <DateTimePicker
               selectedDate={selectedDate}
@@ -548,22 +720,23 @@ export default function MessageInput({
               containerClassName="mb-6"
             />
             
-            <View className="flex-row justify-end space-x-3">
+            <View style={styles.datePickerButtons}>
               <TouchableOpacity
-                className="px-4 py-2"
+                style={styles.datePickerCancelButton}
                 onPress={handleDateTimeCancel}
               >
-                <Text className="text-gray-600 text-base">Cancel</Text>
+                <Text style={styles.datePickerCancelText}>Cancel</Text>
               </TouchableOpacity>
               
               <TouchableOpacity
-                className="px-4 py-2"
+                style={styles.datePickerConfirmButton}
                 onPress={handleDateTimeConfirm}
                 disabled={!selectedDate || !selectedTime}
               >
-                <Text className={`text-base font-medium ${
-                  selectedDate && selectedTime ? 'text-blue-500' : 'text-gray-400'
-                }`}>
+                <Text style={[
+                  styles.datePickerConfirmText,
+                  (!selectedDate || !selectedTime) && styles.datePickerConfirmTextDisabled
+                ]}>
                   Schedule
                 </Text>
               </TouchableOpacity>

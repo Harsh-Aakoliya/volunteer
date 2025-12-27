@@ -10,8 +10,11 @@ import CustomInput from '@/components/ui/CustomInput';
 import CustomButton from '@/components/ui/CustomButton';
 import { API_URL, setApiUrl, updateDevIP } from "@/constants/api";
 import useNetworkStatus from '@/hooks/userNetworkStatus';
+import Constants from 'expo-constants';
 import * as React from 'react';
+// const { DEV_IP, INTERNAL_IP, EXTERNAL_IP } = Constants?.expoConfig?.extra as { DEV_IP: string; INTERNAL_IP: string; EXTERNAL_IP: string };
 
+// console.log(DEV_IP, INTERNAL_IP, EXTERNAL_IP);
 
 // Export dev mode status and DEV_IP for use in other components
 export const getDevModeStatus = () => true; // Set to true to enable manual IP configuration for development

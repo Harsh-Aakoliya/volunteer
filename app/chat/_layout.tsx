@@ -13,7 +13,8 @@ export default function ChatLayout() {
       <Stack.Screen 
         name="index" 
         options={{ 
-          title: 'Chat Rooms' 
+          title: 'Chat Rooms',
+          headerShown: false
         }} 
       />
       <Stack.Screen 
@@ -40,6 +41,14 @@ export default function ChatLayout() {
           title: 'Create Announcement',
           headerShown: false
         }} 
+      />
+      <Stack.Screen 
+       name="[roomId]"
+       options={{
+        headerShown: false,
+        statusBarStyle: 'dark',
+        statusBarBackgroundColor: 'white',
+       }}
       />
     </Stack>
   );

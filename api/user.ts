@@ -32,7 +32,8 @@ export const fetchUserProfile = async () => {
     await AuthStorage.storeUser({
       userId: response.data.seid,
       mobileNumber: response.data.mobileno,
-      name: response.data.sename || response.data.sevakname,
+      name: response.data.sevakname,
+      fullName: response.data.sevakname,
       role: response.data.usertype,
       ...response.data
     });

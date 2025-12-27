@@ -471,7 +471,7 @@
 //         setScheduledMessages(response.scheduledMessages);
 //       }
 //     } catch (error) {
-//       console.error("Error loading scheduled messages:", error);
+//       console.log("Error loading scheduled messages:", error);
 //     }
 //   };
 
@@ -541,7 +541,7 @@
 //         }
 //       }, 500);
 //     } catch (error) {
-//       console.error("Error loading room details:", error);
+//       console.log("Error loading room details:", error);
 //       alert("Failed to load chat room details");
 //     } finally {
 //       setIsLoading(false);
@@ -576,7 +576,7 @@
 //       await sendAudioMessage(tempFolderId, audioData.duration);
 
 //     } catch (error) {
-//       console.error("Error sending audio message:", error);
+//       console.log("Error sending audio message:", error);
 //       alert("Failed to send audio message");
 //     } finally {
 //       setSending(false);
@@ -628,7 +628,7 @@
 //         throw new Error("Failed to send audio message");
 //       }
 //     } catch (error) {
-//       console.error("Error sending audio message:", error);
+//       console.log("Error sending audio message:", error);
 //       throw error;
 //     }
 //   };
@@ -689,7 +689,7 @@
 //         throw new Error("Upload failed");
 //       }
 //     } catch (error) {
-//       console.error("Error uploading audio file:", error);
+//       console.log("Error uploading audio file:", error);
 //       throw error;
 //     }
 //   };
@@ -843,7 +843,7 @@
 //         setReplyToMessage(null);
 //       }
 //     } catch (error) {
-//       console.error("Error sending message:", error);
+//       console.log("Error sending message:", error);
 //       alert("Failed to send message");
 
 //       // Restore the message text if sending failed
@@ -1024,7 +1024,7 @@
 //         { headers: { Authorization: `Bearer ${token}` } }
 //       );
 //     } catch (error) {
-//       console.error('Error marking message as read:', error);
+//       console.log('Error marking message as read:', error);
 //     }
 //   }, []);
 
@@ -1042,7 +1042,7 @@
 //         setReadStatusData(response.data.data);
 //       }
 //     } catch (error) {
-//       console.error('Error fetching read status:', error);
+//       console.log('Error fetching read status:', error);
 //       alert('Failed to load read status');
 //     } finally {
 //       setIsLoadingReadStatus(false);
@@ -1139,7 +1139,7 @@
 //           }
 
 //         } catch (error) {
-//           console.error(`Error forwarding message to room ${room.roomName}:`, error);
+//           console.log(`Error forwarding message to room ${room.roomName}:`, error);
 //           throw error; // Re-throw to let the modal handle the error
 //         }
 //       }
@@ -1165,7 +1165,7 @@
 
 //       console.log('Messages deleted successfully');
 //     } catch (error) {
-//       console.error('Error deleting messages:', error);
+//       console.log('Error deleting messages:', error);
 //       throw error; // Re-throw to let the component handle the error
 //     }
 //   };
@@ -2140,11 +2140,13 @@ import {
   Animated,
   Modal,
   StyleSheet,
+  ToastAndroid,
 } from "react-native";
 import {
   PanGestureHandler,
   GestureHandlerRootView
 } from 'react-native-gesture-handler';
+import { Alert } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, router, useNavigation } from "expo-router";
@@ -2174,6 +2176,7 @@ import { clearRoomNotifications } from "@/utils/chatNotificationHandler";
 import { getScheduledMessages } from "@/api/chat";
 import RenderHtml from 'react-native-render-html';
 import { useWindowDimensions } from 'react-native';
+import { logout } from '@/api/auth';
 
 interface RoomDetails extends ChatRoom {
   members: ChatUser[];
@@ -2181,8 +2184,421 @@ interface RoomDetails extends ChatRoom {
 }
 
 // Type for FlatList items (messages and date separators)
-type ChatListItem = Message | { type: 'date'; date: string; id: string };
+type ChatListItem =
+  | (Message & { itemType: 'message' })
+  | { itemType: 'dateSeparator'; date: string; id: string };
 
+// Memoized Date Separator Component
+const DateSeparator = React.memo(({ dateString, formatDateForDisplay }: {
+  dateString: string;
+  formatDateForDisplay: (date: string) => string;
+}) => (
+  <View style={styles.dateSeparatorContainer}>
+    <View style={styles.dateSeparatorPill}>
+      <Text style={styles.dateSeparatorText}>
+        {formatDateForDisplay(dateString)}
+      </Text>
+    </View>
+  </View>
+));
+
+// Memoized Message Bubble Component
+const MessageBubble = React.memo(({
+  item,
+  isOwnMessage,
+  isSelected,
+  currentUser,
+  onPress,
+  onLongPress,
+  onReplyPreviewClick,
+  formatTime,
+  messageAnimation,
+  blinkAnimation,
+}: {
+  item: Message;
+  isOwnMessage: boolean;
+  isSelected: boolean;
+  currentUser: { userId: string; fullName: string | null } | null;
+  onPress: () => void;
+  onLongPress: () => void;
+  onReplyPreviewClick: (id: string | number) => void;
+  formatTime: (date: string) => string;
+  messageAnimation: Animated.Value;
+  blinkAnimation?: Animated.Value;
+}) => {
+  let messageStatus: "sending" | "sent" | "delivered" | "read" | "error" = "sent";
+  if (typeof item.id === "number") {
+    messageStatus = "delivered";
+  } else if (typeof item.id === "string" && item.id.includes("temp")) {
+    messageStatus = "sending";
+  }
+
+  return (
+    <Pressable
+      onPress={onPress}
+      onLongPress={onLongPress}
+      delayLongPress={300}
+    >
+      {isSelected && (
+        <View style={styles.selectedOverlay} />
+      )}
+
+      <Animated.View
+        style={[
+          styles.messageBubble,
+          isOwnMessage ? styles.ownBubble : styles.otherBubble,
+          {
+            backgroundColor: blinkAnimation ?
+              blinkAnimation.interpolate({
+                inputRange: [0, 1],
+                outputRange: [isOwnMessage ? '#DCF8C6' : '#FFFFFF', '#fbbf24']
+              }) :
+              (isOwnMessage ? '#DCF8C6' : '#FFFFFF')
+          }
+        ]}
+      >
+        {/* Reply preview */}
+        {item.replyMessageId && (
+          <TouchableOpacity
+            style={[
+              styles.replyPreview,
+              isOwnMessage ? styles.ownReplyPreview : styles.otherReplyPreview
+            ]}
+            onPress={() => onReplyPreviewClick(item.replyMessageId!)}
+          >
+            <Text style={styles.replyName}>{item.replySenderName}</Text>
+            <Text style={styles.replyText} numberOfLines={1}>
+              {item.replyMessageText || 'Message'}
+            </Text>
+          </TouchableOpacity>
+        )}
+
+        {/* Sender name for received messages */}
+        {!isOwnMessage && (
+          <Text style={styles.senderName}>
+            {item.senderName || "Unknown"}
+          </Text>
+        )}
+
+        {/* Message text */}
+        {item.messageText && (
+          <Text style={styles.messageText}>
+            {item.messageText}
+          </Text>
+        )}
+
+        {/* Time and status row */}
+        <View style={styles.metaRow}>
+          {item.isEdited && (
+            <Text style={styles.editedLabel}>edited</Text>
+          )}
+          <Text style={styles.timeText}>
+            {formatTime(item.createdAt || "")}
+          </Text>
+          {isOwnMessage && (
+            <View style={styles.statusContainer}>
+              <MessageStatus status={messageStatus} />
+            </View>
+          )}
+        </View>
+      </Animated.View>
+    </Pressable>
+  );
+}, (prevProps, nextProps) => {
+  // Custom comparison for memo
+  return (
+    prevProps.item.id === nextProps.item.id &&
+    prevProps.item.messageText === nextProps.item.messageText &&
+    prevProps.item.isEdited === nextProps.item.isEdited &&
+    prevProps.item.editedAt === nextProps.item.editedAt &&
+    prevProps.isOwnMessage === nextProps.isOwnMessage &&
+    prevProps.isSelected === nextProps.isSelected
+  );
+});
+
+// Telegram-style Header Component (add before ChatRoomScreen)
+const TelegramHeader = React.memo(({
+  roomName,
+  memberCount,
+  onlineCount,
+  onBackPress,
+  onAvatarPress,
+  onMenuPress,
+  isSyncing,
+}: {
+  roomName: string;
+  memberCount: number;
+  onlineCount: number;
+  onBackPress: () => void;
+  onAvatarPress: () => void;
+  onMenuPress?: () => void;
+  isSyncing: boolean;
+}) => {
+  const getInitials = (name: string) => {
+    return name
+      .split(' ')
+      .map(word => word[0])
+      .join('')
+      .toUpperCase()
+      .slice(0, 2);
+  };
+
+  const getStatusText = () => {
+    if (onlineCount > 0) {
+      return `${memberCount} members, ${onlineCount} online`;
+    }
+    return `${memberCount} members`;
+  };
+
+  return (
+    <View style={styles.header}>
+      <TouchableOpacity onPress={onBackPress} style={styles.backButton}>
+        <Ionicons name="arrow-back" size={24} color="#000" />
+      </TouchableOpacity>
+
+      <TouchableOpacity onPress={onAvatarPress} style={styles.headerContent}>
+        <View style={styles.avatar}>
+          <Text style={styles.avatarText}>{getInitials(roomName)}</Text>
+        </View>
+
+        <View style={styles.headerInfo}>
+          <Text style={styles.roomName} numberOfLines={1}>
+            {roomName}
+          </Text>
+          <View style={styles.statusRow}>
+            {isSyncing ? (
+              <Text style={styles.statusText}>updating...</Text>
+            ) : (
+              <Text style={styles.statusText}>{getStatusText()}</Text>
+            )}
+          </View>
+        </View>
+      </TouchableOpacity>
+
+      {onMenuPress && (
+        <TouchableOpacity onPress={onMenuPress} style={styles.menuButton}>
+          <Ionicons name="ellipsis-vertical" size={20} color="#000" />
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+});
+const styles = StyleSheet.create({
+  // Date Separator Styles
+  dateSeparatorContainer: {
+    alignItems: 'center',
+    marginVertical: 16,
+  },
+  dateSeparatorPill: {
+    backgroundColor: 'rgba(0, 0, 0, 0.08)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+  },
+  dateSeparatorText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#666',
+  },
+
+  // Message Bubble Styles
+  messageBubble: {
+    maxWidth: '75%',
+    paddingHorizontal: 12,
+    paddingTop: 8,
+    paddingBottom: 6,
+    marginHorizontal: 8,
+    marginVertical: 2,
+    borderRadius: 18,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  ownBubble: {
+    alignSelf: 'flex-end',
+    backgroundColor: '#DCF8C6',
+    borderBottomRightRadius: 4,
+    marginLeft: 60,
+  },
+  otherBubble: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#FFFFFF',
+    borderBottomLeftRadius: 4,
+    marginRight: 60,
+  },
+  selectedOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 136, 204, 0.15)',
+    marginHorizontal: -16,
+  },
+
+  // Reply Preview Styles
+  replyPreview: {
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    marginBottom: 6,
+    borderRadius: 8,
+    borderLeftWidth: 3,
+  },
+  ownReplyPreview: {
+    backgroundColor: 'rgba(0, 0, 0, 0.05)',
+    borderLeftColor: '#4CAF50',
+  },
+  otherReplyPreview: {
+    backgroundColor: 'rgba(0, 0, 0, 0.05)',
+    borderLeftColor: '#0088CC',
+  },
+  replyName: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#0088CC',
+    marginBottom: 2,
+  },
+  replyText: {
+    fontSize: 13,
+    color: '#666',
+  },
+
+  // Sender Name Style
+  senderName: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#0088CC',
+    marginBottom: 2,
+  },
+
+  // Message Text Style
+  messageText: {
+    fontSize: 16,
+    lineHeight: 22,
+    color: '#000',
+  },
+
+  // Meta Row Styles
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    marginTop: 4,
+    gap: 4,
+  },
+  editedLabel: {
+    fontSize: 11,
+    color: '#8E8E93',
+    fontStyle: 'italic',
+  },
+  timeText: {
+    fontSize: 11,
+    color: '#8E8E93',
+  },
+  statusContainer: {
+    marginLeft: 2,
+  },
+
+  // Header Styles
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 10,
+    backgroundColor: '#fff',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#E5E5E5',
+  },
+  backButton: {
+    padding: 8,
+  },
+  headerContent: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginLeft: 4,
+  },
+  avatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#0088CC',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  avatarText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  headerInfo: {
+    marginLeft: 12,
+    flex: 1,
+  },
+  roomName: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: '#000',
+  },
+  statusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 1,
+  },
+  statusText: {
+    fontSize: 13,
+    color: '#8E8E93',
+  },
+  menuButton: {
+    padding: 8,
+  },
+
+  // Input Bar Styles
+  inputContainer: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+    backgroundColor: '#fff',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#E5E5E5',
+  },
+  inputWrapper: {
+    flex: 1,
+    backgroundColor: '#F0F0F0',
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    minHeight: 40,
+    maxHeight: 120,
+  },
+  textInput: {
+    fontSize: 16,
+    color: '#000',
+    maxHeight: 100,
+    paddingTop: 0,
+    paddingBottom: 0,
+  },
+  sendButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#0088CC',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 8,
+  },
+  sendButtonDisabled: {
+    opacity: 0.5,
+  },
+
+  // Chat Container Styles
+  chatContainer: {
+    flex: 1,
+    backgroundColor: '#E5DDD5',
+  },
+  listContent: {
+    paddingVertical: 8,
+  },
+});
 export default function ChatRoomScreen() {
   const { width: screenWidth } = useWindowDimensions();
   const { roomId } = useLocalSearchParams();
@@ -2260,7 +2676,7 @@ export default function ChatRoomScreen() {
   const navigation = useNavigation();
 
   // Prepare data for inverted FlatList
-  // Messages are sorted newest first, and date separators come AFTER their messages
+  // Prepare data for inverted FlatList with itemType to prevent re-renders
   const preparedListData = useMemo((): ChatListItem[] => {
     if (messages.length === 0) return [];
 
@@ -2287,12 +2703,10 @@ export default function ChatRoomScreen() {
     });
 
     // Build the list data for inverted FlatList
-    // For inverted list: newest messages first, date separator comes AFTER messages of that date
     const listData: ChatListItem[] = [];
     const dateKeys = Object.keys(grouped).sort((a, b) => {
       const firstMessageA = grouped[a][0];
       const firstMessageB = grouped[b][0];
-      // Sort dates newest first for inverted list
       return new Date(firstMessageB.createdAt).getTime() - new Date(firstMessageA.createdAt).getTime();
     });
 
@@ -2301,10 +2715,18 @@ export default function ChatRoomScreen() {
       const dateMessages = [...grouped[date]].sort((a, b) =>
         new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
       );
-      listData.push(...dateMessages);
-      
+
+      // Add itemType to each message
+      dateMessages.forEach(msg => {
+        listData.push({ ...msg, itemType: 'message' as const });
+      });
+
       // Add date separator AFTER the messages (will appear above in inverted list)
-      listData.push({ type: 'date', date, id: `date-${date}` });
+      listData.push({
+        itemType: 'dateSeparator' as const,
+        date,
+        id: `date-${date}`
+      });
     });
 
     return listData;
@@ -2422,10 +2844,10 @@ export default function ChatRoomScreen() {
 
   // Scroll to specific message with blink effect
   const scrollToMessage = useCallback((messageId: string | number) => {
-    const messageIndex = preparedListData.findIndex(item => 
+    const messageIndex = preparedListData.findIndex(item =>
       'id' in item && item.type !== 'date' && item.id === messageId
     );
-    
+
     if (messageIndex !== -1 && flatListRef.current) {
       flatListRef.current.scrollToIndex({
         index: messageIndex,
@@ -2473,7 +2895,7 @@ export default function ChatRoomScreen() {
 
       if (cachedData && cachedData.messages.length > 0) {
         console.log(`�� Displaying ${cachedData.messages.length} cached messages`);
-        
+
         setMessages(cachedData.messages);
         setMessagesSet(new Set(cachedData.messages.map(msg => msg.id)));
         setIsFromCache(true);
@@ -2484,7 +2906,7 @@ export default function ChatRoomScreen() {
       }
       return false;
     } catch (error) {
-      console.error('❌ Error loading cached messages:', error);
+      console.log('❌ Error loading cached messages:', error);
       return false;
     }
   }, [roomId]);
@@ -2498,18 +2920,35 @@ export default function ChatRoomScreen() {
       console.log('🔄 Syncing messages with server...');
 
       const token = await AuthStorage.getToken();
+      const userId = (await AuthStorage.getUser())?.seid;
       const response = await axios.get(`${API_URL}/api/chat/rooms/${roomId}`, {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { Authorization: `Bearer ${token}`,userId: userId },
       });
+
+      console.log("response", response.data);
+      if(response.data.isrestricted) {
+        await logout();
+        Alert.alert("Access denied", "You are not authorized to access this chat room. Please contact Sevak Karyalay.");
+        router.replace({
+          pathname: "/(auth)/login",
+          params: { from: "logout" }
+        });
+        return;
+      } else {
+        console.log("Allowed");
+      }
 
       const freshMessages: Message[] = response.data.messages || [];
 
       const cachedData = await MessageStorage.getMessages(roomId as string);
       const cachedMessages = cachedData?.messages || [];
 
-      const { newMessages, updatedMessages, deletedMessageIds, hasChanges } = 
+      const { newMessages, updatedMessages, deletedMessageIds, hasChanges } =
         MessageStorage.detectChanges(cachedMessages, freshMessages);
-
+      console.log("newMessages", newMessages);
+      console.log("updatedMessages", updatedMessages);
+      console.log("deletedMessageIds", deletedMessageIds);
+      console.log(`hasChanges in chatroom ${roomId}`, hasChanges);
       if (hasChanges || forceRefresh) {
         console.log('✨ Changes detected, updating UI and cache');
 
@@ -2539,7 +2978,7 @@ export default function ChatRoomScreen() {
           });
           setMessages(prev => {
             const allMessages = [...prev, ...newMessages];
-            return allMessages.sort((a, b) => 
+            return allMessages.sort((a, b) =>
               new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
             );
           });
@@ -2551,7 +2990,7 @@ export default function ChatRoomScreen() {
       }
 
       setRoom(response.data);
-      
+
       const initialMembers = response.data.members.map((member: ChatUser) => ({
         ...member,
         userId: String(member.userId),
@@ -2570,7 +3009,7 @@ export default function ChatRoomScreen() {
 
       setIsFromCache(false);
     } catch (error) {
-      console.error('❌ Error syncing with server:', error);
+      console.log('❌ Error syncing with server:', error);
     } finally {
       setIsSyncing(false);
     }
@@ -2581,6 +3020,7 @@ export default function ChatRoomScreen() {
     try {
       const userData = await AuthStorage.getUser();
       if (userData) {
+        console.log("userData", userData);
         setCurrentUser({
           userId: userData.userId,
           fullName: userData.fullName || null
@@ -2589,10 +3029,10 @@ export default function ChatRoomScreen() {
 
       if (!forceRefresh) {
         const hasCachedData = await loadCachedMessages();
-        
+
         if (hasCachedData) {
           syncMessagesWithServer(false);
-          
+
           if (userData && roomId) {
             socketService.joinRoom(
               roomId as string,
@@ -2601,17 +3041,26 @@ export default function ChatRoomScreen() {
             );
             clearRoomNotifications(roomId as string);
           }
-          
+
           return;
         }
       }
 
       setIsLoading(true);
-      
+
       const token = await AuthStorage.getToken();
       const response = await axios.get(`${API_URL}/api/chat/rooms/${roomId}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
+      if(response.data.isrestricted) {
+        await logout();
+        ToastAndroid.show("Access denied", ToastAndroid.SHORT);
+        router.replace({
+          pathname: "/(auth)/login",
+          params: { from: "logout" }
+        });
+        return;
+      }
 
       setRoom(response.data);
       const initialMessages = response.data.messages || [];
@@ -2643,8 +3092,8 @@ export default function ChatRoomScreen() {
         loadScheduledMessages();
       }
     } catch (error) {
-      console.error("Error loading room details:", error);
-      
+      console.log("Error loading room details:", error);
+
       const hasCachedData = await loadCachedMessages();
       if (!hasCachedData) {
         alert("Failed to load chat room details");
@@ -2820,52 +3269,6 @@ export default function ChatRoomScreen() {
   );
 
   useEffect(() => {
-    if (room) {
-      navigation.setOptions({
-        title: room.roomName,
-        tabBarStyle: { display: 'none' },
-        headerRight: () =>
-          isGroupAdmin ? (
-            <View className="flex-row items-center">
-              {isSyncing && (
-                <ActivityIndicator 
-                  size="small" 
-                  color="#0284c7" 
-                  style={{ marginRight: 12 }}
-                />
-              )}
-              <TouchableOpacity
-                onPressIn={() => {
-                  router.push({
-                    pathname: "/chat/room-info",
-                    params: { roomId },
-                  });
-                }}
-                className="mr-2"
-              >
-                <Ionicons name="settings-outline" size={24} color="#0284c7" />
-              </TouchableOpacity>
-            </View>
-          ) : (
-            isSyncing ? (
-              <ActivityIndicator 
-                size="small" 
-                color="#0284c7" 
-                style={{ marginRight: 12 }}
-              />
-            ) : null
-          )
-      });
-    } else if (isLoading) {
-      navigation.setOptions({
-        title: "Connecting...",
-        tabBarStyle: { display: 'none' },
-        headerRight: () => <></>
-      });
-    }
-  }, [room, isGroupAdmin, navigation, isLoading, isSyncing]);
-
-  useEffect(() => {
     return () => {
       navigation.setOptions({
         tabBarStyle: {
@@ -2887,7 +3290,7 @@ export default function ChatRoomScreen() {
         setScheduledMessages(response.scheduledMessages);
       }
     } catch (error) {
-      console.error("Error loading scheduled messages:", error);
+      console.log("Error loading scheduled messages:", error);
     }
   };
 
@@ -2984,9 +3387,9 @@ export default function ChatRoomScreen() {
           msg => !(typeof msg.id === 'string' && msg.id.includes('temp'))
         );
         const newMessagesList = [...filteredMessages, ...messagesWithReplyInfo];
-        
+
         MessageStorage.saveMessages(roomId as string, newMessagesList);
-        
+
         return newMessagesList;
       });
 
@@ -3013,7 +3416,7 @@ export default function ChatRoomScreen() {
         setReplyToMessage(null);
       }
     } catch (error) {
-      console.error("Error sending message:", error);
+      console.log("Error sending message:", error);
       alert("Failed to send message");
 
       setMessageText(trimmedMessage);
@@ -3162,7 +3565,7 @@ export default function ChatRoomScreen() {
         { headers: { Authorization: `Bearer ${token}` } }
       );
     } catch (error) {
-      console.error('Error marking message as read:', error);
+      console.log('Error marking message as read:', error);
     }
   }, []);
 
@@ -3179,7 +3582,7 @@ export default function ChatRoomScreen() {
         setReadStatusData(response.data.data);
       }
     } catch (error) {
-      console.error('Error fetching read status:', error);
+      console.log('Error fetching read status:', error);
       alert('Failed to load read status');
     } finally {
       setIsLoadingReadStatus(false);
@@ -3263,7 +3666,7 @@ export default function ChatRoomScreen() {
           }
 
         } catch (error) {
-          console.error(`Error forwarding message to room ${room.roomName}:`, error);
+          console.log(`Error forwarding message to room ${room.roomName}:`, error);
           throw error;
         }
       }
@@ -3283,7 +3686,7 @@ export default function ChatRoomScreen() {
 
       messageIds.forEach(id => removeMessage(id, true));
     } catch (error) {
-      console.error('Error deleting messages:', error);
+      console.log('Error deleting messages:', error);
       throw error;
     }
   };
@@ -3405,8 +3808,8 @@ export default function ChatRoomScreen() {
                 {item.replyMessageId && (
                   <TouchableOpacity
                     className={`mb-2 p-2 rounded-lg border-l-2 ${isOwnMessage
-                        ? 'bg-blue-50 border-blue-300'
-                        : 'bg-gray-50 border-gray-400'
+                      ? 'bg-blue-50 border-blue-300'
+                      : 'bg-gray-50 border-gray-400'
                       }`}
                     onPress={() => handleReplyPreviewClick(item.replyMessageId!)}
                   >
@@ -3538,19 +3941,19 @@ export default function ChatRoomScreen() {
                     }}
                     disabled={showPollModal && activePollId !== item.pollId}
                     className={`p-3 rounded-lg mt-1 ${showPollModal && activePollId !== item.pollId
-                        ? 'bg-gray-200 opacity-50'
-                        : isOwnMessage ? 'bg-blue-200' : 'bg-gray-200'
+                      ? 'bg-gray-200 opacity-50'
+                      : isOwnMessage ? 'bg-blue-200' : 'bg-gray-200'
                       }`}
                   >
                     <Text className={`font-semibold ${showPollModal && activePollId !== item.pollId
-                        ? 'text-gray-500'
-                        : isOwnMessage ? 'text-blue-800' : 'text-gray-700'
+                      ? 'text-gray-500'
+                      : isOwnMessage ? 'text-blue-800' : 'text-gray-700'
                       }`}>
                       📊 Poll
                     </Text>
                     <Text className={`text-xs ${showPollModal && activePollId !== item.pollId
-                        ? 'text-gray-400'
-                        : isOwnMessage ? 'text-blue-600' : 'text-gray-600'
+                      ? 'text-gray-400'
+                      : isOwnMessage ? 'text-blue-600' : 'text-gray-600'
                       }`}>
                       {showPollModal && activePollId !== item.pollId ? 'Another poll is active' : 'Tap to vote'}
                     </Text>
@@ -3583,18 +3986,96 @@ export default function ChatRoomScreen() {
 
   // Render item for FlatList (handles both messages and date separators)
   const renderItem = useCallback(({ item }: { item: ChatListItem }) => {
-    if ('type' in item && item.type === 'date') {
-      return renderDateSeparator(item.date);
+    if (item.itemType === 'dateSeparator') {
+      return <DateSeparator dateString={item.date} formatDateForDisplay={formatDateForDisplay} />;
     }
-    return renderMessage({ item: item as Message });
-  }, [currentUser, selectedMessages, showPollModal, activePollId, showTableModle, tableId]);
 
+    const message = item as Message & { itemType: 'message' };
+    const isOwnMessage = message.senderId === currentUser?.userId;
+    const isSelected = isMessageSelected(message.id);
+    const messageAnimation = getMessageAnimation(message.id);
+    const blinkAnimation = blinkAnimations.current.get(message.id);
+
+    // Only render text messages for now
+    if (message.messageType !== 'text' && message.messageType !== 'timeline') {
+      return null;
+    }
+
+    return (
+      <View>
+        {/* Reply icon backgrounds */}
+        <Animated.View
+          style={{
+            position: 'absolute',
+            top: 0,
+            bottom: 0,
+            right: 16,
+            justifyContent: 'center',
+            opacity: messageAnimation.interpolate({
+              inputRange: [-80, -30, 0],
+              outputRange: [1, 0.5, 0],
+              extrapolate: 'clamp',
+            }),
+          }}
+        >
+          <View style={{ backgroundColor: '#0088CC', borderRadius: 20, padding: 8 }}>
+            <Ionicons name="arrow-undo" size={20} color="white" />
+          </View>
+        </Animated.View>
+
+        <Animated.View
+          style={{
+            position: 'absolute',
+            top: 0,
+            bottom: 0,
+            left: 16,
+            justifyContent: 'center',
+            opacity: messageAnimation.interpolate({
+              inputRange: [0, 30, 80],
+              outputRange: [0, 0.5, 1],
+              extrapolate: 'clamp',
+            }),
+          }}
+        >
+          <View style={{ backgroundColor: '#0088CC', borderRadius: 20, padding: 8 }}>
+            <Ionicons name="arrow-undo" size={20} color="white" />
+          </View>
+        </Animated.View>
+
+        <PanGestureHandler
+          onBegan={() => handleGestureBegin(message.id)}
+          onGestureEvent={(event) => handleGestureUpdate(event, message.id)}
+          onEnded={(event) => handleGestureEnd(event, message)}
+          onCancelled={(event) => handleGestureEnd(event, message)}
+          onFailed={(event) => handleGestureEnd(event, message)}
+          enabled={!isSelected}
+          activeOffsetX={[-20, 20]}
+          failOffsetY={[-30, 30]}
+        >
+          <Animated.View style={{ transform: [{ translateX: messageAnimation }] }}>
+            <MessageBubble
+              item={message}
+              isOwnMessage={isOwnMessage}
+              isSelected={isSelected}
+              currentUser={currentUser}
+              onPress={() => handleMessagePress(message)}
+              onLongPress={() => handleMessageLongPress(message)}
+              onReplyPreviewClick={handleReplyPreviewClick}
+              formatTime={formatISTTime}
+              messageAnimation={messageAnimation}
+              blinkAnimation={blinkAnimation}
+            />
+          </Animated.View>
+        </PanGestureHandler>
+      </View>
+    );
+  }, [currentUser, selectedMessages, formatDateForDisplay, handleMessagePress, handleMessageLongPress, handleReplyPreviewClick]);
   // Key extractor for FlatList
   const keyExtractor = useCallback((item: ChatListItem) => {
-    if ('type' in item && item.type === 'date') {
+    if (item.itemType === 'dateSeparator') {
       return item.id;
     }
-    return (item as Message).id.toString();
+    return `msg-${(item as Message).id}`;
   }, []);
 
   // Get item layout for better scroll performance (optional)
@@ -3654,11 +4135,25 @@ export default function ChatRoomScreen() {
               onMessageEdited={handleMessageEdited}
             />
           ) : (
-            <OnlineUsersIndicator
+            <>
+              <TelegramHeader
+                roomName={room?.roomName || "Chat"}
+                memberCount={roomMembers.length}
+                onlineCount={onlineUsers.length}
+                onBackPress={() => router.back()}
+                onAvatarPress={() => setShowMembersModal(true)}
+                onMenuPress={isGroupAdmin ? () => router.push({
+                  pathname: "/chat/room-info",
+                  params: { roomId },
+                }) : undefined}
+                isSyncing={isSyncing}
+              />
+              {/* <OnlineUsersIndicator
               onlineCount={onlineUsers.length}
               totalCount={roomMembers.length}
               onPress={() => setShowMembersModal(true)}
-            />
+              /> */}
+            </>
           )}
 
           {/* Messages list - INVERTED */}
@@ -3667,25 +4162,18 @@ export default function ChatRoomScreen() {
             data={preparedListData}
             keyExtractor={keyExtractor}
             renderItem={renderItem}
-            inverted={true} // KEY CHANGE: Inverted list
-            contentContainerStyle={{ 
-              paddingVertical: 10,
-              flexGrow: 1,
-            }}
+            inverted={true}
+            contentContainerStyle={styles.listContent}
+            style={styles.chatContainer}
             onScroll={handleScroll}
             scrollEventThrottle={16}
             onViewableItemsChanged={onViewableItemsChanged}
             viewabilityConfig={viewabilityConfig}
-            maintainVisibleContentPosition={{
-              minIndexForVisible: 0,
-              autoscrollToTopThreshold: 100,
-            }}
             removeClippedSubviews={Platform.OS === 'android'}
             maxToRenderPerBatch={15}
             windowSize={10}
             initialNumToRender={20}
             onScrollToIndexFailed={(info) => {
-              // Handle scroll to index failure gracefully
               const wait = new Promise(resolve => setTimeout(resolve, 500));
               wait.then(() => {
                 if (flatListRef.current && preparedListData.length > 0) {
@@ -3697,15 +4185,13 @@ export default function ChatRoomScreen() {
               });
             }}
             ListEmptyComponent={
-              <View className="flex-1 justify-center items-center p-4">
+              <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', paddingBottom: 400 }}>
                 <Ionicons name="chatbubble-outline" size={60} color="#d1d5db" />
-                <Text className="text-gray-500 mt-4 text-center">
-                  No messages yet. {isGroupAdmin ? "Be the first to send a message!" : "Only group admins can send messages in this room."}
+                <Text style={{ color: '#6b7280', marginTop: 16, textAlign: 'center' }}>
+                  No messages yet.
                 </Text>
               </View>
-            }
-            // For inverted list, empty component needs to be transformed
-            ListEmptyComponentStyle={{ transform: [{ scaleY: -1 }] }}
+            }            
           />
 
           {/* Scroll to bottom button - For inverted list, this scrolls to offset 0 */}
@@ -3719,35 +4205,42 @@ export default function ChatRoomScreen() {
             </TouchableOpacity>
           )}
 
-          {/* Reply preview */}
-          {isReplying && replyToMessage && (isGroupAdmin || replyToMessage.senderId === currentUser?.userId) && (
-            <View className="bg-gray-100 border-t border-gray-200 px-4 py-3">
-              <View className="flex-row items-center justify-between">
-                <View className="flex-1">
-                  <View className="flex-row items-center mb-1">
-                    <Ionicons name="arrow-undo" size={16} color="#6b7280" />
-                    <Text className="text-sm text-gray-600 ml-2">
-                      Replying to {replyToMessage.senderName}
-                    </Text>
-                  </View>
-                  <Text
-                    className="text-sm text-gray-800 bg-white px-3 py-2 rounded-lg"
-                    numberOfLines={2}
-                    ellipsizeMode="tail"
-                  >
-                    {replyToMessage.messageText}
-                  </Text>
-                </View>
-                <TouchableOpacity onPress={handleCancelReply} className="ml-3 p-2">
-                  <Ionicons name="close" size={20} color="#6b7280" />
-                </TouchableOpacity>
-              </View>
-            </View>
-          )}
-
           {/* Message input */}
           {isGroupAdmin && (
-            <View className="px-4 py-2 bg-white border-t border-gray-200">
+            <View style={{ backgroundColor: 'black' }}>
+              {/* above view is below to messageinput component */}
+              {/* Reply preview */}
+              {isReplying && replyToMessage && (
+                <View style={{
+                  backgroundColor: '#F2F2F7',
+                  paddingHorizontal: 16,
+                  paddingVertical: 12,
+                  borderTopWidth: StyleSheet.hairlineWidth,
+                  borderTopColor: '#E5E5E5',
+                }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <View style={{ flex: 1 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+                        <Ionicons name="arrow-undo" size={14} color="#007AFF" />
+                        <Text style={{ fontSize: 13, color: '#007AFF', fontWeight: '600', marginLeft: 6 }}>
+                          Replying to {replyToMessage.senderName}
+                        </Text>
+                      </View>
+                      <Text
+                        style={{ fontSize: 14, color: '#666' }}
+                        numberOfLines={1}
+                        ellipsizeMode="tail"
+                      >
+                        {replyToMessage.messageText}
+                      </Text>
+                    </View>
+                    <TouchableOpacity onPress={handleCancelReply} style={{ padding: 8 }}>
+                      <Ionicons name="close-circle" size={22} color="#8E8E93" />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )}
+              
               <MessageInput
                 messageText={messageText}
                 onChangeText={setMessageText}
@@ -3755,9 +4248,18 @@ export default function ChatRoomScreen() {
                   if (messageType === "audio") {
                     // Handle audio recording
                   } else {
-                    sendMessage(text, messageType, undefined, undefined, undefined, replyToMessage?.id as number, scheduledAt);
+                    sendMessage(
+                      text, 
+                      messageType, 
+                      undefined, 
+                      undefined, 
+                      undefined, 
+                      replyToMessage?.id as number, 
+                      scheduledAt
+                    );
                   }
                 }}
+                placeholder="Message"
                 sending={sending}
                 disabled={false}
                 roomMembers={roomMembers}
@@ -3767,27 +4269,24 @@ export default function ChatRoomScreen() {
                 onAudioRecord={() => {}}
                 onScheduleMessage={() => setShowScheduledMessages(true)}
                 hasScheduledMessages={scheduledMessages.length > 0}
-                onFocus={() => {
-                  // No need to manually scroll with inverted list
-                }}
-                style={{
-                  borderTopWidth: 0,
-                  borderTopColor: 'transparent',
-                  backgroundColor: 'transparent',
-                  paddingHorizontal: 0
-                }}
+                onFocus={() => {}}
               />
             </View>
           )}
 
-          {/* Non-admin message */}
-          {!isGroupAdmin && (
-            <View className="p-4 border-t border-gray-200 bg-gray-50">
-              <Text className="text-center text-gray-600 text-sm">
-                Only group admins can send messages in this room
-              </Text>
-            </View>
-          )}
+{/* Non-admin message */}
+{!isGroupAdmin && (
+  <View style={{
+    padding: 16,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#E5E5E5',
+    backgroundColor: '#F9F9F9',
+  }}>
+    <Text style={{ textAlign: 'center', color: '#8E8E93', fontSize: 14 }}>
+      Only group admins can send messages in this room
+    </Text>
+  </View>
+)}
 
           {/* Modals */}
           <MembersModal
@@ -3920,7 +4419,7 @@ export default function ChatRoomScreen() {
 
           <AudioRecorder
             isVisible={showAudioRecorder}
-            onRecordingComplete={() => {}}
+            onRecordingComplete={() => { }}
             onCancel={() => {
               setShowAudioRecorder(false);
               setIsRecordingAudio(false);

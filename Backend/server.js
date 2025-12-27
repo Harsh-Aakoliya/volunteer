@@ -14,8 +14,7 @@ import scheduledMessageService from "./services/scheduledMessageService.js";
 import os from "os";
 import path from "path";
 import fs from "fs";
-import { dirname } from 'path';
-
+import multer from "multer";
 dotenv.config();
 const PORT =8080;
 
@@ -34,6 +33,76 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use(cors());
 app.use(errorHandling);
 app.use("/media",express.static(path.join(process.cwd(), 'media')));
+
+
+/** demo start */
+// Serve uploaded files statically 
+app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
+
+// Configure multer for file uploads
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const uploadDir = path.join(__dirname, 'uploads');
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+    cb(null, uploadDir);
+  },
+  filename: (req, file, cb) => {
+    const timestamp = Date.now();
+    cb(null, `audio_${timestamp}.m4a`);
+  }
+});
+
+const upload = multer({ storage });
+
+// Upload audio file
+app.post('/upload', upload.single('audio'), (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: 'No file uploaded' });
+  }
+
+  // Always use the actual server IP, not request host
+  const fileUrl = `${BASE_URL}/uploads/${req.file.filename}`;
+
+  console.log('✅ File uploaded:', req.file.filename);
+  console.log('   URL:', fileUrl);
+
+  res.json({
+    success: true,
+    filename: req.file.filename,
+    url: fileUrl,
+    size: req.file.size
+  });
+});
+
+// Get all audio files
+app.get('/files', (req, res) => {
+  const uploadsDir = path.join(__dirname, 'uploads');
+
+  if (!fs.existsSync(uploadsDir)) {
+    return res.json({ files: [] });
+  }
+
+  fs.readdir(uploadsDir, (err, files) => {
+    if (err) {
+      return res.status(500).json({ error: 'Failed to read files' });
+    }
+
+    // Always use the actual server IP, not request host
+    const audioFiles = files
+      .filter(file => file.startsWith('audio_') && file.endsWith('.m4a'))
+      .map(file => ({
+        filename: file,
+        url: `${BASE_URL}/uploads/${file}`,
+        createdAt: new Date(parseInt(file.split('_')[1])).toISOString()
+      }))
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+    res.json({ files: audioFiles });
+  });
+});
+/**demo end */
 
 // Initialize database - single function creates all tables in correct order
 // initDB().catch(error => {

@@ -28,7 +28,7 @@ yarn-error.*
 # macOS
 .DS_Store
 *.pem
-
+.env
 # local env files
 .env*.local
 
@@ -38,6 +38,8 @@ yarn-error.*
 # Backend files
 Backend/media/
 Backend/node_modules/
+Backend/serviceAccountKey.json
+Backend/.env
 demo/
 management/
 VM file media upload demo/

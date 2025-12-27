@@ -1,14 +1,15 @@
 // middleware/auth.js
 import jwt from 'jsonwebtoken';
-
-export const authenticateToken = (req, res, next) => {
+import pool from '../config/database.js';
+export const authenticateToken = async(req, res, next) => {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
-  
+  console.log("authHeader", authHeader);
+  console.log("token", token);
   if (!token) {
     return res.status(401).json({ message: 'Authentication token required' });
   }
-  
+
   if (!process.env.JWT_SECRET) {
     console.error('JWT_SECRET environment variable is not set');
     return res.status(500).json({ message: 'Server configuration error' });

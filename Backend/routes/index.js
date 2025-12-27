@@ -11,6 +11,8 @@ import versionRoutes from './versionRoutes.js';
 import notificationRoutes from './notificationRoutes.js';
 const router = express.Router();
 
+
+// router.use(authenticateToken);
 // Test route
 // ${API_URL}/api/test components/auth/AppInfo.tsx -> testServer
 router.get("/test", (req, res) => {

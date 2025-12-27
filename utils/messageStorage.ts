@@ -234,9 +234,20 @@ export const MessageStorage = {
       cached.messageText !== fresh.messageText ||
       cached.isEdited !== fresh.isEdited ||
       cached.editedAt !== fresh.editedAt ||
+      cached.editedBy !== fresh.editedBy ||
+      cached.editorName !== fresh.editorName ||
+      cached.createdAt !== fresh.createdAt ||
+      cached.editedAt !== fresh.editedAt ||
       cached.mediaFilesId !== fresh.mediaFilesId ||
       cached.pollId !== fresh.pollId ||
-      cached.tableId !== fresh.tableId
+      cached.tableId !== fresh.tableId ||
+      cached.replyMessageId !== fresh.replyMessageId ||
+      cached.replySenderName !== fresh.replySenderName ||
+      cached.replyMessageText !== fresh.replyMessageText ||
+      cached.replyMessageType !== fresh.replyMessageType ||
+      cached.senderName !== fresh.senderName ||
+      cached.senderId !== fresh.senderId ||
+      cached.messageType !== fresh.messageType
     );
   }
 };

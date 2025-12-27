@@ -29,7 +29,7 @@ const chatController = {
                 cru."isAdmin", cru."canSendMessage"
          FROM chatrooms cr
          JOIN chatroomusers cru ON cr."roomId" = cru."roomId"
-         WHERE cru."userId" = $1::integer
+         WHERE cru."userId" = $1::integer and cr."isactive" = 1
          ORDER BY cr."createdon" DESC`,
         [userId]
       );
@@ -175,6 +175,18 @@ const chatController = {
       // Convert roomId to integer
       const roomIdInt = parseInt(roomId, 10);
 
+      const result = await pool.query(
+        `SELECT "seid", "canlogin" FROM "SevakMaster" WHERE "seid" = $1 and canlogin = 1`,
+        [userId]
+      );
+      console.log("result in getChatRoomDetails", result.rows);
+      if(result.rows.length === 0 || result.rows[0].canlogin !== 1) {
+        return res.json({
+          isrestricted: true,
+          message: "You are not authorized to access this chat room"
+        });
+      }
+
       // First check if user is a member of this room
       const memberCheck = await pool.query(
         `SELECT * FROM chatroomusers 
@@ -263,7 +275,7 @@ const chatController = {
         messages: messagesResult.rows.reverse() // Return in chronological order
       };
 
-      console.log("room details in getChatRoomDetails", roomDetails);
+      // console.log("room details in getChatRoomDetails", roomDetails);
       res.json(roomDetails);
     } catch (error) {
       console.error('Error fetching chat room details:', error);

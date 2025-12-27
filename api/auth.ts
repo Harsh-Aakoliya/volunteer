@@ -56,7 +56,7 @@ const generateAndStoreNotificationToken = async (userId: string) => {
         headers: { Authorization: `Bearer ${token}` }
       });
 
-      console.log('Token stored successfully:', response.data);
+      // console.log('Token stored successfully:', response.data);
     }
   } catch (error) {
     console.error('Error generating/storing notification token:', error);
@@ -215,6 +215,7 @@ export const login = async (
         userId: sevak.seid,
         mobileNumber: sevak.mobileno,
         name: sevak.sevakname,
+        fullName: sevak.sevakname,
         role: sevak.usertype,
         ...sevak
       });
@@ -301,7 +302,8 @@ export const setPasswordToBackend = async (
       await AuthStorage.storeUser({
         userId: sevak.seid,
         mobileNumber: sevak.mobileno,
-        name: sevak.sename || sevak.sevakname,
+        name: sevak.sevakname,
+        fullName: sevak.sevakname,
         role: sevak.usertype,
         ...sevak
       });

@@ -1,21 +1,22 @@
 {
-    "extends": "expo/tsconfig.base",
-    "compilerOptions": {
-      "strict": true,
-      "jsx": "react",
-      "paths": {
-        "@/*": [
-          "./*"
-        ]
-      }
-    },
-    "include": [
-      "**/*.ts",
-      "**/*.tsx",
-      ".expo/types/**/*.ts",
-      "expo-env.d.ts",
-      "nativewind-env.d.ts"
-  , "app/(tabs)/announcement/index.tsx", "utils/authStorage.tsx", "components/Icons/MdPermMedia.jsx", "components/chat/DateTimePicker.tsx", "app/index.tsx"  ]
-  }
-
-  
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true,
+    "jsx": "react",
+    "paths": {
+      "@/*": [
+        "./*"
+      ]
+    }
+  },
+  "include": [
+    "**/*.ts",
+    "**/*.tsx",
+    "nativewind-env.d.ts",
+    "app/(tabs)/announcement/index.tsx",
+    "utils/authStorage.tsx",
+    "components/Icons/MdPermMedia.jsx",
+    "components/chat/DateTimePicker.tsx",
+    "app/index.tsx"
+  ]
+}

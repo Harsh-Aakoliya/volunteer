@@ -182,9 +182,9 @@ const ChatMessageOptions: React.FC<ChatMessageOptionProps> = ({
                     </View>
                     <View className="flex-row items-center space-x-6">
                         {/* Pin */}
-                        <TouchableOpacity onPress={handlePinPress} className="p-2">
+                        {/* <TouchableOpacity onPress={handlePinPress} className="p-2">
                             <Ionicons name="bookmark-outline" size={24} color="#1F2937" />
-                        </TouchableOpacity>
+                        </TouchableOpacity> */}
 
                         {/* Delete - Group admins can delete any message */}
                         <TouchableOpacity 

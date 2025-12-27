@@ -81,11 +81,8 @@ export const CustomDrawer = (props: DrawerContentComponentProps) => {
   return (
     <View style={styles.container}>
       <ScrollView style={{ flex: 1 }}>
-        <TouchableOpacity style={styles.userSection} onPress={handleProfilePress}>
+        <View style={styles.userSection}>
           <View style={styles.userInfo}>
-            <View style={styles.avatarContainer}>
-              <Ionicons name="person" size={24} color="#3b82f6" />
-            </View>
             <View style={styles.userDetails}>
               <Text style={styles.fullName} numberOfLines={1}>
                 {userProfile?.sevakname || "User Name"}
@@ -95,7 +92,7 @@ export const CustomDrawer = (props: DrawerContentComponentProps) => {
               </Text>
             </View>
           </View>
-        </TouchableOpacity>
+        </View>
 
         <View style={styles.divider} />
 
@@ -164,21 +161,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     padding: 30,
+    paddingLeft: 20,
     backgroundColor: "#3b82f6",
   },
   userInfo: {
     flexDirection: "row",
     alignItems: "center",
     flex: 1,
-  },
-  avatarContainer: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: "rgba(255, 255, 255, 0.5)",
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 12,
   },
   userDetails: {
     flex: 1,
