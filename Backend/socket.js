@@ -345,7 +345,7 @@ const setupSocketIO = (io, app) => {
       try {
         const pool = await import("./config/database.js").then((m) => m.default);
         const result = await pool.query(
-          `SELECT cu."userId", sm."fullName", cu."isAdmin"
+          `SELECT cu."userId", sm."sevakname", cu."isAdmin"
            FROM chatroomusers cu
            LEFT JOIN "SevakMaster" sm ON cu."userId"::integer = sm."seid"
            WHERE cu."roomId" = $1`,

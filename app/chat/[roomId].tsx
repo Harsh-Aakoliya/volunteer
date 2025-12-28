@@ -21,7 +21,10 @@ import {
 } from "react-native";
 import {
   PanGestureHandler,
-  GestureHandlerRootView
+  LongPressGestureHandler,
+  TapGestureHandler,
+  GestureHandlerRootView,
+  State,
 } from 'react-native-gesture-handler';
 import { Alert } from 'react-native';
 import * as Haptics from 'expo-haptics';
@@ -72,6 +75,246 @@ type ChatListItem =
 
 // ==================== MEMOIZED COMPONENTS ====================
 
+// Add this component BEFORE the ChatRoomScreen component
+
+const MessageItem = React.memo(({
+  message,
+  isOwnMessage,
+  isSelected,
+  isGroupAdmin,
+  currentUser,
+  selectedMessagesCount,
+  messageAnimation,
+  blinkAnimation,
+  onSelect,
+  onDeselect,
+  onStartSelection,
+  onGestureBegin,
+  onGestureUpdate,
+  onGestureEnd,
+  onReplyPreviewClick,
+  formatTime,
+}: {
+  message: Message;
+  isOwnMessage: boolean;
+  isSelected: boolean;
+  isGroupAdmin: boolean;
+  currentUser: { userId: string; fullName: string | null } | null;
+  selectedMessagesCount: number;
+  messageAnimation: Animated.Value;
+  blinkAnimation?: Animated.Value;
+  onSelect: (message: Message) => void;
+  onDeselect: (message: Message) => void;
+  onStartSelection: (message: Message) => void;
+  onGestureBegin: (messageId: string | number) => void;
+  onGestureUpdate: (event: any, messageId: string | number) => void;
+  onGestureEnd: (event: any, message: Message) => void;
+  onReplyPreviewClick: (id: string | number) => void;
+  formatTime: (date: string) => string;
+}) => {
+  const longPressRef = useRef(null);
+  const panRef = useRef(null);
+  const tapRef = useRef(null);
+
+  const canSelect = isGroupAdmin || isOwnMessage;
+
+  const handleLongPressStateChange = useCallback((event: any) => {
+    if (event.nativeEvent.state === State.ACTIVE) {
+      if (!canSelect) return;
+      
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      onStartSelection(message);
+    }
+  }, [canSelect, message, onStartSelection]);
+
+  const handleTapStateChange = useCallback((event: any) => {
+    if (event.nativeEvent.state === State.END) {
+      // Handle tap for selection toggle when in selection mode
+      if (selectedMessagesCount > 0 && canSelect) {
+        if (isSelected) {
+          onDeselect(message);
+        } else {
+          onSelect(message);
+        }
+        return;
+      }
+      // Handle tap for reply preview when not in selection mode
+      if (selectedMessagesCount === 0 && message.replyMessageId) {
+        onReplyPreviewClick(message.replyMessageId);
+      }
+    }
+  }, [selectedMessagesCount, canSelect, isSelected, message, onSelect, onDeselect, onReplyPreviewClick]);
+
+  // Message status logic
+  let messageStatus: "sending" | "sent" | "delivered" | "read" | "error" = "sent";
+  if (typeof message.id === "number") {
+    messageStatus = "delivered";
+  } else if (typeof message.id === "string" && message.id.includes("temp")) {
+    messageStatus = "sending";
+  }
+
+  return (
+    <View>
+      {/* Reply indicator - right side (for left swipe) */}
+      <Animated.View
+        style={{
+          position: 'absolute',
+          top: 0,
+          bottom: 0,
+          right: 16,
+          justifyContent: 'center',
+          opacity: messageAnimation.interpolate({
+            inputRange: [-80, -30, 0],
+            outputRange: [1, 0.5, 0],
+            extrapolate: 'clamp',
+          }),
+        }}
+      >
+        <View style={{ backgroundColor: '#0088CC', borderRadius: 20, padding: 8 }}>
+          <Ionicons name="arrow-undo" size={20} color="white" />
+        </View>
+      </Animated.View>
+
+      {/* Reply indicator - left side (for right swipe) */}
+      <Animated.View
+        style={{
+          position: 'absolute',
+          top: 0,
+          bottom: 0,
+          left: 16,
+          justifyContent: 'center',
+          opacity: messageAnimation.interpolate({
+            inputRange: [0, 30, 80],
+            outputRange: [0, 0.5, 1],
+            extrapolate: 'clamp',
+          }),
+        }}
+      >
+        <View style={{ backgroundColor: '#0088CC', borderRadius: 20, padding: 8 }}>
+          <Ionicons name="arrow-undo" size={20} color="white" />
+        </View>
+      </Animated.View>
+
+      <LongPressGestureHandler
+        ref={longPressRef}
+        onHandlerStateChange={handleLongPressStateChange}
+        minDurationMs={400}
+        enabled={canSelect && !isSelected}
+        simultaneousHandlers={[panRef, tapRef]}
+      >
+        <Animated.View>
+          <TapGestureHandler
+            ref={tapRef}
+            onHandlerStateChange={handleTapStateChange}
+            simultaneousHandlers={[longPressRef, panRef]}
+          >
+            <Animated.View>
+              <PanGestureHandler
+                ref={panRef}
+                onBegan={() => onGestureBegin(message.id)}
+                onGestureEvent={(event) => onGestureUpdate(event, message.id)}
+                onEnded={(event) => onGestureEnd(event, message)}
+                onCancelled={(event) => onGestureEnd(event, message)}
+                onFailed={(event) => onGestureEnd(event, message)}
+                enabled={!isSelected && canSelect}
+                activeOffsetX={[-20, 20]}
+                failOffsetY={[-30, 30]}
+                simultaneousHandlers={[longPressRef, tapRef]}
+              >
+                <Animated.View style={{ transform: [{ translateX: messageAnimation }] }}>
+                  {/* Inline MessageBubble content */}
+                  <View>
+                    {isSelected && <View style={styles.selectedOverlay} />}
+
+                    <Animated.View
+                      style={[
+                        styles.messageBubble,
+                        isOwnMessage ? styles.ownBubble : styles.otherBubble,
+                        {
+                          backgroundColor: blinkAnimation ?
+                            blinkAnimation.interpolate({
+                              inputRange: [0, 1],
+                              outputRange: [isOwnMessage ? '#DCF8C6' : '#FFFFFF', '#fbbf24']
+                            }) :
+                            (isOwnMessage ? '#DCF8C6' : '#FFFFFF')
+                        }
+                      ]}
+                    >
+                      {message.replyMessageId && (
+                        <View
+                          style={[
+                            styles.replyPreview,
+                            isOwnMessage ? styles.ownReplyPreview : styles.otherReplyPreview
+                          ]}
+                        >
+                          <Text style={styles.replyName}>{message.replySenderName}</Text>
+                          <Text style={styles.replyText} numberOfLines={1}>
+                            {message.replyMessageText || 'Message'}
+                          </Text>
+                        </View>
+                      )}
+
+                      {!isOwnMessage && (
+                        <Text style={styles.senderName}>
+                          {message.senderName || "Unknown"}
+                        </Text>
+                      )}
+
+                      {message.messageType === "text" && (
+                        <Text style={styles.messageText}>
+                          {message.messageText}
+                        </Text>
+                      )}
+
+                      {message.messageType === "media" && (
+                        <Text style={styles.messageText}>mediaFilesId: {message.mediaFilesId}</Text>
+                      )}
+                      {message.messageType === "poll" && (
+                        <Text style={styles.messageText}>pollId: {message.pollId}</Text>
+                      )}
+                      {message.messageType === "table" && (
+                        <Text style={styles.messageText}>tableId: {message.tableId}</Text>
+                      )}
+                      {message.messageType === "announcement" && (
+                        <Text style={styles.messageText}>announcement: {message.messageText}</Text>
+                      )}
+
+                      <View style={styles.metaRow}>
+                        {message.isEdited && (
+                          <Text style={styles.editedLabel}>edited</Text>
+                        )}
+                        <Text style={styles.timeText}>
+                          {formatTime(message.createdAt || "")}
+                        </Text>
+                        {isOwnMessage && (
+                          <View style={styles.statusContainer}>
+                            <MessageStatus status={messageStatus} />
+                          </View>
+                        )}
+                      </View>
+                    </Animated.View>
+                  </View>
+                </Animated.View>
+              </PanGestureHandler>
+            </Animated.View>
+          </TapGestureHandler>
+        </Animated.View>
+      </LongPressGestureHandler>
+    </View>
+  );
+}, (prevProps, nextProps) => {
+  return (
+    prevProps.message.id === nextProps.message.id &&
+    prevProps.message.messageText === nextProps.message.messageText &&
+    prevProps.message.isEdited === nextProps.message.isEdited &&
+    prevProps.isOwnMessage === nextProps.isOwnMessage &&
+    prevProps.isSelected === nextProps.isSelected &&
+    prevProps.isGroupAdmin === nextProps.isGroupAdmin &&
+    prevProps.selectedMessagesCount === nextProps.selectedMessagesCount
+  );
+});
+
+
 const DateSeparator = React.memo(({ dateString, formatDateForDisplay }: {
   dateString: string;
   formatDateForDisplay: (date: string) => string;
@@ -90,9 +333,6 @@ const MessageBubble = React.memo(({
   isOwnMessage,
   isSelected,
   currentUser,
-  onPress,
-  onLongPress,
-  onReplyPreviewClick,
   formatTime,
   blinkAnimation,
 }: {
@@ -100,9 +340,6 @@ const MessageBubble = React.memo(({
   isOwnMessage: boolean;
   isSelected: boolean;
   currentUser: { userId: string; fullName: string | null } | null;
-  onPress: () => void;
-  onLongPress: () => void;
-  onReplyPreviewClick: (id: string | number) => void;
   formatTime: (date: string) => string;
   blinkAnimation?: Animated.Value;
 }) => {
@@ -114,11 +351,7 @@ const MessageBubble = React.memo(({
   }
 
   return (
-    <Pressable
-      onPress={onPress}
-      onLongPress={onLongPress}
-      delayLongPress={300}
-    >
+    <View>
       {isSelected && <View style={styles.selectedOverlay} />}
 
       <Animated.View
@@ -136,18 +369,17 @@ const MessageBubble = React.memo(({
         ]}
       >
         {item.replyMessageId && (
-          <TouchableOpacity
+          <View
             style={[
               styles.replyPreview,
               isOwnMessage ? styles.ownReplyPreview : styles.otherReplyPreview
             ]}
-            onPress={() => onReplyPreviewClick(item.replyMessageId!)}
           >
             <Text style={styles.replyName}>{item.replySenderName}</Text>
             <Text style={styles.replyText} numberOfLines={1}>
               {item.replyMessageText || 'Message'}
             </Text>
-          </TouchableOpacity>
+          </View>
         )}
 
         {!isOwnMessage && (
@@ -156,10 +388,23 @@ const MessageBubble = React.memo(({
           </Text>
         )}
 
-        {item.messageText && (
+        {item.messageType === "text" && (
           <Text style={styles.messageText}>
             {item.messageText}
           </Text>
+        )}
+
+        {item.messageType === "media" && (
+          <Text style={styles.messageText}>mediaFilesId: {item.mediaFilesId}</Text>
+        )}
+        {item.messageType === "poll" && (
+          <Text style={styles.messageText}>pollId: {item.pollId}</Text>
+        )}
+        {item.messageType === "table" && (
+          <Text style={styles.messageText}>tableId: {item.tableId}</Text>
+        )}
+        {item.messageType === "announcement" && (
+          <Text style={styles.messageText}>announcement: {item.messageText}</Text>
         )}
 
         <View style={styles.metaRow}>
@@ -176,7 +421,7 @@ const MessageBubble = React.memo(({
           )}
         </View>
       </Animated.View>
-    </Pressable>
+    </View>
   );
 }, (prevProps, nextProps) => {
   return (
@@ -187,7 +432,6 @@ const MessageBubble = React.memo(({
     prevProps.isSelected === nextProps.isSelected
   );
 });
-
 const TelegramHeader = React.memo(({
   roomName,
   memberCount,
@@ -227,7 +471,7 @@ const TelegramHeader = React.memo(({
         <Ionicons name="arrow-back" size={24} color="#000" />
       </TouchableOpacity>
 
-      <TouchableOpacity onPress={onAvatarPress} style={styles.headerContent}>
+      <TouchableOpacity onPress={onMenuPress} style={styles.headerContent}>
         <View style={styles.avatar}>
           <Text style={styles.avatarText}>{getInitials(roomName)}</Text>
         </View>
@@ -246,8 +490,8 @@ const TelegramHeader = React.memo(({
         </View>
       </TouchableOpacity>
 
-      {onMenuPress && (
-        <TouchableOpacity onPress={onMenuPress} style={styles.menuButton}>
+      {onAvatarPress && (
+        <TouchableOpacity onPress={onAvatarPress} style={styles.menuButton}>
           <Ionicons name="ellipsis-vertical" size={20} color="#000" />
         </TouchableOpacity>
       )}
@@ -346,6 +590,7 @@ export default function ChatRoomScreen() {
     );
 
     const grouped: { [key: string]: Message[] } = {};
+    console.log("sortedMessages", sortedMessages);
     sortedMessages.forEach(message => {
       const date = formatISTDate(message.createdAt, {
         year: 'numeric',
@@ -468,6 +713,18 @@ export default function ChatRoomScreen() {
       });
     });
   }, [roomId]);
+
+const handleStartSelection = useCallback((message: Message) => {
+  setSelectedMessages([message]);
+}, []);
+
+const handleSelectMessage = useCallback((message: Message) => {
+  setSelectedMessages(prev => [...prev, message]);
+}, []);
+
+const handleDeselectMessage = useCallback((message: Message) => {
+  setSelectedMessages(prev => prev.filter(msg => msg.id !== message.id));
+}, []);
 
   const scrollToBottom = useCallback(() => {
     if (flatListRef.current && messages.length > 0) {
@@ -653,6 +910,7 @@ export default function ChatRoomScreen() {
       }
 
       setRoom(response.data);
+      console.log("response.data", response.data);
       const initialMessages = response.data.messages || [];
       setMessages(initialMessages);
       setMessagesSet(new Set(initialMessages.map((msg: Message) => msg.id)));
@@ -719,6 +977,7 @@ export default function ChatRoomScreen() {
         tableId: message.tableId,
         replyMessageId: message.replyMessageId,
       };
+      console.log("newMessage", newMessage);
       addMessage(newMessage, true);
     }
   }, [currentUser?.userId, addMessage]);
@@ -1168,84 +1427,48 @@ export default function ChatRoomScreen() {
     if (item.itemType === 'dateSeparator') {
       return <DateSeparator dateString={item.date} formatDateForDisplay={formatDateForDisplay} />;
     }
-
+  
     const message = item as Message & { itemType: 'message' };
     const isOwnMessage = message.senderId === currentUser?.userId;
     const isSelected = isMessageSelected(message.id);
     const messageAnimation = getMessageAnimation(message.id);
     const blinkAnimation = blinkAnimations.current.get(message.id);
-    
-    // Determine if this message can be selected
-    const canSelect = isGroupAdmin || isOwnMessage;
-
+  
     return (
-      <View>
-        <Animated.View
-          style={{
-            position: 'absolute',
-            top: 0,
-            bottom: 0,
-            right: 16,
-            justifyContent: 'center',
-            opacity: messageAnimation.interpolate({
-              inputRange: [-80, -30, 0],
-              outputRange: [1, 0.5, 0],
-              extrapolate: 'clamp',
-            }),
-          }}
-        >
-          <View style={{ backgroundColor: '#0088CC', borderRadius: 20, padding: 8 }}>
-            <Ionicons name="arrow-undo" size={20} color="white" />
-          </View>
-        </Animated.View>
-
-        <Animated.View
-          style={{
-            position: 'absolute',
-            top: 0,
-            bottom: 0,
-            left: 16,
-            justifyContent: 'center',
-            opacity: messageAnimation.interpolate({
-              inputRange: [0, 30, 80],
-              outputRange: [0, 0.5, 1],
-              extrapolate: 'clamp',
-            }),
-          }}
-        >
-          <View style={{ backgroundColor: '#0088CC', borderRadius: 20, padding: 8 }}>
-            <Ionicons name="arrow-undo" size={20} color="white" />
-          </View>
-        </Animated.View>
-
-        <PanGestureHandler
-          onBegan={() => handleGestureBegin(message.id)}
-          onGestureEvent={(event) => handleGestureUpdate(event, message.id)}
-          onEnded={(event) => handleGestureEnd(event, message)}
-          onCancelled={(event) => handleGestureEnd(event, message)}
-          onFailed={(event) => handleGestureEnd(event, message)}
-          enabled={!isSelected && canSelect}
-          activeOffsetX={[-20, 20]}
-          failOffsetY={[-30, 30]}
-        >
-          <Animated.View style={{ transform: [{ translateX: messageAnimation }] }}>
-            <MessageBubble
-              item={message}
-              isOwnMessage={isOwnMessage}
-              isSelected={isSelected}
-              currentUser={currentUser}
-              onPress={() => canSelect && handleMessagePress(message)}
-              onLongPress={() => canSelect && handleMessageLongPress(message)}
-              onReplyPreviewClick={handleReplyPreviewClick}
-              formatTime={formatISTTime}
-              blinkAnimation={blinkAnimation}
-            />
-          </Animated.View>
-        </PanGestureHandler>
-      </View>
+      <MessageItem
+        message={message}
+        isOwnMessage={isOwnMessage}
+        isSelected={isSelected}
+        isGroupAdmin={isGroupAdmin}
+        currentUser={currentUser}
+        selectedMessagesCount={selectedMessages.length}
+        messageAnimation={messageAnimation}
+        blinkAnimation={blinkAnimation}
+        onSelect={handleSelectMessage}
+        onDeselect={handleDeselectMessage}
+        onStartSelection={handleStartSelection}
+        onGestureBegin={handleGestureBegin}
+        onGestureUpdate={handleGestureUpdate}
+        onGestureEnd={handleGestureEnd}
+        onReplyPreviewClick={handleReplyPreviewClick}
+        formatTime={formatISTTime}
+      />
     );
-  }, [currentUser, selectedMessages, formatDateForDisplay, isGroupAdmin, handleMessagePress, handleMessageLongPress, handleReplyPreviewClick]);
-
+  }, [
+    currentUser, 
+    selectedMessages.length, 
+    formatDateForDisplay, 
+    isGroupAdmin, 
+    isMessageSelected,
+    handleSelectMessage,
+    handleDeselectMessage,
+    handleStartSelection,
+    handleGestureBegin,
+    handleGestureUpdate,
+    handleGestureEnd,
+    handleReplyPreviewClick,
+    getMessageAnimation,
+  ]);
   const keyExtractor = useCallback((item: ChatListItem) => {
     if (item.itemType === 'dateSeparator') return item.id;
     return `msg-${(item as Message).id}`;
@@ -1325,7 +1548,7 @@ export default function ChatRoomScreen() {
             data={preparedListData}
             keyExtractor={keyExtractor}
             renderItem={renderItem}
-            extraData={{ isGroupAdmin, selectedMessagesCount: selectedMessages.length }}
+            extraData={[isGroupAdmin, selectedMessages]}
             inverted={true}
             contentContainerStyle={styles.listContent}
             style={styles.chatContainer}
@@ -1422,7 +1645,7 @@ export default function ChatRoomScreen() {
           {/* Non-admin message */}
           {!isGroupAdmin && (
             <View style={{
-              padding: 16,
+              padding: 10,
               borderTopWidth: StyleSheet.hairlineWidth,
               borderTopColor: '#E5E5E5',
               backgroundColor: '#F9F9F9',

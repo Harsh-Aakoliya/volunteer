@@ -157,7 +157,7 @@ function MembersTab({ members: initialMembers, roomId, onlineUsers: initialOnlin
   return (
     <View className="flex-1 bg-gray-50">
       {/* Stats Header */}
-      <View className="px-4 py-3 bg-white border-b border-gray-100 flex-row justify-between items-center">
+      {/* <View className="px-4 py-3 bg-white border-b border-gray-100 flex-row justify-between items-center">
         <View className="flex-row items-center">
           <View className="flex-row items-center mr-4">
             <View className="w-2 h-2 bg-green-500 rounded-full mr-1.5" />
@@ -171,7 +171,7 @@ function MembersTab({ members: initialMembers, roomId, onlineUsers: initialOnlin
         <Text className="text-sm text-gray-500">
           {membersWithStatus.length} total
         </Text>
-      </View>
+      </View> */}
 
       <FlatList
         data={membersWithStatus}
