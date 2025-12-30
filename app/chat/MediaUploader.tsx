@@ -60,7 +60,6 @@ export default function MediaUploadApp() {
   const { roomId, userId, vmMedia } = useLocalSearchParams();
   const navigation = useNavigation();
   const isVmMedia = vmMedia === 'true';
-  
   const [uploading, setUploading] = useState(false);
   const [vmMediaFiles, setVmMediaFiles] = useState<VMMediaFile[]>([]);
   const [uploadingFiles, setUploadingFiles] = useState<UploadingFile[]>([]);

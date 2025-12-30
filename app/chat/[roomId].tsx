@@ -267,16 +267,16 @@ const MessageItem = React.memo(({
                       )}
 
                       {message.messageType === "media" && (
-                        <Text style={styles.messageText}>mediaFilesId: {message.mediaFilesId}</Text>
+                        <Text style={styles.messageText}>shared media file: {message.mediaFilesId}</Text>
                       )}
                       {message.messageType === "poll" && (
-                        <Text style={styles.messageText}>pollId: {message.pollId}</Text>
+                        <Text style={styles.messageText}>shared poll: {message.pollId}</Text>
                       )}
                       {message.messageType === "table" && (
-                        <Text style={styles.messageText}>tableId: {message.tableId}</Text>
+                        <Text style={styles.messageText}>shared table: {message.tableId}</Text>
                       )}
                       {message.messageType === "announcement" && (
-                        <Text style={styles.messageText}>announcement: {message.messageText}</Text>
+                        <Text style={styles.messageText}>{message.messageText || "shared an announcement"}</Text>
                       )}
 
                       <View style={styles.metaRow}>
@@ -590,7 +590,6 @@ export default function ChatRoomScreen() {
     );
 
     const grouped: { [key: string]: Message[] } = {};
-    console.log("sortedMessages", sortedMessages);
     sortedMessages.forEach(message => {
       const date = formatISTDate(message.createdAt, {
         year: 'numeric',
@@ -1034,8 +1033,10 @@ const handleDeselectMessage = useCallback((message: Message) => {
 
   useFocusEffect(
     useCallback(() => {
+      // console.log("useFocusEffect calling");
       if (roomId && !hasFocusedOnce.current) {
-        hasFocusedOnce.current = true;
+        // console.log("useFocusEffect calling 2");
+        hasFocusedOnce.current = true; //this is causing the issue for media grid messages send
         loadRoomDetails();
       }
       return () => {

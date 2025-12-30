@@ -9,7 +9,7 @@ interface AttachmentsGridProps {
   onAudioRecord?: () => void;
 }
 
-export default function AttachmentsGrid({ roomId, userId, onOptionSelect, onAudioRecord }: AttachmentsGridProps) {
+export default function AttachmentsGrid({ roomId, userId, onOptionSelect, onAudioRecord, onSend }: AttachmentsGridProps) {
   const router = useRouter();
 
   const handleOptionPress = (pathname: string, params: any) => {
