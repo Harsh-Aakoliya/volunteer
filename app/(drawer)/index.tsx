@@ -77,9 +77,11 @@ const getInitials = (name: string): string => {
 
 // ==================== TYPES ====================
 
+// UPDATE the RoomListItem interface:
 interface RoomListItem extends ChatRoom {
   unreadCount: number;
   lastMessage?: LastMessage;
+  onlineCount?: number;  // Optional since groups might have this
 }
 
 // ==================== AVATAR COMPONENT ====================
@@ -537,41 +539,6 @@ const Header = memo(
   }
 );
 
-// ==================== CONNECTION STATUS BAR ====================
-
-const ConnectionStatusBar = memo(({ isConnected }: { isConnected: boolean }) => {
-  const translateY = useRef(new Animated.Value(isConnected ? -40 : 0)).current;
-
-  useEffect(() => {
-    Animated.timing(translateY, {
-      toValue: isConnected ? -40 : 0,
-      duration: 300,
-      useNativeDriver: true,
-    }).start();
-  }, [isConnected]);
-
-  if (isConnected) return null;
-
-  return (
-    <Animated.View
-      style={{
-        transform: [{ translateY }],
-        backgroundColor: "#FFA726",
-        paddingVertical: 8,
-        paddingHorizontal: 16,
-        flexDirection: "row",
-        alignItems: "center",
-        justifyContent: "center",
-      }}
-    >
-      <ActivityIndicator size="small" color="#FFFFFF" />
-      <Text style={{ color: "#FFFFFF", marginLeft: 8, fontWeight: "600" }}>
-        Connecting...
-      </Text>
-    </Animated.View>
-  );
-});
-
 // ==================== EMPTY STATE COMPONENT ====================
 
 const EmptySearchResults = memo(({ searchQuery }: { searchQuery: string }) => (
@@ -638,67 +605,74 @@ export default function ChatRoomsList() {
 
   // ==================== DATA LOADING ====================
 
-  const loadRooms = useCallback(async (forceRefresh = false) => {
-    if (!isMountedRef.current) return;
+// REPLACE the loadRooms function:
+const loadRooms = useCallback(async (forceRefresh = false) => {
+  if (!isMountedRef.current) return;
 
-    try {
-      if (!forceRefresh && !hasLoadedRef.current) {
-        const cached = await ChatRoomStorage.getChatRooms();
-        if (cached?.rooms?.length) {
-          console.log("📦 [Rooms] Loaded from cache:", cached.rooms.length);
-          setRooms(
-            cached.rooms.map((r) => ({
-              ...r,
-              unreadCount: 0,
-              onlineCount: 0,
-            }))
-          );
-          setIsLoading(false);
-        }
-      }
-
-      console.log("��� [Rooms] Fetching from server...");
-      setIsSyncing(true);
-
-      const freshRooms = await fetchChatRooms();
-      hasLoadedRef.current = true;
-
-      if (!isMountedRef.current) return;
-
-      await ChatRoomStorage.saveChatRooms(freshRooms);
-
-      setRooms(
-        freshRooms.map((r) => ({
-          ...r,
-          unreadCount: 0,
-          onlineCount: 0,
-        }))
-      );
-
-      console.log("✅ [Rooms] Loaded:", freshRooms.length);
-    } catch (error) {
-      console.error("❌ [Rooms] Load error:", error);
-    } finally {
-      if (isMountedRef.current) {
+  try {
+    if (!forceRefresh && !hasLoadedRef.current) {
+      const cached = await ChatRoomStorage.getChatRooms();
+      if (cached?.rooms?.length) {
+        console.log("📦 [Rooms] Loaded from cache:", cached.rooms.length);
+        setRooms(
+          cached.rooms.map((r: any) => ({
+            ...r,
+            unreadCount: r.unreadCount || 0,
+            lastMessage: r.lastMessage || undefined,
+          }))
+        );
         setIsLoading(false);
-        setIsSyncing(false);
-        setIsRefreshing(false);
       }
     }
-  }, []);
+
+    console.log("🔄 [Rooms] Fetching from server...");
+    setIsSyncing(true);
+
+    const freshRooms = await fetchChatRooms();
+    hasLoadedRef.current = true;
+
+    if (!isMountedRef.current) return;
+
+    // Save to cache with lastMessage and unreadCount
+    await ChatRoomStorage.saveChatRooms(freshRooms);
+
+    setRooms(
+      freshRooms.map((r: any) => ({
+        ...r,
+        unreadCount: r.unreadCount || 0,
+        lastMessage: r.lastMessage || undefined,
+      }))
+    );
+
+    console.log("✅ [Rooms] Loaded:", freshRooms.length);
+  } catch (error) {
+    console.error("❌ [Rooms] Load error:", error);
+  } finally {
+    if (isMountedRef.current) {
+      setIsLoading(false);
+      setIsSyncing(false);
+      setIsRefreshing(false);
+    }
+  }
+}, []);
 
   // ==================== SOCKET DATA APPLICATION ====================
 
-  const roomsWithSocketData = React.useMemo(() => {
-    return rooms.map((room) => {
-      const roomId = room.roomId?.toString() || "";
-      return {
-        ...room,
-        lastMessage: lastMessages[roomId] || room.lastMessage,
-        unreadCount: unreadCounts[roomId] ?? room.unreadCount,
-      };
-    });
-  }, [rooms, lastMessages, unreadCounts]);
+const roomsWithSocketData = React.useMemo(() => {
+  return rooms.map((room) => {
+    const roomId = room.roomId?.toString() || "";
+    
+    // Socket data takes priority over initial/cached data
+    const socketLastMessage = lastMessages[roomId];
+    const socketUnreadCount = unreadCounts[roomId];
+    
+    return {
+      ...room,
+      lastMessage: socketLastMessage || room.lastMessage,
+      unreadCount: socketUnreadCount !== undefined ? socketUnreadCount : room.unreadCount,
+    };
+  });
+}, [rooms, lastMessages, unreadCounts]);
 
   const sortedRooms = React.useMemo(() => {
     return [...roomsWithSocketData].sort((a, b) => {
@@ -786,7 +760,7 @@ export default function ChatRoomsList() {
       },
       [user?.id]
     ),
-    onMessageEdited: useCallback((data: MessageEditedEvent) => {
+    onMessageEdited: useCallback((data: MessageEditedEvent & { isLastMessage?: boolean }) => {
       console.log("✏️ [Rooms] Message edited in room:", data.roomId);
       setRooms((prev) =>
         prev.map((r) => {
@@ -794,54 +768,67 @@ export default function ChatRoomsList() {
             r.roomId?.toString() === data.roomId &&
             r.lastMessage?.id === data.messageId
           ) {
-            return {
+            const updatedRoom = {
               ...r,
               lastMessage: {
                 ...r.lastMessage,
                 messageText: data.messageText,
               },
             };
+            return updatedRoom;
           }
           return r;
         })
       );
+      
+      // Update local cache
+      ChatRoomStorage.getChatRooms().then((cached) => {
+        if (cached?.rooms) {
+          const updatedRooms = cached.rooms.map((r) => {
+            if (
+              r.roomId?.toString() === data.roomId &&
+              (r as any).lastMessage?.id === data.messageId
+            ) {
+              return {
+                ...r,
+                lastMessage: {
+                  ...(r as any).lastMessage,
+                  messageText: data.messageText,
+                },
+              };
+            }
+            return r;
+          });
+          ChatRoomStorage.saveChatRooms(updatedRooms);
+        }
+      });
     }, []),
     onMessagesDeleted: useCallback(
-      (data: MessagesDeletedEvent) => {
+      (data: MessagesDeletedEvent & { newLastMessage?: LastMessage; wasLastMessageDeleted?: boolean }) => {
         console.log(
           "🗑️ [Rooms] Messages deleted in room:",
           data.roomId,
           data.messageIds
         );
+        
         setRooms((prev) =>
           prev.map((r) => {
             if (r.roomId?.toString() === data.roomId) {
-              const lastMsgId = r.lastMessage?.id;
-              const wasLastMessageDeleted =
-                lastMsgId && data.messageIds.includes(lastMsgId);
-
-              if (wasLastMessageDeleted) {
+              // Only update lastMessage if it was deleted
+              if (data.wasLastMessageDeleted) {
                 return {
                   ...r,
-                  lastMessage: undefined,
-                  unreadCount: Math.max(
-                    0,
-                    (r.unreadCount || 0) - data.messageIds.length
-                  ),
+                  lastMessage: data.newLastMessage || undefined,
+                  // DO NOT modify unreadCount here - it will be refreshed from server
                 };
               }
-
-              return {
-                ...r,
-                unreadCount: Math.max(
-                  0,
-                  (r.unreadCount || 0) - data.messageIds.length
-                ),
-              };
+              return r;
             }
             return r;
           })
         );
+        
+        // Refresh room data from server to get accurate unread counts
         refreshRoomData();
       },
       [refreshRoomData]
@@ -962,9 +949,6 @@ export default function ChatRoomsList() {
         onSearchChange={setSearchQuery}
         onMenuPress={handleMenuPress}
       />
-
-      {/* Connection Status */}
-      {/* <ConnectionStatusBar isConnected={isConnected} /> */}
 
       {/* Room List */}
       <FlatList

@@ -85,6 +85,24 @@ interface EventSubscription {
   callback: EventCallback;
 }
 
+// Find and UPDATE the MessageEditedEvent interface:
+export interface MessageEditedEvent {
+  roomId: string;
+  messageId: number;
+  messageText: string;
+  isEdited: boolean;
+  editedAt: string;
+  isLastMessage?: boolean;  // NEW
+}
+
+// UPDATE MessagesDeletedEvent interface:
+export interface MessagesDeletedEvent {
+  roomId: string;
+  messageIds: (number | string)[];
+  newLastMessage?: LastMessage;  // NEW
+  wasLastMessageDeleted?: boolean;  // NEW
+}
+
 // ==================== SOCKET MANAGER ====================
 
 class SocketManager {

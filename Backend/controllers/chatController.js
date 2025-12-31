@@ -20,26 +20,79 @@ const chatController = {
       res.status(500).json({ message: "Server error", error: error.message });
     }
   },
-  async getChatRooms(req, res) {
-    try {
-      const userId = Number(req.user.userId) || 0;
+async getChatRooms(req, res) {
+  try {
+    const userId = Number(req.user.userId) || 0;
 
-      const result = await pool.query(
-        `SELECT cr."roomId" as id, cr."roomName", cr."isactive", cr."createdby", cr."createdon",
-                cru."isAdmin", cru."canSendMessage"
-         FROM chatrooms cr
-         JOIN chatroomusers cru ON cr."roomId" = cru."roomId"
-         WHERE cru."userId" = $1::integer and cr."isactive" = 1
-         ORDER BY cr."createdon" DESC`,
-        [userId]
-      );
+    const result = await pool.query(
+      `SELECT cr."roomId" as id, cr."roomName", cr."isactive", cr."createdby", cr."createdon",
+              cru."isAdmin", cru."canSendMessage"
+       FROM chatrooms cr
+       JOIN chatroomusers cru ON cr."roomId" = cru."roomId"
+       WHERE cru."userId" = $1::integer and cr."isactive" = 1
+       ORDER BY cr."createdon" DESC`,
+      [userId]
+    );
 
-      res.json(result.rows);
-    } catch (error) {
-      console.error('Error fetching chat rooms:', error);
-      res.status(500).json({ message: "Server error", error: error.message });
-    }
-  },
+    // Get last message and unread count for each room
+    const roomsWithDetails = await Promise.all(
+      result.rows.map(async (room) => {
+        // Get last message
+        const lastMsgResult = await pool.query(
+          `SELECT m.id, m."messageText", m."messageType", m."createdAt", 
+                  m."mediaFilesId", m."pollId", m."tableId",
+                  sm.seid::text as "senderId", sm.sevakname as "senderName"
+           FROM chatmessages m
+           JOIN "SevakMaster" sm ON m."senderId"::integer = sm.seid
+           WHERE m."roomId" = $1 AND m."isScheduled" = FALSE
+           ORDER BY m."createdAt" DESC
+           LIMIT 1`,
+          [room.id]
+        );
+
+        // Get unread count
+        const unreadResult = await pool.query(
+          `SELECT COUNT(*) as count
+           FROM chatmessages m
+           WHERE m."roomId" = $1 
+           AND m."senderId"::integer != $2
+           AND m."isScheduled" = FALSE
+           AND NOT EXISTS (
+             SELECT 1 FROM messagereadstatus mrs 
+             WHERE mrs."messageId" = m.id AND mrs."userId" = $2::text
+           )`,
+          [room.id, userId]
+        );
+
+        const lastMessage = lastMsgResult.rows[0] ? {
+          id: lastMsgResult.rows[0].id,
+          messageText: lastMsgResult.rows[0].messageText,
+          messageType: lastMsgResult.rows[0].messageType || 'text',
+          createdAt: lastMsgResult.rows[0].createdAt,
+          roomId: room.id.toString(),
+          sender: {
+            userId: lastMsgResult.rows[0].senderId,
+            userName: lastMsgResult.rows[0].senderName,
+          },
+          mediaFilesId: lastMsgResult.rows[0].mediaFilesId,
+          pollId: lastMsgResult.rows[0].pollId,
+          tableId: lastMsgResult.rows[0].tableId,
+        } : null;
+
+        return {
+          ...room,
+          lastMessage,
+          unreadCount: parseInt(unreadResult.rows[0]?.count || '0', 10),
+        };
+      })
+    );
+
+    res.json(roomsWithDetails);
+  } catch (error) {
+    console.error('Error fetching chat rooms:', error);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+},
   // Chat Controller - Updated createChatRoom function
   async createChatRoom(req, res) {
     const client = await pool.connect();
@@ -540,60 +593,6 @@ const chatController = {
       }
 
       let newMessages = [];
-
-      // If we have mediaFiles with optional message property,
-      // each becomes a separate message
-      // if (mediaFiles && mediaFiles.length > 0) {
-      //   // Begin transaction for multiple inserts
-      //   const client = await pool.connect();
-      //   try {
-      //     await client.query('BEGIN');
-
-      //     // Process each media file as a separate message
-      //     for (const mediaFile of mediaFiles) {
-      //       // Use the message from the media file or empty string if not provided
-      //       const msgText = mediaFile.message || "";
-      //       // Remove the message property from mediaFile to avoid duplication
-      //       const { message, ...mediaFileWithoutMessage } = mediaFile;
-
-      //       // Insert the message with a single media file
-      //       const result = await client.query(
-      //         `INSERT INTO chatmessages ("roomId", "senderId", "messageText", "mediaFiles")
-      //          VALUES ($1, $2, $3, $4)
-      //          RETURNING *`,
-      //         [
-      //           roomIdInt, 
-      //           senderId, 
-      //           msgText, 
-      //           JSON.stringify([mediaFileWithoutMessage])
-      //         ]
-      //       );
-
-      //       const newMessage = result.rows[0];
-
-      //       // Parse mediaFiles
-      //       if (newMessage.mediaFiles) {
-      //         try {
-      //           newMessage.mediaFiles = JSON.parse(newMessage.mediaFiles);
-      //         } catch (err) {
-      //           console.error('Error parsing mediaFiles:', err);
-      //           newMessage.mediaFiles = [];
-      //         }
-      //       }
-
-      //       newMessages.push(newMessage);
-      //     }
-
-      //     await client.query('COMMIT');
-      //   } catch (error) {
-      //     await client.query('ROLLBACK');
-      //     throw error;
-      //   } finally {
-      //     client.release();
-      //   }
-      // } else {
-      // Traditional single message without media files or with all media files in one message
-
       //store caption in media table (for old media upload system)
       if (mediaFiles && messageType !== "media") {
         // Step 1: Get current driveUrlObject array from DB
@@ -1046,6 +1045,11 @@ const chatController = {
 
       // Emit message edit event to all users in the room
       if (io) {
+        // Check if this was the last message
+        const isLastMessage = lastMessageByRoom && 
+          lastMessageByRoom[roomIdInt] && 
+          lastMessageByRoom[roomIdInt].id === messageIdInt;
+      
         io.to(`room_${roomIdInt}`).emit('messageEdited', {
           roomId: roomIdInt.toString(),
           messageId: messageIdInt,
@@ -1055,11 +1059,33 @@ const chatController = {
           editedBy: userId,
           editorName: editorName,
           senderId: message.senderId,
-          senderName: senderName
+          senderName: senderName,
+          isLastMessage: isLastMessage  // NEW: flag to indicate if this was the last message
         });
-
+      
+        // Also emit roomUpdate if this was the last message so room list updates
+        if (isLastMessage) {
+          // Get all members of the room
+          const membersResult = await pool.query(
+            `SELECT "userId" FROM chatroomusers WHERE "roomId" = $1`,
+            [roomIdInt]
+          );
+          
+          const memberIds = membersResult.rows.map(row => row.userId.toString());
+          
+          // Emit room update to all members
+          memberIds.forEach(memberId => {
+            global.emitToUser(memberId, 'roomUpdate', {
+              roomId: roomIdInt.toString(),
+              lastMessage: lastMessageByRoom[roomIdInt],
+              unreadCount: unreadMessagesByUser[memberId]?.[roomIdInt] || 0
+            });
+          });
+        }
+      
         console.log(`Message edit event sent to room_${roomIdInt}`);
       }
+      
 
       res.json({
         message: "Message edited successfully",
@@ -1274,38 +1300,71 @@ const chatController = {
       const memberIds = membersResult.rows.map(row => row.userId);
 
       // Update unread counts by decreasing count for deleted messages
-      memberIds.forEach((memberId) => {
-        if (unreadMessagesByUser[memberId] && unreadMessagesByUser[memberId][roomIdInt]) {
-          // Count how many deleted messages were unread for this user
-          let unreadDeletedCount = 0;
-          deletedMessages.forEach(deletedMsg => {
-            // If message was sent by someone else, it was potentially unread
-            if (deletedMsg.senderId !== memberId) {
-              unreadDeletedCount++;
-            }
-          });
+      // memberIds.forEach((memberId) => {
+      //   if (unreadMessagesByUser[memberId] && unreadMessagesByUser[memberId][roomIdInt]) {
+      //     // Count how many deleted messages were unread for this user
+      //     let unreadDeletedCount = 0;
+      //     deletedMessages.forEach(deletedMsg => {
+      //       // If message was sent by someone else, it was potentially unread
+      //       if (deletedMsg.senderId !== memberId) {
+      //         unreadDeletedCount++;
+      //       }
+      //     });
 
-          // Decrease unread count, but don't go below 0
-          const currentUnread = unreadMessagesByUser[memberId][roomIdInt];
-          unreadMessagesByUser[memberId][roomIdInt] = Math.max(0, currentUnread - unreadDeletedCount);
-        }
-      });
+      //     // Decrease unread count, but don't go below 0
+      //     const currentUnread = unreadMessagesByUser[memberId][roomIdInt];
+      //     unreadMessagesByUser[memberId][roomIdInt] = Math.max(0, currentUnread - unreadDeletedCount);
+      //   }
+      // });
 
       await client.query('COMMIT');
 
-      // Emit deletion events to all users in the room
       if (io) {
-        // Emit message deletion to all users in the room
+        // Calculate per-user unread changes
+        const userUnreadChanges = {};
+        memberIds.forEach(memberId => {
+          const memberIdStr = memberId.toString();
+          // Only decrease unread for messages not sent by this user
+          let unreadDecrease = 0;
+          deletedMessages.forEach(msg => {
+            if (msg.senderId.toString() !== memberIdStr) {
+              unreadDecrease++;
+            }
+          });
+          
+          // Get current unread count
+          const currentUnread = unreadMessagesByUser[memberIdStr]?.[roomIdInt] || 0;
+          const newUnread = Math.max(0, currentUnread - unreadDecrease);
+          
+          // Update in-memory state
+          if (unreadMessagesByUser[memberIdStr]) {
+            unreadMessagesByUser[memberIdStr][roomIdInt] = newUnread;
+          }
+          
+          userUnreadChanges[memberIdStr] = {
+            decrease: unreadDecrease,
+            newCount: newUnread
+          };
+        });
+      
+        // Emit message deletion to all users in the room with new last message info
         io.to(`room_${roomIdInt}`).emit('messagesDeleted', {
           roomId: roomIdInt.toString(),
           messageIds: messageIds,
-          deletedBy: userId
+          deletedBy: userId,
+          newLastMessage: newLastMessage,
+          wasLastMessageDeleted: needToUpdateLastMessage
         });
-
-        // If last message was updated, emit updates to all room members
-        if (needToUpdateLastMessage) {
-          await chatController.sendRoomUpdateToMembersForDeletion(roomIdInt, newLastMessage, memberIds, io, unreadMessagesByUser);
-        }
+      
+        // Emit individual room updates with correct unread counts per user
+        memberIds.forEach(memberId => {
+          const memberIdStr = memberId.toString();
+          global.emitToUser(memberIdStr, 'roomUpdate', {
+            roomId: roomIdInt.toString(),
+            lastMessage: newLastMessage,
+            unreadCount: userUnreadChanges[memberIdStr]?.newCount || 0
+          });
+        });
       }
 
       res.json({

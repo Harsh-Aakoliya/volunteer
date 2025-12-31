@@ -11,6 +11,7 @@
         "output": "static",
         "favicon": "./assets/images/favicon.png"
       },
+      "host": "lan",
       "plugins": [
         "expo-router",
         "expo-font",

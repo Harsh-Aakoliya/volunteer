@@ -15,7 +15,7 @@ import { SocketProvider, useSocket } from '@/contexts/SocketContext';
 
 // Inner component that uses socket context
 function AppContent() {
-  const [isReady, setIsReady] = useState(false);
+  const [isReady, setIsReady] = useState(true);
   const isConnected = useNetworkStatus();
 
   useEffect(() => {

@@ -70,6 +70,49 @@ export const ChatRoomStorage = {
       return null;
     }
   },
+  // Update a single room's last message
+updateRoomLastMessage: async (roomId: string, lastMessage: any): Promise<void> => {
+  try {
+    const cached = await ChatRoomStorage.getChatRooms();
+    if (cached?.rooms) {
+      const updatedRooms = cached.rooms.map((room) => {
+        if (room.roomId?.toString() === roomId) {
+          return {
+            ...room,
+            lastMessage,
+          };
+        }
+        return room;
+      });
+      await ChatRoomStorage.saveChatRooms(updatedRooms);
+      console.log(`📝 Updated last message for room ${roomId}`);
+    }
+  } catch (error) {
+    console.error('❌ Error updating room last message:', error);
+  }
+},
+
+// Update a single room's unread count
+updateRoomUnreadCount: async (roomId: string, unreadCount: number): Promise<void> => {
+  try {
+    const cached = await ChatRoomStorage.getChatRooms();
+    if (cached?.rooms) {
+      const updatedRooms = cached.rooms.map((room) => {
+        if (room.roomId?.toString() === roomId) {
+          return {
+            ...room,
+            unreadCount,
+          };
+        }
+        return room;
+      });
+      await ChatRoomStorage.saveChatRooms(updatedRooms);
+      console.log(`📝 Updated unread count for room ${roomId}: ${unreadCount}`);
+    }
+  } catch (error) {
+    console.error('❌ Error updating room unread count:', error);
+  }
+},
 
   // Clear all cache
   clearCache: async (): Promise<void> => {

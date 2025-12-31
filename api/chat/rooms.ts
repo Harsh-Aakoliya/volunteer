@@ -69,6 +69,8 @@ export const fetchChatRooms = async (): Promise<ChatRoom[]> => {
     createdOn: room.createdOn,
     isAdmin: room.isAdmin || false,
     canSendMessage: room.canSendMessage || false,
+    lastMessage: room.lastMessage || null,  // NEW
+    unreadCount: room.unreadCount || 0,     // NEW
   }));
 };
 

@@ -19,10 +19,12 @@ const setupSocketIO = (io, app) => {
   const onlineUsers = new Set();
 
   // Map: roomId -> last message data
-  const lastMessages = {};
+  // Use the object from app to stay in sync with controllers
+  const lastMessages = app.get('lastMessageByRoom');
 
   // Map: userId -> { roomId: unreadCount }
-  const unreadCounts = {};
+  // Use the object from app to stay in sync with controllers
+  const unreadCounts = app.get('unreadMessagesByUser');
 
   // Throttle: userId -> lastRequestTime
   const requestThrottle = new Map();

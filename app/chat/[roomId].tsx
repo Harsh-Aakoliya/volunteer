@@ -1,4 +1,4 @@
-// app/chat/[roomId].tsx - Chat Room with Socket Context
+// app/chat/[roomId].tsx
 import * as React from 'react';
 import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import {
@@ -75,8 +75,6 @@ type ChatListItem =
 
 // ==================== MEMOIZED COMPONENTS ====================
 
-// Add this component BEFORE the ChatRoomScreen component
-
 const MessageItem = React.memo(({
   message,
   isOwnMessage,
@@ -86,6 +84,8 @@ const MessageItem = React.memo(({
   selectedMessagesCount,
   messageAnimation,
   blinkAnimation,
+  showSenderName,      // UPDATED PROP NAME
+  hasTail,             // UPDATED PROP NAME
   onSelect,
   onDeselect,
   onStartSelection,
@@ -103,6 +103,8 @@ const MessageItem = React.memo(({
   selectedMessagesCount: number;
   messageAnimation: Animated.Value;
   blinkAnimation?: Animated.Value;
+  showSenderName: boolean;      // UPDATED PROP TYPE
+  hasTail: boolean;             // UPDATED PROP TYPE
   onSelect: (message: Message) => void;
   onDeselect: (message: Message) => void;
   onStartSelection: (message: Message) => void;
@@ -152,6 +154,37 @@ const MessageItem = React.memo(({
   } else if (typeof message.id === "string" && message.id.includes("temp")) {
     messageStatus = "sending";
   }
+
+  // --- Dynamic border radius logic for WhatsApp-like tail ---
+  const bubbleBorderRadius = useMemo(() => {
+    const defaultRadius = 18; // Standard rounded corner radius
+    const pointyRadius = 4;   // Smaller radius for the "tail" corner
+
+    if (hasTail) { // This message is the first in a continuous block (chronologically oldest)
+      if (isOwnMessage) {
+        // Outgoing message: tail at top-right
+        return {
+          borderTopLeftRadius: defaultRadius,
+          borderTopRightRadius: pointyRadius,
+          borderBottomLeftRadius: defaultRadius,
+          borderBottomRightRadius: defaultRadius,
+        };
+      } else {
+        // Incoming message: tail at top-left
+        return {
+          borderTopLeftRadius: pointyRadius,
+          borderTopRightRadius: defaultRadius,
+          borderBottomLeftRadius: defaultRadius,
+          borderBottomRightRadius: defaultRadius,
+        };
+      }
+    } else {
+      // Not the first message in its group, all corners are fully rounded
+      return {
+        borderRadius: defaultRadius,
+      };
+    }
+  }, [hasTail, isOwnMessage]); // Recalculate if hasTail or isOwnMessage changes
 
   return (
     <View>
@@ -236,7 +269,12 @@ const MessageItem = React.memo(({
                               inputRange: [0, 1],
                               outputRange: [isOwnMessage ? '#DCF8C6' : '#FFFFFF', '#fbbf24']
                             }) :
-                            (isOwnMessage ? '#DCF8C6' : '#FFFFFF')
+                            (isOwnMessage ? '#DCF8C6' : '#FFFFFF'),
+                          ...bubbleBorderRadius, // Apply dynamic border radii here
+                          // Adjust top margin for spacing between message groups
+                          marginTop: hasTail ? 8 : 2, 
+                          // Consistent small bottom margin for messages within a group
+                          marginBottom: 2, 
                         }
                       ]}
                     >
@@ -254,7 +292,8 @@ const MessageItem = React.memo(({
                         </View>
                       )}
 
-                      {!isOwnMessage && (
+                      {/* CONDITIONAL SENDER NAME DISPLAY: Only for incoming messages that are the first in a block */}
+                      {showSenderName && (
                         <Text style={styles.senderName}>
                           {message.senderName || "Unknown"}
                         </Text>
@@ -310,10 +349,11 @@ const MessageItem = React.memo(({
     prevProps.isOwnMessage === nextProps.isOwnMessage &&
     prevProps.isSelected === nextProps.isSelected &&
     prevProps.isGroupAdmin === nextProps.isGroupAdmin &&
-    prevProps.selectedMessagesCount === nextProps.selectedMessagesCount
+    prevProps.selectedMessagesCount === nextProps.selectedMessagesCount &&
+    prevProps.showSenderName === nextProps.showSenderName &&       // Update prop name in comparison
+    prevProps.hasTail === nextProps.hasTail                         // Update prop name in comparison
   );
 });
-
 
 const DateSeparator = React.memo(({ dateString, formatDateForDisplay }: {
   dateString: string;
@@ -328,176 +368,8 @@ const DateSeparator = React.memo(({ dateString, formatDateForDisplay }: {
   </View>
 ));
 
-const MessageBubble = React.memo(({
-  item,
-  isOwnMessage,
-  isSelected,
-  currentUser,
-  formatTime,
-  blinkAnimation,
-}: {
-  item: Message;
-  isOwnMessage: boolean;
-  isSelected: boolean;
-  currentUser: { userId: string; fullName: string | null } | null;
-  formatTime: (date: string) => string;
-  blinkAnimation?: Animated.Value;
-}) => {
-  let messageStatus: "sending" | "sent" | "delivered" | "read" | "error" = "sent";
-  if (typeof item.id === "number") {
-    messageStatus = "delivered";
-  } else if (typeof item.id === "string" && item.id.includes("temp")) {
-    messageStatus = "sending";
-  }
-
-  return (
-    <View>
-      {isSelected && <View style={styles.selectedOverlay} />}
-
-      <Animated.View
-        style={[
-          styles.messageBubble,
-          isOwnMessage ? styles.ownBubble : styles.otherBubble,
-          {
-            backgroundColor: blinkAnimation ?
-              blinkAnimation.interpolate({
-                inputRange: [0, 1],
-                outputRange: [isOwnMessage ? '#DCF8C6' : '#FFFFFF', '#fbbf24']
-              }) :
-              (isOwnMessage ? '#DCF8C6' : '#FFFFFF')
-          }
-        ]}
-      >
-        {item.replyMessageId && (
-          <View
-            style={[
-              styles.replyPreview,
-              isOwnMessage ? styles.ownReplyPreview : styles.otherReplyPreview
-            ]}
-          >
-            <Text style={styles.replyName}>{item.replySenderName}</Text>
-            <Text style={styles.replyText} numberOfLines={1}>
-              {item.replyMessageText || 'Message'}
-            </Text>
-          </View>
-        )}
-
-        {!isOwnMessage && (
-          <Text style={styles.senderName}>
-            {item.senderName || "Unknown"}
-          </Text>
-        )}
-
-        {item.messageType === "text" && (
-          <Text style={styles.messageText}>
-            {item.messageText}
-          </Text>
-        )}
-
-        {item.messageType === "media" && (
-          <Text style={styles.messageText}>mediaFilesId: {item.mediaFilesId}</Text>
-        )}
-        {item.messageType === "poll" && (
-          <Text style={styles.messageText}>pollId: {item.pollId}</Text>
-        )}
-        {item.messageType === "table" && (
-          <Text style={styles.messageText}>tableId: {item.tableId}</Text>
-        )}
-        {item.messageType === "announcement" && (
-          <Text style={styles.messageText}>announcement: {item.messageText}</Text>
-        )}
-
-        <View style={styles.metaRow}>
-          {item.isEdited && (
-            <Text style={styles.editedLabel}>edited</Text>
-          )}
-          <Text style={styles.timeText}>
-            {formatTime(item.createdAt || "")}
-          </Text>
-          {isOwnMessage && (
-            <View style={styles.statusContainer}>
-              <MessageStatus status={messageStatus} />
-            </View>
-          )}
-        </View>
-      </Animated.View>
-    </View>
-  );
-}, (prevProps, nextProps) => {
-  return (
-    prevProps.item.id === nextProps.item.id &&
-    prevProps.item.messageText === nextProps.item.messageText &&
-    prevProps.item.isEdited === nextProps.item.isEdited &&
-    prevProps.isOwnMessage === nextProps.isOwnMessage &&
-    prevProps.isSelected === nextProps.isSelected
-  );
-});
-const TelegramHeader = React.memo(({
-  roomName,
-  memberCount,
-  onlineCount,
-  onBackPress,
-  onAvatarPress,
-  onMenuPress,
-  isSyncing,
-}: {
-  roomName: string;
-  memberCount: number;
-  onlineCount: number;
-  onBackPress: () => void;
-  onAvatarPress: () => void;
-  onMenuPress?: () => void;
-  isSyncing: boolean;
-}) => {
-  const getInitials = (name: string) => {
-    return name
-      .split(' ')
-      .map(word => word[0])
-      .join('')
-      .toUpperCase()
-      .slice(0, 2);
-  };
-
-  const getStatusText = () => {
-    if (onlineCount > 0) {
-      return `${memberCount} members, ${onlineCount} online`;
-    }
-    return `${memberCount} members`;
-  };
-
-  return (
-    <View style={styles.header}>
-      <TouchableOpacity onPress={onBackPress} style={styles.backButton}>
-        <Ionicons name="arrow-back" size={24} color="#000" />
-      </TouchableOpacity>
-
-      <TouchableOpacity onPress={onMenuPress} style={styles.headerContent}>
-        <View style={styles.avatar}>
-          <Text style={styles.avatarText}>{getInitials(roomName)}</Text>
-        </View>
-
-        <View style={styles.headerInfo}>
-          <Text style={styles.roomName} numberOfLines={1}>
-            {roomName}
-          </Text>
-          <View style={styles.statusRow}>
-            {isSyncing ? (
-              <Text style={styles.statusText}>updating...</Text>
-            ) : (
-              <Text style={styles.statusText}>{getStatusText()}</Text>
-            )}
-          </View>
-        </View>
-      </TouchableOpacity>
-
-      {onAvatarPress && (
-        <TouchableOpacity onPress={onAvatarPress} style={styles.menuButton}>
-          <Ionicons name="ellipsis-vertical" size={20} color="#000" />
-        </TouchableOpacity>
-      )}
-    </View>
-  );
-});
+// MessageBubble is no longer needed as its content moved to MessageItem
+// TelegramHeader component remains unchanged
 
 // ==================== MAIN COMPONENT ====================
 
@@ -606,6 +478,7 @@ export default function ChatRoomScreen() {
     });
 
     const listData: ChatListItem[] = [];
+    // Sort dates in descending order for inverted FlatList (newest date first)
     const dateKeys = Object.keys(grouped).sort((a, b) => {
       const firstMessageA = grouped[a][0];
       const firstMessageB = grouped[b][0];
@@ -613,6 +486,7 @@ export default function ChatRoomScreen() {
     });
 
     dateKeys.forEach(date => {
+      // Sort messages within each date in descending order (newest message first)
       const dateMessages = [...grouped[date]].sort((a, b) =>
         new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
       );
@@ -1424,7 +1298,7 @@ const handleDeselectMessage = useCallback((message: Message) => {
 
   // ==================== RENDER ITEM ====================
 
-  const renderItem = useCallback(({ item }: { item: ChatListItem }) => {
+  const renderItem = useCallback(({ item, index }: { item: ChatListItem, index: number }) => {
     if (item.itemType === 'dateSeparator') {
       return <DateSeparator dateString={item.date} formatDateForDisplay={formatDateForDisplay} />;
     }
@@ -1434,6 +1308,29 @@ const handleDeselectMessage = useCallback((message: Message) => {
     const isSelected = isMessageSelected(message.id);
     const messageAnimation = getMessageAnimation(message.id);
     const blinkAnimation = blinkAnimations.current.get(message.id);
+
+    // Determine if this message should have a "tail" (pointy corner)
+    // This happens if it's the chronologically oldest message in a continuous block from the same sender.
+    // In an INVERTED FlatList, the chronologically oldest message has a higher index.
+    let hasTail = false;
+    if (index === preparedListData.length - 1) { // This is the very first message in the list chronologically
+        hasTail = true;
+    } else {
+        const chronologicallyPreviousItem = preparedListData[index + 1]; // Next item in inverted list is previous chronologically
+        if (chronologicallyPreviousItem.itemType === 'message') {
+            if ((chronologicallyPreviousItem as Message).senderId !== message.senderId) {
+                hasTail = true; // Previous message was from a different sender, so this one starts a new block
+            }
+        } else if (chronologicallyPreviousItem.itemType === 'dateSeparator') {
+            hasTail = true; // Previous item was a date separator, so this one starts a new block
+        }
+    }
+
+    // Only show sender name inside the bubble for INCOMING messages, and only if it starts a new block (has a tail).
+    let showSenderName = false;
+    if (!isOwnMessage && hasTail) {
+      showSenderName = true;
+    }
   
     return (
       <MessageItem
@@ -1445,6 +1342,8 @@ const handleDeselectMessage = useCallback((message: Message) => {
         selectedMessagesCount={selectedMessages.length}
         messageAnimation={messageAnimation}
         blinkAnimation={blinkAnimation}
+        showSenderName={showSenderName} // Pass whether to show sender name
+        hasTail={hasTail}               // Pass whether it should have a tail for border radius and margin
         onSelect={handleSelectMessage}
         onDeselect={handleDeselectMessage}
         onStartSelection={handleStartSelection}
@@ -1456,6 +1355,7 @@ const handleDeselectMessage = useCallback((message: Message) => {
       />
     );
   }, [
+    preparedListData, // Add this to dependencies because we access preparedListData[index + 1]
     currentUser, 
     selectedMessages.length, 
     formatDateForDisplay, 
@@ -1502,7 +1402,72 @@ const handleDeselectMessage = useCallback((message: Message) => {
       </View>
     );
   }
+const TelegramHeader = React.memo(({
+  roomName,
+  memberCount,
+  onlineCount,
+  onBackPress,
+  onAvatarPress,
+  onMenuPress,
+  isSyncing,
+}: {
+  roomName: string;
+  memberCount: number;
+  onlineCount: number;
+  onBackPress: () => void;
+  onAvatarPress: () => void;
+  onMenuPress?: () => void;
+  isSyncing: boolean;
+}) => {
+  const getInitials = (name: string) => {
+    return name
+      .split(' ')
+      .map(word => word[0])
+      .join('')
+      .toUpperCase()
+      .slice(0, 2);
+  };
 
+  const getStatusText = () => {
+    if (onlineCount > 0) {
+      return `${memberCount} members, ${onlineCount} online`;
+    }
+    return `${memberCount} members`;
+  };
+
+  return (
+    <View style={styles.header}>
+      <TouchableOpacity onPress={onBackPress} style={styles.backButton}>
+        <Ionicons name="arrow-back" size={24} color="#000" />
+      </TouchableOpacity>
+
+      <TouchableOpacity onPress={onMenuPress} style={styles.headerContent}>
+        <View style={styles.avatar}>
+          <Text style={styles.avatarText}>{getInitials(roomName)}</Text>
+        </View>
+
+        <View style={styles.headerInfo}>
+          <Text style={styles.roomName} numberOfLines={1}>
+            {roomName}
+          </Text>
+          <View style={styles.statusRow}>
+            {isSyncing ? (
+              <Text style={styles.statusText}>updating...</Text>
+            ) : (
+              <Text style={styles.statusText}>{getStatusText()}</Text>
+            )}
+          </View>
+        </View>
+      </TouchableOpacity>
+
+      {onAvatarPress && (
+        <TouchableOpacity onPress={onAvatarPress} style={styles.menuButton}>
+          <Ionicons name="ellipsis-vertical" size={20} color="#000" />
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+});
   // ==================== MAIN RENDER ====================
 
   return (
@@ -1858,8 +1823,7 @@ const styles = StyleSheet.create({
     paddingTop: 8,
     paddingBottom: 6,
     marginHorizontal: 8,
-    marginVertical: 2,
-    borderRadius: 18,
+    // Note: marginVertical and borderRadius properties are now set dynamically in MessageItem for granular control
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
@@ -1869,19 +1833,19 @@ const styles = StyleSheet.create({
   ownBubble: {
     alignSelf: 'flex-end',
     backgroundColor: '#DCF8C6',
-    borderBottomRightRadius: 4,
+    // Removed specific border radius from here, now handled dynamically in MessageItem
     marginLeft: 60,
   },
   otherBubble: {
     alignSelf: 'flex-start',
     backgroundColor: '#FFFFFF',
-    borderBottomLeftRadius: 4,
+    // Removed specific border radius from here, now handled dynamically in MessageItem
     marginRight: 60,
   },
   selectedOverlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0, 136, 204, 0.15)',
-    marginHorizontal: -16,
+    marginHorizontal: -16, // Extend overlay slightly to cover potential tail area
   },
   replyPreview: {
     paddingVertical: 6,
@@ -1912,7 +1876,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     color: '#0088CC',
-    marginBottom: 2,
+    marginBottom: 4, // Added a small margin-bottom for better spacing from message text
   },
   messageText: {
     fontSize: 16,
@@ -1998,3 +1962,6 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
 });
+
+
+

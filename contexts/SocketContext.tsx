@@ -205,6 +205,54 @@ export function SocketProvider({ children }: SocketProviderProps) {
       lastMessages: {},
       unreadCounts: {},
     });
+
+const messageEditedSub = socketManager.on<MessageEditedEvent & { isLastMessage?: boolean }>(
+  "messageEdited",
+  (data) => {
+    if (data.isLastMessage) {
+      setState((prev) => ({
+        ...prev,
+        lastMessages: {
+          ...prev.lastMessages,
+          [data.roomId]: prev.lastMessages[data.roomId] 
+            ? {
+                ...prev.lastMessages[data.roomId],
+                messageText: data.messageText,
+              }
+            : prev.lastMessages[data.roomId],
+        },
+      }));
+    }
+  }
+);
+subscriptionIds.current.push(messageEditedSub);
+
+// Messages deleted - update lastMessages if last message was deleted
+const messagesDeletedSub = socketManager.on<MessagesDeletedEvent>(
+  "messagesDeleted",
+  (data) => {
+    if (data.wasLastMessageDeleted && data.newLastMessage) {
+      setState((prev) => ({
+        ...prev,
+        lastMessages: {
+          ...prev.lastMessages,
+          [data.roomId]: data.newLastMessage!,
+        },
+      }));
+    } else if (data.wasLastMessageDeleted && !data.newLastMessage) {
+      // No more messages in room
+      setState((prev) => {
+        const newLastMessages = { ...prev.lastMessages };
+        delete newLastMessages[data.roomId];
+        return {
+          ...prev,
+          lastMessages: newLastMessages,
+        };
+      });
+    }
+  }
+);
+subscriptionIds.current.push(messagesDeletedSub);
   }, []);
 
   // Refresh room data
