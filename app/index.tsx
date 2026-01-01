@@ -15,7 +15,7 @@ import * as React from 'react';
 // const { DEV_IP, INTERNAL_IP, EXTERNAL_IP } = Constants?.expoConfig?.extra as { DEV_IP: string; INTERNAL_IP: string; EXTERNAL_IP: string };
 
 // console.log(DEV_IP, INTERNAL_IP, EXTERNAL_IP);
-const DEV_IP = "http://10.231.208.242:8080";
+const DEV_IP = "http://10.14.141.242:8080";
 // Export dev mode status and DEV_IP for use in other components
 export const getDevModeStatus = () => true; // Set to true to enable manual IP configuration for development
 export const getDefaultDevIP = () => DEV_IP;
