@@ -368,35 +368,31 @@ export default function CreateChatAnnouncement() {
 
   return (
     <View className="flex-1 bg-gray-50">
+
       {/* Header */}
-      <View className="flex-row items-center justify-between px-4 py-4 bg-white border-b border-gray-200">
-        <TouchableOpacity 
-          onPress={() => router.back()} 
-          className="w-10 h-10 items-center justify-center -ml-2"
-        >
-          <Ionicons name="close" size={24} color="#374151" />
-        </TouchableOpacity>
-
-        <Text className="text-lg font-semibold text-gray-900">
-          New Announcement
-        </Text>
-
-        <TouchableOpacity
-          onPress={sendAnnouncement}
-          disabled={!title.trim() || !body.trim() || sending}
-          className={`px-4 py-2 rounded-full ${
-            (title.trim() && body.trim()) && !sending 
-              ? 'bg-blue-500' 
-              : 'bg-gray-300'
-          }`}
-        >
-          {sending ? (
-            <ActivityIndicator size="small" color="white" />
-          ) : (
-            <Text className="text-white font-semibold text-sm">Post</Text>
-          )}
-        </TouchableOpacity>
-      </View>
+      <View className={`flex-row items-center justify-between px-4 py-3 border-b border-gray-200`}>
+            <TouchableOpacity onPress={() => router.back()} className="p-2">
+              <Ionicons name="arrow-back" size={24} color="#007AFF" />
+            </TouchableOpacity>
+            
+            <Text className={`text-lg font-semibold text-black`}>New Announcement</Text>
+            
+            <TouchableOpacity 
+              onPress={sendAnnouncement}
+              disabled={!title.trim() || !body.trim() || sending}
+              className="p-2"
+            >
+              {sending ? (
+                <ActivityIndicator size="small" color="#007AFF" />
+              ) : (
+                <Text className={`text-base font-semibold ${
+                  (title.trim() && body.trim()) && !sending ? "text-[#007AFF]" : "text-gray-400"
+                }`}>
+                  CREATE
+                </Text>
+              )}
+            </TouchableOpacity>
+          </View>
 
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -533,11 +529,6 @@ export default function CreateChatAnnouncement() {
               </View>
             )}
           </View>
-
-          {/* Info Text */}
-          <Text className="text-center text-gray-400 text-xs mt-4 px-8">
-            Announcements will be visible to all members of this chat
-          </Text>
         </ScrollView>
 
         {/* Floating Toolbar */}

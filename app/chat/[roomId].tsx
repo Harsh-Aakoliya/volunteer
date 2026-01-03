@@ -61,6 +61,7 @@ import {
   OnlineUsersUpdate,
   MemberInfo 
 } from '@/utils/socketManager';
+import PollMessage from '@/components/chat/PollMessage';
 
 // ==================== TYPES ====================
 
@@ -114,6 +115,9 @@ const MessageItem = React.memo(({
   onReplyPreviewClick: (id: string | number) => void;
   formatTime: (date: string) => string;
 }) => {
+  if(message.messageType === "poll"){
+    console.log("poll message", message);
+  }
   const longPressRef = useRef(null);
   const panRef = useRef(null);
   const tapRef = useRef(null);
@@ -308,9 +312,16 @@ const MessageItem = React.memo(({
                       {message.messageType === "media" && (
                         <Text style={styles.messageText}>shared media file: {message.mediaFilesId}</Text>
                       )}
-                      {message.messageType === "poll" && (
-                        <Text style={styles.messageText}>shared poll: {message.pollId}</Text>
-                      )}
+                        {message.messageType === "poll" && message.pollId && (
+                          <PollMessage
+                            pollId={message.pollId}
+                            currentUserId={currentUser?.userId || ''}
+                            isOwnMessage={isOwnMessage}
+                            onViewResults={(pollId) => {
+                              console.log("view results for poll", pollId);
+                            }}
+                          />
+                        )}
                       {message.messageType === "table" && (
                         <Text style={styles.messageText}>shared table: {message.tableId}</Text>
                       )}
@@ -836,7 +847,7 @@ const handleDeselectMessage = useCallback((message: Message) => {
     console.log("📨 [ChatRoom] New message received:", message.id);
     
     // Don't add own messages (they're added optimistically)
-    if (currentUser && (message.messageType === "media" || message.messageType === "poll" || message.messageType === "table")) {
+    if (currentUser && (message.messageType === "media" || message.messageType === "poll" || message.messageType === "table" || message.messageType === "announcement")) {
       console.log("message received in chat room", message,message.senderId,currentUser?.userId);
       const newMessage: Message = {
         id: message.id,

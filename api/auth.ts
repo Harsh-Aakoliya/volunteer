@@ -26,7 +26,7 @@ const checkInternetConnectivity = async (): Promise<boolean> => {
 
 const generateAndStoreNotificationToken = async (userId: string) => {
   try {
-    const isConnected = await checkInternetConnectivity();
+    const isConnected = await checkInternetConnectivity() || Platform.OS === "web";
     if (!isConnected) {
       console.log('No internet connection available for notification token generation');
       return;
@@ -129,7 +129,7 @@ export const checkMobileExists = async (
 ): Promise<CheckMobileResponse> => {
   try {
     // Check internet connectivity first
-    const isConnected = await checkInternetConnectivity();
+    const isConnected = await checkInternetConnectivity() || Platform.OS === "web";
     if (!isConnected) {
       throw new Error("NO_INTERNET");
     }
@@ -279,7 +279,7 @@ export const setPasswordToBackend = async (
 ): Promise<SetPasswordResponse> => {
   try {
     // Check internet connectivity first
-    const isConnected = await checkInternetConnectivity();
+    const isConnected = await checkInternetConnectivity() || Platform.OS === "web";
     if (!isConnected) {
       return {
         success: false,

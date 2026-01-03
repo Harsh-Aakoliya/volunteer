@@ -36,7 +36,7 @@ export default function ChatLayout() {
         }} 
       />
       <Stack.Screen 
-        name="create-chat-announcement" 
+        name="Announcement" 
         options={{ 
           title: 'Create Announcement',
           headerShown: false
@@ -50,6 +50,12 @@ export default function ChatLayout() {
         statusBarBackgroundColor: 'white',
        }}
       />
+      <Stack.Screen
+        name='Polling'
+        options ={{
+          headerShown:false
+        }}
+        />
     </Stack>
   );
 }

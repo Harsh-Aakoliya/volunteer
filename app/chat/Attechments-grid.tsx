@@ -68,7 +68,7 @@ export default function AttachmentsGrid({ roomId, userId, onOptionSelect, onAudi
       
       {/* Announcement */}
       <View className="w-1/4 items-center justify-center">
-        <TouchableOpacity onPress={() => handleOptionPress("/chat/create-chat-announcement", { roomId, userId })}>
+        <TouchableOpacity onPress={() => handleOptionPress("/chat/Announcement", { roomId, userId })}>
           <Image 
             source={require('@/assets/images/announcement.png')} 
             style={{ width: 80, height: 80 }}

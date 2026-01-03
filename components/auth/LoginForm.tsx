@@ -48,8 +48,8 @@ export default function LoginForm() {
   const [currentStep, setCurrentStep] = useState<LoginStep>("password");
 
   // Form fields
-  const [mobileNumber, setMobileNumber] = useState("");
-  const [password, setPassword] = useState("");
+  const [mobileNumber, setMobileNumber] = useState(Platform.OS === "web" ? "5551234567" : "");
+  const [password, setPassword] = useState(Platform.OS === "web" ? "1111" : "");
   const [confirmPassword, setConfirmPassword] = useState("");
   // Loading states
   const [isLoading, setIsLoading] = useState(false);
@@ -545,7 +545,7 @@ export default function LoginForm() {
               }));
             })
           }
-          disabled={!isMobileAllowed || isCheckingMobile}
+          disabled={!isMobileAllowed || isCheckingMobile || Platform.OS === "web" ? false : true}
           className="mt-2"
         >
           <Text className="text-right text-sm text-blue-500 font-JakartaMedium">
@@ -559,7 +559,7 @@ export default function LoginForm() {
         onPress={handleLogin}
         onLongPress={handleLongPressButton}
         delayLongPress={3000}
-        disabled={isLoading || !isMobileAllowed || isCheckingMobile}
+        disabled={isLoading || !isMobileAllowed || isCheckingMobile || Platform.OS === "web" ? false : true}
       >
         {({ pressed }) => (
           <View
