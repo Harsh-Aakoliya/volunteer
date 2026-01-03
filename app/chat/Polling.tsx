@@ -21,6 +21,7 @@ import { router } from "expo-router";
 import DateTimePicker from "@/components/chat/DateTimePicker";
 import { AuthStorage } from '@/utils/authStorage';
 import { Ionicons } from "@expo/vector-icons";
+import { useSocket } from "@/contexts/SocketContext";
 
 type Options = {
   id: string;
@@ -42,7 +43,14 @@ export default function Poling() {
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [sendingPoll, setSendingPoll] = useState(false);
-  
+  const {
+    isConnected,
+    user: socketUser,
+    joinRoom,
+    leaveRoom,
+    sendMessage: socketSendMessage,
+    requestOnlineUsers,
+  } = useSocket();
   const optionInputRef = useRef<TextInput>(null);
 
   // Option manipulation functions
@@ -125,6 +133,17 @@ export default function Poling() {
         }
       );
       console.log("Response after sending poll in message", pollResponse.data);
+      // {"createdAt": "2026-01-03T09:42:12.100Z", "editedAt": "2026-01-03T09:42:12.100Z", "editedBy": null, "id": 371, "isEdited": false, "isScheduled": false, "mediaFilesId": null, "messageText": "", "messageType": "poll", "pollId": 4, "replyMessageId": null, "roomId": 1, "senderId": 1, "senderName": "Harsh Aakoliya", "tableId": null}
+      socketSendMessage(roomId as string, {
+        id: pollResponse.data.id,
+        messageText: "Shared poll",
+        createdAt: pollResponse.data.createdAt,
+        messageType: "poll",
+        mediaFilesId: 0,
+        pollId: pollResponse.data.pollId,
+        tableId: 0,
+        replyMessageId: 0,
+      });
       router.back();
     } catch (error) {
       console.error("Error sending poll in message:", error);

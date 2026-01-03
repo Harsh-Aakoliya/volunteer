@@ -421,7 +421,7 @@ const setupSocketIO = (io, app) => {
       lastMessages[roomIdStr] = msgData;
 
       // Broadcast to room (except sender)
-      socket.to(`room_${roomIdStr}`).emit("newMessage", msgData);
+      io.to(`room_${roomIdStr}`).emit("newMessage", msgData);
 
       // Notify all room members (update unread counts)
       await notifyRoomMembers(roomIdStr, msgData, sender.userId);

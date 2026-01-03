@@ -22,6 +22,8 @@ import { useLocalSearchParams, router, useNavigation } from "expo-router";
 import { AuthStorage } from "@/utils/authStorage";
 import * as FileSystem from "expo-file-system";
 import { Platform } from "react-native";
+import { useSocket, useChatRoomSubscription } from '@/contexts/SocketContext';
+
 
 type VMMediaFile = {
   id: string;
@@ -67,6 +69,15 @@ export default function MediaUploadApp() {
   const [tempFolderId, setTempFolderId] = useState<string>("");
   const [isSuccessfullySent, setIsSuccessfullySent] = useState(false);
   const [authHeaders, setAuthHeaders] = useState<any>({});
+
+  const {
+    isConnected,
+    user: socketUser,
+    joinRoom,
+    leaveRoom,
+    sendMessage: socketSendMessage,
+    requestOnlineUsers,
+  } = useSocket();
 
   // Modal states
   const [videoModalVisible, setVideoModalVisible] = useState(false);
@@ -367,8 +378,20 @@ export default function MediaUploadApp() {
         }
       );
 
+      console.log("response got after move to chat",response.data);
+
       if (response.data.success) {
         setIsSuccessfullySent(true);
+        socketSendMessage(roomId as string, {
+          id: response.data.messageId,
+          messageText: response.data.message,
+          createdAt: new Date().toISOString(),
+          messageType: "media",
+          mediaFilesId: response.data.mediaId,
+          pollId: 0,
+          tableId: 0,
+          replyMessageId: 0,
+        });
         Alert.alert("Success", "Media sent to chat successfully!", [
           { text: "OK", onPress: () => router.back() }
         ]);
@@ -852,3 +875,39 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
 });
+
+
+// move to chat{
+//   "driveUrlObject": [
+//     {
+//       "caption": "",
+//       "filename": "dab643c0-84cc-48bc-9a50-b2b090aa1089.jpg",
+//       "mimeType": "image/jpeg",
+//       "originalName": "IMG-20260102-WA0007.jpg",
+//       "size": 150078,
+//       "url": "2026-01-03T09-30-00-675Z_1_1_364/dab643c0-84cc-48bc-9a50-b2b090aa1089.jpg"
+//     }
+//   ],
+//   "mediaId": 50,
+//   "message": "Files moved to chat successfully",
+//   "messageId": 364,
+//   "permanentFolderName": "2026-01-03T09-30-00-675Z_1_1_364",
+//   "success": true
+// }
+
+// after upload{
+//   "message": "1 files uploaded successfully",
+//   "success": true,
+//   "tempFolderId": "5de22063-ce41-4f81-8bc5-a331c42738c8",
+//   "uploadedFiles": [
+//     {
+//       "caption": "",
+//       "fileName": "dab643c0-84cc-48bc-9a50-b2b090aa1089.jpg",
+//       "id": "dab643c0-84cc-48bc-9a50-b2b090aa1089",
+//       "mimeType": "image/jpeg",
+//       "originalName": "IMG-20260102-WA0007.jpg",
+//       "size": 150078,
+//       "url": "temp_5de22063-ce41-4f81-8bc5-a331c42738c8/dab643c0-84cc-48bc-9a50-b2b090aa1089.jpg"
+//     }
+//   ]
+// }

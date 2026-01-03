@@ -836,7 +836,8 @@ const handleDeselectMessage = useCallback((message: Message) => {
     console.log("📨 [ChatRoom] New message received:", message.id);
     
     // Don't add own messages (they're added optimistically)
-    if (currentUser && message.senderId !== currentUser.userId) {
+    if (currentUser && (message.messageType === "media" || message.messageType === "poll" || message.messageType === "table")) {
+      console.log("message received in chat room", message,message.senderId,currentUser?.userId);
       const newMessage: Message = {
         id: message.id,
         roomId: message.roomId,
@@ -1590,8 +1591,8 @@ const TelegramHeader = React.memo(({
               <MessageInput
                 messageText={messageText}
                 onChangeText={setMessageText}
-                onSend={(text: string, messageType: string, scheduledAt?: string) => {
-                  sendMessage(text, messageType, undefined, undefined, undefined, replyToMessage?.id as number, scheduledAt);
+                onSend={(text: string, messageType: string,mediafilesId: number,tableId: number, pollId: number, scheduledAt?: string) => {
+                  sendMessage(text, messageType, mediafilesId, tableId, pollId, replyToMessage?.id as number, scheduledAt);
                 }}
                 placeholder="Message"
                 sending={sending}

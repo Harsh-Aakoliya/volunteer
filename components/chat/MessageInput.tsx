@@ -26,7 +26,7 @@ interface MentionSegment {
 interface MessageInputProps {
   messageText: string;
   onChangeText: (text: string) => void;
-  onSend: (text: string, messageType: string, scheduledAt?: string) => void;
+  onSend: (text: string, messageType: string,mediafilesId: number,tableId: number, pollId: number, scheduledAt?: string) => void;
   placeholder?: string;
   sending?: boolean;
   disabled?: boolean;
@@ -471,7 +471,7 @@ const renderMentionMenu = () => {
 
   const handleSend = (scheduledAt?: string) => {
     if (messageText.trim() && !sending && !disabled) {
-      onSend(messageText, "text", scheduledAt);
+      onSend(messageText, "text", 0, 0, 0, scheduledAt);
     }
   };
 
