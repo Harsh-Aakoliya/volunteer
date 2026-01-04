@@ -22,6 +22,7 @@ import PollTab from '@/components/chat/roomSettings/PollTab';
 import TableTab from '@/components/chat/roomSettings/TableTab';
 import { useSocket } from '@/contexts/SocketContext';
 import socketManager from '@/utils/socketManager';
+import { Message } from '@/types/type';
 
 interface Member {
   userId: string;
@@ -42,7 +43,7 @@ export default function RoomInfo() {
   const [onlineUsers, setOnlineUsers] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [roomName, setRoomName] = useState('');
-
+  const [messages, setMessages] = useState<any[]>([]);
   // Tab view state
   const [index, setIndex] = useState(0);
   const [routes] = useState([
@@ -71,8 +72,11 @@ export default function RoomInfo() {
         headers: { Authorization: `Bearer ${token}` },
       });
 
+      console.log("response.data", response.data);
+
       setMembers(response.data.members || []);
       setRoomName(response.data.roomName || '');
+      setMessages(response.data.messages || []);
 
     } catch (error) {
       console.error('Error loading room info:', error);
@@ -136,13 +140,21 @@ export default function RoomInfo() {
           />
         );
       case 'announcements':
-        return <AnnouncementsTab />;
+        return <AnnouncementsTab 
+          messages={messages}
+        />;
       case 'media':
-        return <MediaTab />;
+        return <MediaTab 
+          messages={messages}
+        />;
       case 'poll':
-        return <PollTab />;
+        return <PollTab 
+          messages={messages}
+        />;
       case 'table':
-        return <TableTab />;
+        return <TableTab 
+          messages={messages}
+        />;
       default:
         return null;
     }

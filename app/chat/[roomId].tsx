@@ -115,9 +115,6 @@ const MessageItem = React.memo(({
   onReplyPreviewClick: (id: string | number) => void;
   formatTime: (date: string) => string;
 }) => {
-  if(message.messageType === "poll"){
-    console.log("poll message", message);
-  }
   const longPressRef = useRef(null);
   const panRef = useRef(null);
   const tapRef = useRef(null);
@@ -378,9 +375,6 @@ const DateSeparator = React.memo(({ dateString, formatDateForDisplay }: {
     </View>
   </View>
 ));
-
-// MessageBubble is no longer needed as its content moved to MessageItem
-// TelegramHeader component remains unchanged
 
 // ==================== MAIN COMPONENT ====================
 
@@ -1242,6 +1236,20 @@ const handleDeselectMessage = useCallback((message: Message) => {
     fetchReadStatus(message.id);
   };
 
+  const handleVideoCallPress = useCallback(() => {
+    // TODO: Implement video calling functionality
+    // This is a placeholder - you can integrate with a video calling library like:
+    // - react-native-webrtc
+    // - Agora SDK
+    // - Twilio Video
+    console.log('Starting video call for room:', roomId);
+    Alert.alert(
+      'Video Call',
+      'Video calling feature will be implemented here. Room ID: ' + roomId,
+      [{ text: 'OK' }]
+    );
+  }, [roomId]);
+
   const handleForwardMessages = async (selectedRooms: ChatRoom[], messagesToForward: Message[]) => {
     for (const room of selectedRooms) {
       if (!room.roomId) continue;
@@ -1421,6 +1429,7 @@ const TelegramHeader = React.memo(({
   onBackPress,
   onAvatarPress,
   onMenuPress,
+  onVideoCallPress,
   isSyncing,
 }: {
   roomName: string;
@@ -1429,6 +1438,7 @@ const TelegramHeader = React.memo(({
   onBackPress: () => void;
   onAvatarPress: () => void;
   onMenuPress?: () => void;
+  onVideoCallPress?: () => void;
   isSyncing: boolean;
 }) => {
   const getInitials = (name: string) => {
@@ -1472,11 +1482,18 @@ const TelegramHeader = React.memo(({
         </View>
       </TouchableOpacity>
 
-      {onAvatarPress && (
-        <TouchableOpacity onPress={onAvatarPress} style={styles.menuButton}>
-          <Ionicons name="ellipsis-vertical" size={20} color="#000" />
-        </TouchableOpacity>
-      )}
+      <View style={styles.headerActions}>
+        {onVideoCallPress && (
+          <TouchableOpacity onPress={onVideoCallPress} style={styles.headerIconButton}>
+            <Ionicons name="videocam" size={24} color="#000" />
+          </TouchableOpacity>
+        )}
+        {onAvatarPress && (
+          <TouchableOpacity onPress={onAvatarPress} style={styles.menuButton}>
+            <Ionicons name="ellipsis-vertical" size={20} color="#000" />
+          </TouchableOpacity>
+        )}
+      </View>
     </View>
   );
 });
@@ -1516,6 +1533,7 @@ const TelegramHeader = React.memo(({
                 pathname: "/chat/room-info",
                 params: { roomId },
               }) : undefined}
+              onVideoCallPress={handleVideoCallPress}
               isSyncing={isSyncing}
             />
           )}
@@ -1962,6 +1980,14 @@ const styles = StyleSheet.create({
   statusText: {
     fontSize: 13,
     color: '#8E8E93',
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  headerIconButton: {
+    padding: 8,
+    marginRight: 4,
   },
   menuButton: {
     padding: 8,
