@@ -329,6 +329,35 @@ class SocketManager {
         count: data.onlineUsers.length,
       });
     });
+
+    // Video call events
+    this.socket.on("video-call-initiate", (data: any) => {
+      this.emit("video-call-initiate", data);
+    });
+
+    this.socket.on("video-call-reject", (data: any) => {
+      this.emit("video-call-reject", data);
+    });
+
+    this.socket.on("video-call-user-joined", (data: any) => {
+      this.emit("video-call-user-joined", data);
+    });
+
+    this.socket.on("video-call-offer", (data: any) => {
+      this.emit("video-call-offer", data);
+    });
+
+    this.socket.on("video-call-answer", (data: any) => {
+      this.emit("video-call-answer", data);
+    });
+
+    this.socket.on("video-call-ice-candidate", (data: any) => {
+      this.emit("video-call-ice-candidate", data);
+    });
+
+    this.socket.on("video-call-end", (data: any) => {
+      this.emit("video-call-end", data);
+    });
   }
 
   // ==================== USER ACTIONS ====================
@@ -431,6 +460,70 @@ class SocketManager {
         userId: this.user.id,
         userName: this.user.name,
       },
+    });
+  }
+
+  // ==================== VIDEO CALL ACTIONS ====================
+
+  initiateVideoCall(roomId: string): void {
+    if (!this.socket?.connected || !this.user) return;
+    this.socket.emit("video-call-initiate", {
+      roomId,
+      callerId: this.user.id,
+      callerName: this.user.name,
+    });
+  }
+
+  sendVideoCallOffer(roomId: string, offer: any): void {
+    if (!this.socket?.connected || !this.user) return;
+    this.socket.emit("video-call-offer", {
+      roomId,
+      offer,
+      callerId: this.user.id,
+      callerName: this.user.name,
+    });
+  }
+
+  sendVideoCallAnswer(roomId: string, answer: any): void {
+    if (!this.socket?.connected || !this.user) return;
+    this.socket.emit("video-call-answer", {
+      roomId,
+      answer,
+      answererId: this.user.id,
+    });
+  }
+
+  sendVideoCallIceCandidate(roomId: string, candidate: any): void {
+    if (!this.socket?.connected || !this.user) return;
+    this.socket.emit("video-call-ice-candidate", {
+      roomId,
+      candidate,
+      senderId: this.user.id,
+    });
+  }
+
+  endVideoCall(roomId: string): void {
+    if (!this.socket?.connected || !this.user) return;
+    this.socket.emit("video-call-end", {
+      roomId,
+      userId: this.user.id,
+    });
+  }
+
+  rejectVideoCall(roomId: string): void {
+    if (!this.socket?.connected || !this.user) return;
+    this.socket.emit("video-call-reject", {
+      roomId,
+      userId: this.user.id,
+    });
+  }
+
+  notifyVideoCallJoined(roomId: string): void {
+    if (!this.socket?.connected || !this.user) return;
+    this.socket.emit("video-call-user-joined", {
+      roomId,
+      userId: this.user.id,
+      userName: this.user.name,
     });
   }
 

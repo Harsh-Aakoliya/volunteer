@@ -55,7 +55,9 @@
           "REQUEST_INSTALL_PACKAGES",
           "POST_NOTIFICATIONS",
           "READ_PHONE_STATE",
-          "READ_PHONE_NUMBERS"
+          "READ_PHONE_NUMBERS",
+          "CAMERA",
+          "RECORD_AUDIO"
         ]
       },
       "ios": {

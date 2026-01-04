@@ -55,6 +55,15 @@ export default function ChatLayout() {
         name="Polling"
         options={{ headerShown: false }}
       />
+
+      <Stack.Screen
+        name="video-call"
+        options={{
+          headerShown: false,
+          presentation: 'fullScreenModal',
+          animation: 'none',
+        }}
+      />
     </Stack>
   );
 }

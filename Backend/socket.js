@@ -434,6 +434,111 @@ const setupSocketIO = (io, app) => {
       }
     });
 
+    // -------------------- VIDEO CALL SIGNALING --------------------
+    
+    // Initiate video call
+    socket.on("video-call-initiate", ({ roomId, callerId, callerName }) => {
+      if (!roomId || !callerId) return;
+      
+      const roomIdStr = String(roomId);
+      console.log("📹 [Socket] Video call initiated in room:", roomIdStr, "by", callerId);
+      
+      // Broadcast to all room members except caller
+      socket.to(`room_${roomIdStr}`).emit("video-call-initiate", {
+        roomId: roomIdStr,
+        callerId: String(callerId),
+        callerName: callerName || "Unknown",
+      });
+    });
+
+    // Send SDP offer
+    socket.on("video-call-offer", ({ roomId, offer, callerId, callerName }) => {
+      if (!roomId || !offer || !callerId) return;
+      
+      const roomIdStr = String(roomId);
+      console.log("📹 [Socket] Video call offer in room:", roomIdStr);
+      
+      // Broadcast to all room members except caller
+      socket.to(`room_${roomIdStr}`).emit("video-call-offer", {
+        roomId: roomIdStr,
+        offer,
+        callerId: String(callerId),
+        callerName: callerName || "Unknown",
+      });
+    });
+
+    // Send SDP answer
+    socket.on("video-call-answer", ({ roomId, answer, answererId }) => {
+      if (!roomId || !answer || !answererId) return;
+      
+      const roomIdStr = String(roomId);
+      console.log("📹 [Socket] Video call answer in room:", roomIdStr);
+      
+      // Broadcast to all room members except answerer
+      socket.to(`room_${roomIdStr}`).emit("video-call-answer", {
+        roomId: roomIdStr,
+        answer,
+        answererId: String(answererId),
+      });
+    });
+
+    // Send ICE candidate
+    socket.on("video-call-ice-candidate", ({ roomId, candidate, senderId }) => {
+      if (!roomId || !candidate || !senderId) return;
+      
+      const roomIdStr = String(roomId);
+      
+      // Broadcast to all room members except sender
+      socket.to(`room_${roomIdStr}`).emit("video-call-ice-candidate", {
+        roomId: roomIdStr,
+        candidate,
+        senderId: String(senderId),
+      });
+    });
+
+    // End video call
+    socket.on("video-call-end", ({ roomId, userId }) => {
+      if (!roomId) return;
+      
+      const roomIdStr = String(roomId);
+      console.log("📹 [Socket] Video call ended in room:", roomIdStr);
+      
+      // Broadcast to all room members
+      io.to(`room_${roomIdStr}`).emit("video-call-end", {
+        roomId: roomIdStr,
+        userId: userId ? String(userId) : null,
+      });
+    });
+
+    // Reject video call
+    socket.on("video-call-reject", ({ roomId, userId }) => {
+      if (!roomId || !userId) return;
+      
+      const roomIdStr = String(roomId);
+      console.log("📹 [Socket] Video call rejected in room:", roomIdStr);
+      
+      // Broadcast to all room members
+      io.to(`room_${roomIdStr}`).emit("video-call-reject", {
+        roomId: roomIdStr,
+        userId: String(userId),
+      });
+    });
+
+    // User joined video call
+    socket.on("video-call-user-joined", ({ roomId, userId, userName }) => {
+      if (!roomId || !userId) return;
+      
+      const roomIdStr = String(roomId);
+      console.log("📹 [Socket] User joined video call:", userId, "in room:", roomIdStr);
+      
+      // Broadcast to all room members except the joiner
+      socket.to(`room_${roomIdStr}`).emit("video-call-user-joined", {
+        roomId: roomIdStr,
+        userId: String(userId),
+        userName: userName || "Unknown",
+      });
+    });
+
     // -------------------- DISCONNECT --------------------
     socket.on("disconnect", async (reason) => {
       console.log("❌ [Socket] Disconnected:", socket.id, reason);

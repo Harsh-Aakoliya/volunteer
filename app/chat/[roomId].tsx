@@ -39,6 +39,7 @@ import { API_URL } from "@/constants/api";
 import { useFocusEffect } from "@react-navigation/native";
 import MembersModal from "@/components/chat/MembersModal";
 import MessageStatus from "@/components/chat/MessageStatus";
+import VideoCallNotification from "@/components/chat/VideoCallNotification";
 import GlobalPollModal from "@/components/chat/GlobalPollModal";
 import RenderTable from "@/components/chat/Attechments/RenderTable";
 import MediaViewerModal from "@/components/chat/MediaViewerModal";
@@ -61,6 +62,7 @@ import {
   OnlineUsersUpdate,
   MemberInfo 
 } from '@/utils/socketManager';
+import socketManager from '@/utils/socketManager';
 import PollMessage from '@/components/chat/PollMessage';
 
 // ==================== TYPES ====================
@@ -440,6 +442,10 @@ export default function ChatRoomScreen() {
   // Scheduled messages
   const [scheduledMessages, setScheduledMessages] = useState<any[]>([]);
   const [showScheduledMessages, setShowScheduledMessages] = useState(false);
+
+  // Video call notification state
+  const [showVideoCallNotification, setShowVideoCallNotification] = useState(false);
+  const [videoCallData, setVideoCallData] = useState<{ callerId: string; callerName: string } | null>(null);
 
   // Scroll state
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
@@ -841,7 +847,7 @@ const handleDeselectMessage = useCallback((message: Message) => {
     console.log("📨 [ChatRoom] New message received:", message.id);
     
     // Don't add own messages (they're added optimistically)
-    if (currentUser && (message.messageType === "media" || message.messageType === "poll" || message.messageType === "table" || message.messageType === "announcement")) {
+    if (currentUser && (message.messageType === "media" || message.messageType === "poll" || message.messageType === "table" || message.messageType === "announcement" || message.messageType === "text")) {
       console.log("message received in chat room", message,message.senderId,currentUser?.userId);
       const newMessage: Message = {
         id: message.id,
@@ -906,6 +912,47 @@ const handleDeselectMessage = useCallback((message: Message) => {
       clearRoomNotifications(roomId as string);
     }
   }, [roomId, isConnected]);
+
+  // Handle video call initiation notification
+  useEffect(() => {
+    if (!isConnected || !roomId) return;
+
+    const videoCallInitSub = socketManager.on('video-call-initiate', (data: any) => {
+      if (data.roomId === (Array.isArray(roomId) ? roomId[0] : roomId) && data.callerId !== currentUser?.userId) {
+        console.log('📹 Video call initiated by:', data.callerName);
+        setVideoCallData({
+          callerId: data.callerId,
+          callerName: data.callerName,
+        });
+        setShowVideoCallNotification(true);
+      }
+    });
+
+    return () => {
+      socketManager.off(videoCallInitSub);
+    };
+  }, [isConnected, roomId, currentUser?.userId]);
+
+  // Handle video call acceptance
+  const handleAcceptVideoCall = useCallback(() => {
+    setShowVideoCallNotification(false);
+    router.push({
+      pathname: '/chat/video-call',
+      params: { 
+        roomId: Array.isArray(roomId) ? roomId[0] : roomId,
+        joining: 'true', // Mark that this user is joining an existing call
+      },
+    });
+  }, [roomId, router]);
+
+  // Handle video call rejection
+  const handleRejectVideoCall = useCallback(() => {
+    setShowVideoCallNotification(false);
+    if (roomId) {
+      socketManager.rejectVideoCall(Array.isArray(roomId) ? roomId[0] : roomId);
+    }
+    setVideoCallData(null);
+  }, [roomId]);
 
   // ==================== FOCUS EFFECT ====================
 
@@ -1237,18 +1284,16 @@ const handleDeselectMessage = useCallback((message: Message) => {
   };
 
   const handleVideoCallPress = useCallback(() => {
-    // TODO: Implement video calling functionality
-    // This is a placeholder - you can integrate with a video calling library like:
-    // - react-native-webrtc
-    // - Agora SDK
-    // - Twilio Video
-    console.log('Starting video call for room:', roomId);
-    Alert.alert(
-      'Video Call',
-      'Video calling feature will be implemented here. Room ID: ' + roomId,
-      [{ text: 'OK' }]
-    );
-  }, [roomId]);
+    if (!roomId) {
+      Alert.alert('Error', 'Room ID is missing');
+      return;
+    }
+    
+    router.push({
+      pathname: '/chat/video-call',
+      params: { roomId: Array.isArray(roomId) ? roomId[0] : roomId },
+    });
+  }, [roomId, router]);
 
   const handleForwardMessages = async (selectedRooms: ChatRoom[], messagesToForward: Message[]) => {
     for (const room of selectedRooms) {
@@ -1823,6 +1868,15 @@ const TelegramHeader = React.memo(({
               </ScrollView>
             </SafeAreaView>
           </Modal>
+
+          {/* Video Call Notification */}
+          <VideoCallNotification
+            visible={showVideoCallNotification}
+            callerName={videoCallData?.callerName || 'Unknown'}
+            roomName={room?.roomName || 'Chat Room'}
+            onAccept={handleAcceptVideoCall}
+            onReject={handleRejectVideoCall}
+          />
         </KeyboardAvoidingView>
       </SafeAreaView>
     </GestureHandlerRootView>
