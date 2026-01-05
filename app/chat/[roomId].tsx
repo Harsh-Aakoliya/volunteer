@@ -64,6 +64,7 @@ import {
 } from '@/utils/socketManager';
 import socketManager from '@/utils/socketManager';
 import PollMessage from '@/components/chat/PollMessage';
+import { useVideoCall } from '@/contexts/VideoCallContext';
 
 // ==================== TYPES ====================
 
@@ -383,6 +384,8 @@ const DateSeparator = React.memo(({ dateString, formatDateForDisplay }: {
 export default function ChatRoomScreen() {
   const { width: screenWidth } = useWindowDimensions();
   const { roomId } = useLocalSearchParams();
+  const { initiateCall } = useVideoCall();
+
   
   // Socket context
   const {
@@ -1289,11 +1292,11 @@ const handleDeselectMessage = useCallback((message: Message) => {
       return;
     }
     
-    router.push({
-      pathname: '/chat/video-call',
-      params: { roomId: Array.isArray(roomId) ? roomId[0] : roomId },
-    });
-  }, [roomId, router]);
+    const roomIdStr = Array.isArray(roomId) ? roomId[0] : roomId;
+    const roomNameStr = room?.roomName || 'Video Call';
+    
+    initiateCall(roomIdStr, roomNameStr);
+  }, [roomId, room?.roomName, initiateCall]);
 
   const handleForwardMessages = async (selectedRooms: ChatRoom[], messagesToForward: Message[]) => {
     for (const room of selectedRooms) {
@@ -1868,15 +1871,6 @@ const TelegramHeader = React.memo(({
               </ScrollView>
             </SafeAreaView>
           </Modal>
-
-          {/* Video Call Notification */}
-          <VideoCallNotification
-            visible={showVideoCallNotification}
-            callerName={videoCallData?.callerName || 'Unknown'}
-            roomName={room?.roomName || 'Chat Room'}
-            onAccept={handleAcceptVideoCall}
-            onReject={handleRejectVideoCall}
-          />
         </KeyboardAvoidingView>
       </SafeAreaView>
     </GestureHandlerRootView>

@@ -559,7 +559,7 @@ export default function LoginForm() {
         onPress={handleLogin}
         onLongPress={handleLongPressButton}
         delayLongPress={3000}
-        disabled={isLoading || !isMobileAllowed || isCheckingMobile || Platform.OS === "web" ? false : true}
+        disabled={false && (isLoading || !isMobileAllowed || isCheckingMobile || Platform.OS === "web" ? false : true)}
       >
         {({ pressed }) => (
           <View

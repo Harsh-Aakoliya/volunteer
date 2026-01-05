@@ -1,5 +1,5 @@
 // Backend/socket.js
-// Clean Socket.IO server implementation
+// Clean Socket.IO server implementation with improved video call support
 
 import { sendChatNotifications } from "./controllers/chatNotificationController.js";
 
@@ -19,15 +19,18 @@ const setupSocketIO = (io, app) => {
   const onlineUsers = new Set();
 
   // Map: roomId -> last message data
-  // Use the object from app to stay in sync with controllers
   const lastMessages = app.get('lastMessageByRoom');
 
   // Map: userId -> { roomId: unreadCount }
-  // Use the object from app to stay in sync with controllers
   const unreadCounts = app.get('unreadMessagesByUser');
 
   // Throttle: userId -> lastRequestTime
   const requestThrottle = new Map();
+
+  // ==================== VIDEO CALL DATA STORES ====================
+  
+  // Map: roomId -> Set<userId> (active call participants)
+  const activeCallParticipants = new Map();
 
   // Make globally accessible
   global.lastMessageByRoom = lastMessages;
@@ -40,13 +43,11 @@ const setupSocketIO = (io, app) => {
       console.log("🔄 [Socket] Initializing room data...");
       const pool = await import("./config/database.js").then((m) => m.default);
 
-      // Load all rooms
       const roomsResult = await pool.query('SELECT "roomId" FROM chatrooms');
 
       for (const { roomId } of roomsResult.rows) {
         const roomIdStr = roomId.toString();
 
-        // Get last message
         const msgResult = await pool.query(
           `SELECT m.*, sm."sevakname" as "senderName"
            FROM chatmessages m 
@@ -75,7 +76,6 @@ const setupSocketIO = (io, app) => {
           };
         }
 
-        // Initialize unread counts for members
         const membersResult = await pool.query(
           'SELECT "userId" FROM chatroomusers WHERE "roomId" = $1',
           [roomId]
@@ -131,6 +131,36 @@ const setupSocketIO = (io, app) => {
     }
   };
 
+  // Get all online members of a room
+  const getOnlineRoomMembers = async (roomId) => {
+    try {
+      const pool = await import("./config/database.js").then((m) => m.default);
+      const result = await pool.query(
+        'SELECT "userId" FROM chatroomusers WHERE "roomId" = $1',
+        [roomId]
+      );
+
+      const roomMembers = result.rows.map((r) => r.userId.toString());
+      return roomMembers.filter((id) => onlineUsers.has(id));
+    } catch (error) {
+      console.error("❌ [Socket] Error getting room members:", error);
+      return [];
+    }
+  };
+
+  // Emit to a specific user (all their sockets)
+  const emitToUser = (userId, event, data) => {
+    const sockets = userSockets.get(String(userId));
+    if (sockets) {
+      for (const sid of sockets) {
+        const socket = io.sockets.sockets.get(sid);
+        if (socket) {
+          socket.emit(event, data);
+        }
+      }
+    }
+  };
+
   const sendUnreadCounts = (socket, userId) => {
     const counts = unreadCounts[userId] || {};
     socket.emit("unreadCounts", { unreadCounts: counts });
@@ -144,7 +174,6 @@ const setupSocketIO = (io, app) => {
         [userId]
       );
 
-      // Broadcast to all rooms the user is in
       for (const { roomId } of result.rows) {
         const roomIdStr = roomId.toString();
         io.to(`room_${roomIdStr}`).emit("userOnlineStatusUpdate", {
@@ -152,7 +181,6 @@ const setupSocketIO = (io, app) => {
           isOnline,
         });
 
-        // Send updated online count
         const onlineInfo = await getOnlineUsersInRoom(roomId);
         io.to(`room_${roomIdStr}`).emit("onlineUsers", {
           roomId: roomIdStr,
@@ -179,20 +207,17 @@ const setupSocketIO = (io, app) => {
         const sockets = userSockets.get(userIdStr);
 
         if (sockets && sockets.size > 0) {
-          // User is connected
           const isInRoom = Array.from(sockets).some((sid) => {
             const userData = socketUsers.get(sid);
             return userData?.rooms?.has(roomIdStr);
           });
 
-          // Update unread count if not in room
           if (!isInRoom && userIdStr !== senderId) {
             if (!unreadCounts[userIdStr]) unreadCounts[userIdStr] = {};
             unreadCounts[userIdStr][roomIdStr] =
               (unreadCounts[userIdStr][roomIdStr] || 0) + 1;
           }
 
-          // Send update to all user's sockets
           for (const sid of sockets) {
             const socket = io.sockets.sockets.get(sid);
             if (socket) {
@@ -204,7 +229,6 @@ const setupSocketIO = (io, app) => {
             }
           }
         } else if (userIdStr !== senderId) {
-          // User offline - increment unread
           if (!unreadCounts[userIdStr]) unreadCounts[userIdStr] = {};
           unreadCounts[userIdStr][roomIdStr] =
             (unreadCounts[userIdStr][roomIdStr] || 0) + 1;
@@ -227,14 +251,12 @@ const setupSocketIO = (io, app) => {
       const userIdStr = String(userId);
       console.log("🔐 [Socket] Identify:", userIdStr);
 
-      // Store socket -> user mapping
       socketUsers.set(socket.id, {
         userId: userIdStr,
         userName: null,
         rooms: new Set(),
       });
 
-      // Store user -> sockets mapping
       if (!userSockets.has(userIdStr)) {
         userSockets.set(userIdStr, new Set());
       }
@@ -262,7 +284,6 @@ const setupSocketIO = (io, app) => {
 
       const userIdStr = String(userId);
 
-      // Only set offline if no other sockets for this user
       const sockets = userSockets.get(userIdStr);
       if (sockets && sockets.size <= 1) {
         onlineUsers.delete(userIdStr);
@@ -277,7 +298,6 @@ const setupSocketIO = (io, app) => {
 
       const userIdStr = String(userId);
 
-      // Throttle requests
       if (isThrottled(userIdStr)) return;
 
       console.log("📋 [Socket] Room data request:", userIdStr);
@@ -289,7 +309,6 @@ const setupSocketIO = (io, app) => {
           [userIdStr]
         );
 
-        // Send last messages
         const userLastMessages = {};
         for (const { roomId } of result.rows) {
           const roomIdStr = roomId.toString();
@@ -299,10 +318,8 @@ const setupSocketIO = (io, app) => {
         }
         socket.emit("lastMessage", { lastMessageByRoom: userLastMessages });
 
-        // Send unread counts
         sendUnreadCounts(socket, userIdStr);
 
-        // Send online info for each room
         for (const { roomId } of result.rows) {
           const onlineInfo = await getOnlineUsersInRoom(roomId);
           socket.emit("onlineUsers", {
@@ -324,26 +341,21 @@ const setupSocketIO = (io, app) => {
 
       console.log("🏠 [Socket] Join room:", roomIdStr, "by", userIdStr);
 
-      // Update socket data
       const userData = socketUsers.get(socket.id);
       if (userData) {
         userData.userName = userName;
         userData.rooms.add(roomIdStr);
       }
 
-      // Join socket.io room
       socket.join(`room_${roomIdStr}`);
 
-      // Clear unread count for this room
       if (unreadCounts[userIdStr]) {
         unreadCounts[userIdStr][roomIdStr] = 0;
       }
 
-      // Send online users
       const onlineInfo = await getOnlineUsersInRoom(roomId);
       socket.emit("onlineUsers", { roomId: roomIdStr, ...onlineInfo });
 
-      // Send room members with online status
       try {
         const pool = await import("./config/database.js").then((m) => m.default);
         const result = await pool.query(
@@ -356,7 +368,7 @@ const setupSocketIO = (io, app) => {
 
         const members = result.rows.map((m) => ({
           userId: m.userId.toString(),
-          fullName: m.fullName,
+          fullName: m.sevakname,
           isAdmin: m.isAdmin || false,
           isOnline: onlineUsers.has(m.userId.toString()),
         }));
@@ -374,7 +386,6 @@ const setupSocketIO = (io, app) => {
       const roomIdStr = String(roomId);
       console.log("🚪 [Socket] Leave room:", roomIdStr);
 
-      // Update socket data
       const userData = socketUsers.get(socket.id);
       if (userData) {
         userData.rooms.delete(roomIdStr);
@@ -417,16 +428,12 @@ const setupSocketIO = (io, app) => {
         replyMessageId: message.replyMessageId || null,
       };
 
-      // Update last message
       lastMessages[roomIdStr] = msgData;
 
-      // Broadcast to room (except sender)
       io.to(`room_${roomIdStr}`).emit("newMessage", msgData);
 
-      // Notify all room members (update unread counts)
       await notifyRoomMembers(roomIdStr, msgData, sender.userId);
 
-      // Send push notifications
       try {
         await sendChatNotifications(roomIdStr, msgData, sender.userId);
       } catch (error) {
@@ -434,32 +441,51 @@ const setupSocketIO = (io, app) => {
       }
     });
 
-    // -------------------- VIDEO CALL SIGNALING --------------------
+    // ==================== VIDEO CALL SIGNALING (UPDATED) ====================
     
-    // Initiate video call
-    socket.on("video-call-initiate", ({ roomId, callerId, callerName }) => {
+    // Initiate video call - notify ALL online room members
+    socket.on("video-call-initiate", async ({ roomId, roomName, callerId, callerName }) => {
       if (!roomId || !callerId) return;
       
       const roomIdStr = String(roomId);
       console.log("📹 [Socket] Video call initiated in room:", roomIdStr, "by", callerId);
       
-      // Broadcast to all room members except caller
-      socket.to(`room_${roomIdStr}`).emit("video-call-initiate", {
-        roomId: roomIdStr,
-        callerId: String(callerId),
-        callerName: callerName || "Unknown",
-      });
+      // Initialize call participants set
+      if (!activeCallParticipants.has(roomIdStr)) {
+        activeCallParticipants.set(roomIdStr, new Set());
+      }
+      activeCallParticipants.get(roomIdStr).add(String(callerId));
+      
+      // Get all online members of the room
+      const onlineMembers = await getOnlineRoomMembers(roomId);
+      
+      console.log("📹 [Socket] Online room members:", onlineMembers);
+      
+      // Send notification to each online member (except caller)
+      for (const memberId of onlineMembers) {
+        if (memberId !== String(callerId)) {
+          console.log("📹 [Socket] Sending call notification to:", memberId);
+          emitToUser(memberId, "video-call-initiate", {
+            roomId: roomIdStr,
+            roomName: roomName || "Video Call",
+            callerId: String(callerId),
+            callerName: callerName || "Unknown",
+          });
+        }
+      }
     });
 
-    // Send SDP offer
-    socket.on("video-call-offer", ({ roomId, offer, callerId, callerName }) => {
-      if (!roomId || !offer || !callerId) return;
+    // Send SDP offer to a specific user
+    socket.on("video-call-offer", ({ roomId, targetUserId, offer, callerId, callerName }) => {
+      if (!roomId || !offer || !callerId || !targetUserId) return;
       
       const roomIdStr = String(roomId);
-      console.log("📹 [Socket] Video call offer in room:", roomIdStr);
+      const targetId = String(targetUserId);
       
-      // Broadcast to all room members except caller
-      socket.to(`room_${roomIdStr}`).emit("video-call-offer", {
+      console.log("📹 [Socket] Video call offer from:", callerId, "to:", targetId);
+      
+      // Send offer only to the target user
+      emitToUser(targetId, "video-call-offer", {
         roomId: roomIdStr,
         offer,
         callerId: String(callerId),
@@ -467,32 +493,85 @@ const setupSocketIO = (io, app) => {
       });
     });
 
-    // Send SDP answer
-    socket.on("video-call-answer", ({ roomId, answer, answererId }) => {
-      if (!roomId || !answer || !answererId) return;
+    // Send SDP answer to a specific user
+    socket.on("video-call-answer", ({ roomId, targetUserId, answer, answererId, answererName }) => {
+      if (!roomId || !answer || !answererId || !targetUserId) return;
       
       const roomIdStr = String(roomId);
-      console.log("📹 [Socket] Video call answer in room:", roomIdStr);
+      const targetId = String(targetUserId);
       
-      // Broadcast to all room members except answerer
-      socket.to(`room_${roomIdStr}`).emit("video-call-answer", {
+      console.log("📹 [Socket] Video call answer from:", answererId, "to:", targetId);
+      
+      // Send answer only to the target user
+      emitToUser(targetId, "video-call-answer", {
         roomId: roomIdStr,
         answer,
         answererId: String(answererId),
+        answererName: answererName || "Unknown",
       });
     });
 
-    // Send ICE candidate
-    socket.on("video-call-ice-candidate", ({ roomId, candidate, senderId }) => {
-      if (!roomId || !candidate || !senderId) return;
+    // Send ICE candidate to a specific user
+    socket.on("video-call-ice-candidate", ({ roomId, targetUserId, candidate, senderId }) => {
+      if (!roomId || !candidate || !senderId || !targetUserId) return;
       
       const roomIdStr = String(roomId);
+      const targetId = String(targetUserId);
       
-      // Broadcast to all room members except sender
-      socket.to(`room_${roomIdStr}`).emit("video-call-ice-candidate", {
+      // Send ICE candidate only to the target user
+      emitToUser(targetId, "video-call-ice-candidate", {
         roomId: roomIdStr,
         candidate,
         senderId: String(senderId),
+      });
+    });
+
+    // User joined video call - notify existing participants to create peer connections
+    socket.on("video-call-user-joined", ({ roomId, userId, userName }) => {
+      if (!roomId || !userId) return;
+      
+      const roomIdStr = String(roomId);
+      const userIdStr = String(userId);
+      
+      console.log("📹 [Socket] User joined video call:", userIdStr, "in room:", roomIdStr);
+      
+      // Get existing participants
+      const participants = activeCallParticipants.get(roomIdStr) || new Set();
+      
+      // Notify each existing participant about the new joiner
+      for (const participantId of participants) {
+        if (participantId !== userIdStr) {
+          console.log("📹 [Socket] Notifying participant:", participantId, "about new joiner:", userIdStr);
+          emitToUser(participantId, "video-call-user-joined", {
+            roomId: roomIdStr,
+            userId: userIdStr,
+            userName: userName || "Unknown",
+          });
+        }
+      }
+      
+      // Send list of existing participants to the new joiner
+      const existingParticipants = Array.from(participants).filter(p => p !== userIdStr);
+      emitToUser(userIdStr, "video-call-participants", {
+        roomId: roomIdStr,
+        participants: existingParticipants,
+      });
+      
+      // Add new user to participants
+      participants.add(userIdStr);
+      activeCallParticipants.set(roomIdStr, participants);
+    });
+
+    // Get call participants
+    socket.on("video-call-get-participants", ({ roomId, userId }) => {
+      if (!roomId || !userId) return;
+      
+      const roomIdStr = String(roomId);
+      const participants = activeCallParticipants.get(roomIdStr) || new Set();
+      
+      emitToUser(userId, "video-call-participants", {
+        roomId: roomIdStr,
+        participants: Array.from(participants),
       });
     });
 
@@ -501,38 +580,49 @@ const setupSocketIO = (io, app) => {
       if (!roomId) return;
       
       const roomIdStr = String(roomId);
-      console.log("📹 [Socket] Video call ended in room:", roomIdStr);
+      const userIdStr = userId ? String(userId) : null;
+      
+      console.log("📹 [Socket] Video call ended in room:", roomIdStr, "by:", userIdStr);
+      
+      // Remove user from participants
+      if (userIdStr) {
+        const participants = activeCallParticipants.get(roomIdStr);
+        if (participants) {
+          participants.delete(userIdStr);
+          
+          // If no more participants, clean up
+          if (participants.size === 0) {
+            activeCallParticipants.delete(roomIdStr);
+          }
+        }
+      }
       
       // Broadcast to all room members
       io.to(`room_${roomIdStr}`).emit("video-call-end", {
         roomId: roomIdStr,
-        userId: userId ? String(userId) : null,
+        userId: userIdStr,
+      });
+      
+      // Also notify any online members who might not be in the room
+      getOnlineRoomMembers(roomIdStr).then((onlineMembers) => {
+        for (const memberId of onlineMembers) {
+          emitToUser(memberId, "video-call-end", {
+            roomId: roomIdStr,
+            userId: userIdStr,
+          });
+        }
       });
     });
 
     // Reject video call
-    socket.on("video-call-reject", ({ roomId, userId }) => {
+    socket.on("video-call-reject", ({ roomId, userId, userName }) => {
       if (!roomId || !userId) return;
       
       const roomIdStr = String(roomId);
-      console.log("📹 [Socket] Video call rejected in room:", roomIdStr);
+      console.log("📹 [Socket] Video call rejected in room:", roomIdStr, "by:", userId);
       
       // Broadcast to all room members
       io.to(`room_${roomIdStr}`).emit("video-call-reject", {
-        roomId: roomIdStr,
-        userId: String(userId),
-      });
-    });
-
-    // User joined video call
-    socket.on("video-call-user-joined", ({ roomId, userId, userName }) => {
-      if (!roomId || !userId) return;
-      
-      const roomIdStr = String(roomId);
-      console.log("📹 [Socket] User joined video call:", userId, "in room:", roomIdStr);
-      
-      // Broadcast to all room members except the joiner
-      socket.to(`room_${roomIdStr}`).emit("video-call-user-joined", {
         roomId: roomIdStr,
         userId: String(userId),
         userName: userName || "Unknown",
@@ -547,13 +637,28 @@ const setupSocketIO = (io, app) => {
       if (userData) {
         const { userId } = userData;
 
-        // Remove socket from user's sockets
+        // Remove from all active calls
+        for (const [roomId, participants] of activeCallParticipants) {
+          if (participants.has(userId)) {
+            participants.delete(userId);
+            
+            // Notify other participants
+            io.to(`room_${roomId}`).emit("video-call-user-left", {
+              roomId,
+              userId,
+            });
+            
+            if (participants.size === 0) {
+              activeCallParticipants.delete(roomId);
+            }
+          }
+        }
+
         const sockets = userSockets.get(userId);
         if (sockets) {
           sockets.delete(socket.id);
           if (sockets.size === 0) {
             userSockets.delete(userId);
-            // User has no more connections - set offline
             if (onlineUsers.has(userId)) {
               onlineUsers.delete(userId);
               await broadcastUserStatus(userId, false);
@@ -561,7 +666,6 @@ const setupSocketIO = (io, app) => {
           }
         }
 
-        // Remove socket data
         socketUsers.delete(socket.id);
       }
     });
@@ -569,17 +673,14 @@ const setupSocketIO = (io, app) => {
 
   // ==================== UTILITY FUNCTIONS ====================
 
-  // Update last message (called from API)
   global.updateLastMessage = (roomId, message) => {
     lastMessages[String(roomId)] = message;
   };
 
-  // Get last message
   global.getLastMessage = (roomId) => {
     return lastMessages[String(roomId)];
   };
 
-  // Increment unread count (called from API)
   global.incrementUnreadCount = (userId, roomId) => {
     const userIdStr = String(userId);
     const roomIdStr = String(roomId);
@@ -588,7 +689,6 @@ const setupSocketIO = (io, app) => {
       (unreadCounts[userIdStr][roomIdStr] || 0) + 1;
   };
 
-  // Clear unread count
   global.clearUnreadCount = (userId, roomId) => {
     const userIdStr = String(userId);
     const roomIdStr = String(roomId);
@@ -597,12 +697,10 @@ const setupSocketIO = (io, app) => {
     }
   };
 
-  // Emit to room
   global.emitToRoom = (roomId, event, data) => {
     io.to(`room_${String(roomId)}`).emit(event, data);
   };
 
-  // Emit to user
   global.emitToUser = (userId, event, data) => {
     const sockets = userSockets.get(String(userId));
     if (sockets) {

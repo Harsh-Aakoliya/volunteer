@@ -11,7 +11,9 @@ import { requestChatNotificationPermissions } from '@/utils/chatNotificationHand
 import useNetworkStatus from '@/hooks/userNetworkStatus';
 import OfflinePopup from '@/components/OfflinePopup';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { SocketProvider, useSocket } from '@/contexts/SocketContext';
+import { SocketProvider } from '@/contexts/SocketContext';
+import { VideoCallProvider } from '@/contexts/VideoCallContext';
+import GlobalVideoCallNotification from '@/components/GlobalVideoCallNotification';
 
 // Inner component that uses socket context
 function AppContent() {
@@ -47,9 +49,6 @@ function AppContent() {
           await requestChatNotificationPermissions();
         }
 
-        // ✅ NOTE: Socket initialization is now done lazily in the chat screens
-        // after API URL is configured in app/index.tsx
-
       } catch (error) {
         console.error('Bootstrap error:', error);
       } finally {
@@ -74,6 +73,8 @@ function AppContent() {
     <>
       <Stack screenOptions={{ headerShown: false, statusBarStyle: "light", statusBarBackgroundColor: "#3b82f6" }} />
       {Platform.OS !== 'web' && <OfflinePopup isVisible={!isConnected} />}
+      {/* Global video call notification overlay */}
+      <GlobalVideoCallNotification />
     </>
   );
 }
@@ -82,7 +83,9 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SocketProvider>
-        <AppContent />
+        <VideoCallProvider>
+          <AppContent />
+        </VideoCallProvider>
       </SocketProvider>
     </GestureHandlerRootView>
   );

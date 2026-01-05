@@ -103,6 +103,35 @@ export interface MessagesDeletedEvent {
   wasLastMessageDeleted?: boolean;  // NEW
 }
 
+export interface VideoCallInitiateData {
+  roomId: string;
+  roomName: string;
+  callerId: string;
+  callerName: string;
+}
+
+export interface VideoCallOfferData {
+  roomId: string;
+  targetUserId: string;
+  offer: any;
+  callerId: string;
+  callerName: string;
+}
+
+export interface VideoCallAnswerData {
+  roomId: string;
+  targetUserId: string;
+  answer: any;
+  answererId: string;
+  answererName: string;
+}
+
+export interface VideoCallIceCandidateData {
+  roomId: string;
+  targetUserId: string;
+  candidate: any;
+  senderId: string;
+}
 // ==================== SOCKET MANAGER ====================
 
 class SocketManager {
@@ -465,38 +494,49 @@ class SocketManager {
 
   // ==================== VIDEO CALL ACTIONS ====================
 
-  initiateVideoCall(roomId: string): void {
+  initiateVideoCall(roomId: string, roomName: string = 'Video Call'): void {
     if (!this.socket?.connected || !this.user) return;
+    console.log('📹 [Socket] Initiating video call:', roomId);
     this.socket.emit("video-call-initiate", {
       roomId,
+      roomName,
       callerId: this.user.id,
       callerName: this.user.name,
     });
   }
 
-  sendVideoCallOffer(roomId: string, offer: any): void {
+  // Send offer to a specific user
+  sendVideoCallOfferToUser(roomId: string, targetUserId: string, offer: any): void {
     if (!this.socket?.connected || !this.user) return;
+    console.log('📹 [Socket] Sending offer to user:', targetUserId);
     this.socket.emit("video-call-offer", {
       roomId,
+      targetUserId,
       offer,
       callerId: this.user.id,
       callerName: this.user.name,
     });
   }
 
-  sendVideoCallAnswer(roomId: string, answer: any): void {
+  // Send answer to a specific user
+  sendVideoCallAnswerToUser(roomId: string, targetUserId: string, answer: any): void {
     if (!this.socket?.connected || !this.user) return;
+    console.log('📹 [Socket] Sending answer to user:', targetUserId);
     this.socket.emit("video-call-answer", {
       roomId,
+      targetUserId,
       answer,
       answererId: this.user.id,
+      answererName: this.user.name,
     });
   }
 
-  sendVideoCallIceCandidate(roomId: string, candidate: any): void {
+  // Send ICE candidate to a specific user
+  sendVideoCallIceCandidateToUser(roomId: string, targetUserId: string, candidate: any): void {
     if (!this.socket?.connected || !this.user) return;
     this.socket.emit("video-call-ice-candidate", {
       roomId,
+      targetUserId,
       candidate,
       senderId: this.user.id,
     });
@@ -504,6 +544,7 @@ class SocketManager {
 
   endVideoCall(roomId: string): void {
     if (!this.socket?.connected || !this.user) return;
+    console.log('📹 [Socket] Ending video call:', roomId);
     this.socket.emit("video-call-end", {
       roomId,
       userId: this.user.id,
@@ -512,18 +553,30 @@ class SocketManager {
 
   rejectVideoCall(roomId: string): void {
     if (!this.socket?.connected || !this.user) return;
+    console.log('📹 [Socket] Rejecting video call:', roomId);
     this.socket.emit("video-call-reject", {
       roomId,
       userId: this.user.id,
+      userName: this.user.name,
     });
   }
 
   notifyVideoCallJoined(roomId: string): void {
     if (!this.socket?.connected || !this.user) return;
+    console.log('📹 [Socket] Notifying video call joined:', roomId);
     this.socket.emit("video-call-user-joined", {
       roomId,
       userId: this.user.id,
       userName: this.user.name,
+    });
+  }
+
+  // Request list of active participants in a call
+  requestCallParticipants(roomId: string): void {
+    if (!this.socket?.connected || !this.user) return;
+    this.socket.emit("video-call-get-participants", {
+      roomId,
+      userId: this.user.id,
     });
   }
 
@@ -604,6 +657,8 @@ class SocketManager {
       }
     }
   }
+
+  
 
   // ==================== UTILITIES ====================
 
