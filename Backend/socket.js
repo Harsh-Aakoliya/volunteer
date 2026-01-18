@@ -293,6 +293,7 @@ const setupSocketIO = (io, app) => {
     });
 
     // -------------------- REQUEST ROOM DATA --------------------
+    // Single unified event that returns ALL room data in one batch
     socket.on("requestRoomData", async ({ userId }) => {
       if (!userId) return;
 
@@ -304,29 +305,62 @@ const setupSocketIO = (io, app) => {
 
       try {
         const pool = await import("./config/database.js").then((m) => m.default);
+        
+        // Get user's rooms with all metadata in one query
         const result = await pool.query(
-          'SELECT "roomId" FROM chatroomusers WHERE "userId" = $1',
+          `SELECT cr."roomId", cr."roomName", cr."isactive",
+                  cru."canSendMessage", cru."isAdmin"
+           FROM chatrooms cr
+           JOIN chatroomusers cru ON cr."roomId" = cru."roomId"
+           WHERE cru."userId" = $1::integer AND cr."isactive" = 1
+           ORDER BY cr."createdon" DESC`,
           [userIdStr]
         );
 
-        const userLastMessages = {};
-        for (const { roomId } of result.rows) {
-          const roomIdStr = roomId.toString();
-          if (lastMessages[roomIdStr]) {
-            userLastMessages[roomIdStr] = lastMessages[roomIdStr];
+        // Build unified rooms data array
+        const rooms = result.rows.map((room) => {
+          const roomIdStr = room.roomId.toString();
+          const lastMsg = lastMessages[roomIdStr];
+          const userUnread = unreadCounts[userIdStr]?.[roomIdStr] || 0;
+          
+          // Format lastMessage for display
+          let lastMessageData = null;
+          if (lastMsg) {
+            let displayText = lastMsg.messageText;
+            if (lastMsg.messageType !== 'text') {
+              // Show "shared {type}" for non-text messages
+              const typeMap = {
+                'media': 'media',
+                'poll': 'poll',
+                'table': 'table',
+                'announcement': 'announcement'
+              };
+              displayText = `shared ${typeMap[lastMsg.messageType] || lastMsg.messageType}`;
+            }
+            
+            lastMessageData = {
+              id: lastMsg.id,
+              text: displayText,
+              messageType: lastMsg.messageType,
+              senderName: lastMsg.sender?.userName || 'Unknown',
+              senderId: lastMsg.sender?.userId,
+              timestamp: lastMsg.createdAt,
+            };
           }
-        }
-        socket.emit("lastMessage", { lastMessageByRoom: userLastMessages });
+          
+          return {
+            roomId: roomIdStr,
+            roomName: room.roomName,
+            isAdmin: room.isAdmin === true || room.isAdmin === 1,
+            canSendMessage: room.canSendMessage === true || room.canSendMessage === 1,
+            lastMessage: lastMessageData,
+            unreadCount: userUnread,
+          };
+        });
 
-        sendUnreadCounts(socket, userIdStr);
-
-        for (const { roomId } of result.rows) {
-          const onlineInfo = await getOnlineUsersInRoom(roomId);
-          socket.emit("onlineUsers", {
-            roomId: roomId.toString(),
-            ...onlineInfo,
-          });
-        }
+        // Single unified event with all room data
+        socket.emit("roomsData", { rooms });
+        
       } catch (error) {
         console.error("❌ [Socket] Room data error:", error);
       }
@@ -412,6 +446,20 @@ const setupSocketIO = (io, app) => {
       const roomIdStr = String(roomId);
       console.log("📤 [Socket] Message in room:", roomIdStr);
 
+      // Format reply text for display (for polls, media, etc show type name)
+      let replyMessageText = message.replyMessageText || null;
+      if (message.replyMessageId && message.replyMessageType) {
+        if (message.replyMessageType === 'poll') {
+          replyMessageText = '📊 Poll';
+        } else if (message.replyMessageType === 'media') {
+          replyMessageText = '📷 Media';
+        } else if (message.replyMessageType === 'table') {
+          replyMessageText = '📋 Table';
+        } else if (message.replyMessageType === 'announcement') {
+          replyMessageText = '📢 Announcement';
+        }
+      }
+
       const msgData = {
         id: message.id,
         roomId: roomIdStr,
@@ -426,6 +474,8 @@ const setupSocketIO = (io, app) => {
         pollId: message.pollId || null,
         tableId: message.tableId || null,
         replyMessageId: message.replyMessageId || null,
+        replySenderName: message.replySenderName || null,
+        replyMessageText: replyMessageText,
       };
 
       lastMessages[roomIdStr] = msgData;

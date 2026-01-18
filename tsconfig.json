@@ -17,6 +17,8 @@
     "utils/authStorage.tsx",
     "components/Icons/MdPermMedia.jsx",
     "components/chat/DateTimePicker.tsx",
-    "app/index.tsx"
+    "app/index.tsx",
+    ".expo/types/**/*.ts",
+    "expo-env.d.ts"
   ]
 }

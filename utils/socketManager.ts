@@ -41,6 +41,7 @@ export interface ChatMessage {
   replyMessageId?: number;
   replySenderName?: string;
   replyMessageText?: string;
+  replyMessageType?: string;
   isEdited?: boolean;
   editedAt?: string;
 }
@@ -62,6 +63,30 @@ export interface MemberInfo {
   fullName: string | null;
   isAdmin: boolean;
   isOnline: boolean;
+}
+
+export interface RoomMetadata {
+  roomId: string;
+  roomName: string;
+  canSendMessage: boolean;
+  isAdmin: boolean;
+}
+
+// Unified room data structure for the rooms list
+export interface RoomData {
+  roomId: string;
+  roomName: string;
+  isAdmin: boolean;
+  canSendMessage: boolean;
+  lastMessage: {
+    id: number;
+    text: string;
+    messageType: string;
+    senderName: string;
+    senderId: string;
+    timestamp: string;
+  } | null;
+  unreadCount: number;
 }
 
 export interface MessageEditedEvent {
@@ -296,6 +321,16 @@ class SocketManager {
       this.emit("unreadCounts", data.unreadCounts);
     });
 
+    // Room metadata (roomName, canSendMessage, isAdmin) - legacy support
+    this.socket.on("roomMetadata", (data: { rooms: Record<string, RoomMetadata> }) => {
+      this.emit("roomMetadata", data.rooms);
+    });
+
+    // Unified rooms data (all room info in one event)
+    this.socket.on("roomsData", (data: { rooms: RoomData[] }) => {
+      this.emit("roomsData", data.rooms);
+    });
+
     // Room update (new message, unread change)
     this.socket.on("roomUpdate", (data: RoomUpdate) => {
       this.emit("roomUpdate", data);
@@ -484,6 +519,9 @@ class SocketManager {
         pollId: message.pollId,
         tableId: message.tableId,
         replyMessageId: message.replyMessageId,
+        replySenderName: message.replySenderName,
+        replyMessageText: message.replyMessageText,
+        replyMessageType: message.replyMessageType,
       },
       sender: {
         userId: this.user.id,

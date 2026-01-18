@@ -1,17 +1,19 @@
 // components/chat/EditMessageModal.tsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
   Modal,
   TouchableOpacity,
   Alert,
+  TextInput,
+  ActivityIndicator,
   KeyboardAvoidingView,
-  Platform
+  Platform,
+  SafeAreaView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Message, ChatUser } from '@/types/type';
-import MessageInput from './MessageInput';
+import { Message } from '@/types/type';
 import axios from 'axios';
 import { API_URL } from '@/constants/api';
 import { AuthStorage } from '@/utils/authStorage';
@@ -20,12 +22,12 @@ interface EditMessageModalProps {
   visible: boolean;
   onClose: () => void;
   message: Message | null;
-  roomId: string | number; // Add roomId as a separate prop
-  roomMembers: ChatUser[];
-  currentUser: {
+  roomId: string | number;
+  roomMembers?: any[]; // Optional - kept for backward compatibility
+  currentUser?: {
     userId: string;
     fullName: string | null;
-  } | null;
+  } | null; // Optional - kept for backward compatibility
   onMessageEdited: (editedMessage: Message) => void;
 }
 
@@ -34,19 +36,20 @@ export default function EditMessageModal({
   onClose,
   message,
   roomId,
-  roomMembers,
-  currentUser,
   onMessageEdited
 }: EditMessageModalProps) {
-  console.log("message to edit",message);
   const [editedText, setEditedText] = useState('');
   const [isEditing, setIsEditing] = useState(false);
+  const textInputRef = useRef<TextInput>(null);
 
   useEffect(() => {
     if (message && visible) {
-      // Extract the original message text (remove mentions formatting for editing)
       const originalText = message.messageText || '';
       setEditedText(originalText);
+      // Auto focus the input when modal opens
+      setTimeout(() => {
+        textInputRef.current?.focus();
+      }, 100);
     }
   }, [message, visible]);
 
@@ -63,7 +66,6 @@ export default function EditMessageModal({
     }
 
     if (editedText.trim() === message.messageText?.trim()) {
-      // No changes made
       onClose();
       return;
     }
@@ -72,28 +74,19 @@ export default function EditMessageModal({
       setIsEditing(true);
       const token = await AuthStorage.getToken();
       
-      // Ensure we have a valid message ID and roomId
       const messageId = typeof message.id === 'string' ? message.id : String(message.id);
-      const roomIdValue = String(roomId); // Use the roomId prop instead of message.roomId
+      const roomIdValue = String(roomId);
       
-      console.log('Editing message with ID:', messageId, 'in room:', roomIdValue);
-      
-      // Validate roomId before making API call
       if (!roomIdValue || roomIdValue === 'undefined' || roomIdValue === 'null') {
         throw new Error('Invalid room ID');
       }
        
-       const response = await axios.put(
-         `${API_URL}/api/chat/rooms/${roomIdValue}/messages/${messageId}`,
-         {
-           messageText: editedText.trim()
-         },
-         {
-           headers: { Authorization: `Bearer ${token}` }
-         }
-       );
+      await axios.put(
+        `${API_URL}/api/chat/rooms/${roomIdValue}/messages/${messageId}`,
+        { messageText: editedText.trim() },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
 
-      // Create the updated message object
       const updatedMessage: Message = {
         ...message,
         messageText: editedText.trim(),
@@ -138,47 +131,78 @@ export default function EditMessageModal({
       animationType="fade"
       onRequestClose={handleCancel}
     >
-      <KeyboardAvoidingView 
-        behavior={Platform.OS === "ios" ? "padding" : "height"} 
-        className="flex-1"
-      >
-        <View className="flex-1 bg-black bg-opacity-50 justify-center px-4">
-          <View className="bg-white rounded-lg shadow-lg max-h-96">
-            {/* Header */}
-            <View className="flex-row items-center justify-between p-4 border-b border-gray-200">
-              <Text className="text-lg font-bold text-gray-800">Edit Message</Text>
-              <TouchableOpacity onPress={handleCancel}>
-                <Ionicons name="close" size={24} color="#6B7280" />
-              </TouchableOpacity>
-            </View>
+      <SafeAreaView className="flex-1 bg-black/50">
+        <KeyboardAvoidingView 
+          behavior={Platform.OS === "ios" ? "padding" : undefined} 
+          className="flex-1"
+          keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
+        >
+          {/* Header */}
+          <View className="flex-row items-center px-4 py-3 bg-[#008069]">
+            <TouchableOpacity onPress={handleCancel} className="p-1 mr-4">
+              <Ionicons name="arrow-back" size={24} color="#fff" />
+            </TouchableOpacity>
+            <Text className="text-lg font-semibold text-white flex-1">Edit message</Text>
+          </View>
 
-            {/* Original message preview */}
-            <View className="p-4 border-b border-gray-100 bg-gray-50">
-              <Text className="text-sm font-medium text-gray-600 mb-1">Original message:</Text>
-              <Text className="text-gray-800 italic">{message.messageText}</Text>
-            </View>
-
-            {/* Edit input */}
-            <View className="border-t border-gray-200 bg-white">
-              <MessageInput
-                messageText={editedText}
-                onChangeText={setEditedText}
-                onSend={handleSave}
-                placeholder="Edit your message..."
-                sending={isEditing}
-                disabled={isEditing}
-                roomMembers={roomMembers}
-                currentUser={currentUser}
-                showAttachments={false}
-                multiline={true}
-                maxHeight={120}
-                autoFocus={true}
-                style={{ maxHeight: 150 }}
-              />
+          {/* Middle area - shows original message preview */}
+          <View className="flex-1 bg-[#E5DDD5] justify-end pb-4 px-3">
+            {/* Current message being edited - shown as preview */}
+            <View className="self-end max-w-[75%] bg-[#DCF8C6] rounded-lg px-3 py-2 shadow-sm">
+              <Text className="text-base text-black leading-[22px]">
+                {message.messageText}
+              </Text>
+              <View className="flex-row items-center justify-end mt-1">
+                <Text className="text-[11px] text-[#8E8E93]">
+                  {message.isEdited ? 'edited' : ''}
+                </Text>
+              </View>
             </View>
           </View>
-        </View>
-      </KeyboardAvoidingView>
+
+          {/* Bottom Input Section */}
+          <View className="bg-[#E5DDD5] pb-2 px-2">
+            <View className="flex-row items-end gap-2">
+              {/* Input Container */}
+              <View className="flex-1 bg-white rounded-3xl shadow-sm overflow-hidden">
+                <View className="flex-row items-end px-3 py-2">
+
+                  {/* Text Input */}
+                  <TextInput
+                    ref={textInputRef}
+                    className="flex-1 text-[17px] text-[#111B21] max-h-[120px] py-1"
+                    placeholder="Message"
+                    placeholderTextColor="#8696A0"
+                    value={editedText}
+                    onChangeText={setEditedText}
+                    multiline
+                    editable={!isEditing}
+                    maxLength={4096}
+                    textAlignVertical="center"
+                    style={{ lineHeight: 22 }}
+                  />
+                </View>
+              </View>
+
+              {/* Tick/Check Button */}
+              <TouchableOpacity
+                className={`w-12 h-12 rounded-full justify-center items-center shadow-sm ${
+                  isEditing ? 'bg-gray-400' : 'bg-[#1DAB61]'
+                }`}
+                onPress={handleSave}
+                activeOpacity={0.8}
+                disabled={isEditing}
+              >
+                {isEditing ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Ionicons name="checkmark" size={26} color="#fff" />
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
     </Modal>
   );
 }

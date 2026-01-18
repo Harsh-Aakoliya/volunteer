@@ -4,7 +4,7 @@
       "slug": "Sevak",
       "version": "1.0.12",
       "userInterfaceStyle": "automatic",
-      "icon": "./assets/images/appicon.png",
+      "icon": "./assets/images/appicon1.png",
       "newArchEnabled": true,
       "web": {
         "bundler": "metro",

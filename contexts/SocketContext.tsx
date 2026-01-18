@@ -20,7 +20,10 @@ import socketManager, {
   MemberInfo,
   MessageEditedEvent,
   MessagesDeletedEvent,
+  RoomMetadata,
+  RoomData,
 } from "@/utils/socketManager";
+import { ChatRoomStorage } from "@/utils/chatRoomsStorage";
 import { AuthStorage } from "@/utils/authStorage";
 
 // ==================== TYPES ====================
@@ -29,8 +32,10 @@ interface SocketState {
   isConnected: boolean;
   isInitialized: boolean;
   user: SocketUser | null;
-  lastMessages: Record<string, LastMessage>;
-  unreadCounts: Record<string, number>;
+  rooms: RoomData[];  // Unified rooms data
+  lastMessages: Record<string, LastMessage>;  // Keep for real-time updates
+  unreadCounts: Record<string, number>;  // Keep for real-time updates
+  roomMetadata: Record<string, RoomMetadata>;  // Keep for real-time updates
 }
 
 interface SocketContextValue extends SocketState {
@@ -72,8 +77,10 @@ export function SocketProvider({ children }: SocketProviderProps) {
     isConnected: false,
     isInitialized: false,
     user: null,
+    rooms: [],
     lastMessages: {},
     unreadCounts: {},
+    roomMetadata: {},
   });
 
   const subscriptionIds = useRef<number[]>([]);
@@ -170,26 +177,249 @@ export function SocketProvider({ children }: SocketProviderProps) {
     );
     subscriptionIds.current.push(unreadSub);
 
-    // Room updates
+    // Room metadata (roomName, canSendMessage, isAdmin) - for individual updates
+    const metadataSub = socketManager.on<Record<string, RoomMetadata>>(
+      "roomMetadata",
+      (metadata) => {
+        setState((prev) => ({
+          ...prev,
+          roomMetadata: { ...prev.roomMetadata, ...metadata },
+        }));
+      }
+    );
+    subscriptionIds.current.push(metadataSub);
+
+    // Unified rooms data - single event with all room info
+    const roomsDataSub = socketManager.on<RoomData[]>(
+      "roomsData",
+      (rooms) => {
+        console.log("📦 [SocketContext] Received rooms data:", rooms.length);
+        setState((prev) => ({
+          ...prev,
+          rooms,
+        }));
+        // Save to cache
+        const cacheRooms = rooms.map((r) => ({
+          roomId: parseInt(r.roomId),
+          roomName: r.roomName,
+          isAdmin: r.isAdmin,
+          canSendMessage: r.canSendMessage,
+          lastMessage: r.lastMessage ? {
+            id: r.lastMessage.id,
+            messageText: r.lastMessage.text,
+            messageType: r.lastMessage.messageType,
+            createdAt: r.lastMessage.timestamp,
+            roomId: r.roomId,
+            sender: {
+              userId: r.lastMessage.senderId,
+              userName: r.lastMessage.senderName,
+            },
+          } : undefined,
+          unreadCount: r.unreadCount,
+        }));
+        ChatRoomStorage.saveChatRooms(cacheRooms as any);
+      }
+    );
+    subscriptionIds.current.push(roomsDataSub);
+
+    // Room updates - this is sent to ALL room members (even those not in the room)
+    // This is the main event for updating the rooms list on the main page
     const roomUpdateSub = socketManager.on<RoomUpdate>("roomUpdate", (data) => {
+      console.log("🔄 [SocketContext] Room update for:", data.roomId);
+      
       setState((prev) => {
-        const newState = { ...prev };
-        if (data.lastMessage) {
-          newState.lastMessages = {
-            ...prev.lastMessages,
-            [data.roomId]: data.lastMessage,
-          };
+        // Update rooms array with new last message
+        const updatedRooms = prev.rooms.map((r) => {
+          if (r.roomId === data.roomId) {
+            // Convert lastMessage from old format to new format
+            let newLastMessage = r.lastMessage;
+            if (data.lastMessage) {
+              let displayText = data.lastMessage.messageText;
+              if (data.lastMessage.messageType !== 'text') {
+                const typeMap: Record<string, string> = {
+                  'media': 'shared media',
+                  'poll': 'shared poll',
+                  'table': 'shared table',
+                  'announcement': 'shared announcement'
+                };
+                displayText = typeMap[data.lastMessage.messageType] || data.lastMessage.messageText;
+              }
+              
+              newLastMessage = {
+                id: data.lastMessage.id,
+                text: displayText,
+                messageType: data.lastMessage.messageType,
+                senderName: data.lastMessage.sender?.userName || 'Unknown',
+                senderId: data.lastMessage.sender?.userId || '',
+                timestamp: data.lastMessage.createdAt,
+              };
+            }
+            
+            return {
+              ...r,
+              lastMessage: newLastMessage,
+              unreadCount: data.unreadCount !== undefined ? data.unreadCount : r.unreadCount,
+            };
+          }
+          return r;
+        });
+
+        // Save to cache
+        if (updatedRooms.length > 0) {
+          const cacheRooms = updatedRooms.map((r) => ({
+            roomId: parseInt(r.roomId),
+            roomName: r.roomName,
+            isAdmin: r.isAdmin,
+            canSendMessage: r.canSendMessage,
+            lastMessage: r.lastMessage ? {
+              id: r.lastMessage.id,
+              messageText: r.lastMessage.text,
+              messageType: r.lastMessage.messageType,
+              createdAt: r.lastMessage.timestamp,
+              roomId: r.roomId,
+              sender: {
+                userId: r.lastMessage.senderId,
+                userName: r.lastMessage.senderName,
+              },
+            } : undefined,
+            unreadCount: r.unreadCount,
+          }));
+          ChatRoomStorage.saveChatRooms(cacheRooms as any);
         }
-        if (data.unreadCount !== undefined) {
-          newState.unreadCounts = {
-            ...prev.unreadCounts,
-            [data.roomId]: data.unreadCount,
-          };
-        }
-        return newState;
+
+        return {
+          ...prev,
+          rooms: updatedRooms,
+          lastMessages: data.lastMessage 
+            ? { ...prev.lastMessages, [data.roomId]: data.lastMessage }
+            : prev.lastMessages,
+          unreadCounts: data.unreadCount !== undefined
+            ? { ...prev.unreadCounts, [data.roomId]: data.unreadCount }
+            : prev.unreadCounts,
+        };
       });
     });
     subscriptionIds.current.push(roomUpdateSub);
+
+    // New message - update rooms array and cache
+    const newMessageSub = socketManager.on<ChatMessage>("newMessage", (message) => {
+      console.log("📨 [SocketContext] New message in room:", message.roomId);
+      
+      // Determine display text based on message type
+      let displayText = message.messageText;
+      if (message.messageType !== 'text') {
+        const typeMap: Record<string, string> = {
+          'media': 'shared media',
+          'poll': 'shared poll',
+          'table': 'shared table',
+          'announcement': 'shared announcement'
+        };
+        displayText = typeMap[message.messageType] || message.messageText;
+      }
+
+      setState((prev) => {
+        const updatedRooms = prev.rooms.map((r) => {
+          if (r.roomId === message.roomId.toString()) {
+            return {
+              ...r,
+              lastMessage: {
+                id: typeof message.id === "number" ? message.id : parseInt(message.id as string) || 0,
+                text: displayText,
+                messageType: message.messageType,
+                senderName: message.senderName,
+                senderId: message.senderId,
+                timestamp: message.createdAt,
+              },
+              unreadCount: message.senderId !== prev.user?.id
+                ? (r.unreadCount || 0) + 1
+                : r.unreadCount,
+            };
+          }
+          return r;
+        });
+
+        // Save to cache
+        if (updatedRooms.length > 0) {
+          const cacheRooms = updatedRooms.map((r) => ({
+            roomId: parseInt(r.roomId),
+            roomName: r.roomName,
+            isAdmin: r.isAdmin,
+            canSendMessage: r.canSendMessage,
+            lastMessage: r.lastMessage ? {
+              id: r.lastMessage.id,
+              messageText: r.lastMessage.text,
+              messageType: r.lastMessage.messageType,
+              createdAt: r.lastMessage.timestamp,
+              roomId: r.roomId,
+              sender: {
+                userId: r.lastMessage.senderId,
+                userName: r.lastMessage.senderName,
+              },
+            } : undefined,
+            unreadCount: r.unreadCount,
+          }));
+          ChatRoomStorage.saveChatRooms(cacheRooms as any);
+        }
+
+        return { ...prev, rooms: updatedRooms };
+      });
+    });
+    subscriptionIds.current.push(newMessageSub);
+
+    // Message edited - update rooms array and cache
+    const messageEditedSub2 = socketManager.on<MessageEditedEvent>("messageEdited", (data) => {
+      console.log("✏️ [SocketContext] Message edited in room:", data.roomId);
+      
+      setState((prev) => {
+        const updatedRooms = prev.rooms.map((r) => {
+          if (r.roomId === data.roomId && r.lastMessage?.id === data.messageId) {
+            return {
+              ...r,
+              lastMessage: {
+                ...r.lastMessage,
+                text: data.messageText,
+              },
+            };
+          }
+          return r;
+        });
+
+        // Save to cache if changed
+        const hasChange = updatedRooms.some((r, i) => r !== prev.rooms[i]);
+        if (hasChange) {
+          const cacheRooms = updatedRooms.map((r) => ({
+            roomId: parseInt(r.roomId),
+            roomName: r.roomName,
+            isAdmin: r.isAdmin,
+            canSendMessage: r.canSendMessage,
+            lastMessage: r.lastMessage ? {
+              id: r.lastMessage.id,
+              messageText: r.lastMessage.text,
+              messageType: r.lastMessage.messageType,
+              createdAt: r.lastMessage.timestamp,
+              roomId: r.roomId,
+              sender: {
+                userId: r.lastMessage.senderId,
+                userName: r.lastMessage.senderName,
+              },
+            } : undefined,
+            unreadCount: r.unreadCount,
+          }));
+          ChatRoomStorage.saveChatRooms(cacheRooms as any);
+        }
+
+        return { ...prev, rooms: updatedRooms };
+      });
+    });
+    subscriptionIds.current.push(messageEditedSub2);
+
+    // Messages deleted - refresh from server
+    const messagesDeletedSub2 = socketManager.on<MessagesDeletedEvent>("messagesDeleted", (data) => {
+      console.log("🗑️ [SocketContext] Messages deleted in room:", data.roomId);
+      // Refresh room data from server to get accurate state
+      socketManager.requestRoomData();
+    });
+    subscriptionIds.current.push(messagesDeletedSub2);
   }, []);
 
   // Disconnect
@@ -202,57 +432,11 @@ export function SocketProvider({ children }: SocketProviderProps) {
       isConnected: false,
       isInitialized: false,
       user: null,
+      rooms: [],
       lastMessages: {},
       unreadCounts: {},
+      roomMetadata: {},
     });
-
-const messageEditedSub = socketManager.on<MessageEditedEvent & { isLastMessage?: boolean }>(
-  "messageEdited",
-  (data) => {
-    if (data.isLastMessage) {
-      setState((prev) => ({
-        ...prev,
-        lastMessages: {
-          ...prev.lastMessages,
-          [data.roomId]: prev.lastMessages[data.roomId] 
-            ? {
-                ...prev.lastMessages[data.roomId],
-                messageText: data.messageText,
-              }
-            : prev.lastMessages[data.roomId],
-        },
-      }));
-    }
-  }
-);
-subscriptionIds.current.push(messageEditedSub);
-
-// Messages deleted - update lastMessages if last message was deleted
-const messagesDeletedSub = socketManager.on<MessagesDeletedEvent>(
-  "messagesDeleted",
-  (data) => {
-    if (data.wasLastMessageDeleted && data.newLastMessage) {
-      setState((prev) => ({
-        ...prev,
-        lastMessages: {
-          ...prev.lastMessages,
-          [data.roomId]: data.newLastMessage!,
-        },
-      }));
-    } else if (data.wasLastMessageDeleted && !data.newLastMessage) {
-      // No more messages in room
-      setState((prev) => {
-        const newLastMessages = { ...prev.lastMessages };
-        delete newLastMessages[data.roomId];
-        return {
-          ...prev,
-          lastMessages: newLastMessages,
-        };
-      });
-    }
-  }
-);
-subscriptionIds.current.push(messagesDeletedSub);
   }, []);
 
   // Refresh room data
@@ -287,6 +471,7 @@ subscriptionIds.current.push(messagesDeletedSub);
   const markRoomAsRead = useCallback((roomId: string) => {
     setState((prev) => ({
       ...prev,
+      rooms: prev.rooms.map(r => r.roomId === roomId ? { ...r, unreadCount: 0 } : r),
       unreadCounts: { ...prev.unreadCounts, [roomId]: 0 },
     }));
   }, []);

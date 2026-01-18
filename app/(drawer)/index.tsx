@@ -17,23 +17,12 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useNavigation } from "expo-router";
-import { fetchChatRooms } from "@/api/chat";
 import { ChatRoomStorage } from "@/utils/chatRoomsStorage";
-import { ChatRoom } from "@/types/type";
 import { useFocusEffect } from "@react-navigation/native";
-import { getRelativeTimeIST } from "@/utils/dateUtils";
 import { LinearGradient } from "expo-linear-gradient";
 import { DrawerActions } from "@react-navigation/native";
 import NoChatRoomComponenet from "@/components/chat/NoChatRoomComponenet";
-import { useSocket, useRoomListSubscription } from "@/contexts/SocketContext";
-import {
-  LastMessage,
-  RoomUpdate,
-  OnlineUsersUpdate,
-  ChatMessage,
-  MessageEditedEvent,
-  MessagesDeletedEvent,
-} from "@/utils/socketManager";
+import { useSocket } from "@/contexts/SocketContext";
 import eventEmitter from "@/utils/eventEmitter";
 
 // ==================== CONSTANTS ====================
@@ -77,11 +66,21 @@ const getInitials = (name: string): string => {
 
 // ==================== TYPES ====================
 
-// UPDATE the RoomListItem interface:
-interface RoomListItem extends ChatRoom {
+// Simplified RoomListItem using unified RoomData
+interface RoomListItem {
+  roomId: string;
+  roomName: string;
+  isAdmin: boolean;
+  canSendMessage: boolean;
+  lastMessage: {
+    id: number;
+    text: string;
+    messageType: string;
+    senderName: string;
+    senderId: string;
+    timestamp: string;
+  } | null;
   unreadCount: number;
-  lastMessage?: LastMessage;
-  onlineCount?: number;  // Optional since groups might have this
 }
 
 // ==================== AVATAR COMPONENT ====================
@@ -164,38 +163,23 @@ const RoomItem = memo(({ room, currentUserId, onPress, onLongPress }: RoomItemPr
   const hasUnread = room.unreadCount > 0;
   const scaleAnim = useRef(new Animated.Value(1)).current;
 
-  // Format message preview
+  // Format message preview using unified lastMessage structure
   let messagePreview = "No messages yet";
   let previewPrefix = "";
   let isMediaMessage = false;
 
   if (room.lastMessage) {
-    const isOwn = room.lastMessage.sender.userId === currentUserId;
+    const isOwn = room.lastMessage.senderId === currentUserId;
     previewPrefix = isOwn ? "You: " : "";
-
-    if (room.lastMessage.messageText) {
-      messagePreview = room.lastMessage.messageText;
-    } else if (room.lastMessage.pollId) {
-      messagePreview = "📊 Poll";
-      isMediaMessage = true;
-    } else if (room.lastMessage.tableId) {
-      messagePreview = "📋 Table";
-      isMediaMessage = true;
-    } else if (room.lastMessage.mediaFilesId) {
-      messagePreview = "📷 Photo";
-      isMediaMessage = true;
-    } else {
-      messagePreview = "Message";
-    }
-  } else if (room.roomDescription) {
-    messagePreview = room.roomDescription;
+    messagePreview = room.lastMessage.text;
+    isMediaMessage = room.lastMessage.messageType !== 'text';
   }
 
   // Format time - Telegram style
   let timeText = "";
-  if (room.lastMessage?.createdAt) {
+  if (room.lastMessage?.timestamp) {
     try {
-      const date = new Date(room.lastMessage.createdAt);
+      const date = new Date(room.lastMessage.timestamp);
       const now = new Date();
       const diffDays = Math.floor(
         (now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24)
@@ -244,7 +228,7 @@ const RoomItem = memo(({ room, currentUserId, onPress, onLongPress }: RoomItemPr
           backgroundColor: hasUnread ? "#E3F2FD" : "#FFFFFF",
         }}
         activeOpacity={0.7}
-        onPress={() => room.roomId && onPress(room.roomId.toString())}
+        onPress={() => room.roomId && onPress(room.roomId)}
         onLongPress={() => onLongPress?.(room)}
         onPressIn={handlePressIn}
         onPressOut={handlePressOut}
@@ -253,7 +237,7 @@ const RoomItem = memo(({ room, currentUserId, onPress, onLongPress }: RoomItemPr
           {/* Avatar */}
           <Avatar
             name={room.roomName || "Chat"}
-            isGroup={room.isGroup || false}
+            isGroup={true}
             isEmoji={true}
             size={56}
           />
@@ -317,9 +301,9 @@ const RoomItem = memo(({ room, currentUserId, onPress, onLongPress }: RoomItemPr
                 numberOfLines={1}
                 ellipsizeMode="tail"
               >
-                {room.isGroup && room.lastMessage && !isMediaMessage && (
+                {room.lastMessage && !previewPrefix && (
                   <Text style={{ color: "#2196F3", fontWeight: "600" }}>
-                    {room.lastMessage.sender.userName?.split(" ")[0]}:{" "}
+                    {room.lastMessage.senderName?.split(" ")[0]}:{" "}
                   </Text>
                 )}
                 {previewPrefix && (
@@ -521,13 +505,13 @@ const Header = memo(
           >
             Sevak App
           </Text>
-          {isSyncing && (
+          {/* {isSyncing && (
             <ActivityIndicator
               size="small"
               color="#FFFFFF"
               style={{ marginLeft: 8 }}
             />
-          )}
+          )} */}
         </View>
 
         {/* Search Button */}
@@ -583,14 +567,13 @@ export default function ChatRoomsList() {
     isConnected,
     isInitialized,
     user,
-    lastMessages,
-    unreadCounts,
+    rooms: socketRooms,
     initialize,
     refreshRoomData,
     markRoomAsRead,
   } = useSocket();
 
-  // Local state
+  // Local state - rooms from cache, updated by socket
   const [rooms, setRooms] = useState<RoomListItem[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [isSearchMode, setIsSearchMode] = useState(false);
@@ -605,235 +588,79 @@ export default function ChatRoomsList() {
 
   // ==================== DATA LOADING ====================
 
-// REPLACE the loadRooms function:
-const loadRooms = useCallback(async (forceRefresh = false) => {
-  if (!isMountedRef.current) return;
+  // Load rooms from cache only - socket will update with fresh data
+  const loadFromCache = useCallback(async () => {
+    if (!isMountedRef.current) return;
 
-  try {
-    if (!forceRefresh && !hasLoadedRef.current) {
+    try {
       const cached = await ChatRoomStorage.getChatRooms();
       if (cached?.rooms?.length) {
         console.log("📦 [Rooms] Loaded from cache:", cached.rooms.length);
-        setRooms(
-          cached.rooms.map((r: any) => ({
-            ...r,
-            unreadCount: r.unreadCount || 0,
-            lastMessage: r.lastMessage || undefined,
-          }))
-        );
+        // Convert cached data to RoomListItem format
+        const cachedRooms: RoomListItem[] = cached.rooms.map((r: any) => ({
+          roomId: r.roomId?.toString() || '',
+          roomName: r.roomName || 'Chat',
+          isAdmin: Boolean(r.isAdmin),
+          canSendMessage: Boolean(r.canSendMessage),
+          lastMessage: r.lastMessage ? {
+            id: r.lastMessage.id,
+            text: r.lastMessage.messageText || r.lastMessage.text || '',
+            messageType: r.lastMessage.messageType || 'text',
+            senderName: r.lastMessage.sender?.userName || r.lastMessage.senderName || 'Unknown',
+            senderId: r.lastMessage.sender?.userId || r.lastMessage.senderId || '',
+            timestamp: r.lastMessage.createdAt || r.lastMessage.timestamp || '',
+          } : null,
+          unreadCount: r.unreadCount || 0,
+        }));
+        setRooms(cachedRooms);
         setIsLoading(false);
+        hasLoadedRef.current = true;
       }
+    } catch (error) {
+      console.error("❌ [Rooms] Cache load error:", error);
     }
-
-    console.log("🔄 [Rooms] Fetching from server...");
-    setIsSyncing(true);
-
-    const freshRooms = await fetchChatRooms();
-    hasLoadedRef.current = true;
-
-    if (!isMountedRef.current) return;
-
-    // Save to cache with lastMessage and unreadCount
-    await ChatRoomStorage.saveChatRooms(freshRooms);
-
-    setRooms(
-      freshRooms.map((r: any) => ({
-        ...r,
-        unreadCount: r.unreadCount || 0,
-        lastMessage: r.lastMessage || undefined,
-      }))
-    );
-
-    console.log("✅ [Rooms] Loaded:", freshRooms.length);
-  } catch (error) {
-    console.error("❌ [Rooms] Load error:", error);
-  } finally {
-    if (isMountedRef.current) {
-      setIsLoading(false);
-      setIsSyncing(false);
-      setIsRefreshing(false);
-    }
-  }
-}, []);
+  }, []);
 
   // ==================== SOCKET DATA APPLICATION ====================
 
-const roomsWithSocketData = React.useMemo(() => {
-  return rooms.map((room) => {
-    const roomId = room.roomId?.toString() || "";
-    
-    // Socket data takes priority over initial/cached data
-    const socketLastMessage = lastMessages[roomId];
-    const socketUnreadCount = unreadCounts[roomId];
-    
-    return {
-      ...room,
-      lastMessage: socketLastMessage || room.lastMessage,
-      unreadCount: socketUnreadCount !== undefined ? socketUnreadCount : room.unreadCount,
-    };
-  });
-}, [rooms, lastMessages, unreadCounts]);
+  // Update rooms when socket data arrives - sync state from context
+  useEffect(() => {
+    // Always sync rooms from context to local state
+    // This ensures real-time updates (roomUpdate, newMessage, etc.) are reflected
+    if (socketRooms.length > 0 || hasLoadedRef.current) {
+      console.log("🔄 [Rooms] Syncing from context:", socketRooms.length);
+      setRooms(socketRooms);
+      if (socketRooms.length > 0) {
+        setIsLoading(false);
+        setIsSyncing(false);
+        setIsRefreshing(false);
+        hasLoadedRef.current = true;
+      }
+    }
+  }, [socketRooms]);
 
+  // Sort rooms by last message timestamp
   const sortedRooms = React.useMemo(() => {
-    return [...roomsWithSocketData].sort((a, b) => {
-      const aTime = a.lastMessage?.createdAt
-        ? new Date(a.lastMessage.createdAt).getTime()
-        : a.createdOn
-          ? new Date(a.createdOn).getTime()
-          : 0;
-      const bTime = b.lastMessage?.createdAt
-        ? new Date(b.lastMessage.createdAt).getTime()
-        : b.createdOn
-          ? new Date(b.createdOn).getTime()
-          : 0;
+    return [...rooms].sort((a, b) => {
+      const aTime = a.lastMessage?.timestamp
+        ? new Date(a.lastMessage.timestamp).getTime()
+        : 0;
+      const bTime = b.lastMessage?.timestamp
+        ? new Date(b.lastMessage.timestamp).getTime()
+        : 0;
       return bTime - aTime;
     });
-  }, [roomsWithSocketData]);
+  }, [rooms]);
 
+  // Filter rooms by search query
   const filteredRooms = React.useMemo(() => {
     if (!searchQuery.trim()) return sortedRooms;
     const query = searchQuery.toLowerCase();
     return sortedRooms.filter((r) => r.roomName?.toLowerCase().includes(query));
   }, [sortedRooms, searchQuery]);
 
-  // ==================== SOCKET SUBSCRIPTIONS ====================
-
-  useRoomListSubscription({
-    onRoomUpdate: useCallback((data: RoomUpdate) => {
-      console.log("���� [Rooms] Update:", data.roomId);
-      setRooms((prev) =>
-        prev.map((r) =>
-          r.roomId?.toString() === data.roomId
-            ? {
-                ...r,
-                lastMessage: data.lastMessage || r.lastMessage,
-                unreadCount: data.unreadCount ?? r.unreadCount,
-              }
-            : r
-        )
-      );
-    }, []),
-    onOnlineUsers: useCallback((data: OnlineUsersUpdate) => {
-      setRooms((prev) =>
-        prev.map((r) =>
-          r.roomId?.toString() === data.roomId
-            ? { ...r, onlineCount: data.count }
-            : r
-        )
-      );
-    }, []),
-    onNewMessage: useCallback(
-      (message: ChatMessage) => {
-        console.log("📨 [Rooms] New message in room:", message.roomId);
-        setRooms((prev) =>
-          prev.map((r) => {
-            if (r.roomId?.toString() === message.roomId.toString()) {
-              const newLastMessage: LastMessage = {
-                id:
-                  typeof message.id === "number"
-                    ? message.id
-                    : parseInt(message.id as string) || 0,
-                messageText: message.messageText,
-                messageType: message.messageType,
-                createdAt: message.createdAt,
-                roomId: message.roomId.toString(),
-                sender: {
-                  userId: message.senderId,
-                  userName: message.senderName,
-                },
-                mediaFilesId: message.mediaFilesId,
-                pollId: message.pollId,
-                tableId: message.tableId,
-              };
-              return {
-                ...r,
-                lastMessage: newLastMessage,
-                unreadCount:
-                  message.senderId !== user?.id
-                    ? (r.unreadCount || 0) + 1
-                    : r.unreadCount,
-              };
-            }
-            return r;
-          })
-        );
-      },
-      [user?.id]
-    ),
-    onMessageEdited: useCallback((data: MessageEditedEvent & { isLastMessage?: boolean }) => {
-      console.log("✏️ [Rooms] Message edited in room:", data.roomId);
-      setRooms((prev) =>
-        prev.map((r) => {
-          if (
-            r.roomId?.toString() === data.roomId &&
-            r.lastMessage?.id === data.messageId
-          ) {
-            const updatedRoom = {
-              ...r,
-              lastMessage: {
-                ...r.lastMessage,
-                messageText: data.messageText,
-              },
-            };
-            return updatedRoom;
-          }
-          return r;
-        })
-      );
-      
-      // Update local cache
-      ChatRoomStorage.getChatRooms().then((cached) => {
-        if (cached?.rooms) {
-          const updatedRooms = cached.rooms.map((r) => {
-            if (
-              r.roomId?.toString() === data.roomId &&
-              (r as any).lastMessage?.id === data.messageId
-            ) {
-              return {
-                ...r,
-                lastMessage: {
-                  ...(r as any).lastMessage,
-                  messageText: data.messageText,
-                },
-              };
-            }
-            return r;
-          });
-          ChatRoomStorage.saveChatRooms(updatedRooms);
-        }
-      });
-    }, []),
-    onMessagesDeleted: useCallback(
-      (data: MessagesDeletedEvent & { newLastMessage?: LastMessage; wasLastMessageDeleted?: boolean }) => {
-        console.log(
-          "🗑️ [Rooms] Messages deleted in room:",
-          data.roomId,
-          data.messageIds
-        );
-        
-        setRooms((prev) =>
-          prev.map((r) => {
-            if (r.roomId?.toString() === data.roomId) {
-              // Only update lastMessage if it was deleted
-              if (data.wasLastMessageDeleted) {
-                return {
-                  ...r,
-                  lastMessage: data.newLastMessage || undefined,
-                  // DO NOT modify unreadCount here - it will be refreshed from server
-                };
-              }
-              return r;
-            }
-            return r;
-          })
-        );
-        
-        // Refresh room data from server to get accurate unread counts
-        refreshRoomData();
-      },
-      [refreshRoomData]
-    ),
-  });
+  // Socket subscriptions are now handled in SocketContext
+  // Real-time updates flow: socket -> context -> rooms state via useEffect
 
   // ==================== EFFECTS ====================
 
@@ -850,9 +677,13 @@ const roomsWithSocketData = React.useMemo(() => {
     useCallback(() => {
       console.log("📱 [Rooms] Screen focused");
 
+      // Load from cache first for immediate display
       if (!hasLoadedRef.current) {
-        loadRooms();
+        loadFromCache();
       }
+      
+      // Request fresh data via socket
+      setIsSyncing(true);
 
       if (isConnected) {
         refreshRoomData();
@@ -866,21 +697,19 @@ const roomsWithSocketData = React.useMemo(() => {
       return () => {
         eventEmitter.off("openChatRoom", handleNotification);
       };
-    }, [isConnected])
+    }, [isConnected, loadFromCache, refreshRoomData])
   );
 
   // ==================== HANDLERS ====================
 
   const handleRefresh = useCallback(() => {
     setIsRefreshing(true);
-    loadRooms(true);
-    if (isConnected) {
-      refreshRoomData();
-    }
-  }, [loadRooms, isConnected, refreshRoomData]);
+    setIsSyncing(true);
+    refreshRoomData();
+  }, [refreshRoomData]);
 
   const handleRoomPress = useCallback(
-    (roomId: string) => {
+    (roomId: string, roomName?: string, canSendMessage?: boolean) => {
       // Close search if open
       if (isSearchMode) {
         setIsSearchMode(false);
@@ -893,7 +722,14 @@ const roomsWithSocketData = React.useMemo(() => {
           r.roomId?.toString() === roomId ? { ...r, unreadCount: 0 } : r
         )
       );
-      router.push({ pathname: "/chat/[roomId]", params: { roomId } });
+      router.push({ 
+        pathname: "/chat/[roomId]", 
+        params: { 
+          roomId,
+          roomName: roomName || undefined,
+          canSendMessage: canSendMessage !== undefined ? String(canSendMessage) : undefined,
+        } 
+      });
     },
     [markRoomAsRead, isSearchMode]
   );
@@ -954,14 +790,12 @@ const roomsWithSocketData = React.useMemo(() => {
       <FlatList
         ref={listRef}
         data={filteredRooms}
-        keyExtractor={(item) =>
-          item.roomId?.toString() || String(Math.random())
-        }
+        keyExtractor={(item) => item.roomId || String(Math.random())}
         renderItem={({ item }) => (
           <RoomItem
             room={item}
             currentUserId={user?.id}
-            onPress={handleRoomPress}
+            onPress={(roomId) => handleRoomPress(roomId, item.roomName, Boolean(item.canSendMessage))}
           />
         )}
         refreshControl={

@@ -29,15 +29,6 @@ interface ForwardProgress {
   status: 'pending' | 'sending' | 'completed' | 'error';
 }
 
-/**
- * ForwardMessagesModal Component
- * 
- * This component shows all available chat rooms but only allows forwarding to rooms where:
- * 1. The user is a group admin (canSendMessage = true)
- * 2. It's not the current room (where the message is from)
- * 
- * Rooms that don't meet these criteria are shown but blurred/disabled with explanatory text.
- */
 const ForwardMessagesModal: React.FC<ForwardMessagesModalProps> = ({
   visible,
   onClose,
@@ -65,20 +56,16 @@ const ForwardMessagesModal: React.FC<ForwardMessagesModalProps> = ({
       setIsLoading(true);
       const allRooms = await fetchChatRooms();
       
-      // Show all rooms but mark which ones are available for forwarding
-      // A room is available if:
-      // 1. It's not the current room (where the message is from)
-      // 2. User is a group admin in that room (canSendMessage is true)
-      const roomsWithAvailability = allRooms.map(room => {
-        const isAvailable = room.roomId?.toString() !== currentRoomId && room.canSendMessage === true;
-        
-        return {
+      // 1. Filter out the current room entirely
+      // 2. Check if user is admin (canSendMessage) for availability
+      const filteredRooms = allRooms
+        .filter(room => room.roomId?.toString() !== currentRoomId)
+        .map(room => ({
           ...room,
-          isAvailableForForwarding: isAvailable
-        };
-      });
+          isAvailableForForwarding: room.canSendMessage === true
+        }));
       
-      setRooms(roomsWithAvailability);
+      setRooms(filteredRooms);
     } catch (error) {
       console.error('Error loading rooms:', error);
       Alert.alert('Error', 'Failed to load chat rooms');
@@ -105,10 +92,7 @@ const ForwardMessagesModal: React.FC<ForwardMessagesModalProps> = ({
   };
 
   const handleForward = async () => {
-    if (selectedRooms.size === 0) {
-      Alert.alert('No Rooms Selected', 'Please select at least one room to forward messages to.');
-      return;
-    }
+    if (selectedRooms.size === 0) return;
 
     setIsForwarding(true);
     
@@ -127,17 +111,11 @@ const ForwardMessagesModal: React.FC<ForwardMessagesModalProps> = ({
     setForwardProgress(progressData);
 
     try {
-      // Only forward to rooms that are available for forwarding
       const selectedRoomObjects = rooms.filter(room => 
         room.roomId && 
         selectedRooms.has(room.roomId) && 
         room.isAvailableForForwarding
       );
-      
-      if (selectedRoomObjects.length === 0) {
-        Alert.alert('No Valid Rooms', 'No valid rooms selected for forwarding.');
-        return;
-      }
       
       await onForward(selectedRoomObjects, selectedMessages);
       
@@ -162,72 +140,62 @@ const ForwardMessagesModal: React.FC<ForwardMessagesModalProps> = ({
     }
   };
 
-  const updateProgress = (roomId: number, sentCount: number, status: ForwardProgress['status']) => {
-    setForwardProgress(prev => 
-      prev.map(p => 
-        p.roomId === roomId 
-          ? { ...p, sentCount, status }
-          : p
-      )
-    );
+  // Helper to get selected room names
+  const getSelectedRoomNames = () => {
+    return rooms
+      .filter(r => r.roomId && selectedRooms.has(r.roomId))
+      .map(r => r.roomName)
+      .join(', ');
   };
 
   const renderRoomItem = ({ item }: { item: ChatRoom }) => {
     const isSelected = item.roomId ? selectedRooms.has(item.roomId) : false;
     const isAvailable = item.isAvailableForForwarding;
-    const isCurrentRoom = item.roomId?.toString() === currentRoomId;
     
     return (
       <TouchableOpacity
-        className={`p-4 border-b border-gray-200 flex-row items-center ${
+        className={`p-4 border-b border-gray-100 flex-row items-center ${
           isSelected ? 'bg-blue-50' : isAvailable ? 'bg-white' : 'bg-gray-50'
         } ${!isAvailable ? 'opacity-60' : ''}`}
         onPress={() => item.roomId && toggleRoomSelection(item.roomId)}
         disabled={isForwarding || !isAvailable}
       >
         <View className={`w-12 h-12 rounded-full justify-center items-center mr-3 ${
-          isAvailable ? 'bg-blue-100' : 'bg-gray-100'
+          isAvailable ? 'bg-gray-200' : 'bg-gray-100'
         }`}>
           <Ionicons
             name={item.isGroup ? "people" : "person"}
             size={24}
-            color={isAvailable ? "#0284c7" : "#9ca3af"}
+            color={isAvailable ? "#54656F" : "#9ca3af"}
           />
         </View>
         
         <View className="flex-1">
-          <Text className={`text-lg font-semibold ${
-            isAvailable ? 'text-gray-800' : 'text-gray-500'
+          <Text className={`text-base font-semibold ${
+            isAvailable ? 'text-[#111B21]' : 'text-gray-500'
           }`}>
             {item.roomName}
-            {isCurrentRoom && (
-              <Text className="text-sm text-gray-400 ml-2">(Current Room)</Text>
-            )}
-            {!isAvailable && !isCurrentRoom && (
-              <Text className="text-sm text-red-500 ml-2 font-medium">(No Send Permission)</Text>
-            )}
           </Text>
-          {item.roomDescription && (
-            <Text className={`text-sm mt-1 ${isAvailable ? 'text-gray-500' : 'text-gray-400'}`} numberOfLines={1}>
+          {item.roomDescription ? (
+            <Text className="text-sm text-gray-500" numberOfLines={1}>
               {item.roomDescription}
             </Text>
-          )}
-          {!isAvailable && !isCurrentRoom && (
-            <Text className="text-xs text-gray-400 mt-1">
-              You need to be a group admin to forward messages here
+          ) : null}
+          {!isAvailable && (
+            <Text className="text-xs text-red-400 mt-0.5">
+              Only admins can send messages
             </Text>
           )}
         </View>
         
+        {/* Checkbox / Lock Icon */}
         <View className={`w-6 h-6 rounded-full border-2 ${
           isSelected 
-            ? 'bg-blue-500 border-blue-500' 
-            : isAvailable 
-              ? 'border-gray-300' 
-              : 'border-gray-200'
-        } justify-center items-center`}>
+            ? 'bg-[#00A884] border-[#00A884]' 
+            : 'border-gray-300'
+        } justify-center items-center ml-2`}>
           {isSelected && (
-            <Ionicons name="checkmark" size={16} color="white" />
+            <Ionicons name="checkmark" size={14} color="white" />
           )}
           {!isAvailable && !isSelected && (
             <Ionicons name="lock-closed" size={12} color="#9ca3af" />
@@ -238,23 +206,18 @@ const ForwardMessagesModal: React.FC<ForwardMessagesModalProps> = ({
   };
 
   const renderProgressItem = ({ item }: { item: ForwardProgress }) => {
-    const getStatusIcon = () => {
-      switch (item.status) {
-        case 'pending':
-          return <Ionicons name="time-outline" size={20} color="#6B7280" />;
-        case 'sending':
-          return <ActivityIndicator size="small" color="#3B82F6" />;
-        case 'completed':
-          return <Ionicons name="checkmark-circle" size={20} color="#10B981" />;
-        case 'error':
-          return <Ionicons name="close-circle" size={20} color="#EF4444" />;
-      }
-    };
-
     return (
-      <View className="p-3 border-b border-gray-100 flex-row items-center">
+      <View className="p-3 border-b border-gray-100 flex-row items-center bg-white">
         <View className="mr-3">
-          {getStatusIcon()}
+          {item.status === 'sending' ? (
+             <ActivityIndicator size="small" color="#00A884" />
+          ) : item.status === 'completed' ? (
+             <Ionicons name="checkmark-circle" size={20} color="#00A884" />
+          ) : item.status === 'error' ? (
+             <Ionicons name="close-circle" size={20} color="#EF4444" />
+          ) : (
+             <Ionicons name="time-outline" size={20} color="#6B7280" />
+          )}
         </View>
         <View className="flex-1">
           <Text className="font-semibold text-gray-800">{item.roomName}</Text>
@@ -273,84 +236,84 @@ const ForwardMessagesModal: React.FC<ForwardMessagesModalProps> = ({
       presentationStyle="pageSheet"
     >
       <SafeAreaView className="flex-1 bg-white">
-        {/* Header */}
-        <View className="p-4 border-b border-gray-200 bg-blue-50">
+        {/* Header - Styled like WhatsApp Top Bar */}
+        <View className="p-4 border-b border-gray-200 bg-[#008069]">
           <View className="flex-row items-center justify-between">
-            <View className="flex-row items-center">
-              <TouchableOpacity 
-                onPress={onClose}
-                disabled={isForwarding}
-                className="mr-3"
-              >
-                <Ionicons name="close" size={24} color="#374151" />
-              </TouchableOpacity>
-              <Text className="text-xl font-bold text-gray-800">
-                Forward Messages
-              </Text>
-            </View>
+            <Text className="text-xl font-semibold text-white">
+              Forwarding {selectedMessages.length} message{selectedMessages.length > 1 ? 's' : ''}
+            </Text>
             
-            {selectedRooms.size > 0 && !isForwarding && (
-              <TouchableOpacity
-                className="bg-blue-500 px-4 py-2 rounded-lg"
-                onPress={handleForward}
-              >
-                <Text className="text-white font-semibold">
-                  Send to {selectedRooms.size} room{selectedRooms.size > 1 ? 's' : ''}
-                </Text>
-              </TouchableOpacity>
-            )}
+            <TouchableOpacity 
+              onPress={onClose}
+              disabled={isForwarding}
+              className="p-1"
+            >
+              <Ionicons name="close" size={26} color="white" />
+            </TouchableOpacity>
           </View>
-          
-          <Text className="text-sm text-gray-600 mt-2">
-            Forwarding {selectedMessages.length} message{selectedMessages.length > 1 ? 's' : ''}
-          </Text>
-          <Text className="text-xs text-gray-500 mt-1">
-            Only rooms where you are a group admin are available for forwarding
-          </Text>
         </View>
 
         {/* Progress View (shown when forwarding) */}
-        {isForwarding && forwardProgress.length > 0 && (
-          <View className="bg-gray-50 border-b border-gray-200">
-            <Text className="p-4 font-semibold text-gray-700">
-              Forwarding Progress
+        {isForwarding && forwardProgress.length > 0 ? (
+          <View className="flex-1 bg-gray-50">
+            <Text className="p-4 font-semibold text-gray-700 bg-gray-100">
+              Sending...
             </Text>
             <FlatList
               data={forwardProgress}
               keyExtractor={(item) => item.roomId.toString()}
               renderItem={renderProgressItem}
-              scrollEnabled={false}
             />
           </View>
-        )}
-
-        {/* Room List */}
-        {isLoading ? (
-          <View className="flex-1 justify-center items-center">
-            <ActivityIndicator size="large" color="#3B82F6" />
-            <Text className="mt-2 text-gray-600">Loading rooms...</Text>
-          </View>
         ) : (
-          <FlatList
-            data={rooms}
-            keyExtractor={(item) => item.roomId?.toString() || Math.random().toString()}
-            renderItem={renderRoomItem}
-            ListEmptyComponent={
-              <View className="flex-1 justify-center items-center p-8">
-                <Ionicons name="chatbubble-outline" size={60} color="#D1D5DB" />
-                <Text className="text-gray-500 mt-4 text-center">
-                  No rooms available to forward messages to.
-                </Text>
-                <Text className="text-gray-400 mt-2 text-center text-sm">
-                  You need to be a group admin in other rooms to forward messages.
-                </Text>
+          /* Room List */
+          <View className="flex-1 relative">
+            {isLoading ? (
+              <View className="flex-1 justify-center items-center">
+                <ActivityIndicator size="large" color="#00A884" />
+                <Text className="mt-2 text-gray-600">Loading chats...</Text>
               </View>
-            }
-          />
+            ) : (
+              <FlatList
+                data={rooms}
+                keyExtractor={(item) => item.roomId?.toString() || Math.random().toString()}
+                renderItem={renderRoomItem}
+                contentContainerStyle={{ paddingBottom: 100 }} // Add padding for footer
+                ListEmptyComponent={
+                  <View className="flex-1 justify-center items-center p-8 mt-10">
+                    <Ionicons name="chatbubbles-outline" size={60} color="#D1D5DB" />
+                    <Text className="text-gray-500 mt-4 text-center text-lg">
+                      No other chats available.
+                    </Text>
+                  </View>
+                }
+              />
+            )}
+
+            {/* Bottom Footer - Only visible when rooms are selected */}
+            {selectedRooms.size > 0 && !isForwarding && (
+              <View className="absolute bottom-0 left-0 right-0 bg-[#F0F2F5] px-4 py-3 border-t border-gray-200 flex-row items-center justify-between z-10 shadow-lg">
+                <Text 
+                  numberOfLines={1} 
+                  className="flex-1 text-[#111B21] mr-4 text-[15px]"
+                >
+                  {getSelectedRoomNames()}
+                </Text>
+
+                <TouchableOpacity
+                  className="w-12 h-12 rounded-full justify-center items-center shadow-sm bg-[#1DAB61]"
+                  onPress={handleForward}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="send" size={20} color="#fff" style={{ marginLeft: 3 }} />
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
         )}
       </SafeAreaView>
     </Modal>
   );
 };
 
-export default ForwardMessagesModal; 
+export default ForwardMessagesModal;

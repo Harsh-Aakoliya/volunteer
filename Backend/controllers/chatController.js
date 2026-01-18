@@ -81,6 +81,9 @@ async getChatRooms(req, res) {
 
         return {
           ...room,
+          // Normalize canSendMessage to boolean
+          canSendMessage: room.canSendMessage === true || room.canSendMessage === 1,
+          isAdmin: room.isAdmin === true || room.isAdmin === 1,
           lastMessage,
           unreadCount: parseInt(unreadResult.rows[0]?.count || '0', 10),
         };
@@ -297,7 +300,7 @@ async getChatRooms(req, res) {
         LIMIT 20`,
         [roomIdInt]
       );
-      console.log("messages result in getChatRoomDetails", messagesResult.rows);
+      // console.log("messages result in getChatRoomDetails", messagesResult.rows);
       // Parse mediaFiles for each message if it exists
       // for (const message of messagesResult.rows) {
       //   if (message.mediaFilesId) {
@@ -310,21 +313,24 @@ async getChatRooms(req, res) {
       //   }
       // }
 
-      // Check if current user is admin
-      const isAdminResult = await pool.query(
-        `SELECT "isAdmin" FROM chatroomusers 
-        WHERE "roomId" = $1 AND "userId" = $2`,
-        [roomIdInt, userId]
-      );
-      console.log("is admin result in getChatRoomDetails", isAdminResult.rows);
-      const isAdmin = isAdminResult.rows.length > 0 ? isAdminResult.rows[0].isAdmin : false;
+      // Get current user's permissions from memberCheck (already fetched above)
+      const currentUserMembership = memberCheck.rows[0];
+      const isAdmin = currentUserMembership.isAdmin === true || currentUserMembership.isAdmin === 1;
+      const canSendMessage = currentUserMembership.canSendMessage === true || currentUserMembership.canSendMessage === 1;
 
       // Combine all data into a single response
       const roomRow = roomResult.rows[0];
       const roomDetails = {
         roomId: roomRow.roomId,
         roomName: roomRow.roomName,
-        members: membersResult.rows,
+        isAdmin: isAdmin,
+        canSendMessage: canSendMessage,
+        members: membersResult.rows.map(m => ({
+          ...m,
+          // Normalize boolean fields for members too
+          isAdmin: m.isAdmin === true || m.isAdmin === 1,
+          canSendMessage: m.canSendMessage === true || m.canSendMessage === 1,
+        })),
         messages: messagesResult.rows.reverse() // Return in chronological order
       };
 

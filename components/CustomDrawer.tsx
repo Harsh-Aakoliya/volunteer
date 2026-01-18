@@ -24,7 +24,6 @@ export const CustomDrawer = (props: DrawerContentComponentProps) => {
   const [isLoading, setIsLoading] = useState(true);
   const [showProfileSheet, setShowProfileSheet] = useState(false);
   const [showChangePasswordSheet, setShowChangePasswordSheet] = useState(false);
-
   useEffect(() => {
     loadUserProfile();
   }, []);
