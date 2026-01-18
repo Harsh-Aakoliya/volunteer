@@ -50,6 +50,7 @@ import MediaViewerModal from "@/components/chat/MediaViewerModal";
 import ChatMessageOptions from "@/components/chat/ChatMessageOptions";
 import ForwardMessagesModal from "@/components/chat/ForwardMessagesModal";
 import MessageInput from "@/components/chat/MessageInput";
+import AttachmentSheet from "@/components/chat/AttachmentSheet";
 import AudioRecorder from "@/components/chat/AudioRecorder";
 import AudioMessagePlayer from "@/components/chat/AudioMessagePlayer";
 import MediaGrid from "@/components/chat/MediaGrid";
@@ -467,6 +468,9 @@ export default function ChatRoomScreen() {
   // Video call notification state
   const [showVideoCallNotification, setShowVideoCallNotification] = useState(false);
   const [videoCallData, setVideoCallData] = useState<{ callerId: string; callerName: string } | null>(null);
+
+  // Attachment sheet state
+  const [showAttachmentSheet, setShowAttachmentSheet] = useState(false);
 
   // Scroll state
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
@@ -1255,6 +1259,7 @@ const handleDeselectMessage = useCallback((message: Message) => {
     setReplyToMessage(message);
     setIsReplying(true);
     setSelectedMessages([]);
+    setShowAttachmentSheet(false); // Close attachment sheet when replying
   };
 
   const handleReplyPreviewClick = useCallback((messageId: string | number) => {
@@ -1729,6 +1734,10 @@ const TelegramHeader = React.memo(({
                 // Pass Reply Data to Input Component
                 replyToMessage={replyToMessage}
                 onCancelReply={handleCancelReply}
+                
+                // Attachment sheet control
+                onAttachmentPress={() => setShowAttachmentSheet(prev => !prev)}
+                isAttachmentSheetOpen={showAttachmentSheet}
               />
             ) : (
               <View className="p-3 bg-white/95 m-2 rounded-lg items-center border border-gray-200">
@@ -1861,6 +1870,15 @@ const TelegramHeader = React.memo(({
             }}
           />
         </KeyboardAvoidingView>
+
+        {/* Telegram-style Attachment Sheet - Rendered at root level for proper overlay */}
+        <AttachmentSheet
+          isOpen={showAttachmentSheet && !replyToMessage}
+          onClose={() => setShowAttachmentSheet(false)}
+          roomId={roomId as string}
+          userId={currentUser?.userId ?? ""}
+          onMediaSent={() => setShowAttachmentSheet(false)}
+        />
       </SafeAreaView>
     </GestureHandlerRootView>
   );

@@ -13,10 +13,9 @@ import {
   Easing,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import AttachmentsGrid from '@/app/chat/Attechments-grid';
 import DateTimePicker from './DateTimePicker';
 import { ChatUser, Message } from '@/types/type';
-interface MessageInputProps { messageText: string; onChangeText: (text: string) => void; onSend: (text: string, messageType: string, mediafilesId: number, tableId: number, pollId: number, scheduledAt?: string) => void; placeholder?: string; sending?: boolean; disabled?: boolean; roomMembers?: ChatUser[]; currentUser?: { userId: string; fullName: string | null; } | null; roomId?: string; showAttachments?: boolean; multiline?: boolean; onFocus?: () => void; onBlur?: () => void; autoFocus?: boolean; onAudioRecord?: () => void; onScheduleMessage?: () => void; hasScheduledMessages?: boolean; replyToMessage?: Message | null; onCancelReply?: () => void; }
+interface MessageInputProps { messageText: string; onChangeText: (text: string) => void; onSend: (text: string, messageType: string, mediafilesId: number, tableId: number, pollId: number, scheduledAt?: string) => void; placeholder?: string; sending?: boolean; disabled?: boolean; roomMembers?: ChatUser[]; currentUser?: { userId: string; fullName: string | null; } | null; roomId?: string; showAttachments?: boolean; multiline?: boolean; onFocus?: () => void; onBlur?: () => void; autoFocus?: boolean; onAudioRecord?: () => void; onScheduleMessage?: () => void; hasScheduledMessages?: boolean; replyToMessage?: Message | null; onCancelReply?: () => void; onAttachmentPress?: () => void; isAttachmentSheetOpen?: boolean; }
 export default function MessageInput({
   messageText,
   onChangeText,
@@ -33,72 +32,23 @@ export default function MessageInput({
   onBlur,
   replyToMessage,
   onCancelReply,
+  onAttachmentPress,
+  isAttachmentSheetOpen = false,
 }: MessageInputProps) {
-
-  /* ---------------- STATE ---------------- */
-  const [showAttachmentsGrid, setShowAttachmentsGrid] = useState(false);
 
   /* ---------------- REFS ---------------- */
   const inputRef = useRef<TextInput>(null);
-  const gridAnim = useRef(new Animated.Value(0)).current;
   const plusAnim = useRef(new Animated.Value(0)).current;
 
-  /* ---------------- KEYBOARD ---------------- */
-  useEffect(() => {
-    const sub = Keyboard.addListener('keyboardDidShow', () => {
-      // ❗ INTENTIONALLY EMPTY
-      // keyboard should NOT affect grid
-    });
-    return () => sub.remove();
-  }, []);
-
-  /* ---------------- REPLY OVERRIDE ---------------- */
-  useEffect(() => {
-    if (replyToMessage && showAttachmentsGrid) {
-      closeGrid();
-    }
-  }, [replyToMessage]);
-
   /* ---------------- ANIMATION ---------------- */
-  const openGrid = () => {
-    setShowAttachmentsGrid(true);
-    Animated.parallel([
-      Animated.timing(gridAnim, {
-        toValue: 1,
-        duration: 220,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: true,
-      }),
-      Animated.timing(plusAnim, {
-        toValue: 1,
-        duration: 200,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: true,
-      }),
-    ]).start();
-  };
-
-  const closeGrid = () => {
-    Animated.parallel([
-      Animated.timing(gridAnim, {
-        toValue: 0,
-        duration: 180,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: true,
-      }),
-      Animated.timing(plusAnim, {
-        toValue: 0,
-        duration: 180,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: true,
-      }),
-    ]).start(() => setShowAttachmentsGrid(false));
-  };
-
-  const gridTranslateY = gridAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [180, 0], // REAL slide
-  });
+  useEffect(() => {
+    Animated.timing(plusAnim, {
+      toValue: isAttachmentSheetOpen ? 1 : 0,
+      duration: 200,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [isAttachmentSheetOpen]);
 
   const plusRotate = plusAnim.interpolate({
     inputRange: [0, 1],
@@ -111,44 +61,22 @@ export default function MessageInput({
   const handleActionPress = () => {
     if (!isEmpty) {
       onSend(messageText, 'text', 0, 0, 0);
-      closeGrid();
       return;
     }
 
     if (replyToMessage) return; // ❌ blocked
 
-    showAttachmentsGrid ? closeGrid() : openGrid();
+    onAttachmentPress?.();
   };
 
   /* ---------------- INPUT CHANGE ---------------- */
   const handleTextChange = (text: string) => {
     onChangeText(text);
-    if (text.length > 0 && showAttachmentsGrid) {
-      closeGrid();
-    }
   };
 
   /* ---------------- RENDER ---------------- */
   return (
     <View className="bg-transparent">
-
-      {/* ===== ATTACHMENT GRID (PUSHES INPUT) ===== */}
-      <View className="px-2">
-
-      {!replyToMessage && showAttachmentsGrid && showAttachments && roomId && (
-        <Animated.View
-        style={{ transform: [{ translateY: gridTranslateY }] }}
-        className="bg-[#F0F2F5] border-t border-gray-200 rounded-2xl"
-        >
-          <AttachmentsGrid
-            roomId={roomId}
-            userId={currentUser?.userId ?? ""}
-            onOptionSelect={closeGrid}
-            />
-        </Animated.View>
-      )}
-      </View>
-
       {/* ===== INPUT ROW ===== */}
       <View className="flex-row items-end px-2 py-1">
 

@@ -128,7 +128,7 @@ export default function AttachmentsGrid({
           >
             <AnnouncementIcon size={ICON_SIZE} color={ICON_COLOR} />
           </View>
-          <Text className="text-xs text-gray-700 font-medium">Alert</Text>
+          <Text className="text-xs text-gray-700 font-medium">Announcement</Text>
         </TouchableOpacity>
       </View>
     </View>
