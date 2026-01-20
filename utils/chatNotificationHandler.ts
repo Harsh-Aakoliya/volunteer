@@ -61,18 +61,47 @@ export const setupChatNotificationListeners = () => {
   return subscription;
 };
 
+// Track if we've already navigated from a notification to prevent duplicate navigation
+let hasNavigatedFromNotification = false;
+let lastNavigatedRoomId: string | null = null;
+
 // Handle chat notification tap navigation
 export const handleChatNotificationTap = async (data: any) => {
   try {
-    console.log(`🚀 Navigating to chat tab from notification`);
+    console.log(`🚀 Handling chat notification tap:`, data);
     
-    // Always navigate to chat tab (index.tsx) instead of specific room
-    // This allows user to see all rooms with unread counts and last messages
-    router.push('/(drawer)');
+    // Extract roomId from notification data
+    const roomId = data?.roomId || data?.room_id;
+    
+    if (roomId) {
+      // Prevent duplicate navigation if we're already navigating to this room
+      if (hasNavigatedFromNotification && lastNavigatedRoomId === roomId) {
+        console.log(`⚠️  Already navigated to room ${roomId}, skipping duplicate navigation`);
+        return;
+      }
+      
+      console.log(`📱 Navigating to chat room: ${roomId}`);
+      hasNavigatedFromNotification = true;
+      lastNavigatedRoomId = roomId;
+      
+      // Use replace instead of push to avoid adding to navigation stack
+      // This ensures back button goes to chat list, not re-opens the room
+      router.replace(`/chat/${roomId}`);
+      
+      // Reset flag after a delay to allow normal navigation
+      setTimeout(() => {
+        hasNavigatedFromNotification = false;
+        lastNavigatedRoomId = null;
+      }, 2000);
+    } else {
+      console.log(`⚠️  No roomId found in notification data, navigating to chat list`);
+      // Fallback: navigate to chat list if roomId is missing
+      router.replace('/(drawer)');
+    }
   } catch (error) {
     console.error('Error handling chat notification tap:', error);
     // Fallback navigation
-    router.push('/(drawer)');
+    router.replace('/(drawer)');
   }
 };
 

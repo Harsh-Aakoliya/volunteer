@@ -11,6 +11,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   StyleSheet,
+  Keyboard,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { API_URL } from "@/constants/api";
@@ -85,7 +86,7 @@ export default function PollContent({
 
   const sendPoll = async () => {
     if (sending || !isCreateEnabled) return;
-
+    Keyboard.dismiss();
     setSending(true);
     try {
       const response = await axios.post(`${API_URL}/api/poll`, {
@@ -96,6 +97,7 @@ export default function PollContent({
         roomId: roomId,
         createdBy: userId,
       });
+
       const createdPollId = response.data.poll.id;
 
       const token = await AuthStorage.getToken();
@@ -122,7 +124,10 @@ export default function PollContent({
         replyMessageId: 0,
       });
 
-      onSuccess();
+      // Wait for keyboard to fully dismiss
+      setTimeout(() => {
+        onSuccess();
+      }, 150);
     } catch (error) {
       console.error("Error creating poll:", error);
       Alert.alert("Error", "Failed to create poll. Please try again.");

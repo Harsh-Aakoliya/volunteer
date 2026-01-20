@@ -4,6 +4,7 @@ import { useRouter } from 'expo-router';
 import { AuthStorage } from '@/utils/authStorage';
 import * as Application from 'expo-application';
 import { VersionChecker } from '@/components/VersionChecker';
+import * as Notifications from 'expo-notifications';
 
 import { Platform, Alert, TextInput, View, Text, TouchableOpacity } from 'react-native';
 import CustomInput from '@/components/ui/CustomInput';
@@ -15,7 +16,9 @@ import * as React from 'react';
 // const { DEV_IP, INTERNAL_IP, EXTERNAL_IP } = Constants?.expoConfig?.extra as { DEV_IP: string; INTERNAL_IP: string; EXTERNAL_IP: string };
 
 // console.log(DEV_IP, INTERNAL_IP, EXTERNAL_IP);
-const DEV_IP = (Platform.OS === "web" ? "http://localhost:8080" : "http://10.245.214.242:8080");
+const DEV_IP = (Platform.OS === "web" ? "http://localhost:8080" : "http://172.20.146.242:8080");
+const INTERNAL_IP = "http://172.20.146.242:8080";
+const EXTERNAL_IP = "http://172.20.146.242:8080";
 // Export dev mode status and DEV_IP for use in other components
 export const getDevModeStatus = () => true; // Set to true to enable manual IP configuration for development
 export const getDefaultDevIP = () => DEV_IP;
@@ -222,7 +225,28 @@ export default function Index() {
       setHasNavigated(true); // Prevent multiple navigation attempts
       const token = await AuthStorage.getToken();
       console.log("Token:", token);
+      
       if (token) {
+        // Check if app was opened from a notification
+        try {
+          const initialNotification = await Notifications.getLastNotificationResponseAsync();
+          
+          // If there's a pending notification with roomId, navigate directly to that room
+          // Use replace to avoid adding to navigation stack
+          if (initialNotification?.notification?.request?.content?.data?.roomId) {
+            const roomId = initialNotification.notification.request.content.data.roomId;
+            console.log("📱 App opened from notification, navigating to room:", roomId);
+            // Small delay to ensure router is ready
+            setTimeout(() => {
+              // Use replace instead of push to avoid navigation stack issues
+              router.replace(`/chat/${roomId}`);
+            }, 500);
+            return;
+          }
+        } catch (error) {
+          console.log("Error checking initial notification:", error);
+        }
+        
         console.log("Redirecting to chat");
         // Online status is handled by _layout.tsx via useOnlineStatus hook
         router.replace("/(drawer)");

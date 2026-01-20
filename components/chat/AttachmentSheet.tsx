@@ -182,7 +182,7 @@ export default function AttachmentSheet({
   const [currentIndex, setCurrentIndex] = useState(0);
 
   // Snap points - half screen and full screen
-  const snapPoints = useMemo(() => ["55%", "92%"], []);
+  const snapPoints = useMemo(() => ["55%", "100%"], []);
 
   // Determine what bottom section to show
   const showTabBar = activeTab === "gallery" ? selectedMedia.length === 0 : true;
@@ -243,16 +243,20 @@ export default function AttachmentSheet({
     };
   });
 
-  // Handle sheet changes
-  const handleSheetChanges = useCallback((index: number) => {
-    setCurrentIndex(index);
-    if (index === -1) {
-      onClose();
+const handleSheetChanges = useCallback((index: number) => {
+  setCurrentIndex(index);
+  if (index === -1) {
+    Keyboard.dismiss();
+    
+    // Small delay to ensure keyboard is dismissed
+    setTimeout(() => {
       setActiveTab("gallery");
       setSelectedMedia([]);
       setCaption("");
-    }
-  }, [onClose]);
+      onClose();
+    }, 50);
+  }
+}, [onClose]);
 
   // Request permission and load media only when opened
   useEffect(() => {
@@ -372,104 +376,121 @@ useEffect(() => {
     setCaption("");
   }, []);
 
-  const handleSendMedia = async () => {
-    if (selectedMedia.length === 0 || isSending) return;
+// Update handleSendMedia - add keyboard dismiss before close
 
-    setIsSending(true);
-    try {
-      const filesWithData = await Promise.all(
-        selectedMedia.map(async (media) => {
-          const base64 = await FileSystem.readAsStringAsync(media.uri, {
-            encoding: FileSystem.EncodingType.Base64,
-          });
-          return {
-            name: media.filename,
-            mimeType: media.mediaType === "video" ? "video/mp4" : "image/jpeg",
-            fileData: base64,
-          };
-        })
-      );
+const handleSendMedia = async () => {
+  if (selectedMedia.length === 0 || isSending) return;
 
-      const token = await AuthStorage.getToken();
-      const uploadResponse = await axios.post(
-        `${API_URL}/api/vm-media/upload`,
-        { files: filesWithData },
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-        }
-      );
-
-      if (!uploadResponse.data.success) {
-        throw new Error("Upload failed");
-      }
-
-      const tempFolderId = uploadResponse.data.tempFolderId;
-      const uploadedFiles = uploadResponse.data.uploadedFiles;
-
-      const filesWithCaptions = uploadedFiles.map((f: any) => ({
-        fileName: f.fileName,
-        originalName: f.originalName,
-        caption: caption,
-        mimeType: f.mimeType,
-        size: f.size,
-      }));
-
-      const moveResponse = await axios.post(
-        `${API_URL}/api/vm-media/move-to-chat`,
-        {
-          tempFolderId,
-          roomId,
-          senderId: userId,
-          filesWithCaptions,
-        },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-
-      if (moveResponse.data.success) {
-        socketSendMessage(roomId, {
-          id: moveResponse.data.messageId,
-          messageText: moveResponse.data.message,
-          createdAt: new Date().toISOString(),
-          messageType: "media",
-          mediaFilesId: moveResponse.data.mediaId,
-          pollId: 0,
-          tableId: 0,
-          replyMessageId: 0,
+  setIsSending(true);
+  try {
+    const filesWithData = await Promise.all(
+      selectedMedia.map(async (media) => {
+        const base64 = await FileSystem.readAsStringAsync(media.uri, {
+          encoding: FileSystem.EncodingType.Base64,
         });
+        return {
+          name: media.filename,
+          mimeType: media.mediaType === "video" ? "video/mp4" : "image/jpeg",
+          fileData: base64,
+        };
+      })
+    );
 
-        setSelectedMedia([]);
-        setCaption("");
+    const token = await AuthStorage.getToken();
+    const uploadResponse = await axios.post(
+      `${API_URL}/api/vm-media/upload`,
+      { files: filesWithData },
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    if (!uploadResponse.data.success) {
+      throw new Error("Upload failed");
+    }
+
+    const tempFolderId = uploadResponse.data.tempFolderId;
+    const uploadedFiles = uploadResponse.data.uploadedFiles;
+
+    const filesWithCaptions = uploadedFiles.map((f: any) => ({
+      fileName: f.fileName,
+      originalName: f.originalName,
+      caption: caption,
+      mimeType: f.mimeType,
+      size: f.size,
+    }));
+
+    const moveResponse = await axios.post(
+      `${API_URL}/api/vm-media/move-to-chat`,
+      {
+        tempFolderId,
+        roomId,
+        senderId: userId,
+        filesWithCaptions,
+      },
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+
+     if (moveResponse.data.success) {
+      socketSendMessage(roomId, {
+        id: moveResponse.data.messageId,
+        messageText: moveResponse.data.message,
+        createdAt: new Date().toISOString(),
+        messageType: "media",
+        mediaFilesId: moveResponse.data.mediaId,
+        pollId: 0,
+        tableId: 0,
+        replyMessageId: 0,
+      });
+
+      setSelectedMedia([]);
+      setCaption("");
+      
+      // Dismiss keyboard first
+      Keyboard.dismiss();
+      
+      // Wait for keyboard to dismiss, then close sheet
+      setTimeout(() => {
         onClose();
         onMediaSent?.();
-      }
-    } catch (error) {
-      console.error("Error sending media:", error);
-      Alert.alert("Error", "Failed to send media. Please try again.");
-    } finally {
-      setIsSending(false);
+      }, 100);
     }
-  };
+  } catch (error) {
+    console.error("Error sending media:", error);
+    Alert.alert("Error", "Failed to send media. Please try again.");
+  } finally {
+    setIsSending(false);
+  }
+};
 
   const handleTabPress = useCallback((tab: TabType) => {
     setActiveTab(tab);
     bottomSheetRef.current?.snapToIndex(0);
   }, []);
 
-  const handleSuccess = useCallback(() => {
+const handleSuccess = useCallback(() => {
+  Keyboard.dismiss();
+  
+  setTimeout(() => {
     setActiveTab("gallery");
     setSelectedMedia([]);
     setCaption("");
     onClose();
     onMediaSent?.();
-  }, [onClose, onMediaSent]);
+  }, 100);
+}, [onClose, onMediaSent]);
 
-  const handleBackToGallery = useCallback(() => {
+// Update handleBackToGallery
+const handleBackToGallery = useCallback(() => {
+  Keyboard.dismiss();
+  setTimeout(() => {
     setActiveTab("gallery");
     bottomSheetRef.current?.snapToIndex(0);
-  }, []);
+  }, 100);
+}, []);
 
   const handleCameraPress = useCallback(() => {
     onClose();

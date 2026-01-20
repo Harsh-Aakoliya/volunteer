@@ -484,8 +484,29 @@ const setupSocketIO = (io, app) => {
 
       await notifyRoomMembers(roomIdStr, msgData, sender.userId);
 
+      // Send notifications to offline users
       try {
-        await sendChatNotifications(roomIdStr, msgData, sender.userId);
+        console.log("📱 [Socket] Sending chat notifications for room:", roomIdStr);
+        
+        // Get room name from database
+        const pool = await import("./config/database.js").then((m) => m.default);
+        const roomResult = await pool.query(
+          'SELECT "roomName" FROM chatrooms WHERE "roomId" = $1',
+          [roomId]
+        );
+        
+        const roomName = roomResult.rows.length > 0 ? roomResult.rows[0].roomName : "Chat";
+        
+        // Call notification function with correct parameters
+        await sendChatNotifications(
+          msgData, // message
+          { userId: sender.userId, userName: sender.userName }, // senderInfo
+          { roomId: roomIdStr, roomName }, // roomInfo
+          io, // io instance
+          socketUsers, // socketToUser map
+          userSockets, // userToSockets map
+          onlineUsers // onlineUsers set
+        );
       } catch (error) {
         console.error("❌ [Socket] Notification error:", error);
       }

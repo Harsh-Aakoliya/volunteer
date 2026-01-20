@@ -56,7 +56,9 @@ const generateAndStoreNotificationToken = async (userId: string) => {
         headers: { Authorization: `Bearer ${token}` }
       });
 
-      // console.log('Token stored successfully:', response.data);
+      console.log('Token stored successfully:', response.data);
+    } else {
+      console.log('No storeage token found so not storing notification token');
     }
   } catch (error) {
     console.error('Error generating/storing notification token:', error);

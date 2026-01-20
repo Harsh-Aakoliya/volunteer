@@ -84,17 +84,27 @@ export class NotificationHandler {
 
   // Handle notification when app starts from killed state
   private async handleInitialNotification() {
-    const initialNotification = await Notifications.getLastNotificationResponseAsync();
-    
-    if (initialNotification) {
-      console.log('Initial notification found:', initialNotification);
-      const notificationData = initialNotification.notification.request.content.data as NotificationData;
+    try {
+      const initialNotification = await Notifications.getLastNotificationResponseAsync();
       
-      if (this.isAppReady) {
-        await this.handleNotificationNavigation(notificationData);
-      } else {
-        this.navigationQueue.push(notificationData);
+      if (initialNotification) {
+        console.log('📱 Initial notification found (app opened from notification):', initialNotification);
+        const notificationData = initialNotification.notification.request.content.data as NotificationData;
+        
+        console.log('📱 Notification data:', notificationData);
+        
+        if (this.isAppReady) {
+          // Small delay to ensure router is ready
+          setTimeout(() => {
+            this.handleNotificationNavigation(notificationData);
+          }, 500);
+        } else {
+          console.log('📱 App not ready yet, queuing notification');
+          this.navigationQueue.push(notificationData);
+        }
       }
+    } catch (error) {
+      console.error('Error handling initial notification:', error);
     }
   }
 

@@ -7,7 +7,7 @@ import * as React from 'react';
 
 import "../global.css";
 import { initializeNotifications } from '@/utils/notificationSetup';
-import { requestChatNotificationPermissions } from '@/utils/chatNotificationHandler';
+import { requestChatNotificationPermissions, setupChatNotificationListeners } from '@/utils/chatNotificationHandler';
 import useNetworkStatus from '@/hooks/userNetworkStatus';
 import OfflinePopup from '@/components/OfflinePopup';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -47,6 +47,9 @@ function AppContent() {
         if (Platform.OS !== 'web') {
           await initializeNotifications();
           await requestChatNotificationPermissions();
+          
+          // Setup chat notification listeners for deep linking
+          setupChatNotificationListeners();
         }
 
       } catch (error) {

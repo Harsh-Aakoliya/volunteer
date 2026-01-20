@@ -20,6 +20,14 @@ const formatMessageContent = (message, senderName) => {
     case 'table':
       return 'shared a table';
     
+    case 'announcement':
+      // For announcements, extract title from messageText (format: "title|||ANNOUNCEMENT_SEPARATOR|||body")
+      if (message.messageText && message.messageText.includes('|||ANNOUNCEMENT_SEPARATOR|||')) {
+        const title = message.messageText.split('|||ANNOUNCEMENT_SEPARATOR|||')[0].trim();
+        return title ? `📢 ${title}` : 'shared an announcement';
+      }
+      return 'shared an announcement';
+    
     default:
       return 'sent a message';
   }
@@ -43,10 +51,14 @@ const isReplyToUser = async (message, userId) => {
 };
 
 // Get user's current app state from socket connections
-const getUserAppState = (userId, io, socketToUser, userToSockets) => {
-  const userSockets = userToSockets.get(userId) || new Set();
+const getUserAppState = (userId, io, socketToUser, userToSockets, onlineUsersSet) => {
+  const userIdStr = String(userId);
+  const userSockets = userToSockets.get(userIdStr) || new Set();
   
-  if (userSockets.size === 0) {
+  // Check if user is online
+  const isOnline = onlineUsersSet.has(userIdStr);
+  
+  if (!isOnline || userSockets.size === 0) {
     return { isOnline: false, isOnChatTab: false, currentRoomId: null };
   }
 
@@ -58,10 +70,10 @@ const getUserAppState = (userId, io, socketToUser, userToSockets) => {
     const userInfo = socketToUser.get(socketId);
     if (userInfo) {
       // Check if user is in any chat room (means they're on chat tab)
-      if (userInfo.currentRooms && userInfo.currentRooms.length > 0) {
+      if (userInfo.rooms && userInfo.rooms.size > 0) {
         isOnChatTab = true;
         // Get the first/current room they're in
-        currentRoomId = userInfo.currentRooms[0];
+        currentRoomId = Array.from(userInfo.rooms)[0];
         break;
       }
     }
@@ -95,7 +107,12 @@ const sendFCMNotification = async (tokens, title, body, data = {}) => {
         body,
       },
       data: {
-        ...data,
+        ...Object.fromEntries(
+          Object.entries(data).map(([key, value]) => [
+            key, 
+            value === null || value === undefined ? '' : String(value)
+          ])
+        ),
         click_action: 'FLUTTER_NOTIFICATION_CLICK',
         sound: 'default',
       },
@@ -130,7 +147,12 @@ const sendFCMNotification = async (tokens, title, body, data = {}) => {
             body,
           },
           data: {
-            ...data,
+            ...Object.fromEntries(
+              Object.entries(data).map(([key, value]) => [
+                key, 
+                value === null || value === undefined ? '' : String(value)
+              ])
+            ),
             click_action: 'FLUTTER_NOTIFICATION_CLICK',
             sound: 'default',
           },
@@ -157,6 +179,47 @@ const sendFCMNotification = async (tokens, title, body, data = {}) => {
       } else {
         response = await admin.messaging().sendEach(messages);
         console.log(`✅ FCM sendEach completed: ${response.successCount}/${tokens.length} sent`);
+        
+        // Handle failed tokens from sendEach response
+        if (response.failureCount > 0 && response.responses) {
+          const invalidTokens = [];
+          response.responses.forEach((resp, idx) => {
+            if (!resp.success) {
+              // Handle different error formats
+              const error = resp.error || {};
+              const errorCode = error.code || '';
+              const errorMessage = String(error.message || error || '');
+              
+              console.log(`Token ${idx} error:`, { code: errorCode, message: errorMessage });
+              
+              // Check if token is invalid and should be removed
+              if (errorCode === 'messaging/invalid-registration-token' ||
+                  errorCode === 'messaging/registration-token-not-registered' ||
+                  errorMessage.includes('SenderId mismatch') ||
+                  errorMessage.includes('Invalid registration token') ||
+                  errorMessage.includes('registration-token-not-registered')) {
+                invalidTokens.push(tokens[idx]);
+                console.log(`  → Marking token ${idx} as invalid (will be deactivated)`);
+              }
+            }
+          });
+          
+          // Remove invalid tokens from database
+          if (invalidTokens.length > 0) {
+            try {
+              const pool = await import("../config/database.js").then((m) => m.default);
+              const result = await pool.query(
+                'UPDATE "notification_tokens" SET "isActive" = FALSE WHERE "token" = ANY($1) RETURNING "userId"',
+                [invalidTokens]
+              );
+              console.log(`🗑️  Deactivated ${result.rowCount} invalid FCM tokens from database (SenderId mismatch)`);
+              console.log(`   Affected users: ${result.rows.map(r => r.userId).join(', ')}`);
+              console.log(`   ⚠️  These users need to re-register their FCM tokens with the new Firebase project`);
+            } catch (dbError) {
+              console.error('Error removing invalid tokens:', dbError);
+            }
+          }
+        }
       }
     } catch (sendError) {
       console.log('sendEachForMulticast/sendEach failed, trying individual sends:', sendError.message);
@@ -165,6 +228,7 @@ const sendFCMNotification = async (tokens, title, body, data = {}) => {
       let successCount = 0;
       let failureCount = 0;
       const failedTokens = [];
+      const invalidTokens = []; // Tokens that should be removed from database
 
       for (const message of messages) {
         try {
@@ -173,8 +237,31 @@ const sendFCMNotification = async (tokens, title, body, data = {}) => {
           console.log(`✅ FCM notification sent to token: ${message.token.substring(0, 20)}...`);
         } catch (tokenError) {
           failureCount++;
-          failedTokens.push({ token: message.token.substring(0, 20) + '...', error: tokenError.message });
-          console.error(`❌ Failed to send to token ${message.token.substring(0, 20)}...:`, tokenError.message);
+          const errorMessage = tokenError.message || tokenError.error?.message || 'Unknown error';
+          failedTokens.push({ token: message.token.substring(0, 20) + '...', error: errorMessage });
+          console.error(`❌ Failed to send to token ${message.token.substring(0, 20)}...:`, errorMessage);
+          
+          // Check if token is invalid and should be removed
+          if (errorMessage.includes('SenderId mismatch') || 
+              errorMessage.includes('Invalid registration token') ||
+              errorMessage.includes('Requested entity was not found') ||
+              errorMessage.includes('registration-token-not-registered')) {
+            invalidTokens.push(message.token);
+          }
+        }
+      }
+      
+      // Remove invalid tokens from database
+      if (invalidTokens.length > 0) {
+        try {
+          const pool = await import("../config/database.js").then((m) => m.default);
+          await pool.query(
+            'UPDATE "notification_tokens" SET "isActive" = FALSE WHERE "token" = ANY($1)',
+            [invalidTokens]
+          );
+          console.log(`🗑️  Deactivated ${invalidTokens.length} invalid FCM tokens from database`);
+        } catch (dbError) {
+          console.error('Error removing invalid tokens:', dbError);
         }
       }
       
@@ -186,10 +273,25 @@ const sendFCMNotification = async (tokens, title, body, data = {}) => {
     }
     
     if (response.failureCount > 0) {
-      console.log('Failed FCM tokens:', response.responses
-        .map((resp, idx) => resp.success ? null : { token: tokens[idx]?.substring(0, 20) + '...', error: resp.error?.message || 'Unknown error' })
-        .filter(Boolean)
+      const failedTokens = response.responses
+        .map((resp, idx) => resp.success ? null : { token: tokens[idx]?.substring(0, 20) + '...', error: resp.error?.message || resp.error || 'Unknown error' })
+        .filter(Boolean);
+      
+      console.log('Failed FCM tokens:', failedTokens);
+      
+      // Check for SenderId mismatch or invalid tokens
+      const invalidTokenErrors = failedTokens.filter(ft => 
+        ft.error.includes('SenderId mismatch') || 
+        ft.error.includes('Invalid registration token') ||
+        ft.error.includes('registration-token-not-registered')
       );
+      
+      if (invalidTokenErrors.length > 0) {
+        console.log('⚠️  Some tokens have SenderId mismatch - they were registered with a different Firebase project.');
+        console.log('   Users need to re-register their FCM tokens with the current Firebase project.');
+        console.log('   Old project: react-expo-push-notifica-eadbd');
+        console.log('   New project: management-1018d');
+      }
     }
 
     return {
@@ -204,7 +306,7 @@ const sendFCMNotification = async (tokens, title, body, data = {}) => {
 };
 
 // Main function to send chat notifications
-export const sendChatNotifications = async (message, senderInfo, roomInfo, io, socketToUser, userToSockets) => {
+export const sendChatNotifications = async (message, senderInfo, roomInfo, io, socketToUser, userToSockets, onlineUsersSet) => {
   try {
     console.log('📱 Processing chat notifications for room:', roomInfo.roomId);
     
@@ -217,6 +319,7 @@ export const sendChatNotifications = async (message, senderInfo, roomInfo, io, s
     );
 
     const members = membersResult.rows;
+    console.log("members in sendChatNotifications",members);
     
     if (members.length === 0) {
       console.log('No members to notify in room:', roomInfo.roomId);
@@ -229,30 +332,16 @@ export const sendChatNotifications = async (message, senderInfo, roomInfo, io, s
 
     for (const member of members) {
       const userId = member.userId;
-      const userState = getUserAppState(userId, io, socketToUser, userToSockets);
+      const userState = getUserAppState(userId, io, socketToUser, userToSockets, onlineUsersSet);
       
       console.log(`User ${userId} state:`, userState);
       
-      let shouldNotify = false;
+      // Simplified logic: Only skip notification if user is online AND on chat tab
+      // Otherwise, send notification
+      const shouldNotify = !(userState.isOnline && userState.isOnChatTab);
       
-      if (!userState.isOnline) {
-        // Case 1: User is not on application
-        shouldNotify = true;
-      } else if (userState.isOnline) {
-        if (!userState.isOnChatTab) {
-          // Case 2.2: User is online but not on chat tab
-          shouldNotify = true;
-        } else if (userState.isOnChatTab) {
-          // Case 2.1: User is on chat tab
-          if (userState.currentRoomId !== roomInfo.roomId.toString()) {
-            // Case 2.1.2: User is in different chat room
-            shouldNotify = true;
-          }
-          // Case 2.1.1: User is on main chat screen or same room - no notification
-        }
-      }
-
       if (shouldNotify) {
+        console.log(`  → User ${userId} will receive notification (online: ${userState.isOnline}, onChatTab: ${userState.isOnChatTab})`);
         usersToNotify.push(userId);
         
         // Check if this is a reply to user's message
@@ -263,6 +352,8 @@ export const sendChatNotifications = async (message, senderInfo, roomInfo, io, s
           isReply,
           isOnline: userState.isOnline
         };
+      } else {
+        console.log(`  → User ${userId} is online and on chat tab, skipping notification`);
       }
     }
 
@@ -297,33 +388,49 @@ export const sendChatNotifications = async (message, senderInfo, roomInfo, io, s
     // Send personalized notifications to each user
     const notificationPromises = Object.entries(userTokens).map(async ([userId, tokens]) => {
       const userData = notificationData[userId];
-      if (!userData) return;
+      if (!userData) {
+        console.log(`⚠️ No user data for userId: ${userId}`);
+        return { success: false, error: 'No user data' };
+      }
 
       // Create personalized notification content
       let title, body;
       
       if (userData.isReply) {
-        title = `${senderInfo.userName} replied to you`;
-        body = `in ${roomInfo.roomName}`;
+        title = `${senderInfo.userName || 'Someone'} replied to you`;
+        body = `in ${roomInfo.roomName || 'Chat'}`;
       } else {
-        title = roomInfo.roomName;
-        body = `${senderInfo.userName}: ${formatMessageContent(message, senderInfo.userName)}`;
+        title = String(roomInfo.roomName || 'Chat');
+        body = `${senderInfo.userName || 'Someone'}: ${formatMessageContent(message, senderInfo.userName || 'Someone')}`;
       }
 
       // Notification data for app handling
+      // IMPORTANT: All values must be strings for FCM (no null/undefined)
+      const safeString = (val) => {
+        if (val === null || val === undefined) return '';
+        return String(val);
+      };
+      
       const notificationDataPayload = {
         type: 'chat_message',
-        roomId: roomInfo.roomId.toString(),
-        roomName: roomInfo.roomName,
-        messageId: message.id.toString(),
-        senderId: senderInfo.userId,
-        senderName: senderInfo.userName,
-        messageType: message.messageType || 'text',
-        isReply: userData.isReply.toString(),
-        timestamp: message.createdAt || new Date().toISOString()
+        roomId: safeString(roomInfo.roomId),
+        roomName: safeString(roomInfo.roomName),
+        messageId: safeString(message.id),
+        senderId: safeString(senderInfo.userId),
+        senderName: safeString(senderInfo.userName),
+        messageType: safeString(message.messageType || 'text'),
+        isReply: safeString(Boolean(userData.isReply)),
+        timestamp: safeString(message.createdAt || new Date().toISOString())
       };
 
-      return sendFCMNotification(tokens, title, body, notificationDataPayload);
+      console.log(`📤 Sending notification to user ${userId} with payload:`, notificationDataPayload);
+      
+      try {
+        return await sendFCMNotification(tokens, title, body, notificationDataPayload);
+      } catch (error) {
+        console.error(`❌ Error sending notification to user ${userId}:`, error);
+        return { success: false, error: error.message };
+      }
     });
 
     // Execute all notifications
@@ -333,11 +440,16 @@ export const sendChatNotifications = async (message, senderInfo, roomInfo, io, s
     let totalFailure = 0;
     
     results.forEach((result, index) => {
-      if (result.status === 'fulfilled' && result.value.success) {
-        totalSuccess += result.value.successCount || 0;
-        totalFailure += result.value.failureCount || 0;
+      if (result.status === 'fulfilled') {
+        if (result.value && result.value.success) {
+          totalSuccess += result.value.successCount || 1;
+          totalFailure += result.value.failureCount || 0;
+        } else {
+          console.error(`❌ Notification failed for user at index ${index}:`, result.value?.error || 'Unknown error');
+          totalFailure += result.value?.failureCount || 1;
+        }
       } else {
-        console.error(`Notification failed for user:`, result.reason);
+        console.error(`❌ Notification promise rejected for user at index ${index}:`, result.reason);
         totalFailure++;
       }
     });

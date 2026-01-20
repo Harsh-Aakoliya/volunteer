@@ -9,7 +9,6 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
-  SafeAreaView,
   BackHandler,
   ScrollView,
   Animated,
@@ -17,8 +16,10 @@ import {
   ToastAndroid,
   LayoutAnimation,
   UIManager,
+  EmitterSubscription,
+  Keyboard
 } from "react-native";
-
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 // Enable LayoutAnimation for Android
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -471,6 +472,9 @@ export default function ChatRoomScreen() {
 
   // Attachment sheet state
   const [showAttachmentSheet, setShowAttachmentSheet] = useState(false);
+  
+  // Keyboard state management
+  const [keyboardUsedInSheet, setKeyboardUsedInSheet] = useState(false);
 
   // Scroll state
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
@@ -1015,6 +1019,185 @@ const handleDeselectMessage = useCallback((message: Message) => {
     setVideoCallData(null);
   }, [roomId]);
 
+  // ==================== CUSTOM KEYBOARD HANDLING ====================
+const insets = useSafeAreaInsets();
+const keyboardHeightAnim = useRef(new Animated.Value(0)).current;
+const lastKeyboardHeight = useRef(0);
+
+// Track if we should use custom keyboard handling
+// Native keyboard avoidance works initially, but breaks after attachment sheet use
+const [useCustomKeyboardHandling, setUseCustomKeyboardHandling] = useState(false);
+
+// Refs updated on every render
+const showAttachmentSheetRef = useRef(showAttachmentSheet);
+showAttachmentSheetRef.current = showAttachmentSheet;
+
+const useCustomKeyboardHandlingRef = useRef(useCustomKeyboardHandling);
+useCustomKeyboardHandlingRef.current = useCustomKeyboardHandling;
+
+// Enable custom keyboard handling when attachment sheet is opened
+useEffect(() => {
+  if (showAttachmentSheet) {
+    setUseCustomKeyboardHandling(true);
+  }
+}, [showAttachmentSheet]);
+
+// Set up keyboard listeners ONCE
+useEffect(() => {
+  const handleKeyboardShow = (e: any) => {
+    // Skip if attachment sheet is open
+    if (showAttachmentSheetRef.current) {
+      return;
+    }
+
+    // Only handle if custom keyboard handling is enabled
+    if (!useCustomKeyboardHandlingRef.current) {
+      return;
+    }
+
+    const keyboardHeight = e.endCoordinates.height;
+    lastKeyboardHeight.current = keyboardHeight;
+    
+    const duration = Platform.OS === 'ios' ? e.duration : 250;
+    
+    Animated.timing(keyboardHeightAnim, {
+      toValue: keyboardHeight,
+      duration: duration,
+      useNativeDriver: false,
+    }).start();
+  };
+
+  const handleKeyboardHide = (e: any) => {
+    // Skip if attachment sheet is open
+    if (showAttachmentSheetRef.current) {
+      return;
+    }
+
+    // Only handle if custom keyboard handling is enabled
+    if (!useCustomKeyboardHandlingRef.current) {
+      return;
+    }
+    
+    const duration = Platform.OS === 'ios' ? (e?.duration || 250) : 250;
+    lastKeyboardHeight.current = 0;
+    
+    Animated.timing(keyboardHeightAnim, {
+      toValue: 0,
+      duration: duration,
+      useNativeDriver: false,
+    }).start();
+  };
+
+  let keyboardShowSub: EmitterSubscription;
+  let keyboardHideSub: EmitterSubscription;
+
+  if (Platform.OS === 'ios') {
+    keyboardShowSub = Keyboard.addListener('keyboardWillShow', handleKeyboardShow);
+    keyboardHideSub = Keyboard.addListener('keyboardWillHide', handleKeyboardHide);
+  } else {
+    keyboardShowSub = Keyboard.addListener('keyboardDidShow', handleKeyboardShow);
+    keyboardHideSub = Keyboard.addListener('keyboardDidHide', handleKeyboardHide);
+  }
+
+  return () => {
+    keyboardShowSub?.remove();
+    keyboardHideSub?.remove();
+  };
+}, []);
+
+// Reset when attachment sheet closes
+useEffect(() => {
+  if (!showAttachmentSheet && useCustomKeyboardHandling) {
+    keyboardHeightAnim.stopAnimation();
+    keyboardHeightAnim.setValue(0);
+    lastKeyboardHeight.current = 0;
+  }
+}, [showAttachmentSheet, useCustomKeyboardHandling]);
+
+// Attachment sheet close handler
+const handleAttachmentSheetClose = useCallback(() => {
+  Keyboard.dismiss();
+  keyboardHeightAnim.stopAnimation();
+  keyboardHeightAnim.setValue(0);
+  lastKeyboardHeight.current = 0;
+  setShowAttachmentSheet(false);
+  setKeyboardUsedInSheet(false);
+}, []);
+
+// Focus handlers
+const handleMainInputFocus = useCallback(() => {}, []);
+const handleMainInputBlur = useCallback(() => {}, []);
+
+// Replace the existing keyboard state management useEffect with this:
+// useEffect(() => {
+//   const keyboardDidShowListener = Keyboard.addListener(
+//     Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+//     () => {
+//       if (showAttachmentSheet) {
+//         setKeyboardUsedInSheet(true);
+//       }
+//     }
+//   );
+
+//   return () => {
+//     keyboardDidShowListener?.remove();
+//   };
+// }, [showAttachmentSheet]);
+// useEffect(() => {
+//   if (!showAttachmentSheet && keyboardUsedInSheet) {
+//     // Dismiss keyboard first
+//     Keyboard.dismiss();
+    
+//     // Wait for keyboard to fully dismiss, then reset KeyboardAvoidingView
+//     const timer = setTimeout(() => {
+//       setKavKey(prev => prev + 1);
+//       setKeyboardUsedInSheet(false)  ;
+//     }, 300);
+    
+//     return () => clearTimeout(timer);
+//   }
+// }, [showAttachmentSheet, keyboardUsedInSheet]);
+// Handlers for main input focus
+// const handleMainInputFocus = useCallback(() => {
+//   setIsMainInputFocused(true);
+// }, []);
+
+// const handleMainInputBlur = useCallback(() => {
+//   setIsMainInputFocused(false);
+// }, []);
+
+// Replace the existing keyboard state management useEffect with this:
+// useEffect(() => {
+//   const keyboardDidShowListener = Keyboard.addListener(
+//     Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+//     () => {
+//       if (showAttachmentSheet) {
+//         setKeyboardUsedInSheet(true);
+//       }
+//     }
+//   );
+
+//   return () => {
+//     keyboardDidShowListener?.remove();
+//   };
+// }, [showAttachmentSheet]);
+
+// Add this new effect to handle sheet close with keyboard reset
+// useEffect(() => {
+//   if (!showAttachmentSheet && keyboardUsedInSheet) {
+//     // Dismiss keyboard first
+//     Keyboard.dismiss();
+    
+//     // Wait for keyboard to fully dismiss, then reset KeyboardAvoidingView
+//     const timer = setTimeout(() => {
+//       setKavKey(prev => prev + 1);
+//       setKeyboardUsedInSheet(false);
+//     }, 300);
+    
+//     return () => clearTimeout(timer);
+//   }
+// }, [showAttachmentSheet, keyboardUsedInSheet]);
+
   // ==================== FOCUS EFFECT ====================
 
   const hasFocusedOnce = useRef(false);
@@ -1033,6 +1216,7 @@ const handleDeselectMessage = useCallback((message: Message) => {
         setReplyToMessage(null);
         setActivePollId(null);
         setShowPollModal(false);
+        setKeyboardUsedInSheet(false);
       };
     }, [roomId])
   );
@@ -1041,16 +1225,22 @@ const handleDeselectMessage = useCallback((message: Message) => {
 
   useEffect(() => {
     const onBackPress = () => {
+      if (showAttachmentSheet) {
+        setShowAttachmentSheet(false);
+        return true;
+      }
       if (selectedMessages.length > 0) {
         clearSelection();
         return true;
       }
-      return false;
+      // Navigate back to chat list instead of just going back in history
+      router.replace('/(drawer)');
+      return true;
     };
 
     const backHandler = BackHandler.addEventListener('hardwareBackPress', onBackPress);
     return () => backHandler.remove();
-  }, [selectedMessages]);
+  }, [selectedMessages, showAttachmentSheet]);
 
   // ==================== MESSAGE ACTIONS ====================
 
@@ -1626,260 +1816,273 @@ const TelegramHeader = React.memo(({
   );
 });
   // ==================== MAIN RENDER ====================
+return (
+  <GestureHandlerRootView className="flex-1">
+    {/* NO SafeAreaView - we handle insets manually */}
+    <View 
+      style={{ 
+        flex: 1, 
+        backgroundColor: 'white',
+        paddingTop: insets.top, // Only top safe area
+      }}
+    >
+      {/* --- HEADER SECTION --- */}
+      {selectedMessages.length > 0 ? (
+        <ChatMessageOptions
+          selectedMessages={selectedMessages}
+          setSelectedMessages={setSelectedMessages}
+          isAdmin={isGroupAdmin}
+          onClose={clearSelection}
+          onForwardPress={() => setShowForwardModal(true)}
+          onDeletePress={handleDeleteMessages}
+          onInfoPress={handleInfoPress}
+          roomId={Array.isArray(roomId) ? roomId[0] : roomId}
+          roomMembers={roomMembers}
+          currentUser={currentUser}
+          onMessageEdited={onMessageEditedFromOptions}
+        />
+      ) : (
+        <TelegramHeader
+          roomName={displayRoomName}
+          memberCount={roomMembers.length}
+          onlineCount={onlineUsers.length}
+          onBackPress={() => {
+            // Navigate back to chat list instead of just going back in history
+            // This ensures we go to the drawer/index page, not re-open the room
+            router.replace('/(drawer)');
+          }}
+          onAvatarPress={() => setShowMembersModal(true)}
+          onMenuPress={isGroupAdmin ? () => router.push({
+            pathname: "/chat/room-info",
+            params: { roomId },
+          }) : undefined}
+          onVideoCallPress={handleVideoCallPress}
+          isSyncing={isSyncing}
+        />
+      )}
 
-  return (
-    <GestureHandlerRootView className="flex-1">
-      <SafeAreaView className="flex-1 bg-white">
-        <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
-          className="flex-1"
-          keyboardVerticalOffset={Platform.OS === "ios" ? 60 : 0}
-        >
-          {/* --- HEADER SECTION --- */}
-          {selectedMessages.length > 0 ? (
-            <ChatMessageOptions
-              selectedMessages={selectedMessages}
-              setSelectedMessages={setSelectedMessages}
-              isAdmin={isGroupAdmin}
-              onClose={clearSelection}
-              onForwardPress={() => setShowForwardModal(true)}
-              onDeletePress={handleDeleteMessages}
-              onInfoPress={handleInfoPress}
-              roomId={Array.isArray(roomId) ? roomId[0] : roomId}
+      {/* --- MESSAGES LIST --- */}
+      <View className="flex-1 bg-[#E5DDD5]">
+        <FlatList
+          ref={flatListRef}
+          data={preparedListData}
+          keyExtractor={keyExtractor}
+          renderItem={renderItem}
+          inverted={true}
+          contentContainerStyle={{ paddingVertical: 10, paddingHorizontal: 6 }}
+          onScroll={handleScroll}
+          scrollEventThrottle={16}
+          onViewableItemsChanged={onViewableItemsChanged}
+          viewabilityConfig={viewabilityConfig}
+          removeClippedSubviews={Platform.OS === 'android'}
+          keyboardDismissMode="interactive"
+          keyboardShouldPersistTaps="handled"
+          ListEmptyComponent={
+            <View className="flex-1 justify-center items-center pb-[300px]">
+              <Ionicons name="chatbubble-outline" size={60} color="#AEBAC1" />
+              <Text className="text-gray-500 mt-4 text-center bg-[#E5DDD5] px-2 py-1">
+                No messages yet.
+              </Text>
+            </View>
+          }
+        />
+      </View>
+
+      {/* --- MESSAGE INPUT SECTION --- */}
+      <Animated.View 
+        style={{ 
+          backgroundColor: '#E5DDD5',
+          // Only apply custom keyboard padding after attachment sheet has been used
+          paddingBottom: useCustomKeyboardHandling ? keyboardHeightAnim : 0,
+        }}
+      >
+        <View className="pb-1">
+          {canSendMessage ? (
+            <MessageInput
+              messageText={messageText}
+              onChangeText={setMessageText}
+              onSend={(text, messageType, mediafilesId, tableId, pollId, scheduledAt) => {
+                sendMessage(
+                  text, 
+                  messageType, 
+                  mediafilesId, 
+                  tableId, 
+                  pollId, 
+                  replyToMessage?.id as number, 
+                  scheduledAt
+                );
+                handleCancelReply();
+              }}
+              placeholder="Message"
+              sending={sending}
+              disabled={false}
               roomMembers={roomMembers}
               currentUser={currentUser}
-              onMessageEdited={onMessageEditedFromOptions}
+              roomId={roomId as string}
+              showAttachments={true}
+              onAudioRecord={() => {}}
+              onScheduleMessage={() => setShowScheduledMessages(true)}
+              hasScheduledMessages={scheduledMessages.length > 0}
+              replyToMessage={replyToMessage}
+              onCancelReply={handleCancelReply}
+              onAttachmentPress={() => {
+                Keyboard.dismiss();
+                setTimeout(() => {
+                  setShowAttachmentSheet(prev => !prev);
+                }, 100);
+              }}
+              isAttachmentSheetOpen={showAttachmentSheet}
+              onFocus={handleMainInputFocus}
+              onBlur={handleMainInputBlur}
             />
           ) : (
-            <TelegramHeader
-              roomName={displayRoomName}
-              memberCount={roomMembers.length}
-              onlineCount={onlineUsers.length}
-              onBackPress={() => router.back()}
-              onAvatarPress={() => setShowMembersModal(true)}
-              onMenuPress={isGroupAdmin ? () => router.push({
-                pathname: "/chat/room-info",
-                params: { roomId },
-              }) : undefined}
-              onVideoCallPress={handleVideoCallPress}
-              isSyncing={isSyncing}
-            />
+            <View className="p-3 bg-white/95 m-2 rounded-lg items-center border border-gray-200">
+              <Text className="text-[#54656F] text-sm text-center">
+                Only group admins can send messages
+              </Text>
+            </View>
           )}
-  
-          {/* --- MESSAGES LIST --- */}
-          <View className="flex-1 bg-[#E5DDD5]">
-              <FlatList
-                  ref={flatListRef}
-                  data={preparedListData}
-                  keyExtractor={keyExtractor}
-                  renderItem={renderItem}
-                  inverted={true}
-                  contentContainerStyle={{ paddingVertical: 10, paddingHorizontal: 6 }}
-                  onScroll={handleScroll}
-                  scrollEventThrottle={16}
-                  onViewableItemsChanged={onViewableItemsChanged}
-                  viewabilityConfig={viewabilityConfig}
-                  removeClippedSubviews={Platform.OS === 'android'}
-                  ListEmptyComponent={
-                  <View className="flex-1 justify-center items-center pb-[300px]">
-                      <Ionicons name="chatbubble-outline" size={60} color="#AEBAC1" />
-                      <Text className="text-gray-500 mt-4 text-center bg-[#E5DDD5] px-2 py-1">
-                      No messages yet.
-                      </Text>
-                  </View>
-                  }
-              />
-          </View>
-  
-          {/* Scroll to bottom button */}
-          {showScrollToBottom && (
-            <TouchableOpacity
-              onPress={scrollToBottom}
-              className="absolute bottom-24 right-4 bg-white rounded-full p-2 shadow-md z-50 border border-gray-100"
-            >
-              <Ionicons name="arrow-down" size={20} color="#54656F" />
-            </TouchableOpacity>
-          )}
-  
-          {/* --- MESSAGE INPUT SECTION --- */}
-          {/* Background matches Chat Wallpaper Color */}
-          <View className="bg-[#E5DDD5] pb-1">
-            {canSendMessage ? (
-              <MessageInput
-                messageText={messageText}
-                onChangeText={setMessageText}
-                onSend={(text, messageType, mediafilesId, tableId, pollId, scheduledAt) => {
-                  sendMessage(
-                    text, 
-                    messageType, 
-                    mediafilesId, 
-                    tableId, 
-                    pollId, 
-                    replyToMessage?.id as number, 
-                    scheduledAt
-                  );
-                  handleCancelReply();
-                }}
-                placeholder="Message"
-                sending={sending}
-                disabled={false}
-                roomMembers={roomMembers}
-                currentUser={currentUser}
-                roomId={roomId as string}
-                showAttachments={true}
-                onAudioRecord={() => {}}
-                onScheduleMessage={() => setShowScheduledMessages(true)}
-                hasScheduledMessages={scheduledMessages.length > 0}
-                
-                // Pass Reply Data to Input Component
-                replyToMessage={replyToMessage}
-                onCancelReply={handleCancelReply}
-                
-                // Attachment sheet control
-                onAttachmentPress={() => setShowAttachmentSheet(prev => !prev)}
-                isAttachmentSheetOpen={showAttachmentSheet}
-              />
-            ) : (
-              <View className="p-3 bg-white/95 m-2 rounded-lg items-center border border-gray-200">
-                <Text className="text-[#54656F] text-sm text-center">
-                  Only group admins can send messages
-                </Text>
-              </View>
-            )}
-          </View>
-  
-          {/* --- MODALS --- */}
-          <MembersModal
-            visible={showMembersModal}
-            onClose={() => setShowMembersModal(false)}
-            members={roomMembers.map((member) => ({
-              userId: member.userId,
-              fullName: member.fullName || "Unknown User",
-              isAdmin: Boolean(member.isAdmin),
-              isOnline: onlineUsers.includes(member.userId),
-            }))}
-            currentUserId={currentUser?.userId || ""}
-          />
-  
-          {showMediaViewer && (
-            <MediaViewerModal
-              visible={showMediaViewer}
-              onClose={() => {
-                setShowMediaViewer(false);
-                setSelectedMediaId(null);
-                setSelectedMediaFiles([]);
-                setSelectedMediaIndex(0);
-              }}
-              mediaId={selectedMediaId || undefined}
-              mediaFiles={selectedMediaFiles}
-              initialIndex={selectedMediaIndex}
-            />
-          )}
-  
-          {isGroupAdmin && (
-            <ForwardMessagesModal
-              visible={showForwardModal}
-              onClose={() => setShowForwardModal(false)}
-              selectedMessages={selectedMessages}
-              currentRoomId={roomId as string}
-              onForward={handleForwardMessages}
-            />
-          )}
-  
-          <GlobalPollModal
-            pollId={activePollId}
-            visible={showPollModal}
-            onClose={() => {
-              setShowPollModal(false);
-              setActivePollId(null);
-            }}
-            currentUserId={currentUser?.userId || ""}
-            totalMembers={roomMembers.length}
-          />
-  
-          {showTableModle && tableId !== null && currentUser?.userId && (
-            <RenderTable tableId={tableId} visible={showTableModle} setShowTable={setShowTableModel} />
-          )}
-  
-          {/* Read Status Modal */}
-          <Modal
-              visible={showReadStatus}
-              animationType="slide"
-              transparent={false}
-              onRequestClose={() => setShowReadStatus(false)}
-          >
-              <SafeAreaView className="flex-1 bg-white">
-                  <View className="flex-row items-center justify-between px-4 py-3 border-b border-gray-200">
-                      <TouchableOpacity onPress={() => setShowReadStatus(false)} className="p-2">
-                          <Ionicons name="arrow-back" size={24} color="#374151" />
-                      </TouchableOpacity>
-                      <Text className="text-lg font-semibold text-gray-900">Message Info</Text>
-                      <View style={{ width: 40 }} />
-                  </View>
-                  {/* ... Read Status Content ... */}
-              </SafeAreaView>
-          </Modal>
-  
-          {/* Scheduled Messages Modal */}
-          <Modal
-              visible={showScheduledMessages}
-              animationType="slide"
-              transparent={false}
-              onRequestClose={() => setShowScheduledMessages(false)}
-          >
-              <SafeAreaView className="flex-1 bg-white">
-                <View className="flex-row items-center justify-between px-4 py-3 border-b border-gray-200">
-                  <TouchableOpacity onPress={() => setShowScheduledMessages(false)} className="p-2">
-                    <Ionicons name="arrow-back" size={24} color="#374151" />
-                  </TouchableOpacity>
-                  <Text className="text-lg font-semibold text-gray-900">Scheduled Messages</Text>
-                  <TouchableOpacity onPress={loadScheduledMessages} className="p-2">
-                    <Ionicons name="refresh" size={24} color="#374151" />
-                  </TouchableOpacity>
-                </View>
-  
-                <ScrollView className="flex-1 px-4 py-4">
-                  {scheduledMessages.length === 0 ? (
-                    <View className="flex-1 justify-center items-center py-8">
-                      <Ionicons name="time-outline" size={60} color="#d1d5db" />
-                      <Text className="text-gray-500 mt-4 text-center">No scheduled messages</Text>
-                    </View>
-                  ) : (
-                    scheduledMessages.map((message, index) => (
-                      <View key={index} className="mb-4 p-4 bg-gray-50 rounded-lg">
-                        <Text className="text-base text-gray-900 mb-2">{message.messageText}</Text>
-                        <View className="flex-row items-center">
-                          <Ionicons name="time-outline" size={16} color="#6b7280" />
-                          <Text className="text-sm text-gray-600 ml-1">
-                            Scheduled for {formatISTDate(message.scheduledAt)}
-                          </Text>
-                        </View>
-                      </View>
-                    ))
-                  )}
-                </ScrollView>
-              </SafeAreaView>
-          </Modal>
-  
-          <AudioRecorder
-            isVisible={showAudioRecorder}
-            onRecordingComplete={() => {}}
-            onCancel={() => {
-              setShowAudioRecorder(false);
-              setIsRecordingAudio(false);
-            }}
-          />
-        </KeyboardAvoidingView>
+        </View>
+      </Animated.View>
 
-        {/* Telegram-style Attachment Sheet - Rendered at root level for proper overlay */}
-        <AttachmentSheet
-          isOpen={showAttachmentSheet && !replyToMessage}
-          onClose={() => setShowAttachmentSheet(false)}
-          roomId={roomId as string}
-          userId={currentUser?.userId ?? ""}
-          onMediaSent={() => setShowAttachmentSheet(false)}
+      {/* --- MODALS --- */}
+      <MembersModal
+        visible={showMembersModal}
+        onClose={() => setShowMembersModal(false)}
+        members={roomMembers.map((member) => ({
+          userId: member.userId,
+          fullName: member.fullName || "Unknown User",
+          isAdmin: Boolean(member.isAdmin),
+          isOnline: onlineUsers.includes(member.userId),
+        }))}
+        currentUserId={currentUser?.userId || ""}
+      />
+
+      {showMediaViewer && (
+        <MediaViewerModal
+          visible={showMediaViewer}
+          onClose={() => {
+            setShowMediaViewer(false);
+            setSelectedMediaId(null);
+            setSelectedMediaFiles([]);
+            setSelectedMediaIndex(0);
+          }}
+          mediaId={selectedMediaId || undefined}
+          mediaFiles={selectedMediaFiles}
+          initialIndex={selectedMediaIndex}
         />
-      </SafeAreaView>
-    </GestureHandlerRootView>
-  );
+      )}
+
+      {isGroupAdmin && (
+        <ForwardMessagesModal
+          visible={showForwardModal}
+          onClose={() => setShowForwardModal(false)}
+          selectedMessages={selectedMessages}
+          currentRoomId={roomId as string}
+          onForward={handleForwardMessages}
+        />
+      )}
+
+      <GlobalPollModal
+        pollId={activePollId}
+        visible={showPollModal}
+        onClose={() => {
+          setShowPollModal(false);
+          setActivePollId(null);
+        }}
+        currentUserId={currentUser?.userId || ""}
+        totalMembers={roomMembers.length}
+      />
+
+      {showTableModle && tableId !== null && currentUser?.userId && (
+        <RenderTable tableId={tableId} visible={showTableModle} setShowTable={setShowTableModel} />
+      )}
+
+      {/* Read Status Modal */}
+      <Modal
+        visible={showReadStatus}
+        animationType="slide"
+        transparent={false}
+        onRequestClose={() => setShowReadStatus(false)}
+      >
+        <View style={{ flex: 1, backgroundColor: 'white', paddingTop: insets.top }}>
+          <View className="flex-row items-center justify-between px-4 py-3 border-b border-gray-200">
+            <TouchableOpacity onPress={() => setShowReadStatus(false)} className="p-2">
+              <Ionicons name="arrow-back" size={24} color="#374151" />
+            </TouchableOpacity>
+            <Text className="text-lg font-semibold text-gray-900">Message Info</Text>
+            <View style={{ width: 40 }} />
+          </View>
+        </View>
+      </Modal>
+
+      {/* Scheduled Messages Modal */}
+      <Modal
+        visible={showScheduledMessages}
+        animationType="slide"
+        transparent={false}
+        onRequestClose={() => setShowScheduledMessages(false)}
+      >
+        <View style={{ flex: 1, backgroundColor: 'white', paddingTop: insets.top }}>
+          <View className="flex-row items-center justify-between px-4 py-3 border-b border-gray-200">
+            <TouchableOpacity onPress={() => setShowScheduledMessages(false)} className="p-2">
+              <Ionicons name="arrow-back" size={24} color="#374151" />
+            </TouchableOpacity>
+            <Text className="text-lg font-semibold text-gray-900">Scheduled Messages</Text>
+            <TouchableOpacity onPress={loadScheduledMessages} className="p-2">
+              <Ionicons name="refresh" size={24} color="#374151" />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView className="flex-1 px-4 py-4">
+            {scheduledMessages.length === 0 ? (
+              <View className="flex-1 justify-center items-center py-8">
+                <Ionicons name="time-outline" size={60} color="#d1d5db" />
+                <Text className="text-gray-500 mt-4 text-center">No scheduled messages</Text>
+              </View>
+            ) : (
+              scheduledMessages.map((message, index) => (
+                <View key={index} className="mb-4 p-4 bg-gray-50 rounded-lg">
+                  <Text className="text-base text-gray-900 mb-2">{message.messageText}</Text>
+                  <View className="flex-row items-center">
+                    <Ionicons name="time-outline" size={16} color="#6b7280" />
+                    <Text className="text-sm text-gray-600 ml-1">
+                      Scheduled for {formatISTDate(message.scheduledAt)}
+                    </Text>
+                  </View>
+                </View>
+              ))
+            )}
+          </ScrollView>
+        </View>
+      </Modal>
+
+      <AudioRecorder
+        isVisible={showAudioRecorder}
+        onRecordingComplete={() => {}}
+        onCancel={() => {
+          setShowAudioRecorder(false);
+          setIsRecordingAudio(false);
+        }}
+      />
+
+      <AttachmentSheet
+        isOpen={showAttachmentSheet && !replyToMessage}
+        onClose={handleAttachmentSheetClose}
+        roomId={roomId as string}
+        userId={currentUser?.userId ?? ""}
+        onMediaSent={() => {
+          Keyboard.dismiss();
+          keyboardHeightAnim.stopAnimation();
+          keyboardHeightAnim.setValue(0);
+          lastKeyboardHeight.current = 0;
+          setTimeout(() => {
+            setShowAttachmentSheet(false);
+            setKeyboardUsedInSheet(false);
+          }, 100);
+        }}
+      />
+    </View>
+  </GestureHandlerRootView>
+);
 }

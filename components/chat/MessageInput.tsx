@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
@@ -11,11 +12,15 @@ import {
   Keyboard,
   Animated,
   Easing,
+  KeyboardAvoidingView
 } from 'react-native';
+import { Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from './DateTimePicker';
 import { ChatUser, Message } from '@/types/type';
-interface MessageInputProps { messageText: string; onChangeText: (text: string) => void; onSend: (text: string, messageType: string, mediafilesId: number, tableId: number, pollId: number, scheduledAt?: string) => void; placeholder?: string; sending?: boolean; disabled?: boolean; roomMembers?: ChatUser[]; currentUser?: { userId: string; fullName: string | null; } | null; roomId?: string; showAttachments?: boolean; multiline?: boolean; onFocus?: () => void; onBlur?: () => void; autoFocus?: boolean; onAudioRecord?: () => void; onScheduleMessage?: () => void; hasScheduledMessages?: boolean; replyToMessage?: Message | null; onCancelReply?: () => void; onAttachmentPress?: () => void; isAttachmentSheetOpen?: boolean; }
+import { useCallback } from 'react';
+interface MessageInputProps { 
+messageText: string; onChangeText: (text: string) => void; onSend: (text: string, messageType: string, mediafilesId: number, tableId: number, pollId: number, scheduledAt?: string) => void; placeholder?: string; sending?: boolean; disabled?: boolean; roomMembers?: ChatUser[]; currentUser?: { userId: string; fullName: string | null; } | null; roomId?: string; showAttachments?: boolean; multiline?: boolean; onFocus?: () => void; onBlur?: () => void; autoFocus?: boolean; onAudioRecord?: () => void; onScheduleMessage?: () => void; hasScheduledMessages?: boolean; replyToMessage?: Message | null; onCancelReply?: () => void; onAttachmentPress?: () => void; isAttachmentSheetOpen?: boolean; }
 export default function MessageInput({
   messageText,
   onChangeText,
@@ -33,8 +38,10 @@ export default function MessageInput({
   replyToMessage,
   onCancelReply,
   onAttachmentPress,
+  
   isAttachmentSheetOpen = false,
 }: MessageInputProps) {
+  console.log("pressed");
 
   /* ---------------- REFS ---------------- */
   const inputRef = useRef<TextInput>(null);
@@ -58,16 +65,33 @@ export default function MessageInput({
   /* ---------------- ACTION ---------------- */
   const isEmpty = messageText.trim().length === 0;
 
-  const handleActionPress = () => {
+ const handleActionPress = () => {
     if (!isEmpty) {
       onSend(messageText, 'text', 0, 0, 0);
       return;
     }
 
-    if (replyToMessage) return; // ❌ blocked
+    if (replyToMessage) return;
 
-    onAttachmentPress?.();
+    // Dismiss keyboard and blur input before opening attachment sheet
+    Keyboard.dismiss();
+    inputRef.current?.blur();
+    
+    setTimeout(() => {
+      onAttachmentPress?.();
+    }, 100);
   };
+
+    // Handle input focus
+  const handleInputFocus = useCallback(() => {
+    onFocus?.();
+  }, [onFocus]);
+
+  // Handle input blur
+  const handleInputBlur = useCallback(() => {
+    onBlur?.();
+  }, [onBlur]);
+
 
   /* ---------------- INPUT CHANGE ---------------- */
   const handleTextChange = (text: string) => {
@@ -75,9 +99,8 @@ export default function MessageInput({
   };
 
   /* ---------------- RENDER ---------------- */
-  return (
+return (
     <View className="bg-transparent">
-      {/* ===== INPUT ROW ===== */}
       <View className="flex-row items-end px-2 py-1">
 
         <View className="flex-1 bg-white rounded-[22px] mr-1.5 border border-gray-100">
@@ -106,8 +129,8 @@ export default function MessageInput({
             placeholder={placeholder}
             multiline
             className="px-3 py-2 text-[17px]"
-            onFocus={onFocus}
-            onBlur={onBlur}
+            onFocus={handleInputFocus}
+            onBlur={handleInputBlur}
           />
         </View>
 
