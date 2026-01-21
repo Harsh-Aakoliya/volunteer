@@ -58,7 +58,11 @@
           "READ_PHONE_NUMBERS",
           "CAMERA",
           "RECORD_AUDIO"
-        ]
+        ],
+        "adaptiveIcon": {
+          "foregroundImage": "./assets/images/appicon1.png",
+          "backgroundColor": "#FFFFFF"
+        }
       },
       "ios": {
         "bundleIdentifier": "com.harsh123890.Sevak"

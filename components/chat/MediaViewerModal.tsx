@@ -343,18 +343,8 @@ export default function MediaViewerModal({
               snapToInterval={SCREEN_WIDTH}
               snapToAlignment="start"
             />
-
             {/* Pagination Dots */}
-            {renderDots()}
-
-            {/* File name at bottom */}
-            {mediaData.files[currentIndex] && (
-              <View style={styles.fileInfoContainer}>
-                <Text style={styles.fileName} numberOfLines={1}>
-                  {mediaData.files[currentIndex].originalName}
-                </Text>
-              </View>
-            )}
+            {/* {renderDots()} */}
           </View>
         ) : (
           <View style={styles.emptyContainer}>
@@ -561,6 +551,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     gap: 8,
+    paddingTop: 10,
   },
   dot: {
     borderRadius: 5,

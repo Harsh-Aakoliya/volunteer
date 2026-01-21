@@ -1,4 +1,3 @@
-
 // components/chat/AttachmentSheet.tsx
 import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import {
@@ -96,9 +95,58 @@ const AnnouncementIcon = ({ size = 24, color = "#fff" }: { size?: number; color?
 
 // ---------- HELPER FUNCTIONS ----------
 const formatDuration = (seconds: number): string => {
-  const mins = Math.floor(seconds / 60);
+  if (!seconds || seconds <= 0) return "0:00";
+  
+  const hours = Math.floor(seconds / 3600);
+  const mins = Math.floor((seconds % 3600) / 60);
   const secs = Math.floor(seconds % 60);
+  
+  if (hours > 0) {
+    return `${hours}:${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
+  }
   return `${mins}:${secs.toString().padStart(2, "0")}`;
+};
+
+// Helper to get mime type based on file extension and media type
+const getMimeType = (filename: string, mediaType: "photo" | "video"): string => {
+  const extension = filename.split('.').pop()?.toLowerCase();
+  
+  if (mediaType === "video") {
+    switch (extension) {
+      case "mp4":
+        return "video/mp4";
+      case "mov":
+        return "video/quicktime";
+      case "avi":
+        return "video/x-msvideo";
+      case "mkv":
+        return "video/x-matroska";
+      case "webm":
+        return "video/webm";
+      case "3gp":
+        return "video/3gpp";
+      default:
+        return "video/mp4";
+    }
+  } else {
+    switch (extension) {
+      case "jpg":
+      case "jpeg":
+        return "image/jpeg";
+      case "png":
+        return "image/png";
+      case "gif":
+        return "image/gif";
+      case "webp":
+        return "image/webp";
+      case "heic":
+        return "image/heic";
+      case "heif":
+        return "image/heif";
+      default:
+        return "image/jpeg";
+    }
+  }
 };
 
 // ---------- CAMERA ITEM COMPONENT ----------
@@ -127,6 +175,7 @@ const MediaItem = React.memo(({
   onSelect: (item: MediaLibrary.Asset) => void;
 }) => {
   const isSelected = selectedOrder !== null;
+  const isVideo = item.mediaType === "video";
 
   return (
     <TouchableOpacity
@@ -140,13 +189,26 @@ const MediaItem = React.memo(({
         resizeMode="cover"
       />
       
-      {item.mediaType === "video" && item.duration && (
+      {/* Video indicator overlay */}
+      {isVideo && (
+        <View style={styles.videoOverlay}>
+          <View style={styles.videoPlayIconContainer}>
+            <Ionicons name="play-circle" size={32} color="rgba(255,255,255,0.9)" />
+          </View>
+        </View>
+      )}
+      
+      {/* Duration badge for videos */}
+      {isVideo && (
         <View style={styles.durationBadge}>
-          <Ionicons name="play" size={10} color="white" />
-          <Text style={styles.durationText}>{formatDuration(item.duration)}</Text>
+          <Ionicons name="videocam" size={12} color="white" />
+          <Text style={styles.durationText}>
+            {formatDuration(item.duration || 0)}
+          </Text>
         </View>
       )}
 
+      {/* Selection bubble */}
       <View style={[styles.selectionBubble, isSelected && styles.selectionBubbleSelected]}>
         {isSelected && (
           <Text style={styles.selectionNumber}>{selectedOrder}</Text>
@@ -188,6 +250,12 @@ export default function AttachmentSheet({
   // Determine what bottom section to show
   const showTabBar = activeTab === "gallery" ? selectedMedia.length === 0 : true;
   const showInputBar = activeTab === "gallery" && selectedMedia.length > 0;
+
+  // Count selected photos and videos
+  const selectedPhotosCount = useMemo(() => 
+    selectedMedia.filter(m => m.mediaType === "photo").length, [selectedMedia]);
+  const selectedVideosCount = useMemo(() => 
+    selectedMedia.filter(m => m.mediaType === "video").length, [selectedMedia]);
 
   // ============ ANIMATED STYLES ============
   
@@ -314,6 +382,14 @@ export default function AttachmentSheet({
         sortBy: [MediaLibrary.SortBy.creationTime],
       });
 
+      // Log to debug - you can remove this later
+      console.log(`Loaded ${result.assets.length} assets`);
+      result.assets.forEach(asset => {
+        if (asset.mediaType === "video") {
+          console.log(`Video: ${asset.filename}, Duration: ${asset.duration}s`);
+        }
+      });
+
       if (cursor) {
         setMediaAssets(prev => [...prev, ...result.assets]);
       } else {
@@ -340,14 +416,17 @@ export default function AttachmentSheet({
       const existingIndex = prev.findIndex(m => m.id === asset.id);
       
       if (existingIndex !== -1) {
+        // Deselect - remove and reorder remaining
         const newSelection = prev.filter(m => m.id !== asset.id);
         return newSelection.map((item, index) => ({ ...item, order: index + 1 }));
       } else {
+        // Select - add to selection
+        const mediaType: "photo" | "video" = asset.mediaType === "video" ? "video" : "photo";
         return [...prev, {
           id: asset.id,
           uri: asset.uri,
           filename: asset.filename,
-          mediaType: asset.mediaType === "video" ? "video" : "photo",
+          mediaType: mediaType,
           duration: asset.duration,
           order: prev.length + 1,
         }];
@@ -375,9 +454,12 @@ export default function AttachmentSheet({
           const base64 = await FileSystem.readAsStringAsync(media.uri, {
             encoding: FileSystem.EncodingType.Base64,
           });
+          
+          const mimeType = getMimeType(media.filename, media.mediaType);
+          
           return {
             name: media.filename,
-            mimeType: media.mediaType === "video" ? "video/mp4" : "image/jpeg",
+            mimeType: mimeType,
             fileData: base64,
           };
         })
@@ -525,6 +607,18 @@ export default function AttachmentSheet({
     ) : null
   ), [isLoading]);
 
+  // Get selection summary text
+  const getSelectionSummary = (): string => {
+    const parts: string[] = [];
+    if (selectedPhotosCount > 0) {
+      parts.push(`${selectedPhotosCount} ${selectedPhotosCount === 1 ? 'photo' : 'photos'}`);
+    }
+    if (selectedVideosCount > 0) {
+      parts.push(`${selectedVideosCount} ${selectedVideosCount === 1 ? 'video' : 'videos'}`);
+    }
+    return parts.join(', ') + ' selected';
+  };
+
   if (!isOpen) return null;
 
   // Render content based on active tab
@@ -655,9 +749,23 @@ export default function AttachmentSheet({
         </TouchableOpacity>
       </View>
       
-      <Text style={styles.selectionCount}>
-        {selectedMedia.length} {selectedMedia.length === 1 ? "item" : "items"} selected
-      </Text>
+      <View style={styles.selectionInfoRow}>
+        <Text style={styles.selectionCount}>
+          {getSelectionSummary()}
+        </Text>
+        {selectedVideosCount > 0 && (
+          <View style={styles.videoInfoBadge}>
+            <Ionicons name="videocam" size={12} color="#fff" />
+            <Text style={styles.videoInfoText}>{selectedVideosCount}</Text>
+          </View>
+        )}
+        {selectedPhotosCount > 0 && (
+          <View style={styles.photoInfoBadge}>
+            <Ionicons name="image" size={12} color="#fff" />
+            <Text style={styles.photoInfoText}>{selectedPhotosCount}</Text>
+          </View>
+        )}
+      </View>
     </View>
   );
 
@@ -753,6 +861,7 @@ const styles = StyleSheet.create({
   mediaImage: {
     flex: 1,
     borderRadius: 4,
+    backgroundColor: '#1a1a1a', // Placeholder background while loading
   },
   cameraContainer: {
     flex: 1,
@@ -769,22 +878,41 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  
+  // Video overlay styles
+  videoOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.15)',
+    borderRadius: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  videoPlayIconContainer: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  
+  // Duration badge styles - improved visibility
   durationBadge: {
     position: "absolute",
-    bottom: 4,
-    left: 4,
-    backgroundColor: "rgba(0,0,0,0.6)",
+    bottom: 6,
+    left: 6,
+    backgroundColor: "rgba(0,0,0,0.75)",
     paddingHorizontal: 6,
-    paddingVertical: 2,
+    paddingVertical: 3,
     borderRadius: 4,
     flexDirection: "row",
     alignItems: "center",
+    gap: 4,
   },
   durationText: {
     color: "#fff",
-    fontSize: 10,
-    marginLeft: 2,
+    fontSize: 11,
+    fontWeight: "600",
   },
+  
   selectionBubble: {
     position: "absolute",
     top: 6,
@@ -942,10 +1070,45 @@ const styles = StyleSheet.create({
   sendButtonDisabled: {
     backgroundColor: "#ccc",
   },
+  selectionInfoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+    marginLeft: 36,
+  },
   selectionCount: {
     color: "#666",
     fontSize: 12,
-    marginTop: 8,
-    marginLeft: 36,
+    flex: 1,
+  },
+  videoInfoBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#E74C3C',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginLeft: 8,
+    gap: 4,
+  },
+  videoInfoText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  photoInfoBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#2AABEE',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginLeft: 8,
+    gap: 4,
+  },
+  photoInfoText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '600',
   },
 });

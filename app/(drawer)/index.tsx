@@ -36,8 +36,8 @@ const AVATAR_COLORS = [
   ["#82B1FF", "#448AFF"], // Blue
   ["#FFD180", "#FFAB40"], // Orange
   ["#B388FF", "#7C4DFF"], // Purple
-  ["#84FFFF", "#18FFFF"], // Cyan
-  ["#CCFF90", "#B2FF59"], // Lime
+  // ["#84FFFF", "#18FFFF"], // Cyan
+  // ["#CCFF90", "#B2FF59"], // Lime
   ["#FF80AB", "#FF4081"], // Pink
   ["#A7FFEB", "#64FFDA"], // Teal
   ["#FFE57F", "#FFD740"], // Amber
@@ -47,7 +47,7 @@ const AVATAR_COLORS = [
 
 // Get consistent color for a room based on its ID/name
 const getAvatarColor = (identifier: string): string[] => {
-  return  ["#82B1FF", "#448AFF"]; // Blue
+  // return  ["#82B1FF", "#448AFF"]; // Blue
   const hash = identifier.split("").reduce((acc, char) => {
     return char.charCodeAt(0) + ((acc << 5) - acc);
   }, 0);
