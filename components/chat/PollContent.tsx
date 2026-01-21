@@ -14,6 +14,7 @@ import {
   Keyboard,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import { API_URL } from "@/constants/api";
 import axios from "axios";
 import { AuthStorage } from "@/utils/authStorage";
@@ -59,6 +60,8 @@ export default function PollContent({
 
   const validOptions = options.filter((opt) => opt.text.trim() !== "");
   const isCreateEnabled = question.trim() !== "" && validOptions.length >= 2;
+
+  // ==================== ACTIONS ====================
 
   const addOption = useCallback(() => {
     if (options.length < 12) {
@@ -185,7 +188,260 @@ export default function PollContent({
     </ScaleDecorator>
   );
 
-  const Container = showInSheet ? View : SafeAreaView;
+  // ==================== SHEET VERSION (for AttachmentSheet) ====================
+
+  if (showInSheet) {
+    return (
+      <View
+        style={[
+          styles.container,
+          { backgroundColor: isDark ? "#0E1621" : "#fff" },
+        ]}
+      >
+        {/* Poll question header fixed at top */}
+        <View
+          style={[
+            styles.titleHeader,
+            { borderBottomColor: isDark ? "#374151" : "#E5E7EB" },
+          ]}
+        >
+          <View style={styles.titleHeaderRow}>
+            <Text
+              style={[
+                styles.sectionLabel,
+                { color: isDark ? "#3B82F6" : "#007AFF" },
+              ]}
+            >
+              Poll question
+            </Text>
+
+            <TouchableOpacity
+              onPress={sendPoll}
+              disabled={!isCreateEnabled || sending}
+              style={styles.createButton}
+            >
+              {sending ? (
+                <ActivityIndicator size="small" color={isDark ? "#60a5fa" : "#2563eb"} />
+              ) : (
+                <Text
+                  style={[
+                    styles.createButtonText,
+                    {
+                      color:
+                        isCreateEnabled && !sending
+                          ? isDark
+                            ? "#3B82F6"
+                            : "#007AFF"
+                          : isDark
+                          ? "#4B5563"
+                          : "#9CA3AF",
+                    },
+                  ]}
+                >
+                  CREATE
+                </Text>
+              )}
+            </TouchableOpacity>
+          </View>
+
+          <TextInput
+            placeholder="Ask a question"
+            placeholderTextColor={isDark ? "#8E8E93" : "#C7C7CC"}
+            style={[
+              styles.questionInput,
+              { color: isDark ? "#fff" : "#000" },
+            ]}
+            value={question}
+            onChangeText={setQuestion}
+            multiline={false}
+          />
+        </View>
+
+        {/* Scrollable area for answer options and settings */}
+        <BottomSheetScrollView
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={true}
+        >
+          {/* Answer Options */}
+          <View
+            style={[
+              styles.optionsSection,
+              { borderBottomColor: isDark ? "#374151" : "#E5E7EB" },
+            ]}
+          >
+            <Text
+              style={[
+                styles.sectionLabel,
+                { color: isDark ? "#3B82F6" : "#007AFF" },
+              ]}
+            >
+              Answer options
+            </Text>
+
+            {/* Non-draggable list when shown inside sheet to avoid gesture conflicts */}
+            <View style={styles.optionsList}>
+              {options.map((item) => (
+                <View key={item.id} style={styles.optionRow}>
+                  <View style={styles.dragHandle}>
+                    <Ionicons
+                      name="menu"
+                      size={20}
+                      color={isDark ? "#8E8E93" : "#C7C7CC"}
+                    />
+                  </View>
+
+                  <TextInput
+                    placeholder="Option"
+                    placeholderTextColor={isDark ? "#8E8E93" : "#C7C7CC"}
+                    style={[
+                      styles.optionInput,
+                      {
+                        color: isDark ? "#fff" : "#000",
+                        borderBottomColor: isDark ? "#374151" : "#E5E7EB",
+                      },
+                    ]}
+                    value={item.text}
+                    onChangeText={(text) => updateOptionText(item.id, text)}
+                  />
+
+                  {options.length > 1 && (
+                    <TouchableOpacity
+                      onPress={() => removeOption(item.id)}
+                      style={styles.removeButton}
+                    >
+                      <Ionicons
+                        name="close-circle"
+                        size={22}
+                        color={isDark ? "#8E8E93" : "#C7C7CC"}
+                      />
+                    </TouchableOpacity>
+                  )}
+                </View>
+              ))}
+
+              {/* Footer actions */}
+              <View style={styles.footer}>
+                {options.length < 12 && (
+                  <TouchableOpacity
+                    onPress={addOption}
+                    style={styles.addOptionButton}
+                  >
+                    <View
+                      style={[
+                        styles.addIconCircle,
+                        { backgroundColor: isDark ? "#3B82F6" : "#007AFF" },
+                      ]}
+                    >
+                      <Ionicons name="add" size={18} color="white" />
+                    </View>
+                    <Text
+                      style={[
+                        styles.addOptionText,
+                        { color: isDark ? "#3B82F6" : "#007AFF" },
+                      ]}
+                    >
+                      Add an Option...
+                    </Text>
+                  </TouchableOpacity>
+                )}
+
+                {options.length < 12 && (
+                  <Text
+                    style={[
+                      styles.remainingText,
+                      { color: isDark ? "#6B7280" : "#9CA3AF" },
+                    ]}
+                  >
+                    You can add {12 - options.length} more option
+                    {12 - options.length !== 1 ? "s" : ""}.
+                  </Text>
+                )}
+
+                {/* Settings */}
+                <View
+                  style={[
+                    styles.settingsSection,
+                    { borderTopColor: isDark ? "#374151" : "#E5E7EB" },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.sectionLabel,
+                      { color: isDark ? "#3B82F6" : "#007AFF" },
+                    ]}
+                  >
+                    Settings
+                  </Text>
+
+                  <TouchableOpacity
+                    onPress={() => {
+                      if (validOptions.length >= 2) {
+                        setMultipleChoice(!multipleChoice);
+                      }
+                    }}
+                    disabled={validOptions.length < 2}
+                    style={[
+                      styles.settingRow,
+                      { borderBottomColor: isDark ? "#374151" : "#E5E7EB" },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.settingText,
+                        {
+                          color:
+                            validOptions.length >= 2
+                              ? isDark
+                                ? "#fff"
+                                : "#000"
+                              : isDark
+                              ? "#4B5563"
+                              : "#9CA3AF",
+                        },
+                      ]}
+                    >
+                      Multiple Answers
+                    </Text>
+                    <View
+                      style={[
+                        styles.toggle,
+                        {
+                          backgroundColor:
+                            multipleChoice && validOptions.length >= 2
+                              ? isDark
+                                ? "#3B82F6"
+                                : "#007AFF"
+                              : isDark
+                              ? "#4B5563"
+                              : "#D1D5DB",
+                        },
+                      ]}
+                    >
+                      <View
+                        style={[
+                          styles.toggleCircle,
+                          multipleChoice && styles.toggleCircleActive,
+                        ]}
+                      />
+                    </View>
+                  </TouchableOpacity>
+                </View>
+
+                {/* Bottom padding for tab bar space when in half screen */}
+                {isHalfScreen && <View style={{ height: 140 }} />}
+              </View>
+            </View>
+          </View>
+        </BottomSheetScrollView>
+      </View>
+    );
+  }
+
+  // ==================== FULL SCREEN VERSION (original route) ====================
+
+  const Container = SafeAreaView;
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
@@ -200,69 +456,53 @@ export default function PollContent({
           style={styles.flex1}
           keyboardVerticalOffset={0}
         >
-          {/* Header */}
-          <View
-            style={[
-              styles.header,
-              { borderBottomColor: isDark ? "#374151" : "#E5E7EB" },
-            ]}
-          >
-            <TouchableOpacity onPress={onBack} style={styles.headerButton}>
-              <Ionicons
-                name="arrow-back"
-                size={24}
-                color={isDark ? "#8E8E93" : "#007AFF"}
-              />
-            </TouchableOpacity>
-
-            <Text
-              style={[styles.headerTitle, { color: isDark ? "#fff" : "#000" }]}
-            >
-              New Poll
-            </Text>
-
-            <TouchableOpacity
-              onPress={sendPoll}
-              disabled={!isCreateEnabled || sending}
-              style={styles.headerButton}
-            >
-              {sending ? (
-                <ActivityIndicator size="small" color="#007AFF" />
-              ) : (
-                <Text
-                  style={[
-                    styles.createButtonText,
-                    {
-                      color: isCreateEnabled
-                        ? "#007AFF"
-                        : isDark
-                        ? "#4B5563"
-                        : "#9CA3AF",
-                    },
-                  ]}
-                >
-                  CREATE
-                </Text>
-              )}
-            </TouchableOpacity>
-          </View>
-
           <View style={styles.flex1}>
             {/* Poll Question */}
             <View
               style={[
-                styles.section,
+                styles.titleHeader,
                 { borderBottomColor: isDark ? "#374151" : "#E5E7EB" },
               ]}
             >
-              <Text
-                style={[
-                  styles.sectionLabel,
-                  { color: isDark ? "#3B82F6" : "#007AFF" },
-                ]}
-              >
-                Poll question
-              </Text>
+              <View style={styles.titleHeaderRow}>
+                <Text
+                  style={[
+                    styles.sectionLabel,
+                    { color: isDark ? "#3B82F6" : "#007AFF" },
+                  ]}
+                >
+                  Poll question
+                </Text>
+
+                <TouchableOpacity
+                  onPress={sendPoll}
+                  disabled={!isCreateEnabled || sending}
+                  style={styles.createButton}
+                >
+                  {sending ? (
+                    <ActivityIndicator size="small" color={isDark ? "#60a5fa" : "#2563eb"} />
+                  ) : (
+                    <Text
+                      style={[
+                        styles.createButtonText,
+                        {
+                          color:
+                            isCreateEnabled && !sending
+                              ? isDark
+                                ? "#3B82F6"
+                                : "#007AFF"
+                              : isDark
+                              ? "#4B5563"
+                              : "#9CA3AF",
+                        },
+                      ]}
+                    >
+                      Create
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+
               <TextInput
                 placeholder="Ask a question"
                 placeholderTextColor={isDark ? "#8E8E93" : "#C7C7CC"}
@@ -406,11 +646,6 @@ export default function PollContent({
                         </View>
                       </TouchableOpacity>
                     </View>
-
-                    {/* Bottom padding for tab bar space when in half screen */}
-                    {showInSheet && isHalfScreen && (
-                      <View style={{ height: 120 }} />
-                    )}
                   </View>
                 }
               />
@@ -429,33 +664,35 @@ const styles = StyleSheet.create({
   flex1: {
     flex: 1,
   },
-  header: {
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
+  },
+  // Title Header (poll question)
+  titleHeader: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+  },
+  titleHeaderRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-  },
-  headerButton: {
-    padding: 8,
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: "600",
-  },
-  createButtonText: {
-    fontSize: 16,
-    fontWeight: "600",
-  },
-  section: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
   },
   sectionLabel: {
     fontSize: 14,
-    marginBottom: 8,
+    fontWeight: "500",
+  },
+  createButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  createButtonText: {
+    fontSize: 15,
+    fontWeight: "600",
+    letterSpacing: 0.5,
   },
   questionInput: {
     fontSize: 16,

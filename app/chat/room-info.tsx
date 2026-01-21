@@ -19,7 +19,6 @@ import MembersTab from '@/components/chat/roomSettings/MembersTab';
 import AnnouncementsTab from '@/components/chat/roomSettings/AnnouncementsTab';
 import MediaTab from '@/components/chat/roomSettings/MediaTab';
 import PollTab from '@/components/chat/roomSettings/PollTab';
-import TableTab from '@/components/chat/roomSettings/TableTab';
 import { useSocket } from '@/contexts/SocketContext';
 import socketManager from '@/utils/socketManager';
 import { Message } from '@/types/type';
@@ -51,7 +50,6 @@ export default function RoomInfo() {
     { key: 'announcements', title: 'Announcements' },
     { key: 'media', title: 'Media' },
     { key: 'poll', title: 'Poll' },
-    { key: 'table', title: 'Table' },
   ]);
 
   // Apply online status to members
@@ -149,10 +147,6 @@ export default function RoomInfo() {
         />;
       case 'poll':
         return <PollTab 
-          messages={messages}
-        />;
-      case 'table':
-        return <TableTab 
           messages={messages}
         />;
       default:

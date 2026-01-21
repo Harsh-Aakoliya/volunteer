@@ -16,7 +16,7 @@ import * as React from 'react';
 // const { DEV_IP, INTERNAL_IP, EXTERNAL_IP } = Constants?.expoConfig?.extra as { DEV_IP: string; INTERNAL_IP: string; EXTERNAL_IP: string };
 
 // console.log(DEV_IP, INTERNAL_IP, EXTERNAL_IP);
-const DEV_IP = (Platform.OS === "web" ? "http://localhost:8080" : "http://172.20.146.242:8080");
+const DEV_IP = "http://172.20.146.242:8080";
 const INTERNAL_IP = "http://172.20.146.242:8080";
 const EXTERNAL_IP = "http://172.20.146.242:8080";
 // Export dev mode status and DEV_IP for use in other components

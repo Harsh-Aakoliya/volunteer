@@ -1,3 +1,4 @@
+
 // components/chat/AttachmentSheet.tsx
 import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import {
@@ -182,7 +183,7 @@ export default function AttachmentSheet({
   const [currentIndex, setCurrentIndex] = useState(0);
 
   // Snap points - half screen and full screen
-  const snapPoints = useMemo(() => ["55%", "100%"], []);
+  const snapPoints = useMemo(() => ["100%", "90%"], []);
 
   // Determine what bottom section to show
   const showTabBar = activeTab === "gallery" ? selectedMedia.length === 0 : true;
@@ -190,13 +191,7 @@ export default function AttachmentSheet({
 
   // ============ ANIMATED STYLES ============
   
-  // Tab Bar Animation:
-  // - Fades out when going UP to full screen (index 0 -> 1)
-  // - Fades out when going DOWN to close (index 0 -> -1)
-  // - Only fully visible at half screen (index 0)
   const animatedTabBarStyle = useAnimatedStyle(() => {
-    // animatedIndex: -1 (closing) -> 0 (half screen) -> 1 (full screen)
-    // Tab bar visible only at index 0 (half screen)
     const opacity = interpolate(
       animatedIndex.value,
       [-0.5, 0, 0.5],
@@ -217,23 +212,18 @@ export default function AttachmentSheet({
     };
   });
 
-  // Input Bar Animation:
-  // - STAYS VISIBLE when going UP to full screen (index 0 -> 1) - user needs it to send!
-  // - Fades out ONLY when going DOWN to close (index 0 -> -1)
   const animatedInputBarStyle = useAnimatedStyle(() => {
-    // Only fade out when closing (index going below 0)
-    // Stay fully visible from half (0) to full (1)
     const opacity = interpolate(
       animatedIndex.value,
       [-0.5, 0, 1],
-      [0, 1, 1], // stays at 1 when going to full screen
+      [0, 1, 1],
       Extrapolation.CLAMP
     );
     
     const translateY = interpolate(
       animatedIndex.value,
       [-0.5, 0, 1],
-      [INPUT_BAR_HEIGHT, 0, 0], // no translation when going to full screen
+      [INPUT_BAR_HEIGHT, 0, 0],
       Extrapolation.CLAMP
     );
 
@@ -243,20 +233,19 @@ export default function AttachmentSheet({
     };
   });
 
-const handleSheetChanges = useCallback((index: number) => {
-  setCurrentIndex(index);
-  if (index === -1) {
-    Keyboard.dismiss();
-    
-    // Small delay to ensure keyboard is dismissed
-    setTimeout(() => {
-      setActiveTab("gallery");
-      setSelectedMedia([]);
-      setCaption("");
-      onClose();
-    }, 50);
-  }
-}, [onClose]);
+  const handleSheetChanges = useCallback((index: number) => {
+    setCurrentIndex(index);
+    if (index === -1) {
+      Keyboard.dismiss();
+      
+      setTimeout(() => {
+        setActiveTab("gallery");
+        setSelectedMedia([]);
+        setCaption("");
+        onClose();
+      }, 50);
+    }
+  }, [onClose]);
 
   // Request permission and load media only when opened
   useEffect(() => {
@@ -282,22 +271,22 @@ const handleSheetChanges = useCallback((index: number) => {
       setCurrentIndex(0);
     }
   }, [isOpen]);
-  // Auto-expand to full screen when keyboard appears in poll/announcement
-useEffect(() => {
-  const keyboardShowListener = Keyboard.addListener(
-    Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
-    () => {
-      // If we're in poll or announcement tab and in half-screen mode, expand to full
-      if ((activeTab === 'poll' || activeTab === 'announcement') && currentIndex === 0) {
-        bottomSheetRef.current?.snapToIndex(1); // Snap to full screen
-      }
-    }
-  );
 
-  return () => {
-    keyboardShowListener.remove();
-  };
-}, [activeTab, currentIndex]);
+  // Auto-expand to full screen when keyboard appears in poll/announcement
+  useEffect(() => {
+    const keyboardShowListener = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      () => {
+        if ((activeTab === 'poll' || activeTab === 'announcement') && currentIndex === 0) {
+          bottomSheetRef.current?.snapToIndex(1);
+        }
+      }
+    );
+
+    return () => {
+      keyboardShowListener.remove();
+    };
+  }, [activeTab, currentIndex]);
 
   const requestPermissionAndLoadMedia = async () => {
     try {
@@ -376,121 +365,116 @@ useEffect(() => {
     setCaption("");
   }, []);
 
-// Update handleSendMedia - add keyboard dismiss before close
+  const handleSendMedia = async () => {
+    if (selectedMedia.length === 0 || isSending) return;
 
-const handleSendMedia = async () => {
-  if (selectedMedia.length === 0 || isSending) return;
+    setIsSending(true);
+    try {
+      const filesWithData = await Promise.all(
+        selectedMedia.map(async (media) => {
+          const base64 = await FileSystem.readAsStringAsync(media.uri, {
+            encoding: FileSystem.EncodingType.Base64,
+          });
+          return {
+            name: media.filename,
+            mimeType: media.mediaType === "video" ? "video/mp4" : "image/jpeg",
+            fileData: base64,
+          };
+        })
+      );
 
-  setIsSending(true);
-  try {
-    const filesWithData = await Promise.all(
-      selectedMedia.map(async (media) => {
-        const base64 = await FileSystem.readAsStringAsync(media.uri, {
-          encoding: FileSystem.EncodingType.Base64,
-        });
-        return {
-          name: media.filename,
-          mimeType: media.mediaType === "video" ? "video/mp4" : "image/jpeg",
-          fileData: base64,
-        };
-      })
-    );
+      const token = await AuthStorage.getToken();
+      const uploadResponse = await axios.post(
+        `${API_URL}/api/vm-media/upload`,
+        { files: filesWithData },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
 
-    const token = await AuthStorage.getToken();
-    const uploadResponse = await axios.post(
-      `${API_URL}/api/vm-media/upload`,
-      { files: filesWithData },
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
+      if (!uploadResponse.data.success) {
+        throw new Error("Upload failed");
       }
-    );
 
-    if (!uploadResponse.data.success) {
-      throw new Error("Upload failed");
+      const tempFolderId = uploadResponse.data.tempFolderId;
+      const uploadedFiles = uploadResponse.data.uploadedFiles;
+
+      const filesWithCaptions = uploadedFiles.map((f: any) => ({
+        fileName: f.fileName,
+        originalName: f.originalName,
+        caption: caption,
+        mimeType: f.mimeType,
+        size: f.size,
+      }));
+
+      const moveResponse = await axios.post(
+        `${API_URL}/api/vm-media/move-to-chat`,
+        {
+          tempFolderId,
+          roomId,
+          senderId: userId,
+          filesWithCaptions,
+        },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      if (moveResponse.data.success) {
+        socketSendMessage(roomId, {
+          id: moveResponse.data.messageId,
+          messageText: moveResponse.data.message,
+          createdAt: new Date().toISOString(),
+          messageType: "media",
+          mediaFilesId: moveResponse.data.mediaId,
+          pollId: 0,
+          tableId: 0,
+          replyMessageId: 0,
+        });
+
+        setSelectedMedia([]);
+        setCaption("");
+        
+        Keyboard.dismiss();
+        
+        setTimeout(() => {
+          onClose();
+          onMediaSent?.();
+        }, 100);
+      }
+    } catch (error) {
+      console.error("Error sending media:", error);
+      Alert.alert("Error", "Failed to send media. Please try again.");
+    } finally {
+      setIsSending(false);
     }
-
-    const tempFolderId = uploadResponse.data.tempFolderId;
-    const uploadedFiles = uploadResponse.data.uploadedFiles;
-
-    const filesWithCaptions = uploadedFiles.map((f: any) => ({
-      fileName: f.fileName,
-      originalName: f.originalName,
-      caption: caption,
-      mimeType: f.mimeType,
-      size: f.size,
-    }));
-
-    const moveResponse = await axios.post(
-      `${API_URL}/api/vm-media/move-to-chat`,
-      {
-        tempFolderId,
-        roomId,
-        senderId: userId,
-        filesWithCaptions,
-      },
-      { headers: { Authorization: `Bearer ${token}` } }
-    );
-
-     if (moveResponse.data.success) {
-      socketSendMessage(roomId, {
-        id: moveResponse.data.messageId,
-        messageText: moveResponse.data.message,
-        createdAt: new Date().toISOString(),
-        messageType: "media",
-        mediaFilesId: moveResponse.data.mediaId,
-        pollId: 0,
-        tableId: 0,
-        replyMessageId: 0,
-      });
-
-      setSelectedMedia([]);
-      setCaption("");
-      
-      // Dismiss keyboard first
-      Keyboard.dismiss();
-      
-      // Wait for keyboard to dismiss, then close sheet
-      setTimeout(() => {
-        onClose();
-        onMediaSent?.();
-      }, 100);
-    }
-  } catch (error) {
-    console.error("Error sending media:", error);
-    Alert.alert("Error", "Failed to send media. Please try again.");
-  } finally {
-    setIsSending(false);
-  }
-};
+  };
 
   const handleTabPress = useCallback((tab: TabType) => {
     setActiveTab(tab);
     bottomSheetRef.current?.snapToIndex(0);
   }, []);
 
-const handleSuccess = useCallback(() => {
-  Keyboard.dismiss();
-  
-  setTimeout(() => {
-    setActiveTab("gallery");
-    setSelectedMedia([]);
-    setCaption("");
-    onClose();
-    onMediaSent?.();
-  }, 100);
-}, [onClose, onMediaSent]);
+  const handleSuccess = useCallback(() => {
+    Keyboard.dismiss();
+    
+    setTimeout(() => {
+      setActiveTab("gallery");
+      setSelectedMedia([]);
+      setCaption("");
+      onClose();
+      onMediaSent?.();
+    }, 200);
+  }, [onClose, onMediaSent]);
 
-// Update handleBackToGallery
-const handleBackToGallery = useCallback(() => {
-  Keyboard.dismiss();
-  setTimeout(() => {
-    setActiveTab("gallery");
-    bottomSheetRef.current?.snapToIndex(0);
-  }, 100);
-}, []);
+  const handleBackToGallery = useCallback(() => {
+    Keyboard.dismiss();
+    setTimeout(() => {
+      setActiveTab("gallery");
+      bottomSheetRef.current?.snapToIndex(0);
+    }, 100);
+  }, []);
 
   const handleCameraPress = useCallback(() => {
     onClose();
@@ -562,6 +546,7 @@ const handleBackToGallery = useCallback(() => {
       case "announcement":
         return (
           <View style={styles.tabContentContainer}>
+            {Platform.OS !== "web" ? 
             <AnnouncementContent
               roomId={roomId}
               userId={userId}
@@ -569,7 +554,7 @@ const handleBackToGallery = useCallback(() => {
               onBack={handleBackToGallery}
               showInSheet={true}
               isHalfScreen={currentIndex === 0}
-            />
+            /> : <></>}
           </View>
         );
       default:
@@ -689,6 +674,11 @@ const handleBackToGallery = useCallback(() => {
         backgroundStyle={styles.sheetBackground}
         style={styles.sheet}
         animatedIndex={animatedIndex}
+        keyboardBehavior="interactive"
+        keyboardBlurBehavior="restore"
+        android_keyboardInputMode="adjustResize"
+        enableContentPanningGesture={true}
+        enableHandlePanningGesture={true}
       >
         <View style={styles.container}>
           {/* Main Content Area */}

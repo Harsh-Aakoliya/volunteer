@@ -79,6 +79,7 @@ const MediaGrid: React.FC<MediaGridProps> = ({
           size: file.size || 0
         }));
         setMediaFiles(transformedFiles);
+        console.log("transformed file",transformedFiles);
       } else {
         setMediaFiles([]);
       }
@@ -109,9 +110,14 @@ const MediaGrid: React.FC<MediaGridProps> = ({
       >
         {isImage && (
           <Image
-            source={{ uri: `${API_URL}/media/chat/${file.fileName}` }}
-            style={{ width: '100%', height: '100%' }}
+            source={{
+              uri: `${API_URL}/media/chat/${file.fileName}`,
+              width: size,
+              height: size,
+            }}
+            style={{ width: size, height: size }}
             resizeMode="cover"
+            resizeMethod="resize"
           />
         )}
         

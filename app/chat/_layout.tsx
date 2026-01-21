@@ -56,14 +56,14 @@ export default function ChatLayout() {
         options={{ headerShown: false }}
       />
 
-      <Stack.Screen
+      {/* <Stack.Screen
         name="video-call"
         options={{
           headerShown: false,
           presentation: 'fullScreenModal',
           animation: 'none',
         }}
-      />
+      /> */}
     </Stack>
   );
 }

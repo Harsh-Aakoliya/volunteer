@@ -75,9 +75,9 @@ function AppContent() {
   return (
     <>
       <Stack screenOptions={{ headerShown: false, statusBarStyle: "light", statusBarBackgroundColor: "#3b82f6" }} />
-      {Platform.OS !== 'web' && <OfflinePopup isVisible={!isConnected} />}
+      {/* {Platform.OS !== 'web' && <OfflinePopup isVisible={!isConnected} />} */}
       {/* Global video call notification overlay */}
-      <GlobalVideoCallNotification />
+      {/* <GlobalVideoCallNotification /> */}
     </>
   );
 }

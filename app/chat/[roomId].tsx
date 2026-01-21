@@ -102,6 +102,7 @@ const MessageItem = React.memo(({
   onGestureEnd,
   onReplyPreviewClick,
   formatTime,
+  handleMediaGridPress
 }: {
   message: Message;
   isOwnMessage: boolean;
@@ -121,6 +122,7 @@ const MessageItem = React.memo(({
   onGestureEnd: (event: any, message: Message) => void;
   onReplyPreviewClick: (id: string | number) => void;
   formatTime: (date: string) => string;
+  handleMediaGridPress:any;
 }) => {
   const longPressRef = useRef(null);
   const panRef = useRef(null);
@@ -312,9 +314,17 @@ const MessageItem = React.memo(({
                       )}
 
                       {message.messageType === "media" && (
-                        <Text className="text-base leading-[22px] text-black">
-                          shared media : {message.mediaFilesId}
-                        </Text>
+                        <View>
+                          <Text className="text-base leading-[22px] text-black">
+                            shared media : {message.mediaFilesId}
+                          </Text>
+                          <MediaGrid 
+                            messageId={message.id}
+                            onMediaPress={handleMediaGridPress}
+                            mediaFilesId={message.mediaFilesId || 0}
+                            isOwnMessage
+                          />
+                        </View>
                       )}
                       {message.messageType === "poll" && (
                         <Text className="text-base leading-[22px] text-black">
@@ -440,10 +450,6 @@ export default function ChatRoomScreen() {
   const [activePollId, setActivePollId] = useState<number | null>(null);
   const [showTableModle, setShowTableModel] = useState(false);
   const [tableId, setTableId] = useState<number | null>(null);
-  const [showMediaViewer, setShowMediaViewer] = useState(false);
-  const [selectedMediaId, setSelectedMediaId] = useState<number | null>(null);
-  const [selectedMediaFiles, setSelectedMediaFiles] = useState<any[]>([]);
-  const [selectedMediaIndex, setSelectedMediaIndex] = useState(0);
 
   // Reply state
   const [isReplying, setIsReplying] = useState(false);
@@ -493,6 +499,12 @@ export default function ChatRoomScreen() {
 
   const flatListRef = useRef<FlatList>(null);
   const navigation = useNavigation();
+
+  // Media viewer modal states
+  const [showMediaViewer, setShowMediaViewer] = useState(false);
+  const [selectedMediaId, setSelectedMediaId] = useState<number | null>(null);
+  const [selectedMediaFiles, setSelectedMediaFiles] = useState<any[]>([]);
+  const [selectedMediaIndex, setSelectedMediaIndex] = useState(0);
 
   // ==================== PREPARED LIST DATA ====================
 
@@ -1673,6 +1685,13 @@ const handleMainInputBlur = useCallback(() => {}, []);
     if (!isOwnMessage && hasTail) {
       showSenderName = true;
     }
+  // Handle media grid press
+  const handleMediaGridPress = (mediaFiles: any[], selectedIndex: number) => {
+    console.log("Opening media viewer for media files:", mediaFiles, "at index:", selectedIndex);
+    setSelectedMediaFiles(mediaFiles);
+    setSelectedMediaIndex(selectedIndex);
+    setShowMediaViewer(true);
+  };
   
     return (
       <MessageItem
@@ -1694,6 +1713,7 @@ const handleMainInputBlur = useCallback(() => {}, []);
         onGestureEnd={handleGestureEnd}
         onReplyPreviewClick={handleReplyPreviewClick}
         formatTime={formatISTTime}
+        handleMediaGridPress={handleMediaGridPress}
       />
     );
   }, [
