@@ -17,7 +17,7 @@ import {
   LayoutAnimation,
   UIManager,
   EmitterSubscription,
-  Keyboard
+  Keyboard,
 } from "react-native";
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 // Enable LayoutAnimation for Android
@@ -69,6 +69,8 @@ import {
 import socketManager from '@/utils/socketManager';
 import PollMessage from '@/components/chat/PollMessage';
 import { useVideoCall } from '@/contexts/VideoCallContext';
+import RenderHtml from 'react-native-render-html';
+import { Dimensions } from 'react-native';
 
 // ==================== TYPES ====================
 
@@ -82,6 +84,57 @@ type ChatListItem =
   | { itemType: 'dateSeparator'; date: string; id: string };
 
 // ==================== MEMOIZED COMPONENTS ====================
+
+// Component to render styled text messages
+const StyledTextMessage = React.memo(({ content }: { content: string }) => {
+  const { width } = Dimensions.get('window');
+  
+  // Check if content contains HTML tags
+  const isHTML = /<[^>]+>/g.test(content);
+  
+  if (!isHTML) {
+    // Plain text - render normally
+    return (
+      <Text className="text-base leading-[22px] text-black">
+        {content}
+      </Text>
+    );
+  }
+  
+  // HTML content - render with RenderHtml
+  const htmlContent = content.trim();
+  
+  return (
+    <View style={{ maxWidth: width * 0.75 }}>
+      <RenderHtml
+        contentWidth={width * 0.75}
+        source={{ html: htmlContent }}
+        baseStyle={{
+          fontSize: 16,
+          lineHeight: 22,
+          color: '#000000',
+        }}
+        tagsStyles={{
+          p: { margin: 0, padding: 0 },
+          strong: { fontWeight: 'bold' },
+          em: { fontStyle: 'italic' },
+          u: { textDecorationLine: 'underline' },
+          s: { textDecorationLine: 'line-through' },
+          ol: { margin: 0, paddingLeft: 20 },
+          ul: { margin: 0, paddingLeft: 20 },
+          li: { marginBottom: 4 },
+        }}
+        defaultTextProps={{
+          style: {
+            fontSize: 16,
+            lineHeight: 22,
+            color: '#000000',
+          },
+        }}
+      />
+    </View>
+  );
+});
 
 const MessageItem = React.memo(({
   message,
@@ -308,9 +361,7 @@ const MessageItem = React.memo(({
                       )}
 
                       {message.messageType === "text" && (
-                        <Text className="text-base leading-[22px] text-black">
-                          {message.messageText}
-                        </Text>
+                        <StyledTextMessage content={message.messageText} />
                       )}
 
                       {message.messageType === "media" && (
