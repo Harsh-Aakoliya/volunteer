@@ -52,6 +52,14 @@ export default function ChatLayout() {
       />
 
       <Stack.Screen
+        name="[roomId]/attachments"
+        options={{
+          headerShown: false,
+          presentation: 'card',
+        }}
+      />
+
+      <Stack.Screen
         name="Polling"
         options={{ headerShown: false }}
       />

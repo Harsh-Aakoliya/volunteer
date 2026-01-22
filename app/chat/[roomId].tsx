@@ -51,7 +51,6 @@ import MediaViewerModal from "@/components/chat/MediaViewerModal";
 import ChatMessageOptions from "@/components/chat/ChatMessageOptions";
 import ForwardMessagesModal from "@/components/chat/ForwardMessagesModal";
 import MessageInput from "@/components/chat/MessageInput";
-import AttachmentSheet from "@/components/chat/AttachmentSheet";
 import AudioRecorder from "@/components/chat/AudioRecorder";
 import AudioMessagePlayer from "@/components/chat/AudioMessagePlayer";
 import MediaGrid from "@/components/chat/MediaGrid";
@@ -59,6 +58,7 @@ import { clearRoomNotifications } from "@/utils/chatNotificationHandler";
 import { getScheduledMessages } from "@/api/chat";
 import { logout } from '@/api/auth';
 import { useSocket, useChatRoomSubscription } from '@/contexts/SocketContext';
+// import StyledTextMessage from "@/components/chat/StyledTextMessage";
 import { 
   ChatMessage, 
   MessageEditedEvent, 
@@ -85,51 +85,85 @@ type ChatListItem =
 
 // ==================== MEMOIZED COMPONENTS ====================
 
-// Component to render styled text messages
-const StyledTextMessage = React.memo(({ content }: { content: string }) => {
-  const { width } = Dimensions.get('window');
-  
-  // Check if content contains HTML tags
-  const isHTML = /<[^>]+>/g.test(content);
+// Imports
+import { useWindowDimensions } from 'react-native';
+import { defaultSystemFonts } from 'react-native-render-html';
+// Add 'sans-serif' for Android Bold/Italic support
+const systemFonts = [...defaultSystemFonts, 'sans-serif', 'sans-serif-medium'];
+
+const StyledTextMessage = React.memo(({ 
+  content, 
+  isOwnMessage 
+}: { 
+  content: string, 
+  isOwnMessage: boolean 
+}) => {
+  const { width } = useWindowDimensions();
+  const contentWidth = width * 0.75; 
+
+  const cleanContent = useMemo(() => {
+    if (!content) return "";
+    return content.trim();
+  }, [content]);
+
+  // Check if HTML
+  const isHTML = /<[a-z][\s\S]*>/i.test(cleanContent);
   
   if (!isHTML) {
-    // Plain text - render normally
     return (
       <Text className="text-base leading-[22px] text-black">
-        {content}
+        {cleanContent}
       </Text>
     );
   }
-  
-  // HTML content - render with RenderHtml
-  const htmlContent = content.trim();
-  
+
+  // Define defaults
+  const defaultTextColor = '#000000';
+  const linkColor = isOwnMessage ? '#0000FF' : '#0088CC';
+
   return (
-    <View style={{ maxWidth: width * 0.75 }}>
+    <View>
       <RenderHtml
-        contentWidth={width * 0.75}
-        source={{ html: htmlContent }}
+        contentWidth={contentWidth}
+        source={{ html: cleanContent }}
+        systemFonts={systemFonts}
+        
+        // 1. Base style for root elements
         baseStyle={{
           fontSize: 16,
           lineHeight: 22,
-          color: '#000000',
+          color: defaultTextColor,
+          fontFamily: Platform.OS === 'ios' ? 'System' : 'sans-serif',
         }}
+        
+        // 2. Specific Tag Styling
         tagsStyles={{
-          p: { margin: 0, padding: 0 },
-          strong: { fontWeight: 'bold' },
+          body: { margin: 0, padding: 0 },
+          p: { marginTop: 0, marginBottom: 4 },
+          div: { marginTop: 0, marginBottom: 0 },
+          
+          // Bold/Italic
+          b: { fontWeight: '700' },
+          strong: { fontWeight: '700' },
+          i: { fontStyle: 'italic' },
           em: { fontStyle: 'italic' },
-          u: { textDecorationLine: 'underline' },
-          s: { textDecorationLine: 'line-through' },
-          ol: { margin: 0, paddingLeft: 20 },
-          ul: { margin: 0, paddingLeft: 20 },
-          li: { marginBottom: 4 },
+          
+          // Links
+          a: { color: linkColor, textDecorationLine: 'underline' },
+          
+          // Lists
+          ul: { paddingLeft: 20, marginTop: 4, marginBottom: 4 },
+          ol: { paddingLeft: 20, marginTop: 4, marginBottom: 4 },
+          li: { marginBottom: 2 },
+
+          // CRITICAL FOR BACKGROUND COLOR:
+          // Ensure span behaves like text so background color wraps tightly
+          span: { }, 
         }}
+        
+        // 3. Ensure inline styles (style="color: red; background-color: blue") take priority
         defaultTextProps={{
-          style: {
-            fontSize: 16,
-            lineHeight: 22,
-            color: '#000000',
-          },
+          textBreakStrategy: 'simple',
         }}
       />
     </View>
@@ -360,9 +394,12 @@ const MessageItem = React.memo(({
                         </Text>
                       )}
 
-                      {message.messageType === "text" && (
-                        <StyledTextMessage content={message.messageText} />
-                      )}
+                        {message.messageType === "text" && (
+                          <StyledTextMessage 
+                            content={message.messageText} 
+                            isOwnMessage={isOwnMessage} // <--- ADD THIS PROP
+                          />
+                        )}
 
                       {message.messageType === "media" && (
                         <View>
@@ -527,11 +564,7 @@ export default function ChatRoomScreen() {
   const [showVideoCallNotification, setShowVideoCallNotification] = useState(false);
   const [videoCallData, setVideoCallData] = useState<{ callerId: string; callerName: string } | null>(null);
 
-  // Attachment sheet state
-  const [showAttachmentSheet, setShowAttachmentSheet] = useState(false);
-  
-  // Keyboard state management
-  const [keyboardUsedInSheet, setKeyboardUsedInSheet] = useState(false);
+  // Attachment sheet removed - using router-based approach
 
   // Scroll state
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
@@ -1082,184 +1115,10 @@ const handleDeselectMessage = useCallback((message: Message) => {
     setVideoCallData(null);
   }, [roomId]);
 
-  // ==================== CUSTOM KEYBOARD HANDLING ====================
-const insets = useSafeAreaInsets();
-const keyboardHeightAnim = useRef(new Animated.Value(0)).current;
-const lastKeyboardHeight = useRef(0);
+  // Focus handlers
+  const handleMainInputFocus = useCallback(() => {}, []);
+  const handleMainInputBlur = useCallback(() => {}, []);
 
-// Track if we should use custom keyboard handling
-// Native keyboard avoidance works initially, but breaks after attachment sheet use
-const [useCustomKeyboardHandling, setUseCustomKeyboardHandling] = useState(false);
-
-// Refs updated on every render
-const showAttachmentSheetRef = useRef(showAttachmentSheet);
-showAttachmentSheetRef.current = showAttachmentSheet;
-
-const useCustomKeyboardHandlingRef = useRef(useCustomKeyboardHandling);
-useCustomKeyboardHandlingRef.current = useCustomKeyboardHandling;
-
-// Enable custom keyboard handling when attachment sheet is opened
-useEffect(() => {
-  if (showAttachmentSheet) {
-    setUseCustomKeyboardHandling(true);
-  }
-}, [showAttachmentSheet]);
-
-// Set up keyboard listeners ONCE
-useEffect(() => {
-  const handleKeyboardShow = (e: any) => {
-    // Skip if attachment sheet is open
-    if (showAttachmentSheetRef.current) {
-      return;
-    }
-
-    // Only handle if custom keyboard handling is enabled
-    if (!useCustomKeyboardHandlingRef.current) {
-      return;
-    }
-
-    const keyboardHeight = e.endCoordinates.height;
-    lastKeyboardHeight.current = keyboardHeight;
-    
-    const duration = Platform.OS === 'ios' ? e.duration : 250;
-    
-    Animated.timing(keyboardHeightAnim, {
-      toValue: keyboardHeight,
-      duration: duration,
-      useNativeDriver: false,
-    }).start();
-  };
-
-  const handleKeyboardHide = (e: any) => {
-    // Skip if attachment sheet is open
-    if (showAttachmentSheetRef.current) {
-      return;
-    }
-
-    // Only handle if custom keyboard handling is enabled
-    if (!useCustomKeyboardHandlingRef.current) {
-      return;
-    }
-    
-    const duration = Platform.OS === 'ios' ? (e?.duration || 250) : 250;
-    lastKeyboardHeight.current = 0;
-    
-    Animated.timing(keyboardHeightAnim, {
-      toValue: 0,
-      duration: duration,
-      useNativeDriver: false,
-    }).start();
-  };
-
-  let keyboardShowSub: EmitterSubscription;
-  let keyboardHideSub: EmitterSubscription;
-
-  if (Platform.OS === 'ios') {
-    keyboardShowSub = Keyboard.addListener('keyboardWillShow', handleKeyboardShow);
-    keyboardHideSub = Keyboard.addListener('keyboardWillHide', handleKeyboardHide);
-  } else {
-    keyboardShowSub = Keyboard.addListener('keyboardDidShow', handleKeyboardShow);
-    keyboardHideSub = Keyboard.addListener('keyboardDidHide', handleKeyboardHide);
-  }
-
-  return () => {
-    keyboardShowSub?.remove();
-    keyboardHideSub?.remove();
-  };
-}, []);
-
-// Reset when attachment sheet closes
-useEffect(() => {
-  if (!showAttachmentSheet && useCustomKeyboardHandling) {
-    keyboardHeightAnim.stopAnimation();
-    keyboardHeightAnim.setValue(0);
-    lastKeyboardHeight.current = 0;
-  }
-}, [showAttachmentSheet, useCustomKeyboardHandling]);
-
-// Attachment sheet close handler
-const handleAttachmentSheetClose = useCallback(() => {
-  Keyboard.dismiss();
-  keyboardHeightAnim.stopAnimation();
-  keyboardHeightAnim.setValue(0);
-  lastKeyboardHeight.current = 0;
-  setShowAttachmentSheet(false);
-  setKeyboardUsedInSheet(false);
-}, []);
-
-// Focus handlers
-const handleMainInputFocus = useCallback(() => {}, []);
-const handleMainInputBlur = useCallback(() => {}, []);
-
-// Replace the existing keyboard state management useEffect with this:
-// useEffect(() => {
-//   const keyboardDidShowListener = Keyboard.addListener(
-//     Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
-//     () => {
-//       if (showAttachmentSheet) {
-//         setKeyboardUsedInSheet(true);
-//       }
-//     }
-//   );
-
-//   return () => {
-//     keyboardDidShowListener?.remove();
-//   };
-// }, [showAttachmentSheet]);
-// useEffect(() => {
-//   if (!showAttachmentSheet && keyboardUsedInSheet) {
-//     // Dismiss keyboard first
-//     Keyboard.dismiss();
-    
-//     // Wait for keyboard to fully dismiss, then reset KeyboardAvoidingView
-//     const timer = setTimeout(() => {
-//       setKavKey(prev => prev + 1);
-//       setKeyboardUsedInSheet(false)  ;
-//     }, 300);
-    
-//     return () => clearTimeout(timer);
-//   }
-// }, [showAttachmentSheet, keyboardUsedInSheet]);
-// Handlers for main input focus
-// const handleMainInputFocus = useCallback(() => {
-//   setIsMainInputFocused(true);
-// }, []);
-
-// const handleMainInputBlur = useCallback(() => {
-//   setIsMainInputFocused(false);
-// }, []);
-
-// Replace the existing keyboard state management useEffect with this:
-// useEffect(() => {
-//   const keyboardDidShowListener = Keyboard.addListener(
-//     Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
-//     () => {
-//       if (showAttachmentSheet) {
-//         setKeyboardUsedInSheet(true);
-//       }
-//     }
-//   );
-
-//   return () => {
-//     keyboardDidShowListener?.remove();
-//   };
-// }, [showAttachmentSheet]);
-
-// Add this new effect to handle sheet close with keyboard reset
-// useEffect(() => {
-//   if (!showAttachmentSheet && keyboardUsedInSheet) {
-//     // Dismiss keyboard first
-//     Keyboard.dismiss();
-    
-//     // Wait for keyboard to fully dismiss, then reset KeyboardAvoidingView
-//     const timer = setTimeout(() => {
-//       setKavKey(prev => prev + 1);
-//       setKeyboardUsedInSheet(false);
-//     }, 300);
-    
-//     return () => clearTimeout(timer);
-//   }
-// }, [showAttachmentSheet, keyboardUsedInSheet]);
 
   // ==================== FOCUS EFFECT ====================
 
@@ -1279,7 +1138,6 @@ const handleMainInputBlur = useCallback(() => {}, []);
         setReplyToMessage(null);
         setActivePollId(null);
         setShowPollModal(false);
-        setKeyboardUsedInSheet(false);
       };
     }, [roomId])
   );
@@ -1288,10 +1146,6 @@ const handleMainInputBlur = useCallback(() => {}, []);
 
   useEffect(() => {
     const onBackPress = () => {
-      if (showAttachmentSheet) {
-        setShowAttachmentSheet(false);
-        return true;
-      }
       if (selectedMessages.length > 0) {
         clearSelection();
         return true;
@@ -1303,7 +1157,7 @@ const handleMainInputBlur = useCallback(() => {}, []);
 
     const backHandler = BackHandler.addEventListener('hardwareBackPress', onBackPress);
     return () => backHandler.remove();
-  }, [selectedMessages, showAttachmentSheet]);
+  }, [selectedMessages]);
 
   // ==================== MESSAGE ACTIONS ====================
 
@@ -1512,7 +1366,6 @@ const handleMainInputBlur = useCallback(() => {}, []);
     setReplyToMessage(message);
     setIsReplying(true);
     setSelectedMessages([]);
-    setShowAttachmentSheet(false); // Close attachment sheet when replying
   };
 
   const handleReplyPreviewClick = useCallback((messageId: string | number) => {
@@ -1886,17 +1739,20 @@ const TelegramHeader = React.memo(({
     </View>
   );
 });
+
   // ==================== MAIN RENDER ====================
-return (
-  <GestureHandlerRootView className="flex-1">
-    {/* NO SafeAreaView - we handle insets manually */}
-    <View 
-      style={{ 
-        flex: 1, 
-        backgroundColor: 'white',
-        paddingTop: insets.top, // Only top safe area
-      }}
-    >
+  const insets = useSafeAreaInsets();
+  
+  return (
+    <GestureHandlerRootView className="flex-1">
+      {/* NO SafeAreaView - we handle insets manually */}
+      <View 
+        style={{ 
+          flex: 1, 
+          backgroundColor: 'white',
+          paddingTop: insets.top, // Only top safe area
+        }}
+      >
       {/* --- HEADER SECTION --- */}
       {selectedMessages.length > 0 ? (
         <ChatMessageOptions
@@ -1960,14 +1816,12 @@ return (
       </View>
 
       {/* --- MESSAGE INPUT SECTION --- */}
-      <Animated.View 
-        style={{ 
-          backgroundColor: '#E5DDD5',
-          // Only apply custom keyboard padding after attachment sheet has been used
-          paddingBottom: useCustomKeyboardHandling ? keyboardHeightAnim : 0,
-        }}
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
       >
-        <View className="pb-1">
+        <View style={{ backgroundColor: '#E5DDD5' }}>
+          <View className="pb-1">
           {canSendMessage ? (
             <MessageInput
               messageText={messageText}
@@ -1986,23 +1840,17 @@ return (
               }}
               placeholder="Message"
               sending={sending}
-              disabled={false}
-              roomMembers={roomMembers}
               currentUser={currentUser}
-              roomId={roomId as string}
-              showAttachments={true}
-              onAudioRecord={() => {}}
-              onScheduleMessage={() => setShowScheduledMessages(true)}
-              hasScheduledMessages={scheduledMessages.length > 0}
               replyToMessage={replyToMessage}
               onCancelReply={handleCancelReply}
               onAttachmentPress={() => {
-                Keyboard.dismiss();
-                setTimeout(() => {
-                  setShowAttachmentSheet(prev => !prev);
-                }, 100);
+                // Navigate to attachments route instead of opening bottom sheet
+                router.push({
+                  pathname: "/chat/[roomId]/attachments",
+                  params: { roomId: roomId as string, userId: currentUser?.userId ?? "" },
+                });
               }}
-              isAttachmentSheetOpen={showAttachmentSheet}
+              isAttachmentSheetOpen={false}
               onFocus={handleMainInputFocus}
               onBlur={handleMainInputBlur}
             />
@@ -2013,8 +1861,9 @@ return (
               </Text>
             </View>
           )}
+          </View>
         </View>
-      </Animated.View>
+      </KeyboardAvoidingView>
 
       {/* --- MODALS --- */}
       <MembersModal
@@ -2134,23 +1983,6 @@ return (
         onCancel={() => {
           setShowAudioRecorder(false);
           setIsRecordingAudio(false);
-        }}
-      />
-
-      <AttachmentSheet
-        isOpen={showAttachmentSheet && !replyToMessage}
-        onClose={handleAttachmentSheetClose}
-        roomId={roomId as string}
-        userId={currentUser?.userId ?? ""}
-        onMediaSent={() => {
-          Keyboard.dismiss();
-          keyboardHeightAnim.stopAnimation();
-          keyboardHeightAnim.setValue(0);
-          lastKeyboardHeight.current = 0;
-          setTimeout(() => {
-            setShowAttachmentSheet(false);
-            setKeyboardUsedInSheet(false);
-          }, 100);
         }}
       />
     </View>

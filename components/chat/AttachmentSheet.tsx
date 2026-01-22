@@ -304,14 +304,19 @@ export default function AttachmentSheet({
   const handleSheetChanges = useCallback((index: number) => {
     setCurrentIndex(index);
     if (index === -1) {
+      // Dismiss keyboard first
       Keyboard.dismiss();
       
+      // Reset all state
+      setActiveTab("gallery");
+      setSelectedMedia([]);
+      setCaption("");
+      
+      // Wait longer to ensure keyboard is fully dismissed before closing
       setTimeout(() => {
-        setActiveTab("gallery");
-        setSelectedMedia([]);
-        setCaption("");
+        Keyboard.dismiss(); // Double dismiss
         onClose();
-      }, 50);
+      }, 300);
     }
   }, [onClose]);
 
@@ -518,12 +523,15 @@ export default function AttachmentSheet({
         setSelectedMedia([]);
         setCaption("");
         
+        // Dismiss keyboard first
         Keyboard.dismiss();
         
+        // Wait for keyboard to fully dismiss before closing
         setTimeout(() => {
+          Keyboard.dismiss(); // Double dismiss to ensure
           onClose();
           onMediaSent?.();
-        }, 100);
+        }, 300);
       }
     } catch (error) {
       console.error("Error sending media:", error);
@@ -539,15 +547,20 @@ export default function AttachmentSheet({
   }, []);
 
   const handleSuccess = useCallback(() => {
+    // Dismiss keyboard first
     Keyboard.dismiss();
     
+    // Reset all state
+    setActiveTab("gallery");
+    setSelectedMedia([]);
+    setCaption("");
+    
+    // Wait for keyboard to fully dismiss before closing
     setTimeout(() => {
-      setActiveTab("gallery");
-      setSelectedMedia([]);
-      setCaption("");
+      Keyboard.dismiss(); // Double dismiss to ensure
       onClose();
       onMediaSent?.();
-    }, 200);
+    }, 300);
   }, [onClose, onMediaSent]);
 
   const handleBackToGallery = useCallback(() => {
