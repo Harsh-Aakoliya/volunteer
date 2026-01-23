@@ -229,6 +229,129 @@ const VmMediaController = {
         }
     },
 
+// ... inside your controller object
+
+moveToChatCamera: async (req, res) => {
+    console.log("moveToChatCamera req.body:", req.body);
+    console.log("moveToChatCamera req.file:", req.file);
+    const client = await pool.connect();
+    
+    try {
+        // 1. Validate Request
+        if (!req.file) {
+            console.error("No file in req.file. Files:", req.files);
+            return res.status(400).json({ error: "No media file provided. Make sure to send file as 'file' field in FormData." });
+        }
+        
+        const { roomId, senderId, caption, duration } = req.body;
+        
+        console.log("Parsed body:", { roomId, senderId, caption, duration });
+        
+        if (!roomId || !senderId) {
+            // Clean up the uploaded file if validation fails
+            if (req.file && fs.existsSync(req.file.path)) {
+                try {
+                    fs.unlinkSync(req.file.path);
+                } catch (e) {
+                    console.error("Error cleaning up file:", e);
+                }
+            }
+            return res.status(400).json({ 
+                error: "Missing roomId or senderId",
+                received: { roomId: !!roomId, senderId: !!senderId }
+            });
+        }
+
+        await client.query('BEGIN');
+
+        // 2. Create Chat Message Entry
+        const messageResult = await client.query(
+            `INSERT INTO chatmessages ("roomId", "senderId", "messageText", "messageType")
+            VALUES ($1, $2, $3, $4)
+            RETURNING *`,
+            [roomId, senderId, "", "media"]
+        );
+
+        const messageId = messageResult.rows[0].id;
+        const createdAt = messageResult.rows[0].createdAt;
+
+        // 3. Prepare Directory Paths
+        const timestamp = new Date(createdAt).toISOString().replace(/[:.]/g, '-');
+        // Folder Format: TIMESTAMP_ROOM_SENDER_MSGID
+        const permanentFolderName = `${timestamp}_${roomId}_${senderId}_${messageId}`;
+        const permanentFolderPath = path.join(process.cwd(), 'media', 'chat', permanentFolderName);
+
+        // Create directory
+        if (!fs.existsSync(permanentFolderPath)) {
+            fs.mkdirSync(permanentFolderPath, { recursive: true });
+        }
+
+        // 4. Move File from Multer Temp to Permanent Folder
+        // Multer usually puts the file in req.file.path. We move it to our new folder.
+        const originalName = req.file.originalname;
+        // Sanitize filename to prevent issues
+        const safeFileName = originalName.replace(/[^a-zA-Z0-9.-]/g, '_'); 
+        const targetPath = path.join(permanentFolderPath, safeFileName);
+
+        // Rename (Move)
+        fs.renameSync(req.file.path, targetPath);
+
+        // 5. Create Drive Object
+        const driveUrlObject = [{
+            url: `${permanentFolderName}/${safeFileName}`,
+            filename: safeFileName,
+            originalName: originalName,
+            caption: caption || "",
+            mimeType: req.file.mimetype,
+            size: req.file.size,
+            duration: duration ? parseInt(duration) : 0
+        }];
+
+        // 6. Create Media Entry
+        const mediaResult = await client.query(
+            `INSERT INTO media ("roomId", "senderId", "createdAt", "messageId", "driveUrlObject")
+            VALUES ($1, $2, $3, $4, $5)
+            RETURNING *`,
+            [roomId, senderId, createdAt, messageId, JSON.stringify(driveUrlObject)]
+        );
+
+        const mediaId = mediaResult.rows[0].id;
+
+        // 7. Link Media to Message
+        await client.query(
+            `UPDATE chatmessages SET "mediaFilesId" = $1 WHERE "id" = $2`,
+            [mediaId, messageId]
+        );
+
+        await client.query('COMMIT');
+
+        res.json({
+            success: true,
+            messageId,
+            mediaId,
+            message: "Camera media uploaded successfully",
+            // Return data needed for socket
+            mediaFilesId: mediaId,
+            createdAt: createdAt,
+            messageText: "" 
+        });
+
+    } catch (error) {
+        await client.query('ROLLBACK');
+        console.error("Error in camera upload:", error);
+        
+        // Cleanup: If the file exists in temp but wasn't moved, delete it
+        if (req.file && fs.existsSync(req.file.path)) {
+            try { fs.unlinkSync(req.file.path); } catch (e) {}
+        }
+
+        res.status(500).json({ error: "Failed to upload camera media", details: error.message });
+    } finally {
+        client.release();
+    }
+},
+
+
     // Get media files by media ID
     getMediaById: async (req, res) => {
         try {

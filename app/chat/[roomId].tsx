@@ -1845,6 +1845,7 @@ const TelegramHeader = React.memo(({
               onCancelReply={handleCancelReply}
               onAttachmentPress={() => {
                 // Navigate to attachments route instead of opening bottom sheet
+                console.log("Navigating to attachments route");
                 router.push({
                   pathname: "/chat/[roomId]/attachments",
                   params: { roomId: roomId as string, userId: currentUser?.userId ?? "" },

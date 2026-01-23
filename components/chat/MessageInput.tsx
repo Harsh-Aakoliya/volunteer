@@ -55,9 +55,6 @@ interface MessageInputProps {
 // ----------------------------------------------------------------------
 // 3. Helper Functions
 // ----------------------------------------------------------------------
-// ----------------------------------------------------------------------
-// 3. Helper Functions
-// ----------------------------------------------------------------------
 
 const extractLinks = (text: string): string[] => {
   const urlRegex = /(https?:\/\/[^\s]+)/g;
@@ -400,6 +397,15 @@ export default function MessageInput({
     }
   };
 
+  const toggleColorPicker = (type: 'text' | 'background') => {
+    // If clicking same type, close it. If clicking different, switch.
+    if (showColorPicker === type) {
+      setShowColorPicker(null);
+    } else {
+      setShowColorPicker(type);
+    }
+  };
+
   /* ---------------- RENDER ---------------- */
   const maxInputHeight = (7 * 22) + 20;
   
@@ -570,64 +576,64 @@ export default function MessageInput({
               actions.setItalic,
               actions.setUnderline,
               actions.setStrikethrough,
-              'separator',
               'textColor',
               'backgroundColor',
-              'separator',
               actions.insertLink,
               actions.insertBulletsList,
               actions.insertOrderedList,
+              actions.alignCenter,
             ]}
             iconMap={{
+              // REMOVED Custom styles with borders/backgrounds here
               [actions.setBold]: ({ tintColor }: any) => (
-                <View style={styles.toolButton}>
-                  <Ionicons name="text" size={18} color={tintColor} />
-                  <Text style={[styles.toolLabel, { color: tintColor }]}>B</Text>
+                <View style={styles.simpleToolIcon}>
+                  <Text style={[styles.textIconLabel, { color: tintColor }]}>B</Text>
                 </View>
               ),
               [actions.setItalic]: ({ tintColor }: any) => (
-                <View style={styles.toolButton}>
-                  <Text style={[styles.toolLabel, { fontStyle: 'italic', color: tintColor }]}>I</Text>
+                <View style={styles.simpleToolIcon}>
+                  <Text style={[styles.textIconLabel, { fontStyle: 'italic', color: tintColor }]}>I</Text>
                 </View>
               ),
               [actions.setUnderline]: ({ tintColor }: any) => (
-                <View style={styles.toolButton}>
-                  <Text style={[styles.toolLabel, { textDecorationLine: 'underline', color: tintColor }]}>U</Text>
+                <View style={styles.simpleToolIcon}>
+                  <Text style={[styles.textIconLabel, { textDecorationLine: 'underline', color: tintColor }]}>U</Text>
                 </View>
               ),
               [actions.setStrikethrough]: ({ tintColor }: any) => (
-                <View style={styles.toolButton}>
-                  <Text style={[styles.toolLabel, { textDecorationLine: 'line-through', color: tintColor }]}>S</Text>
+                <View style={styles.simpleToolIcon}>
+                  <Text style={[styles.textIconLabel, { textDecorationLine: 'line-through', color: tintColor }]}>S</Text>
                 </View>
               ),
               textColor: ({ tintColor }: any) => (
-                <TouchableOpacity onPress={() => setShowColorPicker('text')} style={styles.toolButton}>
-                  <Ionicons name="color-palette" size={18} color={tintColor} />
+                <TouchableOpacity onPress={() => toggleColorPicker('text')} style={styles.simpleToolIcon}>
+                  <Ionicons name="color-palette" size={22} color={tintColor} />
                 </TouchableOpacity>
               ),
               backgroundColor: ({ tintColor }: any) => (
-                <TouchableOpacity onPress={() => setShowColorPicker('background')} style={styles.toolButton}>
-                  <Ionicons name="color-fill" size={18} color={tintColor} />
+                <TouchableOpacity onPress={() => toggleColorPicker('background')} style={styles.simpleToolIcon}>
+                  <Ionicons name="color-fill" size={22} color={tintColor} />
                 </TouchableOpacity>
               ),
               [actions.insertLink]: ({ tintColor }: any) => (
-                <TouchableOpacity onPress={() => setShowLinkModal(true)} style={styles.toolButton}>
-                  <Ionicons name="link" size={18} color={tintColor} />
+                <TouchableOpacity onPress={() => setShowLinkModal(true)} style={styles.simpleToolIcon}>
+                  <Ionicons name="link" size={22} color={tintColor} />
                 </TouchableOpacity>
               ),
               [actions.insertBulletsList]: ({ tintColor }: any) => (
-                <View style={styles.toolButton}>
-                  <Ionicons name="list" size={18} color={tintColor} />
+                <View style={styles.simpleToolIcon}>
+                  <Ionicons name="list" size={24} color={tintColor} />
                 </View>
               ),
               [actions.insertOrderedList]: ({ tintColor }: any) => (
-                <View style={styles.toolButton}>
-                  <Ionicons name="list-outline" size={18} color={tintColor} />
+                <View style={styles.simpleToolIcon}>
+                  <Ionicons name="list-outline" size={24} color={tintColor} />
                 </View>
               ),
               separator: () => <View style={styles.toolDivider} />,
             }}
             style={styles.richToolbar}
+            flatContainerStyle={styles.flatToolbarContainer}
           />
         </View>
       )}
@@ -756,6 +762,10 @@ const styles = StyleSheet.create({
   replyContent: {
     flex: 1,
   },
+    richToolbar: {
+    backgroundColor: '#FFFFFF',
+    height: 50,
+  },
   replySender: {
     color: '#1DAB61',
     fontSize: 12,
@@ -768,6 +778,10 @@ const styles = StyleSheet.create({
   },
   replyClose: {
     padding: 4,
+  },
+    textIconLabel: {
+    fontSize: 18,
+    fontWeight: '600',
   },
   textInput: {
     paddingHorizontal: 16,
@@ -794,11 +808,15 @@ const styles = StyleSheet.create({
   },
   formatToolbar: {
     backgroundColor: '#F9FAFB',
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
+    borderTopWidth: 0,
+    borderBottomWidth: 0,
     borderColor: '#E5E7EB',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
+    paddingVertical: 0,
+    paddingHorizontal: 0,
+  },
+    flatToolbarContainer: {
+    paddingHorizontal: 8,
+    alignItems: 'center',
   },
   toolButton: {
     flexDirection: 'row',
@@ -879,6 +897,13 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 20,
     maxWidth: 320,
+  },
+    simpleToolIcon: {
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    justifyContent: 'center',
+    alignItems: 'center',
+    flexDirection: 'row',
   },
   colorPickerContainer: {
     padding: 4,

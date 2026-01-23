@@ -175,17 +175,24 @@ app.get("/api/version", (req, res) => {
   }
 });
 
-// Use httpServer instead of app to listen
-httpServer.listen(PORT, "0.0.0.0", () => {
+const server = httpServer.listen(PORT, "0.0.0.0", () => {
   const addresses = Object.values(os.networkInterfaces())
     .flat()
     .filter((item) => !item.internal && item.family === "IPv4")
     .map((item) => item.address);
 
   console.log(`Server running on port ${PORT}`);
-  console.log("Available on:");
   addresses.forEach((addr) => console.log(`http://${addr}:${PORT}`));
-  
-  // Start scheduled message service
-  // scheduledMessageService.start();
 });
+
+// 🔥 Graceful shutdown
+const shutdown = () => {
+  console.log("🛑 Shutting down server...");
+  server.close(() => {
+    console.log("✅ Server closed cleanly");
+    process.exit(0);
+  });
+};
+
+process.on("SIGTERM", shutdown);
+process.on("SIGINT", shutdown);

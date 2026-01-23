@@ -158,6 +158,7 @@ interface RoomItemProps {
   onPress: (roomId: string) => void;
   onLongPress?: (room: RoomListItem) => void;
 }
+import RenderHtml from 'react-native-render-html';
 
 const RoomItem = memo(({ room, currentUserId, onPress, onLongPress }: RoomItemProps) => {
   const hasUnread = room.unreadCount > 0;
@@ -171,7 +172,7 @@ const RoomItem = memo(({ room, currentUserId, onPress, onLongPress }: RoomItemPr
   if (room.lastMessage) {
     const isOwn = room.lastMessage.senderId === currentUserId;
     previewPrefix = isOwn ? "You: " : "";
-    messagePreview = room.lastMessage.text;
+    messagePreview =(room.lastMessage.text);
     isMediaMessage = room.lastMessage.messageType !== 'text';
   }
 

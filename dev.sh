@@ -16,6 +16,8 @@ sleep 0.2
 osascript -e 'tell application "System Events" to key code 36'
 sleep 1
 
+cd Backend && npm start
+
 # Ensure Cursor is focused
 osascript -e 'tell application "Cursor" to activate'
 sleep 0.2

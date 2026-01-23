@@ -31,6 +31,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import { TabView, TabBar } from "react-native-tab-view";
 import PollContent from "@/components/chat/PollContent";
 import AnnouncementContent from "@/components/chat/AnnouncementContent";
+import CameraScreen from "@/components/chat/CameraScreen";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const NUM_COLUMNS = 3;
@@ -195,7 +196,7 @@ export default function AttachmentsScreen() {
   const [routes] = useState([
     { key: 'gallery', title: 'Gallery' },
     { key: 'poll', title: 'Poll' },
-    { key: 'announcement', title: 'Announcement' },
+    // { key: 'announcement', title: 'Announcement' },
   ]);
 
   // Gallery state
@@ -207,6 +208,7 @@ export default function AttachmentsScreen() {
   const [isSending, setIsSending] = useState(false);
   const [endCursor, setEndCursor] = useState<string | undefined>();
   const [hasMore, setHasMore] = useState(true);
+  const [showCamera, setShowCamera] = useState(false);
 
   // Count selected photos and videos
   const selectedPhotosCount = useMemo(() => 
@@ -306,32 +308,120 @@ export default function AttachmentsScreen() {
     return item ? item.order : null;
   }, [selectedMedia]);
 
+  // const handleSendMedia = async () => {
+  //   if (selectedMedia.length === 0 || isSending) return;
+  //   setIsSending(true);
+  //   try {
+  //     const filesWithData = await Promise.all(
+  //       selectedMedia.map(async (media) => {
+  //         const base64 = await FileSystem.readAsStringAsync(media.uri, {
+  //           encoding: FileSystem.EncodingType.Base64,
+  //         });
+  //         const mimeType = getMimeType(media.filename, media.mediaType);
+  //         return {
+  //           name: media.filename,
+  //           mimeType: mimeType,
+  //           fileData: base64,
+  //         };
+  //       })
+  //     );
+
+  //     const token = await AuthStorage.getToken();
+  //     const uploadResponse = await axios.post(
+  //       `${API_URL}/api/vm-media/upload`,
+  //       { files: filesWithData },
+  //       {
+  //         headers: {
+  //           Authorization: `Bearer ${token}`,
+  //           "Content-Type": "application/json",
+  //         },
+  //       }
+  //     );
+
+  //     if (!uploadResponse.data.success) {
+  //       throw new Error("Upload failed");
+  //     }
+
+  //     const tempFolderId = uploadResponse.data.tempFolderId;
+  //     const uploadedFiles = uploadResponse.data.uploadedFiles;
+  //     const filesWithCaptions = uploadedFiles.map((f: any) => ({
+  //       fileName: f.fileName,
+  //       originalName: f.originalName,
+  //       caption: caption,
+  //       mimeType: f.mimeType,
+  //       size: f.size,
+  //     }));
+
+  //     const moveResponse = await axios.post(
+  //       `${API_URL}/api/vm-media/move-to-chat`,
+  //       {
+  //         tempFolderId,
+  //         roomId,
+  //         senderId: userId,
+  //         filesWithCaptions,
+  //       },
+  //       { headers: { Authorization: `Bearer ${token}` } }
+  //     );
+
+  //     if (moveResponse.data.success) {
+  //       socketSendMessage(roomId, {
+  //         id: moveResponse.data.messageId,
+  //         messageText: moveResponse.data.message,
+  //         createdAt: new Date().toISOString(),
+  //         messageType: "media",
+  //         mediaFilesId: moveResponse.data.mediaId,
+  //         pollId: 0,
+  //         tableId: 0,
+  //         replyMessageId: 0,
+  //       });
+  //       // Navigate back to chat room
+  //       router.back();
+  //     }
+  //   } catch (error) {
+  //     console.error("Error sending media:", error);
+  //     Alert.alert("Error", "Failed to send media. Please try again.");
+  //   } finally {
+  //     setIsSending(false);
+  //   }
+  // };
+
+    // ... (keep your existing imports and helper functions)
+
+  // 1. UPDATED handleSendMedia (For Gallery Selections)
   const handleSendMedia = async () => {
     if (selectedMedia.length === 0 || isSending) return;
     setIsSending(true);
-    try {
-      const filesWithData = await Promise.all(
-        selectedMedia.map(async (media) => {
-          const base64 = await FileSystem.readAsStringAsync(media.uri, {
-            encoding: FileSystem.EncodingType.Base64,
-          });
-          const mimeType = getMimeType(media.filename, media.mediaType);
-          return {
-            name: media.filename,
-            mimeType: mimeType,
-            fileData: base64,
-          };
-        })
-      );
 
+    try {
       const token = await AuthStorage.getToken();
+      const formData = new FormData();
+
+      // Append all selected files to FormData
+      selectedMedia.forEach((media) => {
+        // Fix for iOS file URIs if necessary, Android usually works as is
+        const uri = Platform.OS === "ios" ? media.uri.replace("file://", "") : media.uri;
+        const mimeType = getMimeType(media.filename, media.mediaType);
+
+        // @ts-ignore - React Native FormData expects an object with uri, name, type
+        formData.append("files", {
+          uri: uri,
+          name: media.filename,
+          type: mimeType,
+        });
+      });
+
+      // UPLOAD STEP: Send FormData (Streams file, saves memory)
       const uploadResponse = await axios.post(
         `${API_URL}/api/vm-media/upload`,
-        { files: filesWithData },
+        formData,
         {
           headers: {
             Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
+            "Content-Type": "multipart/form-data",
+          },
+          // Important: Prevent axios from stringifying the FormData
+          transformRequest: (data, headers) => {
+            return data;
           },
         }
       );
@@ -340,8 +430,10 @@ export default function AttachmentsScreen() {
         throw new Error("Upload failed");
       }
 
+      // 2. MOVE TO CHAT STEP (Keep existing logic)
       const tempFolderId = uploadResponse.data.tempFolderId;
       const uploadedFiles = uploadResponse.data.uploadedFiles;
+      
       const filesWithCaptions = uploadedFiles.map((f: any) => ({
         fileName: f.fileName,
         originalName: f.originalName,
@@ -349,9 +441,9 @@ export default function AttachmentsScreen() {
         mimeType: f.mimeType,
         size: f.size,
       }));
-
+      console.log(`sending to ${API_URL}/api/vm-media/move-to-chat-camera`);
       const moveResponse = await axios.post(
-        `${API_URL}/api/vm-media/move-to-chat`,
+        `${API_URL}/api/vm-media/move-to-chat-camera`,
         {
           tempFolderId,
           roomId,
@@ -372,16 +464,103 @@ export default function AttachmentsScreen() {
           tableId: 0,
           replyMessageId: 0,
         });
-        // Navigate back to chat room
         router.back();
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error sending media:", error);
-      Alert.alert("Error", "Failed to send media. Please try again.");
+      Alert.alert("Error", `Failed to send media: ${error?.message || "Unknown error"}`);
     } finally {
       setIsSending(false);
     }
   };
+
+  // ...
+
+  // 2. UPDATED handleCameraSend (For Camera Capture)
+  const handleCameraSend = useCallback(async (uri: string, mediaType: 'photo' | 'video', duration?: number, caption?: string) => {
+    if (isSending) return;
+    setIsSending(true);
+  
+    try {
+      const token = await AuthStorage.getToken();
+      
+      // 1. Prepare Filename and MimeType
+      const filename = uri.split('/').pop() || `camera_${Date.now()}.${mediaType === 'photo' ? 'jpg' : 'mp4'}`;
+      const mimeType = getMimeType(filename, mediaType);
+  
+      // 2. Create Single FormData Object
+      const formData = new FormData();
+      
+      // Append File
+      // @ts-ignore
+      formData.append("file", {
+        uri: Platform.OS === "ios" ? uri.replace("file://", "") : uri,
+        name: filename,
+        type: mimeType,
+      });
+  
+      // Append Metadata directly
+      formData.append("roomId", roomId);
+      formData.append("senderId", userId);
+      if (caption) formData.append("caption", caption);
+      if (duration) formData.append("duration", String(duration));
+      
+      console.log(`sending to ${API_URL}/api/vm-media/move-to-chat-camera`);
+      console.log("FormData fields:", {
+        hasFile: true,
+        roomId,
+        senderId: userId,
+        caption: caption || "none",
+        duration: duration || "none"
+      });
+      
+      // 3. Single Step Upload
+      const response = await axios.post(
+        `${API_URL}/api/vm-media/move-to-chat-camera`,
+        formData,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "multipart/form-data",
+          },
+          transformRequest: (data) => {
+            // Don't transform FormData
+            return data;
+          },
+          timeout: 60000, // 60 second timeout for large files
+        }
+      );
+  
+      if (response.data.success) {
+        // 4. Send Socket Message
+        socketSendMessage(roomId, {
+          id: response.data.messageId,
+          messageText: "", // Media messages usually have empty text
+          createdAt: response.data.createdAt || new Date().toISOString(),
+          messageType: "media",
+          mediaFilesId: response.data.mediaId,
+          pollId: 0,
+          tableId: 0,
+          replyMessageId: 0,
+        });
+        
+        // 5. Close and Return
+        setShowCamera(false);
+        setTimeout(() => {
+          router.back();
+        }, 300);
+      } else {
+        throw new Error(response.data.error || "Upload failed");
+      }
+  
+    } catch (error: any) {
+      console.error("Error sending camera media:", error);
+      Alert.alert("Error", "Failed to send media: " + (error.response?.data?.error || error.message));
+    } finally {
+      setIsSending(false);
+    }
+  }, [roomId, userId, isSending, socketSendMessage]);
+
 
   const handleSuccess = useCallback(() => {
     // Navigate back to chat room
@@ -393,12 +572,92 @@ export default function AttachmentsScreen() {
   }, []);
 
   const handleCameraPress = useCallback(() => {
-    Alert.alert("not implemented");
-    return;
-    router.back();
-    // Navigate to camera/uploader route
-    router.push({ pathname: "/chat/MediaUploader", params: { roomId, userId, vmMedia: "true" } });
-  }, [roomId, userId]);
+    setShowCamera(true);
+  }, []);
+
+  // const handleCameraSend = useCallback(async (uri: string, mediaType: 'photo' | 'video', duration?: number, caption?: string) => {
+  //   if (isSending) return;
+  //   setIsSending(true);
+  //   try {
+  //     // Read file as base64
+  //     const base64 = await FileSystem.readAsStringAsync(uri, {
+  //       encoding: FileSystem.EncodingType.Base64,
+  //     });
+
+  //     // Get filename from URI
+  //     const filename = uri.split('/').pop() || `camera_${Date.now()}.${mediaType === 'photo' ? 'jpg' : 'mp4'}`;
+  //     const mimeType = getMimeType(filename, mediaType);
+
+  //     const filesWithData = [{
+  //       name: filename,
+  //       mimeType: mimeType,
+  //       fileData: base64,
+  //     }];
+
+  //     const token = await AuthStorage.getToken();
+  //     const uploadResponse = await axios.post(
+  //       `${API_URL}/api/vm-media/upload`,
+  //       { files: filesWithData },
+  //       {
+  //         headers: {
+  //           Authorization: `Bearer ${token}`,
+  //           "Content-Type": "application/json",
+  //         },
+  //       }
+  //     );
+
+  //     if (!uploadResponse.data.success) {
+  //       throw new Error("Upload failed");
+  //     }
+
+  //     const tempFolderId = uploadResponse.data.tempFolderId;
+  //     const uploadedFiles = uploadResponse.data.uploadedFiles;
+  //     const filesWithCaptions = uploadedFiles.map((f: any) => ({
+  //       fileName: f.fileName,
+  //       originalName: f.originalName,
+  //       caption: caption || "",
+  //       mimeType: f.mimeType,
+  //       size: f.size,
+  //     }));
+
+  //     const moveResponse = await axios.post(
+  //       `${API_URL}/api/vm-media/move-to-chat`,
+  //       {
+  //         tempFolderId,
+  //         roomId,
+  //         senderId: userId,
+  //         filesWithCaptions,
+  //       },
+  //       { headers: { Authorization: `Bearer ${token}` } }
+  //     );
+
+  //     if (moveResponse.data.success) {
+  //       socketSendMessage(roomId, {
+  //         id: moveResponse.data.messageId,
+  //         messageText: moveResponse.data.message,
+  //         createdAt: new Date().toISOString(),
+  //         messageType: "media",
+  //         mediaFilesId: moveResponse.data.mediaId,
+  //         pollId: 0,
+  //         tableId: 0,
+  //         replyMessageId: 0,
+  //       });
+        
+  //       // Close camera and go back
+  //       setShowCamera(false);
+  //       setTimeout(() => {
+  //         router.back();
+  //       }, 300);
+  //     } else {
+  //       throw new Error("Move to chat failed");
+  //     }
+  //   } catch (error) {
+  //     console.error("Error sending camera media:", error);
+  //     Alert.alert("Error", "Failed to send media");
+  //   } finally {
+  //     setIsSending(false);
+  //   }
+  // }, [roomId, userId, isSending, socketSendMessage]);
 
   // Prepare gallery data
   const galleryData: GalleryItem[] = useMemo(() => {
@@ -572,6 +831,18 @@ export default function AttachmentsScreen() {
     </View>
   );
 
+  // Show camera screen if active
+  if (showCamera) {
+    return (
+      <CameraScreen
+        roomId={roomId}
+        userId={userId}
+        onSend={handleCameraSend}
+        onClose={() => setShowCamera(false)}
+      />
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container}>
       <KeyboardAvoidingView
@@ -615,7 +886,7 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
+    justifyContent: "center",
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderBottomWidth: 1,
@@ -630,7 +901,7 @@ const styles = StyleSheet.create({
     color: "#000",
   },
   headerSpacer: {
-    width: 40,
+    width: 100,
   },
   contentContainer: {
     flex: 1,
