@@ -78,9 +78,10 @@ export default function CameraScreen({ roomId, userId, onSend, onClose }: Camera
     if (cameraMode === 'photo') {
       try {
         const photo = await cameraRef.current.takePictureAsync({
-          quality: 0.7, 
-          base64: false, // CRITICAL: Keep false to save memory
+          quality: 0.7,
+          base64: false,
           skipProcessing: true,
+          shutterSound: false, // <--- THIS DISABLES THE SOUND
         });
         if (photo?.uri) setCapturedMedia({ uri: photo.uri, type: 'photo' });
       } catch (error) {

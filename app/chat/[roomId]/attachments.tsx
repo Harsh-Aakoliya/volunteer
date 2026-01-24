@@ -387,7 +387,13 @@ export default function AttachmentsScreen() {
 
     // ... (keep your existing imports and helper functions)
 
-  // 1. UPDATED handleSendMedia (For Gallery Selections)
+// ... imports
+
+  // ... existing state hooks
+
+  // ------------------------------------------------------------------
+  // 1. GALLERY UPLOAD FLOW (Multipart)
+  // ------------------------------------------------------------------
   const handleSendMedia = async () => {
     if (selectedMedia.length === 0 || isSending) return;
     setIsSending(true);
@@ -396,13 +402,13 @@ export default function AttachmentsScreen() {
       const token = await AuthStorage.getToken();
       const formData = new FormData();
 
-      // Append all selected files to FormData
+      // 1. Append all selected files to FormData
       selectedMedia.forEach((media) => {
-        // Fix for iOS file URIs if necessary, Android usually works as is
+        // Clean URI for iOS
         const uri = Platform.OS === "ios" ? media.uri.replace("file://", "") : media.uri;
         const mimeType = getMimeType(media.filename, media.mediaType);
 
-        // @ts-ignore - React Native FormData expects an object with uri, name, type
+        // @ts-ignore
         formData.append("files", {
           uri: uri,
           name: media.filename,
@@ -410,54 +416,56 @@ export default function AttachmentsScreen() {
         });
       });
 
-      // UPLOAD STEP: Send FormData (Streams file, saves memory)
+      console.log(`Uploading gallery files to: ${API_URL}/api/vm-media/upload-multipart`);
+
+      // 2. Upload Files to Temp Folder (Multipart Stream)
       const uploadResponse = await axios.post(
-        `${API_URL}/api/vm-media/upload`,
+        `${API_URL}/api/vm-media/upload-multipart`,
         formData,
         {
           headers: {
             Authorization: `Bearer ${token}`,
             "Content-Type": "multipart/form-data",
           },
-          // Important: Prevent axios from stringifying the FormData
-          transformRequest: (data, headers) => {
-            return data;
-          },
+          transformRequest: (data) => data, // Critical for React Native FormData
         }
       );
 
       if (!uploadResponse.data.success) {
-        throw new Error("Upload failed");
+        throw new Error("Gallery upload failed");
       }
 
-      // 2. MOVE TO CHAT STEP (Keep existing logic)
+      // 3. Move Files to Chat (Database & Permanent Folder)
+      // This uses your EXISTING 'moveToChat' controller logic
       const tempFolderId = uploadResponse.data.tempFolderId;
       const uploadedFiles = uploadResponse.data.uploadedFiles;
       
       const filesWithCaptions = uploadedFiles.map((f: any) => ({
         fileName: f.fileName,
         originalName: f.originalName,
-        caption: caption,
+        caption: caption, // User typed caption
         mimeType: f.mimeType,
         size: f.size,
       }));
-      console.log(`sending to ${API_URL}/api/vm-media/move-to-chat-camera`);
+
       const moveResponse = await axios.post(
-        `${API_URL}/api/vm-media/move-to-chat-camera`,
+        `${API_URL}/api/vm-media/move-to-chat`,
         {
           tempFolderId,
           roomId,
           senderId: userId,
           filesWithCaptions,
+          caption: caption, // Send the caption to backend
         },
         { headers: { Authorization: `Bearer ${token}` } }
       );
 
       if (moveResponse.data.success) {
+        // 4. Notify Socket with the actual messageText (caption)
         socketSendMessage(roomId, {
           id: moveResponse.data.messageId,
-          messageText: moveResponse.data.message,
-          createdAt: new Date().toISOString(),
+          messageText: moveResponse.data.messageText || "", // Use the caption from backend
+          createdAt: moveResponse.data.createdAt || new Date().toISOString(),
           messageType: "media",
           mediaFilesId: moveResponse.data.mediaId,
           pollId: 0,
@@ -467,16 +475,16 @@ export default function AttachmentsScreen() {
         router.back();
       }
     } catch (error: any) {
-      console.error("Error sending media:", error);
-      Alert.alert("Error", `Failed to send media: ${error?.message || "Unknown error"}`);
+      console.error("Error sending gallery media:", error);
+      Alert.alert("Error", `Failed to send media: ${error?.message || "Check connection"}`);
     } finally {
       setIsSending(false);
     }
   };
 
-  // ...
-
-  // 2. UPDATED handleCameraSend (For Camera Capture)
+  // ------------------------------------------------------------------
+  // 2. CAMERA UPLOAD FLOW (Single Step Multipart)
+  // ------------------------------------------------------------------
   const handleCameraSend = useCallback(async (uri: string, mediaType: 'photo' | 'video', duration?: number, caption?: string) => {
     if (isSending) return;
     setIsSending(true);
@@ -484,14 +492,13 @@ export default function AttachmentsScreen() {
     try {
       const token = await AuthStorage.getToken();
       
-      // 1. Prepare Filename and MimeType
+      // 1. Prepare Filename
       const filename = uri.split('/').pop() || `camera_${Date.now()}.${mediaType === 'photo' ? 'jpg' : 'mp4'}`;
       const mimeType = getMimeType(filename, mediaType);
   
-      // 2. Create Single FormData Object
+      // 2. Create FormData
       const formData = new FormData();
       
-      // Append File
       // @ts-ignore
       formData.append("file", {
         uri: Platform.OS === "ios" ? uri.replace("file://", "") : uri,
@@ -499,22 +506,15 @@ export default function AttachmentsScreen() {
         type: mimeType,
       });
   
-      // Append Metadata directly
+      // Append Metadata fields
       formData.append("roomId", roomId);
       formData.append("senderId", userId);
       if (caption) formData.append("caption", caption);
       if (duration) formData.append("duration", String(duration));
       
-      console.log(`sending to ${API_URL}/api/vm-media/move-to-chat-camera`);
-      console.log("FormData fields:", {
-        hasFile: true,
-        roomId,
-        senderId: userId,
-        caption: caption || "none",
-        duration: duration || "none"
-      });
+      console.log(`Sending camera file to: ${API_URL}/api/vm-media/move-to-chat-camera`);
       
-      // 3. Single Step Upload
+      // 3. Single Step Upload & Move
       const response = await axios.post(
         `${API_URL}/api/vm-media/move-to-chat-camera`,
         formData,
@@ -523,19 +523,16 @@ export default function AttachmentsScreen() {
             Authorization: `Bearer ${token}`,
             "Content-Type": "multipart/form-data",
           },
-          transformRequest: (data) => {
-            // Don't transform FormData
-            return data;
-          },
-          timeout: 60000, // 60 second timeout for large files
+          transformRequest: (data) => data, // Critical
+          timeout: 120000, // 2 minutes timeout for large videos
         }
       );
   
       if (response.data.success) {
-        // 4. Send Socket Message
+        // 4. Notify Socket with the actual messageText (caption)
         socketSendMessage(roomId, {
           id: response.data.messageId,
-          messageText: "", // Media messages usually have empty text
+          messageText: response.data.messageText || "", // Use the caption from backend
           createdAt: response.data.createdAt || new Date().toISOString(),
           messageType: "media",
           mediaFilesId: response.data.mediaId,
@@ -544,7 +541,6 @@ export default function AttachmentsScreen() {
           replyMessageId: 0,
         });
         
-        // 5. Close and Return
         setShowCamera(false);
         setTimeout(() => {
           router.back();
@@ -555,7 +551,7 @@ export default function AttachmentsScreen() {
   
     } catch (error: any) {
       console.error("Error sending camera media:", error);
-      Alert.alert("Error", "Failed to send media: " + (error.response?.data?.error || error.message));
+      Alert.alert("Error", `Upload failed: ${error?.response?.data?.error || error.message}`);
     } finally {
       setIsSending(false);
     }

@@ -128,7 +128,6 @@ const VmMediaController = {
             res.status(500).json({ error: "Failed to delete folder", details: error.message });
         }
     },
-
     // Move files from temp to permanent location and create DB entries
     moveToChat: async (req, res) => {
         const client = await pool.connect();
@@ -136,18 +135,21 @@ const VmMediaController = {
         try {
             await client.query('BEGIN');
 
-            const { tempFolderId, roomId, senderId, filesWithCaptions } = req.body;
+            const { tempFolderId, roomId, senderId, filesWithCaptions, caption } = req.body;
             
             if (!tempFolderId || !roomId || !senderId || !filesWithCaptions) {
                 return res.status(400).json({ error: "Missing required parameters" });
             }
 
-            // First create the chat message entry
+            // Use caption from request body, or empty string if not provided
+            const messageText = caption || "";
+
+            // First create the chat message entry with the caption as messageText
             const messageResult = await client.query(
                 `INSERT INTO chatmessages ("roomId", "senderId", "messageText", "messageType")
                 VALUES ($1, $2, $3, $4)
                 RETURNING *`,
-                [roomId, senderId, "", "media"]
+                [roomId, senderId, messageText, "media"]
             );
 
             const messageId = messageResult.rows[0].id;
@@ -217,7 +219,8 @@ const VmMediaController = {
                 mediaId,
                 permanentFolderName,
                 driveUrlObject,
-                message: "Files moved to chat successfully"
+                messageText: messageText, // Return the actual caption/message text
+                createdAt: createdAt
             });
 
         } catch (error) {
@@ -228,128 +231,193 @@ const VmMediaController = {
             client.release();
         }
     },
+    uploadFilesMultipart: async (req, res) => {
+        try {
+            console.log("uploadFilesMultipart - req.files:", req.files?.length || 0);
+            console.log("uploadFilesMultipart - req.body:", req.body);
+            
+            // Multer puts files in req.files when using upload.array()
+            if (!req.files || req.files.length === 0) {
+                return res.status(400).json({ error: "No files provided" });
+            }
 
-// ... inside your controller object
+            // Generate temp folder ID
+            const tempFolderId = req.body.tempFolderId || uuidv4();
+            const TARGET_DIR = path.join(process.cwd(), 'media', 'chat', `temp_${tempFolderId}`);
 
-moveToChatCamera: async (req, res) => {
-    console.log("moveToChatCamera req.body:", req.body);
-    console.log("moveToChatCamera req.file:", req.file);
-    const client = await pool.connect();
-    
-    try {
-        // 1. Validate Request
-        if (!req.file) {
-            console.error("No file in req.file. Files:", req.files);
-            return res.status(400).json({ error: "No media file provided. Make sure to send file as 'file' field in FormData." });
-        }
-        
-        const { roomId, senderId, caption, duration } = req.body;
-        
-        console.log("Parsed body:", { roomId, senderId, caption, duration });
-        
-        if (!roomId || !senderId) {
-            // Clean up the uploaded file if validation fails
-            if (req.file && fs.existsSync(req.file.path)) {
+            if (!fs.existsSync(TARGET_DIR)) {
+                fs.mkdirSync(TARGET_DIR, { recursive: true });
+            }
+
+            const uploadedFiles = [];
+
+            for (const file of req.files) {
                 try {
-                    fs.unlinkSync(req.file.path);
-                } catch (e) {
-                    console.error("Error cleaning up file:", e);
+                    // Generate unique filename to avoid conflicts (same as uploadFiles method)
+                    const fileId = uuidv4();
+                    const fileExtension = path.extname(file.originalname) || (file.mimetype?.includes('video') ? '.mp4' : '.jpg');
+                    const fileName = `${fileId}${fileExtension}`;
+                    const targetPath = path.join(TARGET_DIR, fileName);
+                    
+                    // Move file from multer temp location to our temp folder
+                    if (fs.existsSync(file.path)) {
+                        fs.renameSync(file.path, targetPath);
+                    } else {
+                        console.error(`File not found at multer path: ${file.path}`);
+                        continue;
+                    }
+
+                    uploadedFiles.push({
+                        id: fileId,
+                        originalName: file.originalname,
+                        fileName: fileName,
+                        mimeType: file.mimetype,
+                        size: file.size,
+                        url: `temp_${tempFolderId}/${fileName}`,
+                        caption: ""
+                    });
+                } catch (fileError) {
+                    console.error(`Error processing file ${file.originalname}:`, fileError);
+                    // Continue with other files even if one fails
                 }
             }
-            return res.status(400).json({ 
-                error: "Missing roomId or senderId",
-                received: { roomId: !!roomId, senderId: !!senderId }
+
+            if (uploadedFiles.length === 0) {
+                // Cleanup if no files were successfully uploaded
+                if (fs.existsSync(TARGET_DIR)) {
+                    fs.rmSync(TARGET_DIR, { recursive: true, force: true });
+                }
+                return res.status(400).json({ error: "Failed to process any files" });
+            }
+
+            res.json({
+                success: true,
+                tempFolderId: tempFolderId,
+                uploadedFiles,
+                message: `${uploadedFiles.length} files uploaded via multipart successfully`
+            });
+
+        } catch (error) {
+            console.error("Error in multipart upload:", error);
+            console.error("Error stack:", error.stack);
+            
+            // Cleanup uploaded files if error
+            if (req.files) {
+                req.files.forEach(f => {
+                    if (f.path && fs.existsSync(f.path)) {
+                        try {
+                            fs.unlinkSync(f.path);
+                        } catch (e) {
+                            console.error("Error cleaning up file:", e);
+                        }
+                    }
+                });
+            }
+            
+            res.status(500).json({ 
+                error: "Failed to upload files", 
+                details: error.message,
+                stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
             });
         }
+    },
 
-        await client.query('BEGIN');
+    // NEW: Handle Camera Upload (Single File -> Chat Direct)
+    moveToChatCamera: async (req, res) => {
+        const client = await pool.connect();
+        try {
+            // 1. Validate Request
+            if (!req.file) {
+                return res.status(400).json({ error: "No media file provided." });
+            }
+            
+            const { roomId, senderId, caption, duration } = req.body;
+            
+            if (!roomId || !senderId) {
+                // Cleanup temp file
+                if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+                return res.status(400).json({ error: "Missing roomId or senderId" });
+            }
 
-        // 2. Create Chat Message Entry
-        const messageResult = await client.query(
-            `INSERT INTO chatmessages ("roomId", "senderId", "messageText", "messageType")
-            VALUES ($1, $2, $3, $4)
-            RETURNING *`,
-            [roomId, senderId, "", "media"]
-        );
+            await client.query('BEGIN');
 
-        const messageId = messageResult.rows[0].id;
-        const createdAt = messageResult.rows[0].createdAt;
+            // 2. Create Chat Message with caption as messageText
+            const messageText = caption || "";
+            const messageResult = await client.query(
+                `INSERT INTO chatmessages ("roomId", "senderId", "messageText", "messageType")
+                VALUES ($1, $2, $3, $4)
+                RETURNING *`,
+                [roomId, senderId, messageText, "media"]
+            );
 
-        // 3. Prepare Directory Paths
-        const timestamp = new Date(createdAt).toISOString().replace(/[:.]/g, '-');
-        // Folder Format: TIMESTAMP_ROOM_SENDER_MSGID
-        const permanentFolderName = `${timestamp}_${roomId}_${senderId}_${messageId}`;
-        const permanentFolderPath = path.join(process.cwd(), 'media', 'chat', permanentFolderName);
+            const messageId = messageResult.rows[0].id;
+            const createdAt = messageResult.rows[0].createdAt;
 
-        // Create directory
-        if (!fs.existsSync(permanentFolderPath)) {
-            fs.mkdirSync(permanentFolderPath, { recursive: true });
+            // 3. Prepare Permanent Folder
+            const timestamp = new Date(createdAt).toISOString().replace(/[:.]/g, '-');
+            const permanentFolderName = `${timestamp}_${roomId}_${senderId}_${messageId}`;
+            const permanentFolderPath = path.join(process.cwd(), 'media', 'chat', permanentFolderName);
+
+            if (!fs.existsSync(permanentFolderPath)) {
+                fs.mkdirSync(permanentFolderPath, { recursive: true });
+            }
+
+            // 4. Move File
+            // Sanitize filename
+            const originalName = req.file.originalname;
+            const safeFileName = `${Date.now()}_${originalName.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+            const targetPath = path.join(permanentFolderPath, safeFileName);
+
+            fs.renameSync(req.file.path, targetPath);
+
+            // 5. Create Drive Object
+            const driveUrlObject = [{
+                url: `${permanentFolderName}/${safeFileName}`,
+                filename: safeFileName,
+                originalName: originalName,
+                caption: caption || "",
+                mimeType: req.file.mimetype,
+                size: req.file.size,
+                duration: duration ? parseInt(duration) : 0
+            }];
+
+            // 6. Create Media Entry
+            const mediaResult = await client.query(
+                `INSERT INTO media ("roomId", "senderId", "createdAt", "messageId", "driveUrlObject")
+                VALUES ($1, $2, $3, $4, $5)
+                RETURNING *`,
+                [roomId, senderId, createdAt, messageId, JSON.stringify(driveUrlObject)]
+            );
+
+            const mediaId = mediaResult.rows[0].id;
+
+            // 7. Update Chat Message
+            await client.query(
+                `UPDATE chatmessages SET "mediaFilesId" = $1 WHERE "id" = $2`,
+                [mediaId, messageId]
+            );
+
+            await client.query('COMMIT');
+
+            res.json({
+                success: true,
+                messageId,
+                mediaId,
+                messageText: messageText, // Return the actual caption/message text
+                createdAt: createdAt
+            });
+
+        } catch (error) {
+            await client.query('ROLLBACK');
+            console.error("Error in camera upload:", error);
+            if (req.file && fs.existsSync(req.file.path)) {
+                try { fs.unlinkSync(req.file.path); } catch (e) {}
+            }
+            res.status(500).json({ error: "Failed to upload camera media", details: error.message });
+        } finally {
+            client.release();
         }
-
-        // 4. Move File from Multer Temp to Permanent Folder
-        // Multer usually puts the file in req.file.path. We move it to our new folder.
-        const originalName = req.file.originalname;
-        // Sanitize filename to prevent issues
-        const safeFileName = originalName.replace(/[^a-zA-Z0-9.-]/g, '_'); 
-        const targetPath = path.join(permanentFolderPath, safeFileName);
-
-        // Rename (Move)
-        fs.renameSync(req.file.path, targetPath);
-
-        // 5. Create Drive Object
-        const driveUrlObject = [{
-            url: `${permanentFolderName}/${safeFileName}`,
-            filename: safeFileName,
-            originalName: originalName,
-            caption: caption || "",
-            mimeType: req.file.mimetype,
-            size: req.file.size,
-            duration: duration ? parseInt(duration) : 0
-        }];
-
-        // 6. Create Media Entry
-        const mediaResult = await client.query(
-            `INSERT INTO media ("roomId", "senderId", "createdAt", "messageId", "driveUrlObject")
-            VALUES ($1, $2, $3, $4, $5)
-            RETURNING *`,
-            [roomId, senderId, createdAt, messageId, JSON.stringify(driveUrlObject)]
-        );
-
-        const mediaId = mediaResult.rows[0].id;
-
-        // 7. Link Media to Message
-        await client.query(
-            `UPDATE chatmessages SET "mediaFilesId" = $1 WHERE "id" = $2`,
-            [mediaId, messageId]
-        );
-
-        await client.query('COMMIT');
-
-        res.json({
-            success: true,
-            messageId,
-            mediaId,
-            message: "Camera media uploaded successfully",
-            // Return data needed for socket
-            mediaFilesId: mediaId,
-            createdAt: createdAt,
-            messageText: "" 
-        });
-
-    } catch (error) {
-        await client.query('ROLLBACK');
-        console.error("Error in camera upload:", error);
-        
-        // Cleanup: If the file exists in temp but wasn't moved, delete it
-        if (req.file && fs.existsSync(req.file.path)) {
-            try { fs.unlinkSync(req.file.path); } catch (e) {}
-        }
-
-        res.status(500).json({ error: "Failed to upload camera media", details: error.message });
-    } finally {
-        client.release();
-    }
-},
+    },
 
 
     // Get media files by media ID

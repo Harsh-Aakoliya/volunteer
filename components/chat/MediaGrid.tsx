@@ -35,6 +35,7 @@ const MediaGrid: React.FC<MediaGridProps> = ({
   isOwnMessage,
   isLoading = false,
 }) => {
+  
   const [mediaFiles, setMediaFiles] = useState<MediaFile[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);

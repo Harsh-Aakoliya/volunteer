@@ -403,16 +403,20 @@ const MessageItem = React.memo(({
 
                       {message.messageType === "media" && (
                         <View>
-                          <Text className="text-base leading-[22px] text-black">
-                            shared media : {message.mediaFilesId}
-                          </Text>
                           <MediaGrid 
                             messageId={message.id}
                             onMediaPress={handleMediaGridPress}
                             mediaFilesId={message.mediaFilesId || 0}
-                            isOwnMessage
+                            isOwnMessage={isOwnMessage}
                           />
                         </View>
+                      )}
+                      {/* Show caption/message text if it exists */}
+                      {message.messageText && message.messageText.trim() !== "" && (
+                        <StyledTextMessage 
+                          content={message.messageText} 
+                          isOwnMessage={isOwnMessage}
+                        />
                       )}
                       {message.messageType === "poll" && (
                         <Text className="text-base leading-[22px] text-black">
