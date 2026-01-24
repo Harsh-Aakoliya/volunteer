@@ -2,16 +2,72 @@
 import pool from "../config/database.js";
 import { admin, isFirebaseInitialized } from "../config/firebase.js";
 
+// Strip HTML tags from text
+const stripHtmlTags = (html) => {
+  if (!html) return "";
+  let text = String(html);
+  
+  // Replace block elements with newlines
+  text = text.replace(/<\/p>|<\/div>|<br\s*\/?>/gi, '\n');
+  
+  // Remove all HTML tags
+  text = text.replace(/<[^>]+>/g, '');
+  
+  // Decode common HTML entities
+  text = text
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&apos;/g, "'");
+  
+  // Clean up multiple spaces and newlines
+  text = text.replace(/[ \t]+/g, ' ');
+  text = text.replace(/\n\s*\n/g, '\n');
+  text = text.replace(/^\s+|\s+$/g, '');
+  
+  return text;
+};
+
 // Format message content for notification based on message type
-const formatMessageContent = (message, senderName) => {
+const formatMessageContent = async (message, senderName) => {
   const messageType = message.messageType || 'text';
   
   switch (messageType) {
     case 'text':
-      // Show first 50 characters of text message
-      return message.messageText ? message.messageText.substring(0, 50) + (message.messageText.length > 50 ? '...' : '') : 'sent a message';
+      // Show first 50 characters of text message, strip HTML first
+      if (message.messageText) {
+        const cleaned = stripHtmlTags(message.messageText);
+        return cleaned.substring(0, 50) + (cleaned.length > 50 ? '...' : '');
+      }
+      return 'sent a message';
     
     case 'media':
+      // For media, show messageText (caption) if exists, else show photo count
+      if (message.messageText && message.messageText.trim() !== '') {
+        const cleaned = stripHtmlTags(message.messageText);
+        return cleaned.substring(0, 50) + (cleaned.length > 50 ? '...' : '');
+      }
+      // Try to get photo count from mediaFilesId
+      if (message.mediaFilesId) {
+        try {
+          const mediaResult = await pool.query(
+            'SELECT "driveUrlObject" FROM media WHERE "id" = $1',
+            [message.mediaFilesId]
+          );
+          if (mediaResult.rows.length > 0) {
+            const driveUrlObject = mediaResult.rows[0].driveUrlObject || [];
+            const photoCount = Array.isArray(driveUrlObject) ? driveUrlObject.length : 0;
+            if (photoCount > 0) {
+              return `shared ${photoCount} ${photoCount === 1 ? 'photo' : 'photos'}`;
+            }
+          }
+        } catch (error) {
+          console.error('Error fetching media count:', error);
+        }
+      }
       return 'shared media';
     
     case 'poll':
@@ -24,7 +80,10 @@ const formatMessageContent = (message, senderName) => {
       // For announcements, extract title from messageText (format: "title|||ANNOUNCEMENT_SEPARATOR|||body")
       if (message.messageText && message.messageText.includes('|||ANNOUNCEMENT_SEPARATOR|||')) {
         const title = message.messageText.split('|||ANNOUNCEMENT_SEPARATOR|||')[0].trim();
-        return title ? `📢 ${title}` : 'shared an announcement';
+        if (title) {
+          const cleaned = stripHtmlTags(title);
+          return `📢 ${cleaned}`;
+        }
       }
       return 'shared an announcement';
     
@@ -401,7 +460,8 @@ export const sendChatNotifications = async (message, senderInfo, roomInfo, io, s
         body = `in ${roomInfo.roomName || 'Chat'}`;
       } else {
         title = String(roomInfo.roomName || 'Chat');
-        body = `${senderInfo.userName || 'Someone'}: ${formatMessageContent(message, senderInfo.userName || 'Someone')}`;
+        const messageContent = await formatMessageContent(message, senderInfo.userName || 'Someone');
+        body = `${senderInfo.userName || 'Someone'}: ${messageContent}`;
       }
 
       // Notification data for app handling

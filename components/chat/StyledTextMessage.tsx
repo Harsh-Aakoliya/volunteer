@@ -2,8 +2,13 @@ import React from 'react';
 import { View, Text, Dimensions, Linking, TouchableOpacity } from 'react-native';
 import RenderHtml from 'react-native-render-html';
 
-const StyledTextMessage = React.memo(({ content }: { content: string }) => {
-    console.log("content", content);
+const StyledTextMessage = React.memo(({ 
+  content, 
+  isOwnMessage 
+}: { 
+  content: string,
+  isOwnMessage?: boolean
+}) => {
   const { width } = Dimensions.get('window');
   const maxWidth = width * 0.75;
   
@@ -13,7 +18,11 @@ const StyledTextMessage = React.memo(({ content }: { content: string }) => {
   if (!isHTML) {
     // Plain text - render normally with link detection
     return (
-      <Text className="text-base leading-[22px] text-black">
+      <Text style={{ 
+        fontSize: 16, 
+        lineHeight: 22, 
+        color: '#111B21' 
+      }}>
         {content}
       </Text>
     );
@@ -36,7 +45,7 @@ const StyledTextMessage = React.memo(({ content }: { content: string }) => {
         baseStyle={{
           fontSize: 16,
           lineHeight: 22,
-          color: '#000000',
+          color: '#111B21',
         }}
         tagsStyles={{
           body: {
@@ -106,7 +115,7 @@ const StyledTextMessage = React.memo(({ content }: { content: string }) => {
           style: {
             fontSize: 16,
             lineHeight: 22,
-            color: '#000000',
+            color: '#111B21',
           },
         }}
         renderersProps={{

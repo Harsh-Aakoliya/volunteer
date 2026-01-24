@@ -150,6 +150,11 @@ export function SocketProvider({ children }: SocketProviderProps) {
     // Connection changes
     const connSub = socketManager.on("connectionChange", ({ connected }) => {
       setState((prev) => ({ ...prev, isConnected: connected }));
+      // When socket connects, automatically request room data to sync with server
+      if (connected) {
+        console.log("📡 [SocketContext] Socket connected, requesting room data...");
+        socketManager.requestRoomData();
+      }
     });
     subscriptionIds.current.push(connSub);
 
@@ -214,6 +219,10 @@ export function SocketProvider({ children }: SocketProviderProps) {
               userId: r.lastMessage.senderId,
               userName: r.lastMessage.senderName,
             },
+            replyMessageId: r.lastMessage.replyMessageId,
+            replyMessageType: r.lastMessage.replyMessageType,
+            replyMessageText: r.lastMessage.replyMessageText,
+            replySenderName: r.lastMessage.replySenderName,
           } : undefined,
           unreadCount: r.unreadCount,
         }));

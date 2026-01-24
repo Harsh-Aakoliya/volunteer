@@ -64,6 +64,35 @@ const getInitials = (name: string): string => {
   return (words[0][0] + words[1][0]).toUpperCase();
 };
 
+// Strip HTML tags from text for preview display
+const stripHtmlTags = (html: string): string => {
+  if (!html) return "";
+  let text = html;
+  
+  // Replace block elements with newlines for better readability
+  text = text.replace(/<\/p>|<\/div>|<br\s*\/?>/gi, '\n');
+  
+  // Remove all HTML tags
+  text = text.replace(/<[^>]+>/g, '');
+  
+  // Decode common HTML entities
+  text = text
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&apos;/g, "'");
+  
+  // Clean up multiple spaces and newlines
+  text = text.replace(/[ \t]+/g, ' '); // Multiple spaces to single space
+  text = text.replace(/\n\s*\n/g, '\n'); // Multiple newlines to single newline
+  text = text.replace(/^\s+|\s+$/g, ''); // Trim start and end
+  
+  return text;
+};
+
 // ==================== TYPES ====================
 
 // Simplified RoomListItem using unified RoomData
@@ -79,6 +108,10 @@ interface RoomListItem {
     senderName: string;
     senderId: string;
     timestamp: string;
+    replyMessageId?: number;
+    replyMessageType?: string;
+    replyMessageText?: string;
+    replySenderName?: string;
   } | null;
   unreadCount: number;
 }
@@ -164,6 +197,26 @@ const RoomItem = memo(({ room, currentUserId, onPress, onLongPress }: RoomItemPr
   const hasUnread = room.unreadCount > 0;
   const scaleAnim = useRef(new Animated.Value(1)).current;
 
+  // Helper function to format reply preview for last message
+  const getReplyPreviewTextForLastMessage = (reply: { messageType: string; messageText: string }): string => {
+    switch (reply.messageType) {
+      case 'media':
+        if (reply.messageText && reply.messageText.trim() !== '') {
+          return stripHtmlTags(reply.messageText);
+        }
+        return '📷 Media';
+      case 'poll':
+        return '📊 Poll';
+      case 'table':
+        return '📋 Table';
+      case 'announcement':
+        return '📢 Announcement';
+      case 'text':
+      default:
+        return reply.messageText ? stripHtmlTags(reply.messageText) : 'Message';
+    }
+  };
+
   // Format message preview using unified lastMessage structure
   let messagePreview = "No messages yet";
   let previewPrefix = "";
@@ -172,7 +225,19 @@ const RoomItem = memo(({ room, currentUserId, onPress, onLongPress }: RoomItemPr
   if (room.lastMessage) {
     const isOwn = room.lastMessage.senderId === currentUserId;
     previewPrefix = isOwn ? "You: " : "";
-    messagePreview =(room.lastMessage.text);
+    
+    // Handle reply messages - show reply preview if exists
+    if (room.lastMessage.replyMessageId && room.lastMessage.replyMessageType) {
+      const replyPreview = getReplyPreviewTextForLastMessage({
+        messageType: room.lastMessage.replyMessageType,
+        messageText: room.lastMessage.replyMessageText || '',
+      });
+      messagePreview = `↩️ ${replyPreview}`;
+    } else {
+      // Strip HTML tags from message text for clean preview
+      messagePreview = stripHtmlTags(room.lastMessage.text);
+    }
+    
     isMediaMessage = room.lastMessage.messageType !== 'text';
   }
 
@@ -610,6 +675,10 @@ export default function ChatRoomsList() {
             senderName: r.lastMessage.sender?.userName || r.lastMessage.senderName || 'Unknown',
             senderId: r.lastMessage.sender?.userId || r.lastMessage.senderId || '',
             timestamp: r.lastMessage.createdAt || r.lastMessage.timestamp || '',
+            replyMessageId: r.lastMessage.replyMessageId,
+            replyMessageType: r.lastMessage.replyMessageType,
+            replyMessageText: r.lastMessage.replyMessageText,
+            replySenderName: r.lastMessage.replySenderName,
           } : null,
           unreadCount: r.unreadCount || 0,
         }));
@@ -686,8 +755,16 @@ export default function ChatRoomsList() {
       // Request fresh data via socket
       setIsSyncing(true);
 
-      if (isConnected) {
+      // Always request fresh data when screen is focused, even if socket is not connected yet
+      // The socket will send data when it connects
+      if (isConnected && isInitialized) {
         refreshRoomData();
+      } else if (!isInitialized) {
+        // Initialize socket if not already initialized
+        initialize().then(() => {
+          // After initialization, request room data
+          refreshRoomData();
+        });
       }
 
       const handleNotification = (data: { roomId: string }) => {
@@ -698,7 +775,7 @@ export default function ChatRoomsList() {
       return () => {
         eventEmitter.off("openChatRoom", handleNotification);
       };
-    }, [isConnected, loadFromCache, refreshRoomData])
+    }, [isConnected, isInitialized, loadFromCache, refreshRoomData, initialize])
   );
 
   // ==================== HANDLERS ====================

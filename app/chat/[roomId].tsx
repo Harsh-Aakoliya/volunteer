@@ -71,6 +71,7 @@ import PollMessage from '@/components/chat/PollMessage';
 import { useVideoCall } from '@/contexts/VideoCallContext';
 import RenderHtml from 'react-native-render-html';
 import { Dimensions } from 'react-native';
+import { getReplyPreviewText } from '@/utils/messageHelpers';
 
 // ==================== TYPES ====================
 
@@ -93,10 +94,10 @@ const systemFonts = [...defaultSystemFonts, 'sans-serif', 'sans-serif-medium'];
 
 const StyledTextMessage = React.memo(({ 
   content, 
-  isOwnMessage 
+  isOwnMessage
 }: { 
   content: string, 
-  isOwnMessage: boolean 
+  isOwnMessage: boolean
 }) => {
   const { width } = useWindowDimensions();
   const contentWidth = width * 0.75; 
@@ -108,18 +109,23 @@ const StyledTextMessage = React.memo(({
 
   // Check if HTML
   const isHTML = /<[a-z][\s\S]*>/i.test(cleanContent);
-  
   if (!isHTML) {
+    // Plain text - render normally
     return (
-      <Text className="text-base leading-[22px] text-black">
+      <Text style={{ 
+        fontSize: 16, 
+        lineHeight: 22, 
+        color: '#111B21' 
+      }}>
         {cleanContent}
       </Text>
     );
   }
 
+
   // Define defaults
-  const defaultTextColor = '#000000';
-  const linkColor = isOwnMessage ? '#0000FF' : '#0088CC';
+  const defaultTextColor = '#111B21';
+  const linkColor = '#0088CC'; // WhatsApp Blue for links
 
   return (
     <View>
@@ -149,7 +155,7 @@ const StyledTextMessage = React.memo(({
           em: { fontStyle: 'italic' },
           
           // Links
-          a: { color: linkColor, textDecorationLine: 'underline' },
+          a: { color: linkColor, textDecorationLine: 'none' },
           
           // Lists
           ul: { paddingLeft: 20, marginTop: 4, marginBottom: 4 },
@@ -252,33 +258,43 @@ const MessageItem = React.memo(({
     messageStatus = "sending";
   }
 
-  // --- Dynamic border radius logic for WhatsApp-like tail ---
   const bubbleBorderRadius = useMemo(() => {
-    const defaultRadius = 18;
-    const pointyRadius = 4;
+    const defaultRadius = 10; // More compact curve
+    const tailRadius = 0;     // Sharp corner for the tail
 
     if (hasTail) {
       if (isOwnMessage) {
         return {
           borderTopLeftRadius: defaultRadius,
-          borderTopRightRadius: pointyRadius,
+          borderTopRightRadius: tailRadius, // Sharp top-right
           borderBottomLeftRadius: defaultRadius,
           borderBottomRightRadius: defaultRadius,
         };
       } else {
         return {
-          borderTopLeftRadius: pointyRadius,
+          borderTopLeftRadius: tailRadius, // Sharp top-left
           borderTopRightRadius: defaultRadius,
           borderBottomLeftRadius: defaultRadius,
           borderBottomRightRadius: defaultRadius,
         };
       }
     } else {
-      return {
-        borderRadius: defaultRadius,
-      };
+      return { borderRadius: defaultRadius };
     }
   }, [hasTail, isOwnMessage]);
+
+  const bubbleColor = isOwnMessage ? '#E7FFDB' : '#FFFFFF';
+  const bubbleBorderColor = isOwnMessage ? '#4CAF50' : '#0088CC';
+  // Use a very subtle shadow or no shadow (WhatsApp is mostly flat)
+  const shadowStyle = {
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08, // Very light shadow
+    shadowRadius: 1,
+    elevation: 1, // Minimal elevation for Android
+  };
+
+  const timeText = formatTime(message.createdAt || "");
 
   return (
     <View>
@@ -351,110 +367,135 @@ const MessageItem = React.memo(({
                     {isSelected && <View className="absolute inset-0 bg-[#0088CC]/15 -mx-4" />}
 
                     <Animated.View
-                      className={`max-w-[75%] px-3 pt-2 pb-1.5 mx-2 shadow-sm ${
-                        isOwnMessage 
-                          ? 'self-end bg-[#DCF8C6] ml-[60px]' 
-                          : 'self-start bg-white mr-[60px]'
-                      }`}
                       style={[
+                        bubbleBorderRadius,
+                        shadowStyle,
                         {
-                          ...bubbleBorderRadius,
-                          marginTop: hasTail ? 8 : 2, 
-                          marginBottom: 2, 
+                          backgroundColor: bubbleColor,
+                          alignSelf: isOwnMessage ? 'flex-end' : 'flex-start',
+                          marginLeft: isOwnMessage ? 60 : 10,
+                          marginRight: isOwnMessage ? 10 : 60,
+                          marginTop: hasTail ? 4 : 2, // Tighter vertical spacing
+                          marginBottom: 2,
+                          paddingTop: 6,
+                          paddingHorizontal: 8, // Tighter horizontal padding (WhatsApp is ~8px)
+                          paddingBottom: 6,     // Important: Reduced bottom padding
+                          minWidth: 90,         // Ensure space for time
+                          maxWidth: '80%',      
                         }
                       ]}
                     >
-                      {message.replyMessageId && (
-                        <View
-                          className={`py-1.5 px-2.5 mb-1.5 rounded-lg border-l-[3px] ${
-                            isOwnMessage 
-                              ? 'bg-black/5 border-l-[#4CAF50]' 
-                              : 'bg-black/5 border-l-[#0088CC]'
-                          }`}
-                        >
-                          <Text className="text-xs font-semibold text-[#0088CC] mb-0.5">
-                            {message.replySenderName}
-                          </Text>
-                          <Text className="text-[13px] text-[#666]" numberOfLines={1}>
-                            {
-                              message.replyMessageType === "text" ? message.replyMessageText : 
-                              message.replyMessageType === "media" ? "Media":
-                              message.replyMessageType === "poll" ? "Poll" : 
-                              message.replyMessageType === "table" ? "Table" : 
-                              message.replyMessageType === "announcement" ? "Announcement" : "Message"
-                            }
-                          </Text>
-                        </View>
-                      )}
+                      {/* Message Content Wrapper - reserves space for timestamp at bottom */}
+                      <View style={{ paddingBottom: 20, paddingRight: isOwnMessage ? 50 : 0 }}>
+                        {message.replyMessageId && (
+                          <View
+                            className={`py-1.5 px-2.5 mb-1.5 rounded-lg border-l-[3px] ${
+                              isOwnMessage 
+                                ? 'bg-black/5 border-l-[#4CAF50]' 
+                                : 'bg-black/5 border-l-[#0088CC]'
+                            }`}
+                          >
+                            <Text className="text-xs font-semibold text-[#0088CC] mb-0.5">
+                              {message.replySenderName}
+                            </Text>
+                            <Text className="text-[13px] text-[#666]" numberOfLines={1}>
+                              {getReplyPreviewText({
+                                messageType: message.replyMessageType,
+                                messageText: message.replyMessageText,
+                              } as Message)}
+                            </Text>
+                          </View>
+                        )}
 
-                      {/* CONDITIONAL SENDER NAME DISPLAY */}
-                      {showSenderName && (
-                        <Text className="text-[13px] font-semibold text-[#0088CC] mb-1">
-                          {message.senderName || "Unknown"}
-                        </Text>
-                      )}
+                        {/* CONDITIONAL SENDER NAME DISPLAY */}
+                        {showSenderName && (
+                          <Text className="text-[13px] font-semibold text-[#0088CC] mb-1">
+                            {message.senderName || "Unknown"}
+                          </Text>
+                        )}
 
                         {message.messageType === "text" && (
                           <StyledTextMessage 
                             content={message.messageText} 
-                            isOwnMessage={isOwnMessage} // <--- ADD THIS PROP
-                          />
-                        )}
-
-                      {message.messageType === "media" && (
-                        <View>
-                          <MediaGrid 
-                            messageId={message.id}
-                            onMediaPress={handleMediaGridPress}
-                            mediaFilesId={message.mediaFilesId || 0}
                             isOwnMessage={isOwnMessage}
                           />
-                        </View>
-                      )}
-                      {/* Show caption/message text if it exists */}
-                      {message.messageText && message.messageText.trim() !== "" && (
-                        <StyledTextMessage 
-                          content={message.messageText} 
-                          isOwnMessage={isOwnMessage}
-                        />
-                      )}
-                      {message.messageType === "poll" && (
-                        <Text className="text-base leading-[22px] text-black">
-                          shared poll: {message.pollId}
-                        </Text>
-                      )}
-                      {/* {message.messageType === "poll" && message.pollId && (
-                        <PollMessage
-                          pollId={message.pollId}
-                          currentUserId={currentUser?.userId || ''}
-                          isOwnMessage={isOwnMessage}
-                          onViewResults={(pollId) => {
-                            console.log("view results for poll", pollId);
-                          }}
-                        />
-                      )} */}
-                      {message.messageType === "table" && (
-                        <Text className="text-base leading-[22px] text-black">
-                          shared table: {message.tableId}
-                        </Text>
-                      )}
-                      {message.messageType === "announcement" && (
-                        <Text className="text-base leading-[22px] text-black">
-                          {message.messageText || "shared an announcement"}
-                        </Text>
-                      )}
-
-                      <View className="flex-row items-center justify-end mt-1 gap-1">
-                        {message.isEdited && (
-                          <Text className="text-[11px] text-[#8E8E93] italic">edited</Text>
                         )}
-                        <Text className="text-[11px] text-[#8E8E93]">
-                          {formatTime(message.createdAt || "")}
+
+                        {message.messageType === "media" && (
+                          <View>
+                            <MediaGrid 
+                              messageId={message.id}
+                              onMediaPress={handleMediaGridPress}
+                              mediaFilesId={message.mediaFilesId || 0}
+                              isOwnMessage={isOwnMessage}
+                            />
+                          </View>
+                        )}
+                        {/* Show caption/message text if it exists */}
+                        {message.messageText && message.messageText.trim() !== "" && message.messageType === "media" && (
+                          <View style={{ marginTop: 4 }}>
+                            <StyledTextMessage 
+                              content={message.messageText} 
+                              isOwnMessage={isOwnMessage}
+                            />
+                          </View>
+                        )}
+                        {message.messageType === "poll" && (
+                          <Text className="text-base leading-[22px] text-black">
+                            shared poll: {message.pollId}
+                          </Text>
+                        )}
+                        {/* {message.messageType === "poll" && message.pollId && (
+                          <PollMessage
+                            pollId={message.pollId}
+                            currentUserId={currentUser?.userId || ''}
+                            isOwnMessage={isOwnMessage}
+                            onViewResults={(pollId) => {
+                              console.log("view results for poll", pollId);
+                            }}
+                          />
+                        )} */}
+                        {message.messageType === "table" && (
+                          <Text className="text-base leading-[22px] text-black">
+                            shared table: {message.tableId}
+                          </Text>
+                        )}
+                        {message.messageType === "announcement" && (
+                          <Text className="text-base leading-[22px] text-black">
+                            {message.messageText || "shared an announcement"}
+                          </Text>
+                        )}
+                      </View>
+
+                      {/* Timestamp and Status - Absolutely positioned at bottom-right */}
+                      <View style={{ 
+                        position: 'absolute', 
+                        bottom: 4, 
+                        right: 6, 
+                        flexDirection: 'row', 
+                        alignItems: 'center',
+                        justifyContent: 'flex-end',
+                        backgroundColor: 'transparent',
+                      }}>
+                        {message.isEdited && (
+                          <Text style={{ 
+                            fontSize: 11, 
+                            color: '#667781',
+                            fontStyle: 'italic',
+                            marginRight: 4
+                          }}>
+                            edited
+                          </Text>
+                        )}
+                        <Text style={{ 
+                          fontSize: 11, 
+                          color: '#667781', // WhatsApp Time Grey
+                          marginRight: isOwnMessage ? 4 : 0 
+                        }}>
+                          {timeText}
                         </Text>
                         {isOwnMessage && (
-                          <View className="ml-0.5">
-                            <MessageStatus status={messageStatus} />
-                          </View>
+                          <MessageStatus status={messageStatus} />
                         )}
                       </View>
                     </Animated.View>
@@ -1190,26 +1231,10 @@ const handleDeselectMessage = useCallback((message: Message) => {
 
       const tempId = `temp-${Date.now()}`;
       
-      // Format reply text based on message type
-      let formattedReplyText = replyToMessage?.messageText;
+      // Format reply text based on message type using utility function
+      let formattedReplyText = '';
       if (replyToMessage) {
-        switch (replyToMessage.messageType) {
-          case 'poll':
-            formattedReplyText = '📊 Poll';
-            break;
-          case 'media':
-            formattedReplyText = '📷 Media';
-            break;
-          case 'table':
-            formattedReplyText = '📋 Table';
-            break;
-          case 'announcement':
-            formattedReplyText = '📢 Announcement';
-            break;
-          default:
-            // For text messages, keep the original text (truncated if needed)
-            formattedReplyText = replyToMessage.messageText;
-        }
+        formattedReplyText = getReplyPreviewText(replyToMessage);
       }
       
       const optimisticMessage: Message = {

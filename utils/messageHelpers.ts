@@ -99,9 +99,62 @@ export const getMessageStatus = (message: Message): MessageStatus => {
   return 'sent';
 };
 
+// Strip HTML tags from text for preview display
+const stripHtmlTags = (html: string): string => {
+  if (!html) return "";
+  let text = html;
+  
+  // Replace block elements with newlines for better readability
+  text = text.replace(/<\/p>|<\/div>|<br\s*\/?>/gi, '\n');
+  
+  // Remove all HTML tags
+  text = text.replace(/<[^>]+>/g, '');
+  
+  // Decode common HTML entities
+  text = text
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&apos;/g, "'");
+  
+  // Clean up multiple spaces and newlines
+  text = text.replace(/[ \t]+/g, ' '); // Multiple spaces to single space
+  text = text.replace(/\n\s*\n/g, '\n'); // Multiple newlines to single newline
+  text = text.replace(/^\s+|\s+$/g, ''); // Trim start and end
+  
+  return text;
+};
+
 export const getReplyPreviewText = (message: Message): string => {
-  if (message.messageType === 'media') return '📁 Media Files';
-  if (message.messageType === 'poll') return '📊 Poll';
-  if (message.messageType === 'table') return '📋 Table';
-  return message.messageText || 'Message';
+  if (!message) return 'Message';
+  
+  switch (message.messageType) {
+    case 'media':
+      // For media, show messageText if exists (caption), else show "Media"
+      if (message.messageText && message.messageText.trim() !== '') {
+        return stripHtmlTags(message.messageText);
+      }
+      return '📷 Media';
+    
+    case 'poll':
+      return '📊 Poll';
+    
+    case 'table':
+      return '📋 Table';
+    
+    case 'announcement':
+      return '📢 Announcement';
+    
+    case 'text':
+    default:
+      // For text messages, strip HTML and return
+      if (message.messageText) {
+        const cleaned = stripHtmlTags(message.messageText);
+        return cleaned || 'Message';
+      }
+      return 'Message';
+  }
 };

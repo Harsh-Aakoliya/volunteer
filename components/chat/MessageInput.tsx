@@ -14,6 +14,7 @@ import {
   ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { getReplyPreviewText } from '@/utils/messageHelpers';
 
 // ----------------------------------------------------------------------
 // 1. Conditional Imports for Native Rich Editor
@@ -456,7 +457,7 @@ export default function MessageInput({
                   {replyToMessage.senderId === currentUser?.userId ? 'You' : replyToMessage.senderName}
                 </Text>
                 <Text style={styles.replyText} numberOfLines={1}>
-                  {replyToMessage.messageText}
+                  {getReplyPreviewText(replyToMessage)}
                 </Text>
               </View>
               <TouchableOpacity onPress={onCancelReply} style={styles.replyClose}>
@@ -581,6 +582,7 @@ export default function MessageInput({
               actions.insertLink,
               actions.insertBulletsList,
               actions.insertOrderedList,
+              actions.alignLeft,
               actions.alignCenter,
             ]}
             iconMap={{
