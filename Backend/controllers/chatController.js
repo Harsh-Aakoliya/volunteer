@@ -296,8 +296,7 @@ async getChatRooms(req, res) {
         LEFT JOIN chatmessages rm ON m."replyMessageId" = rm."id"
         LEFT JOIN "SevakMaster" ru ON rm."senderId"::integer = ru."seid"
         WHERE m."roomId" = $1
-        ORDER BY m."createdAt" DESC
-        LIMIT 20`,
+        ORDER BY m."createdAt" DESC`,
         [roomIdInt]
       );
       // console.log("messages result in getChatRoomDetails", messagesResult.rows);

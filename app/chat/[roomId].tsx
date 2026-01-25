@@ -812,8 +812,14 @@ const handleDeselectMessage = useCallback((message: Message) => {
   }, [messages.length]);
 
   const handleScroll = useCallback((event: any) => {
-    const { contentOffset } = event.nativeEvent;
-    const isAtBottom = contentOffset.y < 100;
+    const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+    // For inverted list, we're at bottom when contentOffset.y is near 0
+    // But we need to account for the content size
+    const scrollPosition = contentOffset.y;
+    const contentHeight = contentSize.height;
+    const viewHeight = layoutMeasurement.height;
+    // If we're scrolled up more than 200px from the bottom (which is offset 0 in inverted list)
+    const isAtBottom = scrollPosition < 200;
     setShowScrollToBottom(!isAtBottom && messages.length > 10);
   }, [messages.length]);
 
@@ -1818,7 +1824,7 @@ const TelegramHeader = React.memo(({
       )}
 
       {/* --- MESSAGES LIST --- */}
-      <View className="flex-1 bg-[#E5DDD5]">
+      <View className="flex-1 bg-[#E5DDD5]" style={{ position: 'relative' }}>
         <FlatList
           ref={flatListRef}
           data={preparedListData}
@@ -1842,6 +1848,33 @@ const TelegramHeader = React.memo(({
             </View>
           }
         />
+        
+        {/* Scroll to Bottom Button */}
+        {showScrollToBottom && (
+          <TouchableOpacity
+            onPress={scrollToBottom}
+            style={{
+              position: 'absolute',
+              bottom: 60,
+              right: 16,
+              width: 48,
+              height: 48,
+              borderRadius: 24,
+              backgroundColor: '#0088CC',
+              justifyContent: 'center',
+              alignItems: 'center',
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 2 },
+              shadowOpacity: 0.25,
+              shadowRadius: 3.84,
+              elevation: 5,
+              zIndex: 1000,
+            }}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="arrow-down" size={24} color="#FFFFFF" />
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* --- MESSAGE INPUT SECTION --- */}
