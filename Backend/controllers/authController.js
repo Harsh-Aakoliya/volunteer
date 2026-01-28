@@ -44,7 +44,6 @@ async login(req, res){
 
     // Verify password (comparing plain text - consider using bcrypt for production)
     if (sevak.password !== password) {
-      console.log("Incorrect password");
       return res.status(401).json({
         success: false,
         message: "Incorrect password. Please check and try again.",

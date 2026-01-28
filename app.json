@@ -2,9 +2,9 @@
     "expo": {
       "name": "Sevak",
       "slug": "Sevak",
-      "version": "1.0.12",
+      "version": "1.0.13",
       "userInterfaceStyle": "automatic",
-      "icon": "./assets/images/appicon1.png",
+      "icon": "./assets/images/finallogo.png",
       "newArchEnabled": true,
       "web": {
         "bundler": "metro",
@@ -60,7 +60,7 @@
           "RECORD_AUDIO"
         ],
         "adaptiveIcon": {
-          "foregroundImage": "./assets/images/appicon1.png",
+          "foregroundImage": "./assets/images/finallogo.png",
           "backgroundColor": "#FFFFFF"
         }
       },

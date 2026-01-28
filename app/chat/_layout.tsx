@@ -64,6 +64,11 @@ export default function ChatLayout() {
         options={{ headerShown: false }}
       />
 
+      <Stack.Screen
+        name="poll-votes"
+        options={{ headerShown: false }}
+      />
+
       {/* <Stack.Screen
         name="video-call"
         options={{

@@ -456,7 +456,11 @@ export default function MessageInput({
                 <Text style={styles.replySender}>
                   {replyToMessage.senderId === currentUser?.userId ? 'You' : replyToMessage.senderName}
                 </Text>
-                <Text style={styles.replyText} numberOfLines={1}>
+                <Text
+                  style={styles.replyText}
+                  numberOfLines={3}
+                  ellipsizeMode="tail"
+                >
                   {getReplyPreviewText(replyToMessage)}
                 </Text>
               </View>

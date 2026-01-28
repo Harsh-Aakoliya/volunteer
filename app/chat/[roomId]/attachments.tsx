@@ -16,11 +16,14 @@ import {
   SafeAreaView,
   KeyboardAvoidingView,
   useWindowDimensions,
+  Modal,
+  ScrollView,
+  Animated,
+  Easing,
 } from "react-native";
 import { BackHandler } from "react-native";
 
 import * as MediaLibrary from "expo-media-library";
-import * as FileSystem from "expo-file-system";
 import { Ionicons } from "@expo/vector-icons";
 import Svg, { Path } from "react-native-svg";
 import axios from "axios";
@@ -30,13 +33,30 @@ import { useSocket } from "@/contexts/SocketContext";
 import { router, useLocalSearchParams } from "expo-router";
 import { TabView, TabBar } from "react-native-tab-view";
 import PollContent from "@/components/chat/PollContent";
-import AnnouncementContent from "@/components/chat/AnnouncementContent";
 import CameraScreen from "@/components/chat/CameraScreen";
+import { Video, ResizeMode } from "expo-av";
 
-const { width: SCREEN_WIDTH } = Dimensions.get("window");
+// ---------- RICH TEXT EDITOR IMPORTS ----------
+let RichEditor: any = null;
+let RichToolbar: any = null;
+let actions: any = {};
+
+if (Platform.OS !== 'web') {
+  try {
+    const richEditorModule = require('react-native-pell-rich-editor');
+    RichEditor = richEditorModule.RichEditor;
+    RichToolbar = richEditorModule.RichToolbar;
+    actions = richEditorModule.actions;
+  } catch (e) {
+    console.warn('react-native-pell-rich-editor not available');
+  }
+}
+
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 const NUM_COLUMNS = 3;
 const ITEM_MARGIN = 2;
 const ITEM_SIZE = (SCREEN_WIDTH - ITEM_MARGIN * (NUM_COLUMNS + 1)) / NUM_COLUMNS;
+const SELECTED_THUMB_SIZE = 64;
 
 // ---------- TYPES ----------
 interface SelectedMedia {
@@ -48,7 +68,7 @@ interface SelectedMedia {
   order: number;
 }
 
-type TabType = "gallery" | "poll" | "announcement";
+type TabType = "gallery" | "poll";
 type GalleryItem = { type: "camera" } | { type: "media"; asset: MediaLibrary.Asset };
 
 // ---------- ICONS ----------
@@ -69,17 +89,6 @@ const PollIcon = ({ size = 24, color = "#fff" }: { size?: number; color?: string
     />
   </Svg>
 );
-
-const AnnouncementIcon = ({ size = 24, color = "#fff" }: { size?: number; color?: string }) => (
-  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-    <Path
-      d="M18 11v2h4v-2h-4zm-2 6.61c.96.71 2.21 1.65 3.2 2.39.4-.53.8-1.07 1.2-1.6-.99-.74-2.24-1.68-3.2-2.4-.4.54-.8 1.08-1.2 1.61zM20.4 5.6c-.4-.53-.8-1.07-1.2-1.6-.99.74-2.24 1.68-3.2 2.4.4.53.8 1.07 1.2 1.6.96-.72 2.21-1.65 3.2-2.4zM4 9c-1.1 0-2 .9-2 2v2c0 1.1.9 2 2 2h1v4h2v-4h1l5 3V6L8 9H4zm11.5 3c0-1.33-.58-2.53-1.5-3.35v6.69c.92-.81 1.5-2.01 1.5-3.34z"
-      fill={color}
-    />
-  </Svg>
-);
-
-
 
 // ---------- HELPER FUNCTIONS ----------
 const formatDuration = (seconds: number): string => {
@@ -119,6 +128,329 @@ const getMimeType = (filename: string, mediaType: "photo" | "video"): string => 
   }
 };
 
+const cleanHtml = (html: string) => {
+  if (!html) return "";
+  let text = html;
+  text = text.replace(
+    /<font\s+color=["']?((?:#[0-9a-fA-F]{3,6}|rgb\([^)]+\)|[a-z]+))["']?>(.*?)<\/font>/gi,
+    '<span style="color:$1">$2</span>'
+  );
+  text = text.replace(/^(<br\s*\/?>|&nbsp;|\s|<div>\s*<\/div>)+/, '');
+  text = text.replace(/(<br\s*\/?>|&nbsp;|\s|<div>\s*<\/div>)+$/, '');
+  return text.trim();
+};
+
+const stripHtml = (html: string) => {
+  if (!html) return "";
+  let text = html.replace(/<\/p>|<\/div>|<br\s*\/?>/gi, '\n');
+  text = text.replace(/<[^>]+>/g, '');
+  text = text.replace(/&nbsp;/g, ' ');
+  return text.trim();
+};
+
+// ---------- COLOR PICKER COMPONENT ----------
+const ColorPicker = ({ onSelect, type }: { onSelect: (color: string) => void; type: 'text' | 'background' }) => {
+  const colors = [
+    '#000000', '#FF0000', '#00FF00', '#0000FF', '#FFFF00',
+    '#FF00FF', '#00FFFF', '#FFA500', '#800080', '#008000',
+    '#FFC0CB', '#A52A2A', '#808080', '#FFFFFF', '#2AABEE'
+  ];
+
+  return (
+    <View style={styles.colorPickerContainer}>
+      <Text style={styles.colorPickerTitle}>
+        {type === 'text' ? 'Text Color' : 'Background Color'}
+      </Text>
+      <View style={styles.colorGrid}>
+        {colors.map((color) => (
+          <TouchableOpacity
+            key={color}
+            onPress={() => onSelect(color)}
+            style={[
+              styles.colorSwatch,
+              { backgroundColor: color },
+              color === '#FFFFFF' && styles.whiteSwatchBorder
+            ]}
+          />
+        ))}
+      </View>
+    </View>
+  );
+};
+
+// ---------- MEDIA PREVIEW MODAL ----------
+const MediaPreviewModal = React.memo(({
+  visible,
+  asset,
+  onClose,
+  onSelect,
+  isSelected,
+  selectedOrder,
+}: {
+  visible: boolean;
+  asset: MediaLibrary.Asset | null;
+  onClose: () => void;
+  onSelect: () => void;
+  isSelected: boolean;
+  selectedOrder: number | null;
+}) => {
+  const videoRef = useRef<Video>(null);
+
+  if (!asset) return null;
+
+  const isVideo = asset.mediaType === "video";
+
+  return (
+    <Modal
+      visible={visible}
+      animationType="fade"
+      transparent={false}
+      onRequestClose={onClose}
+    >
+      <SafeAreaView style={styles.previewModalContainer}>
+        {/* Header */}
+        <View style={styles.previewModalHeader}>
+          <TouchableOpacity onPress={onClose} style={styles.previewCloseButton}>
+            <Ionicons name="close" size={28} color="#fff" />
+          </TouchableOpacity>
+          <View style={styles.previewHeaderCenter}>
+            <Text style={styles.previewHeaderTitle}>
+              {isVideo ? 'Video' : 'Photo'}
+            </Text>
+            {isVideo && asset.duration && (
+              <Text style={styles.previewHeaderSubtitle}>
+                {formatDuration(asset.duration)}
+              </Text>
+            )}
+          </View>
+          <TouchableOpacity
+            onPress={onSelect}
+            style={[
+              styles.previewSelectButton,
+              isSelected && styles.previewSelectButtonActive
+            ]}
+          >
+            {isSelected ? (
+              <View style={styles.previewSelectedBadge}>
+                <Text style={styles.previewSelectedNumber}>{selectedOrder}</Text>
+              </View>
+            ) : (
+              <Ionicons name="add-circle-outline" size={28} color="#fff" />
+            )}
+          </TouchableOpacity>
+        </View>
+
+        {/* Content */}
+        <View style={styles.previewModalContent}>
+          {isVideo ? (
+            <Video
+              ref={videoRef}
+              source={{ uri: asset.uri }}
+              style={styles.previewVideo}
+              resizeMode={ResizeMode.CONTAIN}
+              useNativeControls
+              shouldPlay={visible}
+              isLooping={false}
+            />
+          ) : (
+            <Image
+              source={{ uri: asset.uri }}
+              style={styles.previewImage}
+              resizeMode="contain"
+            />
+          )}
+        </View>
+
+        {/* Bottom action */}
+        <View style={styles.previewModalFooter}>
+          <TouchableOpacity
+            onPress={() => {
+              onSelect();
+              onClose();
+            }}
+            style={[
+              styles.previewActionButton,
+              isSelected && styles.previewActionButtonDeselect
+            ]}
+          >
+            <Ionicons
+              name={isSelected ? "checkmark-circle" : "add-circle"}
+              size={24}
+              color="#fff"
+            />
+            <Text style={styles.previewActionText}>
+              {isSelected ? 'Deselect' : 'Select'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    </Modal>
+  );
+});
+
+// ---------- SELECTED MEDIA CAROUSEL MODAL ----------
+const SelectedMediaCarouselModal = React.memo(({
+  visible,
+  selectedMedia,
+  initialIndex,
+  onClose,
+  onRemove,
+}: {
+  visible: boolean;
+  selectedMedia: SelectedMedia[];
+  initialIndex: number;
+  onClose: () => void;
+  onRemove: (id: string) => void;
+}) => {
+  const flatListRef = useRef<FlatList>(null);
+  const [currentIndex, setCurrentIndex] = useState(initialIndex);
+
+  useEffect(() => {
+    if (visible && initialIndex >= 0) {
+      setCurrentIndex(initialIndex);
+      setTimeout(() => {
+        flatListRef.current?.scrollToIndex({
+          index: initialIndex,
+          animated: false,
+        });
+      }, 100);
+    }
+  }, [visible, initialIndex]);
+
+  const onViewableItemsChanged = useCallback(({ viewableItems }: any) => {
+    if (viewableItems.length > 0 && viewableItems[0].index !== null) {
+      setCurrentIndex(viewableItems[0].index);
+    }
+  }, []);
+
+  const viewabilityConfig = useRef({
+    itemVisiblePercentThreshold: 50,
+  }).current;
+
+  const getItemLayout = useCallback(
+    (_: any, index: number) => ({
+      length: SCREEN_WIDTH,
+      offset: SCREEN_WIDTH * index,
+      index,
+    }),
+    []
+  );
+
+  const handleScrollToIndexFailed = useCallback(
+    (info: { index: number }) => {
+      setTimeout(() => {
+        flatListRef.current?.scrollToIndex({
+          index: info.index,
+          animated: false,
+        });
+      }, 500);
+    },
+    []
+  );
+
+  const currentMedia = selectedMedia[currentIndex];
+
+  const renderItem = useCallback(({ item }: { item: SelectedMedia }) => {
+    const isVideo = item.mediaType === "video";
+
+    return (
+      <View style={styles.carouselItem}>
+        {isVideo ? (
+          <Video
+            source={{ uri: item.uri }}
+            style={styles.carouselVideo}
+            resizeMode={ResizeMode.CONTAIN}
+            useNativeControls
+            shouldPlay={false}
+          />
+        ) : (
+          <Image
+            source={{ uri: item.uri }}
+            style={styles.carouselImage}
+            resizeMode="contain"
+          />
+        )}
+      </View>
+    );
+  }, []);
+
+  if (!visible || selectedMedia.length === 0) return null;
+
+  return (
+    <Modal
+      visible={visible}
+      animationType="slide"
+      transparent={false}
+      onRequestClose={onClose}
+    >
+      <SafeAreaView style={styles.carouselModalContainer}>
+        {/* Header */}
+        <View style={styles.carouselModalHeader}>
+          <TouchableOpacity onPress={onClose} style={styles.carouselCloseButton}>
+            <Ionicons name="close" size={28} color="#fff" />
+          </TouchableOpacity>
+          <View style={styles.carouselHeaderCenter}>
+            <Text style={styles.carouselHeaderTitle}>
+              {currentIndex + 1} / {selectedMedia.length}
+            </Text>
+          </View>
+          <TouchableOpacity
+            onPress={() => {
+              if (currentMedia) {
+                onRemove(currentMedia.id);
+                if (selectedMedia.length === 1) {
+                  onClose();
+                }
+              }
+            }}
+            style={styles.carouselDeleteButton}
+          >
+            <Ionicons name="trash-outline" size={24} color="#ef4444" />
+          </TouchableOpacity>
+        </View>
+
+        {/* Carousel */}
+        <FlatList
+          ref={flatListRef}
+          data={selectedMedia}
+          renderItem={renderItem}
+          keyExtractor={(item) => item.id}
+          horizontal
+          pagingEnabled
+          showsHorizontalScrollIndicator={false}
+          onViewableItemsChanged={onViewableItemsChanged}
+          viewabilityConfig={viewabilityConfig}
+          getItemLayout={getItemLayout}
+          onScrollToIndexFailed={handleScrollToIndexFailed}
+          initialNumToRender={1}
+          maxToRenderPerBatch={2}
+          windowSize={3}
+          removeClippedSubviews={true}
+          bounces={false}
+          decelerationRate="fast"
+          snapToInterval={SCREEN_WIDTH}
+          snapToAlignment="start"
+        />
+
+        {/* Pagination dots */}
+        {selectedMedia.length > 1 && selectedMedia.length <= 10 && (
+          <View style={styles.carouselDots}>
+            {selectedMedia.map((_, index) => (
+              <View
+                key={index}
+                style={[
+                  styles.carouselDot,
+                  index === currentIndex && styles.carouselDotActive,
+                ]}
+              />
+            ))}
+          </View>
+        )}
+      </SafeAreaView>
+    </Modal>
+  );
+});
+
 // ---------- CAMERA ITEM COMPONENT ----------
 const CameraItem = React.memo(({ onPress }: { onPress: () => void }) => (
   <TouchableOpacity
@@ -136,10 +468,12 @@ const MediaItem = React.memo(({
   item,
   selectedOrder,
   onSelect,
+  onPreview,
 }: {
   item: MediaLibrary.Asset;
   selectedOrder: number | null;
   onSelect: (asset: MediaLibrary.Asset) => void;
+  onPreview: (asset: MediaLibrary.Asset) => void;
 }) => {
   const isSelected = selectedOrder !== null;
   const isVideo = item.mediaType === "video";
@@ -147,7 +481,7 @@ const MediaItem = React.memo(({
   return (
     <TouchableOpacity
       style={styles.mediaItem}
-      onPress={() => onSelect(item)}
+      onPress={() => onPreview(item)}
       activeOpacity={0.7}
     >
       <Image
@@ -155,7 +489,7 @@ const MediaItem = React.memo(({
         style={styles.mediaImage}
         resizeMode="cover"
       />
-      
+
       {isVideo && (
         <View style={styles.videoOverlay}>
           <View style={styles.videoPlayIconContainer}>
@@ -163,7 +497,7 @@ const MediaItem = React.memo(({
           </View>
         </View>
       )}
-      
+
       {isVideo && (
         <View style={styles.durationBadge}>
           <Ionicons name="videocam" size={12} color="white" />
@@ -173,11 +507,64 @@ const MediaItem = React.memo(({
         </View>
       )}
 
-      <View style={[styles.selectionBubble, isSelected && styles.selectionBubbleSelected]}>
+      {/* Selection bubble - separate touch handler */}
+      <TouchableOpacity
+        style={[styles.selectionBubble, isSelected && styles.selectionBubbleSelected]}
+        onPress={(e) => {
+          e.stopPropagation();
+          onSelect(item);
+        }}
+        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+      >
         {isSelected && (
           <Text style={styles.selectionNumber}>{selectedOrder}</Text>
         )}
+      </TouchableOpacity>
+    </TouchableOpacity>
+  );
+});
+
+// ---------- SELECTED MEDIA THUMBNAIL ----------
+const SelectedMediaThumbnail = React.memo(({
+  item,
+  onPress,
+  onRemove,
+}: {
+  item: SelectedMedia;
+  onPress: () => void;
+  onRemove: () => void;
+}) => {
+  const isVideo = item.mediaType === "video";
+
+  return (
+    <TouchableOpacity
+      style={styles.selectedThumb}
+      onPress={onPress}
+      activeOpacity={0.8}
+    >
+      <Image
+        source={{ uri: item.uri }}
+        style={styles.selectedThumbImage}
+        resizeMode="cover"
+      />
+      {isVideo && (
+        <View style={styles.selectedThumbVideoIcon}>
+          <Ionicons name="play" size={14} color="#fff" />
+        </View>
+      )}
+      <View style={styles.selectedThumbOrder}>
+        <Text style={styles.selectedThumbOrderText}>{item.order}</Text>
       </View>
+      <TouchableOpacity
+        style={styles.selectedThumbRemove}
+        onPress={(e) => {
+          e.stopPropagation();
+          onRemove();
+        }}
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+      >
+        <Ionicons name="close-circle" size={20} color="#fff" />
+      </TouchableOpacity>
     </TouchableOpacity>
   );
 });
@@ -188,7 +575,7 @@ export default function AttachmentsScreen() {
   const roomId = params.roomId as string;
   const userId = params.userId as string;
   const layout = useWindowDimensions();
-  
+
   const { sendMessage: socketSendMessage } = useSocket();
 
   // Tab view state
@@ -196,7 +583,6 @@ export default function AttachmentsScreen() {
   const [routes] = useState([
     { key: 'gallery', title: 'Gallery' },
     { key: 'poll', title: 'Poll' },
-    // { key: 'announcement', title: 'Announcement' },
   ]);
 
   // Gallery state
@@ -210,10 +596,29 @@ export default function AttachmentsScreen() {
   const [hasMore, setHasMore] = useState(true);
   const [showCamera, setShowCamera] = useState(false);
 
+  // Preview modal state
+  const [previewAsset, setPreviewAsset] = useState<MediaLibrary.Asset | null>(null);
+  const [showPreviewModal, setShowPreviewModal] = useState(false);
+
+  // Selected media carousel state
+  const [showCarouselModal, setShowCarouselModal] = useState(false);
+  const [carouselInitialIndex, setCarouselInitialIndex] = useState(0);
+
+  // Rich text state
+  const [showRichTextToolbar, setShowRichTextToolbar] = useState(false);
+  const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
+  const [showColorPicker, setShowColorPicker] = useState<'text' | 'background' | null>(null);
+  const [inputHeight, setInputHeight] = useState(44);
+
+  // Refs
+  const richTextRef = useRef<any>(null);
+  const inputRef = useRef<TextInput>(null);
+  const heightUpdateTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // Count selected photos and videos
-  const selectedPhotosCount = useMemo(() => 
+  const selectedPhotosCount = useMemo(() =>
     selectedMedia.filter(m => m.mediaType === "photo").length, [selectedMedia]);
-  const selectedVideosCount = useMemo(() => 
+  const selectedVideosCount = useMemo(() =>
     selectedMedia.filter(m => m.mediaType === "video").length, [selectedMedia]);
 
   // Request permission and load media on mount
@@ -222,6 +627,25 @@ export default function AttachmentsScreen() {
       requestPermissionAndLoadMedia();
     }
   }, [hasPermission]);
+
+  // Keyboard listeners
+  useEffect(() => {
+    const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+    const hideEvent = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+
+    const keyboardShowListener = Keyboard.addListener(showEvent, () => {
+      setIsKeyboardVisible(true);
+    });
+
+    const keyboardHideListener = Keyboard.addListener(hideEvent, () => {
+      setIsKeyboardVisible(false);
+    });
+
+    return () => {
+      keyboardShowListener?.remove();
+      keyboardHideListener?.remove();
+    };
+  }, []);
 
   const requestPermissionAndLoadMedia = async () => {
     try {
@@ -235,21 +659,21 @@ export default function AttachmentsScreen() {
       setHasPermission(false);
     }
   };
+
   useEffect(() => {
     const backAction = () => {
-      // Explicitly go to chat/[roomId]
       router.replace({
         pathname: "/chat/[roomId]",
         params: { roomId },
       });
-      return true; // ⛔ prevent default back behavior
+      return true;
     };
-  
+
     const backHandler = BackHandler.addEventListener(
       "hardwareBackPress",
       backAction
     );
-  
+
     return () => backHandler.remove();
   }, [roomId]);
 
@@ -303,97 +727,75 @@ export default function AttachmentsScreen() {
     });
   }, []);
 
+  const handleRemoveMedia = useCallback((id: string) => {
+    setSelectedMedia(prev => {
+      const newSelection = prev.filter(m => m.id !== id);
+      return newSelection.map((item, index) => ({ ...item, order: index + 1 }));
+    });
+  }, []);
+
+  const handlePreviewMedia = useCallback((asset: MediaLibrary.Asset) => {
+    setPreviewAsset(asset);
+    setShowPreviewModal(true);
+  }, []);
+
+  const handleOpenCarousel = useCallback((index: number) => {
+    setCarouselInitialIndex(index);
+    setShowCarouselModal(true);
+  }, []);
+
   const getSelectedOrder = useCallback((id: string): number | null => {
     const item = selectedMedia.find(m => m.id === id);
     return item ? item.order : null;
   }, [selectedMedia]);
 
-  // const handleSendMedia = async () => {
-  //   if (selectedMedia.length === 0 || isSending) return;
-  //   setIsSending(true);
-  //   try {
-  //     const filesWithData = await Promise.all(
-  //       selectedMedia.map(async (media) => {
-  //         const base64 = await FileSystem.readAsStringAsync(media.uri, {
-  //           encoding: FileSystem.EncodingType.Base64,
-  //         });
-  //         const mimeType = getMimeType(media.filename, media.mediaType);
-  //         return {
-  //           name: media.filename,
-  //           mimeType: mimeType,
-  //           fileData: base64,
-  //         };
-  //       })
-  //     );
+  // Rich text toggle
+  const handleToggleRichText = useCallback(() => {
+    if (Platform.OS === 'web') return;
 
-  //     const token = await AuthStorage.getToken();
-  //     const uploadResponse = await axios.post(
-  //       `${API_URL}/api/vm-media/upload`,
-  //       { files: filesWithData },
-  //       {
-  //         headers: {
-  //           Authorization: `Bearer ${token}`,
-  //           "Content-Type": "application/json",
-  //         },
-  //       }
-  //     );
+    const nextState = !showRichTextToolbar;
+    const wasKeyboardVisible = isKeyboardVisible;
 
-  //     if (!uploadResponse.data.success) {
-  //       throw new Error("Upload failed");
-  //     }
+    setShowRichTextToolbar(nextState);
 
-  //     const tempFolderId = uploadResponse.data.tempFolderId;
-  //     const uploadedFiles = uploadResponse.data.uploadedFiles;
-  //     const filesWithCaptions = uploadedFiles.map((f: any) => ({
-  //       fileName: f.fileName,
-  //       originalName: f.originalName,
-  //       caption: caption,
-  //       mimeType: f.mimeType,
-  //       size: f.size,
-  //     }));
+    if (nextState) {
+      const htmlContent = caption ? caption.replace(/\n/g, '<br>') : '';
+      const finalHtml = htmlContent ? `<div>${htmlContent}</div>` : '';
 
-  //     const moveResponse = await axios.post(
-  //       `${API_URL}/api/vm-media/move-to-chat`,
-  //       {
-  //         tempFolderId,
-  //         roomId,
-  //         senderId: userId,
-  //         filesWithCaptions,
-  //       },
-  //       { headers: { Authorization: `Bearer ${token}` } }
-  //     );
+      setTimeout(() => {
+        if (richTextRef.current) {
+          richTextRef.current.setContentHTML(finalHtml);
+          if (wasKeyboardVisible) {
+            richTextRef.current.focusContentEditor();
+          }
+        }
+      }, 100);
+    } else {
+      const plainText = stripHtml(caption);
+      setCaption(plainText);
 
-  //     if (moveResponse.data.success) {
-  //       socketSendMessage(roomId, {
-  //         id: moveResponse.data.messageId,
-  //         messageText: moveResponse.data.message,
-  //         createdAt: new Date().toISOString(),
-  //         messageType: "media",
-  //         mediaFilesId: moveResponse.data.mediaId,
-  //         pollId: 0,
-  //         tableId: 0,
-  //         replyMessageId: 0,
-  //       });
-  //       // Navigate back to chat room
-  //       router.back();
-  //     }
-  //   } catch (error) {
-  //     console.error("Error sending media:", error);
-  //     Alert.alert("Error", "Failed to send media. Please try again.");
-  //   } finally {
-  //     setIsSending(false);
-  //   }
-  // };
+      setTimeout(() => {
+        if (wasKeyboardVisible) {
+          inputRef.current?.focus();
+        }
+      }, 100);
+    }
+  }, [showRichTextToolbar, caption, isKeyboardVisible]);
 
-    // ... (keep your existing imports and helper functions)
+  const handleColorSelect = useCallback((color: string) => {
+    if (showColorPicker === 'text') {
+      richTextRef.current?.setForeColor(color);
+    } else if (showColorPicker === 'background') {
+      richTextRef.current?.setHiliteColor(color);
+    }
+    setShowColorPicker(null);
+  }, [showColorPicker]);
 
-// ... imports
+  const toggleColorPicker = useCallback((type: 'text' | 'background') => {
+    setShowColorPicker(prev => prev === type ? null : type);
+  }, []);
 
-  // ... existing state hooks
-
-  // ------------------------------------------------------------------
-  // 1. GALLERY UPLOAD FLOW (Multipart)
-  // ------------------------------------------------------------------
+  // Send media
   const handleSendMedia = async () => {
     if (selectedMedia.length === 0 || isSending) return;
     setIsSending(true);
@@ -402,9 +804,7 @@ export default function AttachmentsScreen() {
       const token = await AuthStorage.getToken();
       const formData = new FormData();
 
-      // 1. Append all selected files to FormData
       selectedMedia.forEach((media) => {
-        // Clean URI for iOS
         const uri = Platform.OS === "ios" ? media.uri.replace("file://", "") : media.uri;
         const mimeType = getMimeType(media.filename, media.mediaType);
 
@@ -416,9 +816,6 @@ export default function AttachmentsScreen() {
         });
       });
 
-      console.log(`Uploading gallery files to: ${API_URL}/api/vm-media/upload-multipart`);
-
-      // 2. Upload Files to Temp Folder (Multipart Stream)
       const uploadResponse = await axios.post(
         `${API_URL}/api/vm-media/upload-multipart`,
         formData,
@@ -427,7 +824,7 @@ export default function AttachmentsScreen() {
             Authorization: `Bearer ${token}`,
             "Content-Type": "multipart/form-data",
           },
-          transformRequest: (data) => data, // Critical for React Native FormData
+          transformRequest: (data) => data,
         }
       );
 
@@ -435,15 +832,16 @@ export default function AttachmentsScreen() {
         throw new Error("Gallery upload failed");
       }
 
-      // 3. Move Files to Chat (Database & Permanent Folder)
-      // This uses your EXISTING 'moveToChat' controller logic
       const tempFolderId = uploadResponse.data.tempFolderId;
       const uploadedFiles = uploadResponse.data.uploadedFiles;
-      
+
+      // Clean caption for rich text
+      const cleanedCaption = showRichTextToolbar ? cleanHtml(caption) : caption.trim();
+
       const filesWithCaptions = uploadedFiles.map((f: any) => ({
         fileName: f.fileName,
         originalName: f.originalName,
-        caption: caption, // User typed caption
+        caption: cleanedCaption,
         mimeType: f.mimeType,
         size: f.size,
       }));
@@ -455,16 +853,15 @@ export default function AttachmentsScreen() {
           roomId,
           senderId: userId,
           filesWithCaptions,
-          caption: caption, // Send the caption to backend
+          caption: cleanedCaption,
         },
         { headers: { Authorization: `Bearer ${token}` } }
       );
 
       if (moveResponse.data.success) {
-        // 4. Notify Socket with the actual messageText (caption)
         socketSendMessage(roomId, {
           id: moveResponse.data.messageId,
-          messageText: moveResponse.data.messageText || "", // Use the caption from backend
+          messageText: moveResponse.data.messageText || "",
           createdAt: moveResponse.data.createdAt || new Date().toISOString(),
           messageType: "media",
           mediaFilesId: moveResponse.data.mediaId,
@@ -482,39 +879,30 @@ export default function AttachmentsScreen() {
     }
   };
 
-  // ------------------------------------------------------------------
-  // 2. CAMERA UPLOAD FLOW (Single Step Multipart)
-  // ------------------------------------------------------------------
-  const handleCameraSend = useCallback(async (uri: string, mediaType: 'photo' | 'video', duration?: number, caption?: string) => {
+  // Camera send handler
+  const handleCameraSend = useCallback(async (uri: string, mediaType: 'photo' | 'video', duration?: number, cameraCaption?: string) => {
     if (isSending) return;
     setIsSending(true);
-  
+
     try {
       const token = await AuthStorage.getToken();
-      
-      // 1. Prepare Filename
       const filename = uri.split('/').pop() || `camera_${Date.now()}.${mediaType === 'photo' ? 'jpg' : 'mp4'}`;
       const mimeType = getMimeType(filename, mediaType);
-  
-      // 2. Create FormData
+
       const formData = new FormData();
-      
+
       // @ts-ignore
       formData.append("file", {
         uri: Platform.OS === "ios" ? uri.replace("file://", "") : uri,
         name: filename,
         type: mimeType,
       });
-  
-      // Append Metadata fields
+
       formData.append("roomId", roomId);
       formData.append("senderId", userId);
-      if (caption) formData.append("caption", caption);
+      if (cameraCaption) formData.append("caption", cameraCaption);
       if (duration) formData.append("duration", String(duration));
-      
-      console.log(`Sending camera file to: ${API_URL}/api/vm-media/move-to-chat-camera`);
-      
-      // 3. Single Step Upload & Move
+
       const response = await axios.post(
         `${API_URL}/api/vm-media/move-to-chat-camera`,
         formData,
@@ -523,16 +911,15 @@ export default function AttachmentsScreen() {
             Authorization: `Bearer ${token}`,
             "Content-Type": "multipart/form-data",
           },
-          transformRequest: (data) => data, // Critical
-          timeout: 120000, // 2 minutes timeout for large videos
+          transformRequest: (data) => data,
+          timeout: 120000,
         }
       );
-  
+
       if (response.data.success) {
-        // 4. Notify Socket with the actual messageText (caption)
         socketSendMessage(roomId, {
           id: response.data.messageId,
-          messageText: response.data.messageText || "", // Use the caption from backend
+          messageText: response.data.messageText || "",
           createdAt: response.data.createdAt || new Date().toISOString(),
           messageType: "media",
           mediaFilesId: response.data.mediaId,
@@ -540,7 +927,7 @@ export default function AttachmentsScreen() {
           tableId: 0,
           replyMessageId: 0,
         });
-        
+
         setShowCamera(false);
         setTimeout(() => {
           router.back();
@@ -548,7 +935,6 @@ export default function AttachmentsScreen() {
       } else {
         throw new Error(response.data.error || "Upload failed");
       }
-  
     } catch (error: any) {
       console.error("Error sending camera media:", error);
       Alert.alert("Error", `Upload failed: ${error?.response?.data?.error || error.message}`);
@@ -557,103 +943,17 @@ export default function AttachmentsScreen() {
     }
   }, [roomId, userId, isSending, socketSendMessage]);
 
-
   const handleSuccess = useCallback(() => {
-    // Navigate back to chat room
     router.back();
   }, []);
 
   const handleBackToGallery = useCallback(() => {
-    setIndex(0); // Switch to gallery tab
+    setIndex(0);
   }, []);
 
   const handleCameraPress = useCallback(() => {
     setShowCamera(true);
   }, []);
-
-  // const handleCameraSend = useCallback(async (uri: string, mediaType: 'photo' | 'video', duration?: number, caption?: string) => {
-  //   if (isSending) return;
-  //   setIsSending(true);
-  //   try {
-  //     // Read file as base64
-  //     const base64 = await FileSystem.readAsStringAsync(uri, {
-  //       encoding: FileSystem.EncodingType.Base64,
-  //     });
-
-  //     // Get filename from URI
-  //     const filename = uri.split('/').pop() || `camera_${Date.now()}.${mediaType === 'photo' ? 'jpg' : 'mp4'}`;
-  //     const mimeType = getMimeType(filename, mediaType);
-
-  //     const filesWithData = [{
-  //       name: filename,
-  //       mimeType: mimeType,
-  //       fileData: base64,
-  //     }];
-
-  //     const token = await AuthStorage.getToken();
-  //     const uploadResponse = await axios.post(
-  //       `${API_URL}/api/vm-media/upload`,
-  //       { files: filesWithData },
-  //       {
-  //         headers: {
-  //           Authorization: `Bearer ${token}`,
-  //           "Content-Type": "application/json",
-  //         },
-  //       }
-  //     );
-
-  //     if (!uploadResponse.data.success) {
-  //       throw new Error("Upload failed");
-  //     }
-
-  //     const tempFolderId = uploadResponse.data.tempFolderId;
-  //     const uploadedFiles = uploadResponse.data.uploadedFiles;
-  //     const filesWithCaptions = uploadedFiles.map((f: any) => ({
-  //       fileName: f.fileName,
-  //       originalName: f.originalName,
-  //       caption: caption || "",
-  //       mimeType: f.mimeType,
-  //       size: f.size,
-  //     }));
-
-  //     const moveResponse = await axios.post(
-  //       `${API_URL}/api/vm-media/move-to-chat`,
-  //       {
-  //         tempFolderId,
-  //         roomId,
-  //         senderId: userId,
-  //         filesWithCaptions,
-  //       },
-  //       { headers: { Authorization: `Bearer ${token}` } }
-  //     );
-
-  //     if (moveResponse.data.success) {
-  //       socketSendMessage(roomId, {
-  //         id: moveResponse.data.messageId,
-  //         messageText: moveResponse.data.message,
-  //         createdAt: new Date().toISOString(),
-  //         messageType: "media",
-  //         mediaFilesId: moveResponse.data.mediaId,
-  //         pollId: 0,
-  //         tableId: 0,
-  //         replyMessageId: 0,
-  //       });
-        
-  //       // Close camera and go back
-  //       setShowCamera(false);
-  //       setTimeout(() => {
-  //         router.back();
-  //       }, 300);
-  //     } else {
-  //       throw new Error("Move to chat failed");
-  //     }
-  //   } catch (error) {
-  //     console.error("Error sending camera media:", error);
-  //     Alert.alert("Error", "Failed to send media");
-  //   } finally {
-  //     setIsSending(false);
-  //   }
-  // }, [roomId, userId, isSending, socketSendMessage]);
 
   // Prepare gallery data
   const galleryData: GalleryItem[] = useMemo(() => {
@@ -671,14 +971,14 @@ export default function AttachmentsScreen() {
         item={item.asset}
         selectedOrder={getSelectedOrder(item.asset.id)}
         onSelect={handleSelectMedia}
+        onPreview={handlePreviewMedia}
       />
     );
-  }, [getSelectedOrder, handleSelectMedia, handleCameraPress]);
+  }, [getSelectedOrder, handleSelectMedia, handlePreviewMedia, handleCameraPress]);
 
-  const keyExtractor = useCallback((item: GalleryItem, index: number) => 
+  const keyExtractor = useCallback((item: GalleryItem, index: number) =>
     item.type === "camera" ? "camera" : item.asset.id, []);
 
-  // Show input bar only when in gallery tab with selected media
   const currentTabKey = routes[index].key;
   const showInputBar = currentTabKey === "gallery" && selectedMedia.length > 0;
 
@@ -715,17 +1015,6 @@ export default function AttachmentsScreen() {
             isHalfScreen={false}
           />
         );
-      case 'announcement':
-        return (
-          <AnnouncementContent
-            roomId={roomId}
-            userId={userId}
-            onSuccess={handleSuccess}
-            onBack={handleBackToGallery}
-            showInSheet={false}
-            isHalfScreen={false}
-          />
-        );
       default:
         return null;
     }
@@ -741,10 +1030,9 @@ export default function AttachmentsScreen() {
       labelStyle={styles.tabLabel}
       inactiveColor="#6b7280"
       activeColor="#3b82f6"
-      scrollEnabled={true}
+      scrollEnabled={false}
       bounces={true}
       pressColor="rgba(59, 130, 246, 0.1)"
-      gap={8}
       renderLabel={({ route, focused, color }: { route: { key: string; title: string }; focused: boolean; color: string }) => {
         let icon;
         switch (route.key) {
@@ -753,9 +1041,6 @@ export default function AttachmentsScreen() {
             break;
           case 'poll':
             icon = <PollIcon size={20} color={color} />;
-            break;
-          case 'announcement':
-            icon = <AnnouncementIcon size={20} color={color} />;
             break;
           default:
             icon = null;
@@ -772,29 +1057,122 @@ export default function AttachmentsScreen() {
     />
   ), []);
 
-  const getSelectionSummary = (): string => {
-    const parts: string[] = [];
-    if (selectedPhotosCount > 0) {
-      parts.push(`${selectedPhotosCount} ${selectedPhotosCount === 1 ? 'photo' : 'photos'}`);
+  const isEmpty = useMemo(() => {
+    if (showRichTextToolbar) {
+      return stripHtml(caption).length === 0;
     }
-    if (selectedVideosCount > 0) {
-      parts.push(`${selectedVideosCount} ${selectedVideosCount === 1 ? 'video' : 'videos'}`);
-    }
-    return parts.join(', ') + ' selected';
-  };
+    return caption.trim().length === 0;
+  }, [caption, showRichTextToolbar]);
 
+  const maxInputHeight = 120;
+
+  // Render selected media thumbnails bar
+  const renderSelectedMediaBar = () => (
+    <View style={styles.selectedMediaBar}>
+      <FlatList
+        data={selectedMedia}
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        keyExtractor={(item) => item.id}
+        contentContainerStyle={styles.selectedMediaList}
+        renderItem={({ item, index }) => (
+          <SelectedMediaThumbnail
+            item={item}
+            onPress={() => handleOpenCarousel(index)}
+            onRemove={() => handleRemoveMedia(item.id)}
+          />
+        )}
+      />
+    </View>
+  );
+
+  // Render rich text input bar
   const renderInputBar = () => (
     <View style={styles.inputBar}>
-      <View style={styles.inputBarContent}>
-        <TextInput
-          style={styles.captionInput}
-          placeholder="Add a caption..."
-          placeholderTextColor="#999"
-          value={caption}
-          onChangeText={setCaption}
-          multiline
-          maxLength={500}
-        />
+      {/* Selected media thumbnails */}
+      {renderSelectedMediaBar()}
+
+      {/* Input row */}
+      <View style={styles.inputRow}>
+        {/* Format toggle button */}
+        {Platform.OS !== 'web' && RichEditor && (
+          <TouchableOpacity
+            onPress={handleToggleRichText}
+            style={[
+              styles.formatButton,
+              showRichTextToolbar && styles.formatButtonActive
+            ]}
+          >
+            <Ionicons
+              name="text"
+              size={20}
+              color={showRichTextToolbar ? '#2AABEE' : '#666666'}
+            />
+          </TouchableOpacity>
+        )}
+
+        {/* Input container */}
+        <View style={styles.inputContainer}>
+          {showRichTextToolbar && Platform.OS !== 'web' && RichEditor ? (
+            <View style={{ minHeight: 44, maxHeight: maxInputHeight }}>
+              <RichEditor
+                ref={richTextRef}
+                onChange={setCaption}
+                placeholder="Add a caption..."
+                initialContentHTML={caption}
+                initialHeight={44}
+                androidHardwareAccelerationDisabled={true}
+                androidLayerType="software"
+                editorStyle={{
+                  backgroundColor: "#f9fafb",
+                  placeholderColor: "#9CA3AF",
+                  contentCSSText: `
+                    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+                    font-size: 16px;
+                    line-height: 22px;
+                    color: #1F2937;
+                    padding: 10px 14px;
+                    min-height: 44px;
+                    max-height: ${maxInputHeight}px;
+                  `,
+                }}
+                style={{
+                  backgroundColor: '#f9fafb',
+                  minHeight: 44,
+                  maxHeight: maxInputHeight,
+                }}
+              />
+            </View>
+          ) : (
+            <TextInput
+              ref={inputRef}
+              style={[styles.captionInput, { height: inputHeight, maxHeight: maxInputHeight }]}
+              placeholder="Add a caption..."
+              placeholderTextColor="#999"
+              value={caption}
+              onChangeText={setCaption}
+              multiline
+              maxLength={500}
+              onContentSizeChange={(event) => {
+                const contentHeight = event.nativeEvent?.contentSize?.height;
+                if (!contentHeight) return;
+
+                if (heightUpdateTimeoutRef.current) {
+                  clearTimeout(heightUpdateTimeoutRef.current);
+                }
+
+                heightUpdateTimeoutRef.current = setTimeout(() => {
+                  const newHeight = Math.min(Math.max(44, Math.ceil(contentHeight)), maxInputHeight);
+                  if (Math.abs(newHeight - inputHeight) >= 2) {
+                    setInputHeight(newHeight);
+                  }
+                }, 50);
+              }}
+            />
+          )}
+        </View>
+
+        {/* Send button */}
         <TouchableOpacity
           onPress={handleSendMedia}
           disabled={isSending || selectedMedia.length === 0}
@@ -807,23 +1185,59 @@ export default function AttachmentsScreen() {
           )}
         </TouchableOpacity>
       </View>
-      <View style={styles.selectionInfoRow}>
-        <Text style={styles.selectionCount}>
-          {getSelectionSummary()}
-        </Text>
-        {selectedVideosCount > 0 && (
-          <View style={styles.videoInfoBadge}>
-            <Ionicons name="videocam" size={12} color="#fff" />
-            <Text style={styles.videoInfoText}>{selectedVideosCount}</Text>
-          </View>
-        )}
-        {selectedPhotosCount > 0 && (
-          <View style={styles.photoInfoBadge}>
-            <Ionicons name="image" size={12} color="#fff" />
-            <Text style={styles.photoInfoText}>{selectedPhotosCount}</Text>
-          </View>
-        )}
-      </View>
+
+      {/* Rich text toolbar */}
+      {showRichTextToolbar && isKeyboardVisible && Platform.OS !== 'web' && RichToolbar && (
+        <View style={styles.formatToolbar}>
+          <RichToolbar
+            editor={richTextRef}
+            selectedIconTint="#2AABEE"
+            iconTint="#666"
+            actions={[
+              actions.setBold,
+              actions.setItalic,
+              actions.setUnderline,
+              actions.setStrikethrough,
+              'textColor',
+              'backgroundColor',
+            ]}
+            iconMap={{
+              [actions.setBold]: ({ tintColor }: any) => (
+                <View style={styles.simpleToolIcon}>
+                  <Text style={[styles.textIconLabel, { color: tintColor }]}>B</Text>
+                </View>
+              ),
+              [actions.setItalic]: ({ tintColor }: any) => (
+                <View style={styles.simpleToolIcon}>
+                  <Text style={[styles.textIconLabel, { fontStyle: 'italic', color: tintColor }]}>I</Text>
+                </View>
+              ),
+              [actions.setUnderline]: ({ tintColor }: any) => (
+                <View style={styles.simpleToolIcon}>
+                  <Text style={[styles.textIconLabel, { textDecorationLine: 'underline', color: tintColor }]}>U</Text>
+                </View>
+              ),
+              [actions.setStrikethrough]: ({ tintColor }: any) => (
+                <View style={styles.simpleToolIcon}>
+                  <Text style={[styles.textIconLabel, { textDecorationLine: 'line-through', color: tintColor }]}>S</Text>
+                </View>
+              ),
+              textColor: ({ tintColor }: any) => (
+                <TouchableOpacity onPress={() => toggleColorPicker('text')} style={styles.simpleToolIcon}>
+                  <Ionicons name="color-palette" size={22} color={tintColor} />
+                </TouchableOpacity>
+              ),
+              backgroundColor: ({ tintColor }: any) => (
+                <TouchableOpacity onPress={() => toggleColorPicker('background')} style={styles.simpleToolIcon}>
+                  <Ionicons name="color-fill" size={22} color={tintColor} />
+                </TouchableOpacity>
+              ),
+            }}
+            style={styles.richToolbar}
+            flatContainerStyle={styles.flatToolbarContainer}
+          />
+        </View>
+      )}
     </View>
   );
 
@@ -867,6 +1281,50 @@ export default function AttachmentsScreen() {
           </View>
         )}
       </KeyboardAvoidingView>
+
+      {/* Media Preview Modal */}
+      <MediaPreviewModal
+        visible={showPreviewModal}
+        asset={previewAsset}
+        onClose={() => {
+          setShowPreviewModal(false);
+          setPreviewAsset(null);
+        }}
+        onSelect={() => {
+          if (previewAsset) {
+            handleSelectMedia(previewAsset);
+          }
+        }}
+        isSelected={previewAsset ? getSelectedOrder(previewAsset.id) !== null : false}
+        selectedOrder={previewAsset ? getSelectedOrder(previewAsset.id) : null}
+      />
+
+      {/* Selected Media Carousel Modal */}
+      <SelectedMediaCarouselModal
+        visible={showCarouselModal}
+        selectedMedia={selectedMedia}
+        initialIndex={carouselInitialIndex}
+        onClose={() => setShowCarouselModal(false)}
+        onRemove={handleRemoveMedia}
+      />
+
+      {/* Color Picker Modal */}
+      {showColorPicker && (
+        <Modal transparent visible={!!showColorPicker} onRequestClose={() => setShowColorPicker(null)}>
+          <TouchableOpacity
+            style={styles.modalOverlay}
+            activeOpacity={1}
+            onPress={() => setShowColorPicker(null)}
+          >
+            <View style={styles.colorPickerModal}>
+              <ColorPicker
+                type={showColorPicker}
+                onSelect={handleColorSelect}
+              />
+            </View>
+          </TouchableOpacity>
+        </Modal>
+      )}
     </SafeAreaView>
   );
 }
@@ -877,29 +1335,6 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
   },
   flex1: {
-    flex: 1,
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: "#E5E7EB",
-  },
-  backButton: {
-    padding: 8,
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: "600",
-    color: "#000",
-  },
-  headerSpacer: {
-    width: 100,
-  },
-  contentContainer: {
     flex: 1,
   },
   tabViewContainer: {
@@ -919,8 +1354,9 @@ const styles = StyleSheet.create({
     shadowRadius: 2,
   },
   tab: {
-    width: 'auto',
-    paddingHorizontal: 16,
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   tabLabel: {
     fontWeight: '600',
@@ -930,7 +1366,9 @@ const styles = StyleSheet.create({
   tabLabelContainer: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 6,
+    width: '100%',
   },
   tabLabelText: {
     fontWeight: '600',
@@ -942,22 +1380,100 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
   },
   inputBar: {
-    padding: 16,
+    paddingBottom: 8,
   },
-  inputBarContent: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    gap: 12,
+  // Selected media bar
+  selectedMediaBar: {
+    borderBottomWidth: 1,
+    borderBottomColor: "#E5E7EB",
+    backgroundColor: "#f9fafb",
+  },
+  selectedMediaList: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 8,
+  },
+  selectedThumb: {
+    width: SELECTED_THUMB_SIZE,
+    height: SELECTED_THUMB_SIZE,
+    borderRadius: 8,
+    overflow: 'hidden',
+    backgroundColor: '#e5e7eb',
+    marginRight: 8,
+  },
+  selectedThumbImage: {
+    width: '100%',
+    height: '100%',
+  },
+  selectedThumbVideoIcon: {
+    position: 'absolute',
+    bottom: 4,
+    left: 4,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    borderRadius: 10,
+    width: 20,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  selectedThumbOrder: {
+    position: 'absolute',
+    top: 4,
+    left: 4,
+    backgroundColor: '#2AABEE',
+    borderRadius: 10,
+    width: 20,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  selectedThumbOrderText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  selectedThumbRemove: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    borderRadius: 12,
+  },
+  // Input row
+  inputRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    paddingHorizontal: 12,
+    paddingTop: 10,
+    gap: 8,
+  },
+  formatButton: {
+    width: 40,
+    height: 44,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#F3F4F6',
+  },
+  formatButtonActive: {
+    backgroundColor: '#E0F2FE',
+  },
+  inputContainer: {
+    flex: 1,
+    backgroundColor: '#F9FAFB',
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    overflow: 'hidden',
+    minHeight: 44,
   },
   captionInput: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-    borderRadius: 20,
     paddingHorizontal: 16,
     paddingVertical: 10,
     fontSize: 16,
-    maxHeight: 100,
+    color: '#1F2937',
+    minHeight: 44,
+    textAlignVertical: 'center',
   },
   sendButton: {
     width: 44,
@@ -970,46 +1486,32 @@ const styles = StyleSheet.create({
   sendButtonDisabled: {
     backgroundColor: "#ccc",
   },
-  selectionInfoRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  // Format toolbar
+  formatToolbar: {
+    backgroundColor: '#F9FAFB',
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
     marginTop: 8,
   },
-  selectionCount: {
-    color: "#666",
-    fontSize: 12,
-    flex: 1,
+  richToolbar: {
+    backgroundColor: '#F9FAFB',
+    height: 44,
   },
-  videoInfoBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#E74C3C',
+  flatToolbarContainer: {
     paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    marginLeft: 8,
-    gap: 4,
+    alignItems: 'center',
   },
-  videoInfoText: {
-    color: '#fff',
-    fontSize: 11,
+  simpleToolIcon: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  textIconLabel: {
+    fontSize: 18,
     fontWeight: '600',
   },
-  photoInfoBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#2AABEE',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    marginLeft: 8,
-    gap: 4,
-  },
-  photoInfoText: {
-    color: '#fff',
-    fontSize: 11,
-    fontWeight: '600',
-  },
+  // Gallery grid
   flatListContent: {
     paddingHorizontal: ITEM_MARGIN,
   },
@@ -1069,23 +1571,219 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: 8,
     right: 8,
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: "rgba(0,0,0,0.5)",
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: "rgba(255,255,255,0.3)",
+    borderWidth: 2,
+    borderColor: "#fff",
     justifyContent: "center",
     alignItems: "center",
   },
   selectionBubbleSelected: {
     backgroundColor: "#2AABEE",
+    borderColor: "#2AABEE",
   },
   selectionNumber: {
     color: "#fff",
     fontSize: 12,
-    fontWeight: "600",
+    fontWeight: "700",
   },
   loadingFooter: {
     paddingVertical: 20,
     alignItems: "center",
+  },
+  // Preview modal
+  previewModalContainer: {
+    flex: 1,
+    backgroundColor: '#000',
+  },
+  previewModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: 'rgba(0,0,0,0.9)',
+  },
+  previewCloseButton: {
+    width: 44,
+    height: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  previewHeaderCenter: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  previewHeaderTitle: {
+    color: '#fff',
+    fontSize: 17,
+    fontWeight: '600',
+  },
+  previewHeaderSubtitle: {
+    color: '#9ca3af',
+    fontSize: 13,
+    marginTop: 2,
+  },
+  previewSelectButton: {
+    width: 44,
+    height: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  previewSelectButtonActive: {},
+  previewSelectedBadge: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#2AABEE',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  previewSelectedNumber: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  previewModalContent: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  previewImage: {
+    width: SCREEN_WIDTH,
+    height: SCREEN_HEIGHT - 200,
+  },
+  previewVideo: {
+    width: SCREEN_WIDTH,
+    height: SCREEN_HEIGHT - 200,
+  },
+  previewModalFooter: {
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    backgroundColor: 'rgba(0,0,0,0.9)',
+  },
+  previewActionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#2AABEE',
+    paddingVertical: 14,
+    borderRadius: 12,
+    gap: 8,
+  },
+  previewActionButtonDeselect: {
+    backgroundColor: '#ef4444',
+  },
+  previewActionText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  // Carousel modal
+  carouselModalContainer: {
+    flex: 1,
+    backgroundColor: '#000',
+  },
+  carouselModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: 'rgba(0,0,0,0.9)',
+  },
+  carouselCloseButton: {
+    width: 44,
+    height: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  carouselHeaderCenter: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  carouselHeaderTitle: {
+    color: '#fff',
+    fontSize: 17,
+    fontWeight: '600',
+  },
+  carouselDeleteButton: {
+    width: 44,
+    height: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  carouselItem: {
+    width: SCREEN_WIDTH,
+    height: SCREEN_HEIGHT - 180,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  carouselImage: {
+    width: SCREEN_WIDTH,
+    height: '100%',
+  },
+  carouselVideo: {
+    width: SCREEN_WIDTH,
+    height: '100%',
+  },
+  carouselDots: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 16,
+    gap: 6,
+  },
+  carouselDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: 'rgba(255,255,255,0.4)',
+  },
+  carouselDotActive: {
+    backgroundColor: '#2AABEE',
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  // Color picker modal
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  colorPickerModal: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 20,
+    maxWidth: 320,
+  },
+  colorPickerContainer: {
+    padding: 4,
+  },
+  colorPickerTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginBottom: 12,
+  },
+  colorGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  colorSwatch: {
+    width: 40,
+    height: 40,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  whiteSwatchBorder: {
+    borderColor: '#E5E7EB',
   },
 });

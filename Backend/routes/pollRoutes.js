@@ -10,6 +10,9 @@ router.post("/", pollController.createPoll);// ${API_URL}/api/poll app/chat/Poll
 // Get poll details
 router.get("/:pollId", pollController.getPollDetails);// ${API_URL}/api/poll/${pollId} components/chat/GlobalPollModal.tsx -> fetchPollData
 
+// Get detailed votes (creator only)
+router.get("/:pollId/votes-details", pollController.getPollVotesDetails);
+
 // Submit vote
 router.post("/:pollId/vote", pollController.submitVote);// ${API_URL}/api/poll/${pollId}/vote  components/chat/GlobalPollModal.tsx -> handleOptionSelect
 

@@ -9,15 +9,16 @@ import {
 import { Message, ChatUser } from "@/types/type";
 import { Ionicons } from '@expo/vector-icons';
 import EditMessageModal from './EditMessageModal';
+import InfoMessageModal from './InfoMessageModal';
 import { ToastAndroid } from 'react-native';
 type ChatMessageOptionProps = {
     selectedMessages: Message[];
     setSelectedMessages:any;
     isAdmin?: boolean; // This represents group admin status (admin of the specific chat room)
+    canSendMessage?: boolean; // Whether user can send messages in this room
     onClose: () => void;
     onForwardPress: () => void;
     onDeletePress: (messageIds: (string | number)[]) => Promise<void>;
-    onInfoPress?: (message: Message) => void; // Add info press handler
     roomId?: string | number; // Add roomId prop
     roomMembers?: ChatUser[];
     currentUser?: {
@@ -31,10 +32,10 @@ const ChatMessageOptions: React.FC<ChatMessageOptionProps> = ({
     selectedMessages,
     setSelectedMessages,
     isAdmin = false, // Group admin status - defaults to false for safety
+    canSendMessage = true, // Whether user can send messages - defaults to true for safety
     onClose = ()=>console.log("closed calling"),
     onForwardPress,
     onDeletePress,
-    onInfoPress,
     roomId,
     roomMembers = [],
     currentUser = null,
@@ -42,20 +43,28 @@ const ChatMessageOptions: React.FC<ChatMessageOptionProps> = ({
 }) => {
     const [showPinOptions, setShowPinOptions] = useState(false);
     const [showEditModal, setShowEditModal] = useState(false);
+    const [showInfoModal, setShowInfoModal] = useState(false);
     const selectedCount = selectedMessages.length;
     const isSingleSelection = selectedCount === 1;
     const selectedMessage = isSingleSelection ? selectedMessages[0] : null;
     const isTextMessage = selectedMessage?.messageType === 'text';
     const hasMessageText = selectedMessage?.messageText && selectedMessage.messageText.trim() !== '';
     
-    // Check if user can edit the selected message (only message sender)
+    // Permission checks based on user role:
+    // - Admin: can delete/edit any message
+    // - Can send message: can delete/edit own messages only
+    // - Cannot send message: cannot delete/edit any message
+    
+    // Check if user can edit the selected message
+    // Admin can edit any text message, canSendMessage users can only edit their own text messages
     const canEditMessage = isSingleSelection && isTextMessage && hasMessageText && 
-        selectedMessage?.senderId === currentUser?.userId &&
-        // Don't allow editing temporary messages
-        !(typeof selectedMessage?.id === 'string' && selectedMessage?.id.startsWith('temp-'));
+        !(typeof selectedMessage?.id === 'string' && selectedMessage?.id.startsWith('temp-')) &&
+        (isAdmin || (canSendMessage && selectedMessage?.senderId === currentUser?.userId));
 
-    // Check if user can delete the selected messages (only message sender)
-    const canDeleteMessages = selectedMessages.every(msg => msg.senderId === currentUser?.userId);
+    // Check if user can delete the selected messages
+    // Admin can delete any message, canSendMessage users can only delete their own messages
+    const canDeleteMessages = (isAdmin || canSendMessage) && 
+        (isAdmin || selectedMessages.every(msg => msg.senderId === currentUser?.userId));
 
     // Check if user can see info for the selected message (only message sender)
     const canShowInfo = isSingleSelection && selectedMessage?.senderId === currentUser?.userId;
@@ -150,10 +159,9 @@ const ChatMessageOptions: React.FC<ChatMessageOptionProps> = ({
 
     // Info functionality
     const handleInfo = () => {
-        if (selectedMessage && onInfoPress) {
+        if (selectedMessage) {
             console.log('Showing info for message:', selectedMessage.id);
-            onInfoPress(selectedMessage);
-            onClose();
+            setShowInfoModal(true);
         }
     };
 
@@ -282,6 +290,16 @@ const ChatMessageOptions: React.FC<ChatMessageOptionProps> = ({
                 roomMembers={roomMembers}
                 currentUser={currentUser}
                 onMessageEdited={handleMessageEdited}
+            />
+
+            {/* Info Message Modal */}
+            <InfoMessageModal
+                visible={showInfoModal}
+                onClose={() => {
+                    setShowInfoModal(false);
+                    onClose();
+                }}
+                message={selectedMessage}
             />
         </View>
     );

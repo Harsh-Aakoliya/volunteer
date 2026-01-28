@@ -1,5 +1,48 @@
 import pool from "../config/database.js";
 
+function normalizeVotes(votes) {
+    // Supports legacy shape:
+    // { [optionId]: string[] }
+    // and new shape:
+    // { [optionId]: Array<{ userId: string, votedAt: string }> }
+    if (!votes) return {};
+    if (typeof votes === "string") {
+        try {
+            votes = JSON.parse(votes);
+        } catch {
+            return {};
+        }
+    }
+    if (typeof votes !== "object" || Array.isArray(votes)) return {};
+
+    const normalized = {};
+    for (const [optionId, arr] of Object.entries(votes)) {
+        if (!Array.isArray(arr)) {
+            normalized[optionId] = [];
+            continue;
+        }
+        normalized[optionId] = arr
+            .map((v) => {
+                if (!v) return null;
+                if (typeof v === "string") return { userId: v, votedAt: null };
+                if (typeof v === "object" && typeof v.userId === "string") {
+                    return { userId: v.userId, votedAt: v.votedAt || null };
+                }
+                return null;
+            })
+            .filter(Boolean);
+    }
+    return normalized;
+}
+
+function toLegacyVotesObject(normalizedVotes) {
+    const legacyVotes = {};
+    for (const [optionId, voters] of Object.entries(normalizedVotes || {})) {
+        legacyVotes[optionId] = (voters || []).map((v) => v.userId);
+    }
+    return legacyVotes;
+}
+
 const pollController = {
     createPoll: async (req, res) => {
         const {
@@ -61,18 +104,9 @@ const pollController = {
 
             const pollData = result.rows[0];
             console.log("poll data",typeof pollData.votes);
-            // Parse votes if they exist
-            // if (pollData.votes) {
-            //     console.log("we have votes");
-            //     // try {
-            //         pollData.votes = JSON.parse(pollData.votes);
-            //     // } catch (e) {
-            //     //     pollData.votes = {};
-            //     // }
-            // } else {
-            //     console.log("No voes found");
-            //     pollData.votes = {};
-            // }
+            // Normalize votes to legacy shape for existing clients:
+            // { [optionId]: string[] }
+            pollData.votes = toLegacyVotesObject(normalizeVotes(pollData.votes));
 
             // Parse options
             if (typeof pollData.options === 'string') {
@@ -85,6 +119,99 @@ const pollController = {
         } catch (error) {
             console.error("Error while fetching poll details:", error);
             res.status(500).json({ error: "Error fetching poll details" });
+        }
+    },
+
+    getPollVotesDetails: async (req, res) => {
+        let { pollId } = req.params;
+        pollId = parseInt(pollId);
+        const { userId } = req.query;
+
+        try {
+            const result = await pool.query(
+                `SELECT * FROM poll WHERE "id" = $1`,
+                [pollId]
+            );
+
+            if (result.rows.length === 0) {
+                return res.status(404).json({ error: "Poll not found" });
+            }
+
+            const poll = result.rows[0];
+
+            if (typeof poll.options === "string") {
+                poll.options = JSON.parse(poll.options);
+            }
+
+            // Only creator can view detailed vote list
+            if (!userId || String(poll.createdBy) !== String(userId)) {
+                return res.status(403).json({ error: "Only poll creator can view votes" });
+            }
+
+            const normalizedVotes = normalizeVotes(poll.votes);
+
+            // Collect all unique userIds from votes
+            const allUserIds = new Set();
+            Object.values(normalizedVotes).forEach((arr) => {
+                arr.forEach((v) => allUserIds.add(String(v.userId)));
+            });
+
+            // Fetch names for userIds (SevakMaster.seid matches app userId usage)
+            let userMap = {};
+            const userIdsArray = Array.from(allUserIds);
+            if (userIdsArray.length > 0) {
+                const usersRes = await pool.query(
+                    `SELECT seid::text AS "userId", COALESCE(sevakname, '') AS "fullName"
+                     FROM "SevakMaster"
+                     WHERE seid::text = ANY($1::text[])`,
+                    [userIdsArray]
+                );
+                userMap = usersRes.rows.reduce((acc, row) => {
+                    acc[row.userId] = row.fullName || row.userId;
+                    return acc;
+                }, {});
+            }
+
+            const options = (poll.options || []).map((opt) => {
+                const voters = normalizedVotes[opt.id] || [];
+                const enriched = voters
+                    .map((v) => ({
+                        userId: String(v.userId),
+                        fullName: userMap[String(v.userId)] || String(v.userId),
+                        votedAt: v.votedAt,
+                    }))
+                    .sort((a, b) => {
+                        const ta = a.votedAt ? new Date(a.votedAt).getTime() : 0;
+                        const tb = b.votedAt ? new Date(b.votedAt).getTime() : 0;
+                        return tb - ta;
+                    });
+
+                return {
+                    id: opt.id,
+                    text: opt.text,
+                    voteCount: enriched.length,
+                    voters: enriched,
+                };
+            });
+
+            const uniqueVoters = new Set();
+            options.forEach((opt) => opt.voters.forEach((v) => uniqueVoters.add(v.userId)));
+
+            res.status(200).json({
+                poll: {
+                    id: poll.id,
+                    question: poll.question,
+                    isMultipleChoiceAllowed: poll.isMultipleChoiceAllowed,
+                    createdBy: poll.createdBy,
+                    roomId: poll.roomId,
+                    createdAt: poll.createdAt,
+                },
+                votedMembers: uniqueVoters.size,
+                options,
+            });
+        } catch (error) {
+            console.error("Error while fetching poll votes details:", error);
+            res.status(500).json({ error: "Error fetching poll votes details" });
         }
     },
 
@@ -117,34 +244,36 @@ const pollController = {
                 return res.status(400).json({ error: "Poll has ended" });
             }
 
-            // Parse current votes
-            let currentVotes = {};
-            if (poll.votes) {
-                try {
-                    currentVotes = JSON.parse(poll.votes);
-                } catch (e) {
-                    currentVotes = {};
-                }
-            }
+            // Normalize current votes (supports legacy + new)
+            let currentVotes = normalizeVotes(poll.votes);
 
-            // Remove user's previous votes if not multiple choice
-            if (!poll.isMultipleChoiceAllowed) {
-                Object.keys(currentVotes).forEach(optionId => {
-                    currentVotes[optionId] = currentVotes[optionId].filter(
-                        voteUserId => voteUserId !== userId
-                    );
-                });
+            // Parse options (needed for multi-select "exact set" behavior)
+            let pollOptions = poll.options;
+            if (typeof pollOptions === "string") {
+                try { pollOptions = JSON.parse(pollOptions); } catch { pollOptions = []; }
             }
+            const allOptionIds = Array.isArray(pollOptions) ? pollOptions.map((o) => o.id) : [];
 
-            // Add new votes
-            selectedOptions.forEach(optionId => {
-                if (!currentVotes[optionId]) {
-                    currentVotes[optionId] = [];
-                }
-                
-                // Check if user already voted for this option
-                if (!currentVotes[optionId].includes(userId)) {
-                    currentVotes[optionId].push(userId);
+            // Ensure option buckets exist
+            allOptionIds.forEach((optId) => {
+                if (!currentVotes[optId]) currentVotes[optId] = [];
+            });
+
+            const normalizedSelected = Array.isArray(selectedOptions) ? selectedOptions.map(String) : [];
+            const nowIso = new Date().toISOString();
+
+            // For both single and multi choice, make the user's selection EXACTLY match selectedOptions
+            // (this also allows "unselect" in multi-choice).
+            Object.keys(currentVotes).forEach((optionId) => {
+                currentVotes[optionId] = (currentVotes[optionId] || []).filter((v) => String(v.userId) !== String(userId));
+            });
+
+            // Add new votes with timestamps
+            normalizedSelected.forEach((optionId) => {
+                if (!currentVotes[optionId]) currentVotes[optionId] = [];
+                // Prevent duplicates
+                if (!currentVotes[optionId].some((v) => String(v.userId) === String(userId))) {
+                    currentVotes[optionId].push({ userId: String(userId), votedAt: nowIso });
                 }
             });
 
@@ -154,9 +283,13 @@ const pollController = {
                 [JSON.stringify(currentVotes), parseInt(pollId)]
             );
 
+            // Return legacy votes shape for mobile clients
+            const updatedPoll = updateResult.rows[0];
+            updatedPoll.votes = toLegacyVotesObject(normalizeVotes(updatedPoll.votes));
+
             res.status(200).json({ 
                 message: "Vote submitted successfully", 
-                poll: updateResult.rows[0] 
+                poll: updatedPoll 
             });
 
         } catch (error) {
@@ -193,9 +326,12 @@ const pollController = {
                 [newStatus, parseInt(pollId)]
             );
 
+            const updatedPoll = updateResult.rows[0];
+            updatedPoll.votes = toLegacyVotesObject(normalizeVotes(updatedPoll.votes));
+
             res.status(200).json({ 
                 message: `Poll ${newStatus ? 'activated' : 'deactivated'} successfully`, 
-                poll: updateResult.rows[0] 
+                poll: updatedPoll 
             });
 
         } catch (error) {
@@ -245,10 +381,13 @@ const pollController = {
             );
 
             console.log("Poll reactivated successfully:", updateResult.rows[0]);
+
+            const updatedPoll = updateResult.rows[0];
+            updatedPoll.votes = toLegacyVotesObject(normalizeVotes(updatedPoll.votes));
             
             res.status(200).json({ 
                 message: "Poll reactivated successfully", 
-                poll: updateResult.rows[0] 
+                poll: updatedPoll 
             });
 
         } catch (error) {

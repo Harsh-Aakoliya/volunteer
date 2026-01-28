@@ -480,6 +480,60 @@ const setupSocketIO = (io, app) => {
 
       lastMessages[roomIdStr] = msgData;
 
+      // --------------------------------------------------
+      // Mark message as read for online users currently in room
+      // --------------------------------------------------
+      try {
+        const pool = await import("./config/database.js").then((m) => m.default);
+        const messageIdInt = typeof message.id === 'number' ? message.id : parseInt(message.id, 10);
+        const roomIdInt = parseInt(roomId, 10);
+        const senderIdStr = String(sender.userId);
+
+        if (!isNaN(messageIdInt) && !isNaN(roomIdInt)) {
+          // Get all sockets in this room
+          const roomSockets = await io.in(`room_${roomIdStr}`).fetchSockets();
+          
+          // Collect unique user IDs who are online and in the room
+          const onlineUsersInRoom = new Set();
+          
+          for (const roomSocket of roomSockets) {
+            const userData = socketUsers.get(roomSocket.id);
+            if (userData && userData.userId && userData.rooms?.has(roomIdStr)) {
+              const userIdStr = String(userData.userId);
+              // Don't mark for sender (already marked in controller)
+              if (userIdStr !== senderIdStr && onlineUsers.has(userIdStr)) {
+                onlineUsersInRoom.add(userIdStr);
+              }
+            }
+          }
+
+          // Mark message as read for all online users in room
+          if (onlineUsersInRoom.size > 0) {
+            const userIdsArray = Array.from(onlineUsersInRoom);
+            console.log(`✅ [Socket] Marking message ${messageIdInt} as read for ${userIdsArray.length} online user(s) in room ${roomIdStr}:`, userIdsArray);
+
+            // Batch insert read status for all online users
+            for (const userIdStr of userIdsArray) {
+              try {
+                await pool.query(
+                  `INSERT INTO messagereadstatus ("messageId", "userId", "roomId", "readAt")
+                   VALUES ($1, $2, $3, NOW() AT TIME ZONE 'UTC')
+                   ON CONFLICT ("messageId", "userId") 
+                   DO UPDATE SET "readAt" = NOW() AT TIME ZONE 'UTC'`,
+                  [messageIdInt, userIdStr, roomIdInt]
+                );
+              } catch (readError) {
+                // Ignore individual errors (e.g., already marked as read)
+                console.log(`⚠️ [Socket] Could not mark message as read for user ${userIdStr}:`, readError.message);
+              }
+            }
+          }
+        }
+      } catch (readError) {
+        // Don't break message sending if read marking fails
+        console.error('❌ [Socket] Error marking message as read for online users:', readError);
+      }
+
       io.to(`room_${roomIdStr}`).emit("newMessage", msgData);
 
       await notifyRoomMembers(roomIdStr, msgData, sender.userId);

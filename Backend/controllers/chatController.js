@@ -591,11 +591,11 @@ async getChatRooms(req, res) {
       }
 
       const isGroupAdmin = groupAdminCheck.rows[0].isAdmin;
-      if (!isGroupAdmin) {
-        return res.status(403).json({
-          message: "Only group admins can send messages in this room"
-        });
-      }
+      // if (!isGroupAdmin) {
+      //   return res.status(403).json({
+      //     message: "Only group admins can send messages in this room"
+      //   });
+      // }
 
       let newMessages = [];
       //store caption in media table (for old media upload system)
@@ -718,6 +718,27 @@ async getChatRooms(req, res) {
         // If multiple messages were created, use the last one as the last message for the room
         const lastMessage = messagesWithSender[messagesWithSender.length - 1];
 
+        // --------------------------------------------------
+        // Mark message as read for sender immediately
+        // --------------------------------------------------
+        try {
+          const senderIdStr = String(senderId);
+          for (const msg of messagesWithSender) {
+            // Mark each message as read for the sender
+            await pool.query(
+              `INSERT INTO messagereadstatus ("messageId", "userId", "roomId", "readAt")
+               VALUES ($1, $2, $3, NOW() AT TIME ZONE 'UTC')
+               ON CONFLICT ("messageId", "userId") 
+               DO UPDATE SET "readAt" = NOW() AT TIME ZONE 'UTC'`,
+              [msg.id, senderIdStr, roomIdInt]
+            );
+          }
+          console.log(`✅ [SendMessage] Marked ${messagesWithSender.length} message(s) as read for sender ${senderIdStr}`);
+        } catch (readError) {
+          // Don't fail the whole request if read marking fails
+          console.error('Error marking message as read for sender:', readError);
+        }
+
         // Update last message for this room
         if (lastMessageByRoom) {
           lastMessageByRoom[roomIdInt] = {
@@ -748,6 +769,7 @@ async getChatRooms(req, res) {
 
         // Note: Message emission is now handled by socket.js to avoid duplicates
         // The socket.js file handles the newMessage emission when sendMessage event is received
+        // Online users in room will be marked as read in socket.js sendMessage handler
         console.log("Message with sender", messagesWithSender);
         // Return all created messages or just the last message
         // Depending on the use case, you might want to return all or just the last one
@@ -1175,11 +1197,11 @@ async getChatRooms(req, res) {
       const isGroupAdmin = memberCheck.rows[0].isAdmin;
 
       // Only allow group admins to delete messages
-      if (!isGroupAdmin) {
-        return res.status(403).json({
-          message: "Only group admins can delete messages in this room"
-        });
-      }
+      // if (!isGroupAdmin) {
+      //   return res.status(403).json({
+      //     message: "Only group admins can delete messages in this room"
+      //   });
+      // }  
 
       // Get the messages to validate existence
       const messagesToDelete = await client.query(
@@ -1432,16 +1454,16 @@ async getChatRooms(req, res) {
         });
       }
 
-      // Get all room members
+      // Get all room members (including sender - sender should show as read)
       const membersResult = await pool.query(
         `SELECT sm.seid::text as "userId", sm.sevakname as "fullName"
          FROM chatroomusers cru
          JOIN "SevakMaster" sm ON cru."userId" = sm.seid
-         WHERE cru."roomId" = $1 AND cru."userId" != $2`,
-        [roomId, message.senderId] // Exclude sender from read status
+         WHERE cru."roomId" = $1`,
+        [roomId]
       );
 
-      // Get read status for each member
+      // Get read status for each member (including sender)
       const readStatusResult = await pool.query(
         `SELECT mrs."userId", mrs."readAt" as "readAt", sm.sevakname as "fullName"
          FROM messagereadstatus mrs
@@ -1456,7 +1478,7 @@ async getChatRooms(req, res) {
         readAt: row.readAt
       }));
 
-      // Find unread members
+      // Find unread members (those who haven't read the message yet)
       const readUserIds = readStatusResult.rows.map(row => row.userId);
       const unreadBy = membersResult.rows
         .filter(member => !readUserIds.includes(member.userId))
@@ -1483,7 +1505,9 @@ async getChatRooms(req, res) {
   async markMessageAsRead(req, res) {
     try {
       const { messageId } = req.params;
-      const userId = Number(req.user.userId) || 0;
+      const userIdRaw = req.user.userId;
+      const userId = Number(userIdRaw) || 0;
+      const userIdStr = String(userIdRaw);
 
       console.log("messageId to mark as read", messageId);
       console.log("userId", userId);
@@ -1558,7 +1582,41 @@ async getChatRooms(req, res) {
          DO UPDATE SET "readAt" = NOW() AT TIME ZONE 'UTC'`,
         [messageIdInt, userId.toString(), roomId]
       );
-      // console.log("message read status updated");
+
+      // --------------------------------------------------
+      // Sync in-memory unread counters + notify via socket
+      // --------------------------------------------------
+      try {
+        // unreadMessagesByUser is an alias to socket unreadCounts (see socket.js)
+        const unreadMessagesByUser = req.app.get('unreadMessagesByUser');
+        const lastMessageByRoom = req.app.get('lastMessageByRoom');
+
+        // Best-effort: clear unread count for this room for this user.
+        // This is slightly aggressive (per-room instead of per-message) but
+        // guarantees badges are cleared once the user starts reading.
+        if (unreadMessagesByUser) {
+          if (!unreadMessagesByUser[userIdStr]) {
+            unreadMessagesByUser[userIdStr] = {};
+          }
+          unreadMessagesByUser[userIdStr][roomId] = 0;
+        }
+
+        // Emit a roomUpdate only to this user so their rooms list reflects
+        // the cleared unread counter immediately.
+        if (global.emitToUser) {
+          const lastMessage = lastMessageByRoom ? lastMessageByRoom[roomId] : null;
+
+          global.emitToUser(userIdStr, 'roomUpdate', {
+            roomId: roomId.toString(),
+            lastMessage,
+            unreadCount: 0,
+          });
+        }
+      } catch (syncError) {
+        // Never break the main flow for socket/unread sync issues
+        console.error('Error syncing unread state after markMessageAsRead:', syncError);
+      }
+
       res.json({
         success: true,
         message: "Message marked as read"
@@ -1567,6 +1625,88 @@ async getChatRooms(req, res) {
     } catch (error) {
       console.error('Error marking message as read:', error);
       res.status(500).json({ message: "Server error", error: error.message });
+    }
+  },
+  // Mark all messages in a room as read for current user
+  async markAllMessagesAsRead(req, res) {
+    try {
+      const { roomId } = req.params;
+      const userIdRaw = req.user.userId;
+      const userIdStr = String(userIdRaw);
+
+      const roomIdInt = parseInt(roomId, 10);
+      if (isNaN(roomIdInt)) {
+        return res.status(400).json({
+          message: "Invalid room ID"
+        });
+      }
+
+      // Ensure user is a member of the room
+      const memberCheck = await pool.query(
+        `SELECT 1 FROM chatroomusers 
+         WHERE "roomId" = $1 AND "userId" = $2`,
+        [roomIdInt, userIdStr]
+      );
+
+      if (memberCheck.rows.length === 0) {
+        return res.status(403).json({
+          message: "You are not a member of this chat room"
+        });
+      }
+
+      // Insert read status for all messages in this room that:
+      // - are not sent by this user
+      // - and are not already marked as read by this user
+      await pool.query(
+        `INSERT INTO messagereadstatus ("messageId", "userId", "roomId", "readAt")
+         SELECT m."id", $2, m."roomId", NOW() AT TIME ZONE 'UTC'
+         FROM chatmessages m
+         WHERE m."roomId" = $1
+           AND m."senderId" != $2
+           AND NOT EXISTS (
+             SELECT 1 FROM messagereadstatus mr
+             WHERE mr."messageId" = m."id"
+               AND mr."userId" = $2
+           )`,
+        [roomIdInt, userIdStr]
+      );
+
+      // --------------------------------------------------
+      // Sync in-memory unread counters + notify via socket
+      // --------------------------------------------------
+      try {
+        // unreadMessagesByUser is an alias to socket unreadCounts (see socket.js)
+        const unreadMessagesByUser = req.app.get('unreadMessagesByUser');
+        const lastMessageByRoom = req.app.get('lastMessageByRoom');
+
+        if (unreadMessagesByUser) {
+          if (!unreadMessagesByUser[userIdStr]) {
+            unreadMessagesByUser[userIdStr] = {};
+          }
+          unreadMessagesByUser[userIdStr][roomIdInt] = 0;
+        }
+
+        if (global.emitToUser) {
+          const lastMessage = lastMessageByRoom ? lastMessageByRoom[roomIdInt] : null;
+
+          global.emitToUser(userIdStr, 'roomUpdate', {
+            roomId: roomIdInt.toString(),
+            lastMessage,
+            unreadCount: 0,
+          });
+        }
+      } catch (syncError) {
+        // Keep this best-effort: DB is the source of truth for read state
+        console.error('Error syncing unread state after markAllMessagesAsRead:', syncError);
+      }
+
+      return res.json({
+        success: true,
+        message: "All messages marked as read"
+      });
+    } catch (error) {
+      console.error("Error marking all messages as read:", error);
+      return res.status(500).json({ message: "Server error", error: error.message });
     }
   },
   // Assign/Remove Group Admins

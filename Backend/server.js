@@ -25,8 +25,8 @@ const app = express();
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
   cors:{
-    origin:["http://localhost:8080","http://localhost:8081"],
-    credentials:true
+    origin: true, // Allow all origins (works with credentials)
+    credentials: true
   }
 });
 
@@ -41,7 +41,10 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use(express.static('./node_modules/@socket.io/admin-ui/ui/dist'))
 app.use(
   cors({
-    origin: ["https://admin.socket.io","http://localhost:8081"],
+    origin: (origin, callback) => {
+      // Allow all origins
+      callback(null, true);
+    },
     credentials: true,
   })
 );

@@ -89,15 +89,16 @@ type ChatListItem =
 // Imports
 import { useWindowDimensions } from 'react-native';
 import { defaultSystemFonts } from 'react-native-render-html';
+import { Path, Svg } from 'react-native-svg';
 // Add 'sans-serif' for Android Bold/Italic support
 const systemFonts = [...defaultSystemFonts, 'sans-serif', 'sans-serif-medium'];
 
 const StyledTextMessage = React.memo(({ 
   content, 
-  isOwnMessage
+  isOwnMessage 
 }: { 
   content: string, 
-  isOwnMessage: boolean
+  isOwnMessage: boolean 
 }) => {
   const { width } = useWindowDimensions();
   const contentWidth = width * 0.75; 
@@ -109,23 +110,18 @@ const StyledTextMessage = React.memo(({
 
   // Check if HTML
   const isHTML = /<[a-z][\s\S]*>/i.test(cleanContent);
+  
   if (!isHTML) {
-    // Plain text - render normally
     return (
-      <Text style={{ 
-        fontSize: 16, 
-        lineHeight: 22, 
-        color: '#111B21' 
-      }}>
+      <Text className="text-base leading-[22px] text-black">
         {cleanContent}
       </Text>
     );
   }
 
-
   // Define defaults
-  const defaultTextColor = '#111B21';
-  const linkColor = '#0088CC'; // WhatsApp Blue for links
+  const defaultTextColor = '#000000';
+  const linkColor = isOwnMessage ? '#0000FF' : '#0088CC';
 
   return (
     <View>
@@ -155,7 +151,7 @@ const StyledTextMessage = React.memo(({
           em: { fontStyle: 'italic' },
           
           // Links
-          a: { color: linkColor, textDecorationLine: 'none' },
+          a: { color: linkColor, textDecorationLine: 'underline' },
           
           // Lists
           ul: { paddingLeft: 20, marginTop: 4, marginBottom: 4 },
@@ -181,7 +177,9 @@ const MessageItem = React.memo(({
   isOwnMessage,
   isSelected,
   isGroupAdmin,
+  canSendMessage,
   currentUser,
+  totalMembers,
   selectedMessagesCount,
   messageAnimation,
   isHighlighted,
@@ -201,7 +199,9 @@ const MessageItem = React.memo(({
   isOwnMessage: boolean;
   isSelected: boolean;
   isGroupAdmin: boolean;
+  canSendMessage: boolean;
   currentUser: { userId: string; fullName: string | null } | null;
+  totalMembers: number;
   selectedMessagesCount: number;
   messageAnimation: Animated.Value;
   isHighlighted: boolean;
@@ -221,7 +221,17 @@ const MessageItem = React.memo(({
   const panRef = useRef(null);
   const tapRef = useRef(null);
 
-  const canSelect = isGroupAdmin || isOwnMessage;
+  // Permission check for selection:
+  // - Admin can select any message
+  // - Can send message users can only select their own messages
+  // - Cannot send message users cannot select any message
+  const canSelect = isGroupAdmin || (canSendMessage && isOwnMessage);
+
+  // Permission check for reply:
+  // - Admin can reply to any message
+  // - Can send message users can reply to any message
+  // - Cannot send message users cannot reply to any message
+  const canReply = isGroupAdmin || canSendMessage;
 
   const handleLongPressStateChange = useCallback((event: any) => {
     if (event.nativeEvent.state === State.ACTIVE) {
@@ -243,10 +253,6 @@ const MessageItem = React.memo(({
         }
         return;
       }
-      // Handle tap for reply preview when not in selection mode
-      if (selectedMessagesCount === 0 && message.replyMessageId) {
-        onReplyPreviewClick(message.replyMessageId);
-      }
     }
   }, [selectedMessagesCount, canSelect, isSelected, message, onSelect, onDeselect, onReplyPreviewClick]);
 
@@ -258,43 +264,33 @@ const MessageItem = React.memo(({
     messageStatus = "sending";
   }
 
+  // --- Dynamic border radius logic for WhatsApp-like tail ---
   const bubbleBorderRadius = useMemo(() => {
-    const defaultRadius = 10; // More compact curve
-    const tailRadius = 0;     // Sharp corner for the tail
+    const defaultRadius = 18;
+    const pointyRadius = 4;
 
     if (hasTail) {
       if (isOwnMessage) {
         return {
           borderTopLeftRadius: defaultRadius,
-          borderTopRightRadius: tailRadius, // Sharp top-right
+          borderTopRightRadius: pointyRadius,
           borderBottomLeftRadius: defaultRadius,
           borderBottomRightRadius: defaultRadius,
         };
       } else {
         return {
-          borderTopLeftRadius: tailRadius, // Sharp top-left
+          borderTopLeftRadius: pointyRadius,
           borderTopRightRadius: defaultRadius,
           borderBottomLeftRadius: defaultRadius,
           borderBottomRightRadius: defaultRadius,
         };
       }
     } else {
-      return { borderRadius: defaultRadius };
+      return {
+        borderRadius: defaultRadius,
+      };
     }
   }, [hasTail, isOwnMessage]);
-
-  const bubbleColor = isOwnMessage ? '#E7FFDB' : '#FFFFFF';
-  const bubbleBorderColor = isOwnMessage ? '#4CAF50' : '#0088CC';
-  // Use a very subtle shadow or no shadow (WhatsApp is mostly flat)
-  const shadowStyle = {
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.08, // Very light shadow
-    shadowRadius: 1,
-    elevation: 1, // Minimal elevation for Android
-  };
-
-  const timeText = formatTime(message.createdAt || "");
 
   return (
     <View>
@@ -356,7 +352,7 @@ const MessageItem = React.memo(({
                 onEnded={(event) => onGestureEnd(event, message)}
                 onCancelled={(event) => onGestureEnd(event, message)}
                 onFailed={(event) => onGestureEnd(event, message)}
-                enabled={!isSelected && canSelect}
+                enabled={!isSelected && canReply}
                 activeOffsetX={[-20, 20]}
                 failOffsetY={[-30, 30]}
                 simultaneousHandlers={[longPressRef, tapRef]}
@@ -367,27 +363,24 @@ const MessageItem = React.memo(({
                     {isSelected && <View className="absolute inset-0 bg-[#0088CC]/15 -mx-4" />}
 
                     <Animated.View
+                      className={`max-w-[75%] px-3 pt-2 pb-1.5 mx-2 shadow-sm ${
+                        isOwnMessage 
+                          ? 'self-end bg-[#DCF8C6] ml-[60px]' 
+                          : 'self-start bg-white mr-[60px]'
+                      }`}
                       style={[
-                        bubbleBorderRadius,
-                        shadowStyle,
                         {
-                          backgroundColor: bubbleColor,
-                          alignSelf: isOwnMessage ? 'flex-end' : 'flex-start',
-                          marginLeft: isOwnMessage ? 60 : 10,
-                          marginRight: isOwnMessage ? 10 : 60,
-                          marginTop: hasTail ? 4 : 2, // Tighter vertical spacing
-                          marginBottom: 2,
-                          paddingTop: 6,
-                          paddingHorizontal: 8, // Tighter horizontal padding (WhatsApp is ~8px)
-                          paddingBottom: 6,     // Important: Reduced bottom padding
-                          minWidth: 90,         // Ensure space for time
-                          maxWidth: '80%',      
+                          ...bubbleBorderRadius,
+                          marginTop: hasTail ? 8 : 2, 
+                          marginBottom: 2, 
                         }
                       ]}
                     >
-                      {/* Message Content Wrapper - reserves space for timestamp at bottom */}
-                      <View style={{ paddingBottom: 20, paddingRight: isOwnMessage ? 50 : 0 }}>
-                        {message.replyMessageId && (
+                      {message.replyMessageId && (
+                        <TouchableOpacity
+                          activeOpacity={0.7}
+                          onPress={() => onReplyPreviewClick(message.replyMessageId!)}
+                        >
                           <View
                             className={`py-1.5 px-2.5 mb-1.5 rounded-lg border-l-[3px] ${
                               isOwnMessage 
@@ -398,21 +391,26 @@ const MessageItem = React.memo(({
                             <Text className="text-xs font-semibold text-[#0088CC] mb-0.5">
                               {message.replySenderName}
                             </Text>
-                            <Text className="text-[13px] text-[#666]" numberOfLines={1}>
+                            <Text
+                              className="text-[13px] text-[#666]"
+                              numberOfLines={3}
+                              ellipsizeMode="tail"
+                            >
                               {getReplyPreviewText({
                                 messageType: message.replyMessageType,
                                 messageText: message.replyMessageText,
                               } as Message)}
                             </Text>
                           </View>
-                        )}
+                        </TouchableOpacity>
+                      )}
 
-                        {/* CONDITIONAL SENDER NAME DISPLAY */}
-                        {showSenderName && (
-                          <Text className="text-[13px] font-semibold text-[#0088CC] mb-1">
-                            {message.senderName || "Unknown"}
-                          </Text>
-                        )}
+                      {/* CONDITIONAL SENDER NAME DISPLAY */}
+                      {showSenderName && (
+                        <Text className="text-[13px] font-semibold text-[#0088CC] mb-1">
+                          {message.senderName || "Unknown"}
+                        </Text>
+                      )}
 
                         {message.messageType === "text" && (
                           <StyledTextMessage 
@@ -427,75 +425,79 @@ const MessageItem = React.memo(({
                               messageId={message.id}
                               onMediaPress={handleMediaGridPress}
                               mediaFilesId={message.mediaFilesId || 0}
-                              isOwnMessage={isOwnMessage}
+                              isOwnMessage
                             />
+                            {message.messageText && message.messageText.trim() !== "" && (
+                              <View className="mt-1">
+                                <StyledTextMessage
+                                  content={message.messageText}
+                                  isOwnMessage={isOwnMessage}
+                                />
+                              </View>
+                            )}
                           </View>
                         )}
-                        {/* Show caption/message text if it exists */}
-                        {message.messageText && message.messageText.trim() !== "" && message.messageType === "media" && (
-                          <View style={{ marginTop: 4 }}>
-                            <StyledTextMessage 
-                              content={message.messageText} 
-                              isOwnMessage={isOwnMessage}
-                            />
-                          </View>
-                        )}
-                        {message.messageType === "poll" && (
-                          <Text className="text-base leading-[22px] text-black">
-                            shared poll: {message.pollId}
-                          </Text>
-                        )}
-                        {/* {message.messageType === "poll" && message.pollId && (
-                          <PollMessage
-                            pollId={message.pollId}
-                            currentUserId={currentUser?.userId || ''}
-                            isOwnMessage={isOwnMessage}
-                            onViewResults={(pollId) => {
-                              console.log("view results for poll", pollId);
-                            }}
-                          />
-                        )} */}
-                        {message.messageType === "table" && (
-                          <Text className="text-base leading-[22px] text-black">
-                            shared table: {message.tableId}
-                          </Text>
-                        )}
-                        {message.messageType === "announcement" && (
-                          <Text className="text-base leading-[22px] text-black">
-                            {message.messageText || "shared an announcement"}
-                          </Text>
-                        )}
-                      </View>
 
-                      {/* Timestamp and Status - Absolutely positioned at bottom-right */}
-                      <View style={{ 
-                        position: 'absolute', 
-                        bottom: 4, 
-                        right: 6, 
-                        flexDirection: 'row', 
-                        alignItems: 'center',
-                        justifyContent: 'flex-end',
-                        backgroundColor: 'transparent',
-                      }}>
-                        {message.isEdited && (
-                          <Text style={{ 
-                            fontSize: 11, 
-                            color: '#667781',
-                            fontStyle: 'italic',
-                            marginRight: 4
-                          }}>
-                            edited
-                          </Text>
+                        {message.messageType === "poll" && (
+                          <View>
+                            {typeof message.pollId === "number" && (
+                              <PollMessage
+                                pollId={message.pollId}
+                                currentUserId={currentUser?.userId || ""}
+                                onViewResults={(pollId) => {
+                                  router.push({
+                                    pathname: "/chat/poll-votes",
+                                    params: {
+                                      pollId: String(pollId),
+                                      totalMembers: String(totalMembers),
+                                      currentUserId: String(currentUser?.userId || ""),
+                                    },
+                                  });
+                                }}
+                              />
+                            )}
+                            {message.messageText && message.messageText.trim() !== "" && (
+                              <View className="mt-1">
+                                <StyledTextMessage
+                                  content={message.messageText}
+                                  isOwnMessage={isOwnMessage}
+                                />
+                              </View>
+                            )}
+                          </View>
                         )}
-                        <Text style={{ 
-                          fontSize: 11, 
-                          color: '#667781', // WhatsApp Time Grey
-                          marginRight: isOwnMessage ? 4 : 0 
-                        }}>
-                          {timeText}
+                      {/* {message.messageType === "poll" && message.pollId && (
+                        <PollMessage
+                          pollId={message.pollId}
+                          currentUserId={currentUser?.userId || ''}
+                          isOwnMessage={isOwnMessage}
+                          onViewResults={(pollId) => {
+                            console.log("view results for poll", pollId);
+                          }}
+                        />
+                      )} */}
+                      {message.messageType === "table" && (
+                        <Text className="text-base leading-[22px] text-black">
+                          shared table: {message.tableId}
+                        </Text>
+                      )}
+                      {message.messageType === "announcement" && (
+                        <Text className="text-base leading-[22px] text-black">
+                          {message.messageText || "shared an announcement"}
+                        </Text>
+                      )}
+
+                      <View className="flex-row items-center justify-end mt-1 gap-1">
+                        {message.isEdited && (
+                          <Text className="text-[11px] text-[#8E8E93] italic">edited</Text>
+                        )}
+                        <Text className="text-[11px] text-[#8E8E93]">
+                          {formatTime(message.createdAt || "")}
                         </Text>
                         {isOwnMessage && (
-                          <MessageStatus status={messageStatus} />
+                          <View className="ml-0.5">
+                            <MessageStatus status={messageStatus} />
+                          </View>
                         )}
                       </View>
                     </Animated.View>
@@ -516,6 +518,7 @@ const MessageItem = React.memo(({
     prevProps.isOwnMessage === nextProps.isOwnMessage &&
     prevProps.isSelected === nextProps.isSelected &&
     prevProps.isGroupAdmin === nextProps.isGroupAdmin &&
+    prevProps.canSendMessage === nextProps.canSendMessage &&
     prevProps.selectedMessagesCount === nextProps.selectedMessagesCount &&
     prevProps.showSenderName === nextProps.showSenderName &&
     prevProps.hasTail === nextProps.hasTail &&
@@ -587,15 +590,6 @@ export default function ChatRoomScreen() {
   // Reply state
   const [isReplying, setIsReplying] = useState(false);
   const [replyToMessage, setReplyToMessage] = useState<Message | null>(null);
-
-  // Read status state
-  const [showReadStatus, setShowReadStatus] = useState(false);
-  const [selectedMessageForReadStatus, setSelectedMessageForReadStatus] = useState<Message | null>(null);
-  const [readStatusData, setReadStatusData] = useState<{
-    readBy: Array<{ userId: string, fullName: string, readAt: string }>;
-    unreadBy: Array<{ userId: string, fullName: string }>;
-  } | null>(null);
-  const [isLoadingReadStatus, setIsLoadingReadStatus] = useState(false);
 
   // Audio state
   const [showAudioRecorder, setShowAudioRecorder] = useState(false);
@@ -810,6 +804,12 @@ const handleDeselectMessage = useCallback((message: Message) => {
       setShowScrollToBottom(false);
     }
   }, [messages.length]);
+  
+  // Expose scrollToBottom for use in sendMessage
+  const scrollToBottomRef = useRef(scrollToBottom);
+  useEffect(() => {
+    scrollToBottomRef.current = scrollToBottom;
+  }, [scrollToBottom]);
 
   const handleScroll = useCallback((event: any) => {
     const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
@@ -1193,22 +1193,44 @@ const handleDeselectMessage = useCallback((message: Message) => {
     }, [roomId])
   );
 
-  // ==================== BACK HANDLER ====================
+  // Mark all messages as read whenever screen gains focus
+  useFocusEffect(
+    useCallback(() => {
+      if (roomId) {
+        // Use a small timeout so markAllMessagesAsReadInRoom is defined
+        setTimeout(() => {
+          // @ts-ignore - function is defined later in the component
+          markAllMessagesAsReadInRoom && markAllMessagesAsReadInRoom();
+        }, 0);
+      }
+    }, [roomId])
+  );
 
+  // ==================== BACK HANDLER ====================
   useEffect(() => {
     const onBackPress = () => {
       if (selectedMessages.length > 0) {
         clearSelection();
         return true;
       }
-      // Navigate back to chat list instead of just going back in history
-      router.replace('/(drawer)');
+  
+      if (router.canGoBack()) {
+        router.back();              // normal flow
+      } else {
+        router.replace("/(drawer)"); // notification / cold start
+      }
+  
       return true;
     };
-
-    const backHandler = BackHandler.addEventListener('hardwareBackPress', onBackPress);
-    return () => backHandler.remove();
+  
+    const sub = BackHandler.addEventListener(
+      "hardwareBackPress",
+      onBackPress
+    );
+  
+    return () => sub.remove();
   }, [selectedMessages]);
+  
 
   // ==================== MESSAGE ACTIONS ====================
 
@@ -1264,6 +1286,11 @@ const handleDeselectMessage = useCallback((message: Message) => {
 
       // Add optimistic message
       addMessage(optimisticMessage, false);
+      
+      // Auto-scroll to bottom after adding optimistic message
+      setTimeout(() => {
+        scrollToBottomRef.current();
+      }, 100);
 
       const token = await AuthStorage.getToken();
       const response = await axios.post(
@@ -1332,6 +1359,14 @@ const handleDeselectMessage = useCallback((message: Message) => {
 
       setReplyToMessage(null);
 
+      // After successfully sending, mark all messages in this room as read for the sender
+      markAllMessagesAsReadInRoom();
+
+      // Auto-scroll to bottom after message is sent successfully
+      setTimeout(() => {
+        scrollToBottomRef.current();
+      }, 200);
+
     } catch (error) {
       console.error("Error sending message:", error);
       alert("Failed to send message");
@@ -1360,10 +1395,18 @@ const handleDeselectMessage = useCallback((message: Message) => {
   }, [selectedMessages]);
 
   const handleMessageLongPress = useCallback((message: Message) => {
-    console.log("on long press calling", { isGroupAdmin, messageSenderId: message.senderId, currentUserId: currentUser?.userId });
+    console.log("on long press calling", { isGroupAdmin, canSendMessage, messageSenderId: message.senderId, currentUserId: currentUser?.userId });
     
-    // Admin can select any message, non-admin can only select their own messages
-    const canSelect = isGroupAdmin || (currentUser && message.senderId === currentUser.userId);
+    // Permission check:
+    // - Admin can select any message
+    // - Can send message users can only select their own messages
+    // - Cannot send message users cannot select any message
+    if (!canSendMessage && !isGroupAdmin) {
+      console.log("Cannot select: user cannot send messages");
+      return;
+    }
+    
+    const canSelect = isGroupAdmin || (canSendMessage && currentUser && message.senderId === currentUser.userId);
     
     if (!canSelect) {
       console.log("Cannot select: not admin and not own message");
@@ -1375,14 +1418,21 @@ const handleDeselectMessage = useCallback((message: Message) => {
     } else if (!isMessageSelected(message.id)) {
       setSelectedMessages(prev => [...prev, message]);
     }
-  }, [isGroupAdmin, currentUser, selectedMessages, isMessageSelected]);
+  }, [isGroupAdmin, canSendMessage, currentUser, selectedMessages, isMessageSelected]);
 
   const handleMessagePress = useCallback((message: Message) => {
     // Only handle selection if messages are already selected
     if (selectedMessages.length === 0) return;
     
-    // Admin can select any message, non-admin can only select their own messages
-    const canSelect = isGroupAdmin || (currentUser && message.senderId === currentUser.userId);
+    // Permission check:
+    // - Admin can select any message
+    // - Can send message users can only select their own messages
+    // - Cannot send message users cannot select any message
+    if (!canSendMessage && !isGroupAdmin) {
+      return;
+    }
+    
+    const canSelect = isGroupAdmin || (canSendMessage && currentUser && message.senderId === currentUser.userId);
     
     if (!canSelect) return;
     
@@ -1391,13 +1441,18 @@ const handleDeselectMessage = useCallback((message: Message) => {
     } else {
       setSelectedMessages(prev => [...prev, message]);
     }
-  }, [isGroupAdmin, currentUser, selectedMessages, isMessageSelected]);
+  }, [isGroupAdmin, canSendMessage, currentUser, selectedMessages, isMessageSelected]);
 
   const clearSelection = () => {
     setSelectedMessages([]);
   };
 
   const handleStartReply = (message: Message) => {
+    // Check permissions: Admin can reply to any message, canSendMessage users can reply to any message, cannot send message users cannot reply
+    if (!canSendMessage && !isGroupAdmin) {
+      // User cannot send messages, so they cannot reply
+      return;
+    }
     setReplyToMessage(message);
     setIsReplying(true);
     setSelectedMessages([]);
@@ -1448,7 +1503,11 @@ const handleDeselectMessage = useCallback((message: Message) => {
     const velocityThreshold = 800;
 
     if (Math.abs(translationX) > threshold || Math.abs(velocityX) > velocityThreshold) {
-      handleStartReply(message);
+      // Check permissions before allowing reply via swipe
+      // Admin can reply to any message, canSendMessage users can reply to any message, cannot send message users cannot reply
+      if (canSendMessage || isGroupAdmin) {
+        handleStartReply(message);
+      }
     }
 
     Animated.spring(animation, {
@@ -1471,6 +1530,22 @@ const handleDeselectMessage = useCallback((message: Message) => {
     updateMessageFields(editedMessage.id, editedMessage);
   };
 
+  // Mark all messages in this room as read for current user
+  const markAllMessagesAsReadInRoom = useCallback(async () => {
+    try {
+      if (!roomId) return;
+      const roomIdStr = Array.isArray(roomId) ? roomId[0] : roomId;
+      const token = await AuthStorage.getToken();
+      await axios.post(
+        `${API_URL}/api/chat/rooms/${roomIdStr}/mark-read`,
+        {},
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+    } catch (error) {
+      console.log("Error marking all messages as read for room:", error);
+    }
+  }, [roomId]);
+
   const markMessageAsRead = useCallback(async (messageId: string | number) => {
     if (typeof messageId !== "number") return;
     if (readSetRef.current.has(messageId)) return;
@@ -1488,30 +1563,6 @@ const handleDeselectMessage = useCallback((message: Message) => {
       console.log('Error marking message as read:', error);
     }
   }, []);
-
-  const fetchReadStatus = async (messageId: string | number) => {
-    try {
-      setIsLoadingReadStatus(true);
-      const token = await AuthStorage.getToken();
-      const response = await axios.get(
-        `${API_URL}/api/chat/messages/${messageId}/read-status`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      if (response.data.success) {
-        setReadStatusData(response.data.data);
-      }
-    } catch (error) {
-      console.error('Error fetching read status:', error);
-    } finally {
-      setIsLoadingReadStatus(false);
-    }
-  };
-
-  const handleInfoPress = (message: Message) => {
-    setSelectedMessageForReadStatus(message);
-    setShowReadStatus(true);
-    fetchReadStatus(message.id);
-  };
 
   const handleVideoCallPress = useCallback(() => {
     if (!roomId) {
@@ -1638,7 +1689,9 @@ const handleDeselectMessage = useCallback((message: Message) => {
         isOwnMessage={isOwnMessage}
         isSelected={isSelected}
         isGroupAdmin={isGroupAdmin}
+        canSendMessage={canSendMessage}
         currentUser={currentUser}
+        totalMembers={roomMembers.length}
         selectedMessagesCount={selectedMessages.length}
         messageAnimation={messageAnimation}
         isHighlighted={isHighlighted}
@@ -1660,7 +1713,8 @@ const handleDeselectMessage = useCallback((message: Message) => {
     currentUser, 
     selectedMessages.length, 
     formatDateForDisplay, 
-    isGroupAdmin, 
+    isGroupAdmin,
+    canSendMessage, 
     isMessageSelected,
     handleSelectMessage,
     handleDeselectMessage,
@@ -1764,13 +1818,13 @@ const TelegramHeader = React.memo(({
         </View>
       </TouchableOpacity>
 
-      <View className="flex-row items-center">
+      {/* <View className="flex-row items-center">
         {onAvatarPress && (
           <TouchableOpacity onPress={onAvatarPress} className="p-2">
             <Ionicons name="ellipsis-vertical" size={20} color="#000" />
           </TouchableOpacity>
         )}
-      </View>
+      </View> */}
     </View>
   );
 });
@@ -1794,10 +1848,10 @@ const TelegramHeader = React.memo(({
           selectedMessages={selectedMessages}
           setSelectedMessages={setSelectedMessages}
           isAdmin={isGroupAdmin}
+          canSendMessage={canSendMessage}
           onClose={clearSelection}
           onForwardPress={() => setShowForwardModal(true)}
           onDeletePress={handleDeleteMessages}
-          onInfoPress={handleInfoPress}
           roomId={Array.isArray(roomId) ? roomId[0] : roomId}
           roomMembers={roomMembers}
           currentUser={currentUser}
@@ -1809,9 +1863,8 @@ const TelegramHeader = React.memo(({
           memberCount={roomMembers.length}
           onlineCount={onlineUsers.length}
           onBackPress={() => {
-            // Navigate back to chat list instead of just going back in history
-            // This ensures we go to the drawer/index page, not re-open the room
-            router.replace('/(drawer)');
+            // FIX: Use router.back() instead of router.replace()
+            router.back();
           }}
           onAvatarPress={() => setShowMembersModal(true)}
           onMenuPress={isGroupAdmin ? () => router.push({
@@ -1851,30 +1904,39 @@ const TelegramHeader = React.memo(({
         
         {/* Scroll to Bottom Button */}
         {showScrollToBottom && (
-          <TouchableOpacity
-            onPress={scrollToBottom}
-            style={{
-              position: 'absolute',
-              bottom: 60,
-              right: 16,
-              width: 48,
-              height: 48,
-              borderRadius: 24,
-              backgroundColor: '#0088CC',
-              justifyContent: 'center',
-              alignItems: 'center',
-              shadowColor: '#000',
-              shadowOffset: { width: 0, height: 2 },
-              shadowOpacity: 0.25,
-              shadowRadius: 3.84,
-              elevation: 5,
-              zIndex: 1000,
-            }}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="arrow-down" size={24} color="#FFFFFF" />
-          </TouchableOpacity>
-        )}
+  <TouchableOpacity
+    onPress={scrollToBottom}
+    style={{
+      position: 'absolute',
+      bottom: 10,
+      right: 10,
+      width: 48,
+      height: 48,
+      borderRadius: 24,
+      backgroundColor: '#0088CC',
+      justifyContent: 'center',
+      alignItems: 'center',
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.25,
+      shadowRadius: 3.84,
+      elevation: 5,
+      zIndex: 1000,
+    }}
+    activeOpacity={0.7}
+  >
+    {/* Custom Double Arrow Down SVG */}
+    <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
+        <Path
+          d="M7 6 L12 11 L17 6 M7 13 L12 18 L17 13"
+          stroke="#FFFFFF"
+          strokeWidth={2.5}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </Svg>
+    </TouchableOpacity>
+  )}
       </View>
 
       {/* --- MESSAGE INPUT SECTION --- */}
@@ -1980,24 +2042,6 @@ const TelegramHeader = React.memo(({
       {showTableModle && tableId !== null && currentUser?.userId && (
         <RenderTable tableId={tableId} visible={showTableModle} setShowTable={setShowTableModel} />
       )}
-
-      {/* Read Status Modal */}
-      <Modal
-        visible={showReadStatus}
-        animationType="slide"
-        transparent={false}
-        onRequestClose={() => setShowReadStatus(false)}
-      >
-        <View style={{ flex: 1, backgroundColor: 'white', paddingTop: insets.top }}>
-          <View className="flex-row items-center justify-between px-4 py-3 border-b border-gray-200">
-            <TouchableOpacity onPress={() => setShowReadStatus(false)} className="p-2">
-              <Ionicons name="arrow-back" size={24} color="#374151" />
-            </TouchableOpacity>
-            <Text className="text-lg font-semibold text-gray-900">Message Info</Text>
-            <View style={{ width: 40 }} />
-          </View>
-        </View>
-      </Modal>
 
       {/* Scheduled Messages Modal */}
       <Modal

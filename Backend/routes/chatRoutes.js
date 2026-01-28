@@ -39,5 +39,6 @@ router.get('/rooms/:roomId/scheduled-messages', chatController.getScheduledMessa
 // Message read status
 router.get('/messages/:messageId/read-status', chatController.getMessageReadStatus); //${API_URL}/api/chat/messages/${messageId}/read-status app/chat/[roomId].tsx -> fetchReadStatus
 router.post('/messages/:messageId/mark-read', chatController.markMessageAsRead); // app/chat/[roomId].tsx -> markMessageAsRead
+router.post('/rooms/:roomId/mark-read', chatController.markAllMessagesAsRead); // app/chat/[roomId].tsx -> mark all messages in room as read
 
 export default router;

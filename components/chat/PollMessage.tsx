@@ -1,5 +1,5 @@
 // components/chat/PollMessage.tsx
-import React, { useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import axios from 'axios';
 import { API_URL } from '@/constants/api';
+import { useWindowDimensions } from 'react-native';
 
 type PollOption = {
   id: string;
@@ -30,15 +31,39 @@ type PollData = {
 type Props = {
   pollId: number;
   currentUserId: string;
-  isOwnMessage: boolean;
   onViewResults: (pollId: number) => void;
 };
 
-const PollMessage = ({ pollId, currentUserId, isOwnMessage, onViewResults }: Props) => {
+const PollMessage = ({ pollId, currentUserId, onViewResults }: Props) => {
+  const { width: windowWidth } = useWindowDimensions();
   const [pollData, setPollData] = useState<PollData | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedOptions, setSelectedOptions] = useState<string[]>([]);
   const [votingOptions, setVotingOptions] = useState<{[optionId: string]: 'idle' | 'voting' | 'voted'}>({});
+
+  const cardWidth = useMemo(() => {
+    const w = Math.round(windowWidth * 0.5);
+    // Keep a sane minimum for small devices
+    return Math.max(220, w);
+  }, [windowWidth]);
+
+  const deriveUserVotes = (votes: any): string[] => {
+    if (!votes || typeof votes !== "object") return [];
+    const picked: string[] = [];
+    Object.keys(votes).forEach((optionId) => {
+      const arr = votes[optionId] || [];
+      // legacy: string[]
+      if (Array.isArray(arr) && arr.some((v) => String(v) === String(currentUserId))) {
+        picked.push(optionId);
+        return;
+      }
+      // new: {userId, votedAt}[]
+      if (Array.isArray(arr) && arr.some((v) => v && typeof v === "object" && String(v.userId) === String(currentUserId))) {
+        picked.push(optionId);
+      }
+    });
+    return picked;
+  };
 
   const fetchPollData = async () => {
     try {
@@ -47,14 +72,17 @@ const PollMessage = ({ pollId, currentUserId, isOwnMessage, onViewResults }: Pro
       setPollData(data);
       
       // Initialize voting states
-      const userVotedOptions: string[] = [];
+      const userVotedOptions: string[] = deriveUserVotes(data.votes);
       const votingStates: {[optionId: string]: 'idle' | 'voting' | 'voted'} = {};
       
       if (data.votes) {
         Object.keys(data.votes).forEach(optionId => {
           const voters = data.votes![optionId] || [];
-          if (voters.includes(currentUserId)) {
-            userVotedOptions.push(optionId);
+          const didVote =
+            Array.isArray(voters) &&
+            (voters.some((v) => String(v) === String(currentUserId)) ||
+              voters.some((v) => v && typeof v === "object" && String(v.userId) === String(currentUserId)));
+          if (didVote) {
             votingStates[optionId] = 'voted';
           } else {
             votingStates[optionId] = 'idle';
@@ -100,7 +128,9 @@ const PollMessage = ({ pollId, currentUserId, isOwnMessage, onViewResults }: Pro
       let optionsToSubmit: string[];
       
       if (!pollData.isMultipleChoiceAllowed) {
-        optionsToSubmit = [optionId];
+        // Allow un-vote for single-choice by tapping selected option again
+        const currentSelected = selectedOptions.includes(optionId);
+        optionsToSubmit = currentSelected ? [] : [optionId];
       } else {
         const currentSelected = selectedOptions.includes(optionId);
         if (currentSelected) {
@@ -123,14 +153,17 @@ const PollMessage = ({ pollId, currentUserId, isOwnMessage, onViewResults }: Pro
       setPollData(updatedPoll);
       
       // Update voting states
-      const userVotedOptions: string[] = [];
+      const userVotedOptions: string[] = deriveUserVotes(updatedPoll.votes);
       const votingStates: {[optionId: string]: 'idle' | 'voting' | 'voted'} = {};
       
       if (updatedPoll.votes) {
         Object.keys(updatedPoll.votes).forEach(optId => {
           const voters = updatedPoll.votes![optId] || [];
-          if (voters.includes(currentUserId)) {
-            userVotedOptions.push(optId);
+          const didVote =
+            Array.isArray(voters) &&
+            (voters.some((v) => String(v) === String(currentUserId)) ||
+              voters.some((v) => v && typeof v === "object" && String(v.userId) === String(currentUserId)));
+          if (didVote) {
             votingStates[optId] = 'voted';
           } else {
             votingStates[optId] = 'idle';
@@ -175,25 +208,10 @@ const PollMessage = ({ pollId, currentUserId, isOwnMessage, onViewResults }: Pro
   const now = new Date();
   const endTime = new Date(pollData.pollEndTime);
   const isPollActive = pollData.isActive && now < endTime;
-  const isCreator = pollData.createdBy === currentUserId;
-
-  const getVoteCount = (optionId: string) => {
-    return pollData?.votes?.[optionId]?.length || 0;
-  };
-
-  const getTotalVotes = () => {
-    if (!pollData?.votes) return 0;
-    return Object.values(pollData.votes).reduce((sum, voters) => sum + voters.length, 0);
-  };
-
-  const getVotePercentage = (optionId: string) => {
-    const total = getTotalVotes();
-    if (total === 0) return 0;
-    return Math.round((getVoteCount(optionId) / total) * 100);
-  };
+  const isCreator = String(pollData.createdBy) === String(currentUserId);
 
   return (
-    <View style={{ paddingVertical: 4 }}>
+    <View style={{ paddingVertical: 4, width: cardWidth }}>
       {/* Poll Icon */}
       <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
         <Ionicons name="bar-chart" size={16} color="#3B82F6" />
@@ -203,15 +221,16 @@ const PollMessage = ({ pollId, currentUserId, isOwnMessage, onViewResults }: Pro
       </View>
 
       {/* Question */}
-      <Text style={{ fontSize: 15, fontWeight: '600', color: '#1F2937', marginBottom: 12 }}>
+      <Text style={{ fontSize: 15, fontWeight: '600', color: '#1F2937', marginBottom: 6 }}>
         {pollData.question}
+      </Text>
+      <Text style={{ fontSize: 12, color: '#6B7280', marginBottom: 12 }}>
+        {pollData.isMultipleChoiceAllowed ? 'Select one or more' : 'Select one'}
       </Text>
 
       {/* Options */}
       <View style={{ gap: 8 }}>
         {pollData.options.map((option) => {
-          const voteCount = getVoteCount(option.id);
-          const percentage = getVotePercentage(option.id);
           const isSelected = selectedOptions.includes(option.id);
           const votingState = votingOptions[option.id] || 'idle';
 
@@ -267,37 +286,7 @@ const PollMessage = ({ pollId, currentUserId, isOwnMessage, onViewResults }: Pro
                 {votingState === 'voting' && (
                   <ActivityIndicator size="small" color="#3B82F6" style={{ marginLeft: 8 }} />
                 )}
-                
-                {/* Vote Count (for creator only) */}
-                {isCreator && (
-                  <Text style={{ 
-                    fontSize: 12, 
-                    color: '#6B7280', 
-                    marginLeft: 8,
-                    fontWeight: '500' 
-                  }}>
-                    {voteCount}
-                  </Text>
-                )}
               </View>
-
-              {/* Progress Bar */}
-              {voteCount > 0 && (
-                <View style={{
-                  height: 4,
-                  backgroundColor: '#E5E7EB',
-                  borderRadius: 2,
-                  marginTop: 8,
-                  overflow: 'hidden',
-                }}>
-                  <View style={{
-                    height: '100%',
-                    width: `${percentage}%`,
-                    backgroundColor: isSelected ? '#3B82F6' : '#93C5FD',
-                    borderRadius: 2,
-                  }} />
-                </View>
-              )}
             </TouchableOpacity>
           );
         })}
@@ -305,60 +294,17 @@ const PollMessage = ({ pollId, currentUserId, isOwnMessage, onViewResults }: Pro
 
       {/* Status & Actions */}
       <View style={{ marginTop: 12, gap: 8 }}>
-        {/* Status Badge */}
-        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <View style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            backgroundColor: isPollActive ? '#DCFCE7' : '#FEE2E2',
-            paddingHorizontal: 8,
-            paddingVertical: 4,
-            borderRadius: 4,
-          }}>
-            <Ionicons 
-              name={isPollActive ? "checkmark-circle" : "close-circle"} 
-              size={12} 
-              color={isPollActive ? '#059669' : '#DC2626'} 
-            />
-            <Text style={{
-              marginLeft: 4,
-              fontSize: 11,
-              color: isPollActive ? '#059669' : '#DC2626',
-              fontWeight: '500',
-            }}>
-              {isPollActive ? 'Active' : 'Ended'}
-            </Text>
-          </View>
-          
-          {pollData.isMultipleChoiceAllowed && (
-            <View style={{
-              marginLeft: 8,
-              backgroundColor: '#F3F4F6',
-              paddingHorizontal: 8,
-              paddingVertical: 4,
-              borderRadius: 4,
-            }}>
-              <Text style={{ fontSize: 11, color: '#6B7280', fontWeight: '500' }}>
-                Multiple Choice
-              </Text>
-            </View>
-          )}
-        </View>
-
-        {/* View Results Button (for creator) */}
+        {/* View votes (for creator only) */}
         {isCreator && (
           <TouchableOpacity
             onPress={() => onViewResults(pollId)}
             style={{
-              backgroundColor: '#3B82F6',
-              paddingVertical: 8,
-              paddingHorizontal: 12,
-              borderRadius: 6,
               alignItems: 'center',
+              paddingVertical: 10,
             }}
           >
-            <Text style={{ color: 'white', fontSize: 13, fontWeight: '600' }}>
-              View Results
+            <Text style={{ color: '#16A34A', fontSize: 16, fontWeight: '700' }}>
+              View votes
             </Text>
           </TouchableOpacity>
         )}

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, version } from "react";
 import { View, Text, Alert, Modal, TouchableOpacity, ActivityIndicator } from "react-native";
 import * as Application from 'expo-application';
-import { API_URL } from "@/constants/api";
+import { API_URL, getApiUrl } from "@/constants/api";
 import { Updater } from "./Updater";
 import axios from "axios";
 interface VersionCheckerProps {
@@ -18,7 +18,12 @@ export function VersionChecker({ onUpdateCheckComplete }: VersionCheckerProps) {
   const [isCheckingVersion, setIsCheckingVersion] = useState(true);
 
   useEffect(() => {
-    checkForUpdates();
+    // Wait a bit to ensure API_URL is set from index.tsx
+    const timer = setTimeout(() => {
+      checkForUpdates();
+    }, 100);
+    
+    return () => clearTimeout(timer);
   }, []);
 
   const checkForUpdates = async () => {
@@ -26,9 +31,21 @@ export function VersionChecker({ onUpdateCheckComplete }: VersionCheckerProps) {
       const appVersion = Application.nativeApplicationVersion;
       setCurrentVersion(appVersion as string);
       
+      // Use getApiUrl() to get the current API URL value directly
+      const apiUrl = getApiUrl();
       console.log("Current app version:", appVersion);
+      console.log("API_URL from getApiUrl():", apiUrl);
       
-      const response = await fetch(`${API_URL}/api/version`);
+      if (!apiUrl || apiUrl === "http://localhost:8080") {
+        console.warn("⚠️ API_URL not properly configured, skipping version check");
+        setIsCheckingVersion(false);
+        if (onUpdateCheckComplete) {
+          onUpdateCheckComplete(false);
+        }
+        return;
+      }
+      
+      const response = await fetch(`${apiUrl}/api/version`);
       console.log("response got",response);
       const versionData = await response.json();
       console.log("versiondata",versionData);

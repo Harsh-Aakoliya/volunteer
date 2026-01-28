@@ -14,6 +14,8 @@ import {
   Dimensions,
   StatusBar,
   Keyboard,
+  BackHandler,
+  ToastAndroid
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useNavigation } from "expo-router";
@@ -68,13 +70,13 @@ const getInitials = (name: string): string => {
 const stripHtmlTags = (html: string): string => {
   if (!html) return "";
   let text = html;
-  
+
   // Replace block elements with newlines for better readability
   text = text.replace(/<\/p>|<\/div>|<br\s*\/?>/gi, '\n');
-  
+
   // Remove all HTML tags
   text = text.replace(/<[^>]+>/g, '');
-  
+
   // Decode common HTML entities
   text = text
     .replace(/&nbsp;/g, ' ')
@@ -84,12 +86,12 @@ const stripHtmlTags = (html: string): string => {
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'")
     .replace(/&apos;/g, "'");
-  
+
   // Clean up multiple spaces and newlines
   text = text.replace(/[ \t]+/g, ' '); // Multiple spaces to single space
   text = text.replace(/\n\s*\n/g, '\n'); // Multiple newlines to single newline
   text = text.replace(/^\s+|\s+$/g, ''); // Trim start and end
-  
+
   return text;
 };
 
@@ -129,7 +131,7 @@ interface AvatarProps {
 const Avatar = memo(({ name, isGroup, isEmoji, size = 56, isOnline = false }: AvatarProps) => {
   const colors = getAvatarColor(name);
   const initials = getInitials(name);
-  
+
   // Show group icon if isGroup is true OR isEmoji is true
   const showGroupIcon = isGroup || isEmoji;
 
@@ -225,7 +227,7 @@ const RoomItem = memo(({ room, currentUserId, onPress, onLongPress }: RoomItemPr
   if (room.lastMessage) {
     const isOwn = room.lastMessage.senderId === currentUserId;
     previewPrefix = isOwn ? "You: " : "";
-    
+
     // Handle reply messages - show reply preview if exists
     if (room.lastMessage.replyMessageId && room.lastMessage.replyMessageType) {
       const replyPreview = getReplyPreviewTextForLastMessage({
@@ -237,7 +239,7 @@ const RoomItem = memo(({ room, currentUserId, onPress, onLongPress }: RoomItemPr
       // Strip HTML tags from message text for clean preview
       messagePreview = stripHtmlTags(room.lastMessage.text);
     }
-    
+
     isMediaMessage = room.lastMessage.messageType !== 'text';
   }
 
@@ -267,7 +269,7 @@ const RoomItem = memo(({ room, currentUserId, onPress, onLongPress }: RoomItemPr
           month: "short",
         });
       }
-    } catch {}
+    } catch { }
   }
 
   const handlePressIn = () => {
@@ -684,12 +686,29 @@ export default function ChatRoomsList() {
         }));
         setRooms(cachedRooms);
         setIsLoading(false);
+        setIsSyncing(false);
+        setIsRefreshing(false);
         hasLoadedRef.current = true;
+        console.log("✅ [Rooms] Cache loaded, loading cleared");
+      } else {
+        // No cached data - check if we have socket rooms
+        console.log("⚠️ [Rooms] No cached data");
+        if (socketRooms.length > 0) {
+          setIsLoading(false);
+          setIsSyncing(false);
+          setIsRefreshing(false);
+        }
       }
     } catch (error) {
       console.error("❌ [Rooms] Cache load error:", error);
+      // On error, still clear loading if we have socket rooms
+      if (socketRooms.length > 0) {
+        setIsLoading(false);
+        setIsSyncing(false);
+        setIsRefreshing(false);
+      }
     }
-  }, []);
+  }, [socketRooms.length]);
 
   // ==================== SOCKET DATA APPLICATION ====================
 
@@ -697,17 +716,29 @@ export default function ChatRoomsList() {
   useEffect(() => {
     // Always sync rooms from context to local state
     // This ensures real-time updates (roomUpdate, newMessage, etc.) are reflected
-    if (socketRooms.length > 0 || hasLoadedRef.current) {
+    if (socketRooms.length > 0) {
       console.log("🔄 [Rooms] Syncing from context:", socketRooms.length);
       setRooms(socketRooms);
-      if (socketRooms.length > 0) {
-        setIsLoading(false);
-        setIsSyncing(false);
-        setIsRefreshing(false);
-        hasLoadedRef.current = true;
-      }
+      setIsLoading(false);
+      setIsSyncing(false);
+      setIsRefreshing(false);
+      hasLoadedRef.current = true;
+      console.log("✅ [Rooms] Socket data received, loading cleared");
+    } else if (hasLoadedRef.current && rooms.length > 0) {
+      // Socket rooms is empty but we have cached rooms
+      // Keep showing cached data and ensure loading is cleared
+      console.log("🔄 [Rooms] Socket empty but have cached rooms, keeping cached data");
+      setIsLoading(false);
+      setIsSyncing(false);
+      setIsRefreshing(false);
+    } else if (hasLoadedRef.current && rooms.length === 0 && socketRooms.length === 0) {
+      // We've loaded before but have no data at all - this shouldn't happen but clear loading anyway
+      console.log("⚠️ [Rooms] No data available, clearing loading state");
+      setIsLoading(false);
+      setIsSyncing(false);
+      setIsRefreshing(false);
     }
-  }, [socketRooms]);
+  }, [socketRooms, rooms.length]);
 
   // Sort rooms by last message timestamp
   const sortedRooms = React.useMemo(() => {
@@ -734,6 +765,70 @@ export default function ChatRoomsList() {
 
   // ==================== EFFECTS ====================
 
+  // ==================== BACK HANDLER - EXIT APP ====================
+
+  // const EXIT_DELAY = 2000; // 2 seconds
+
+  // useEffect(() => {
+  //   const lastBackPressRef = useRef(0);
+
+  //   const onBackPress = () => {
+  //     // Close search first
+  //     if (isSearchMode) {
+  //       setIsSearchMode(false);
+  //       setSearchQuery("");
+  //       Keyboard.dismiss();
+  //       return true;
+  //     }
+
+  //     const now = Date.now();
+
+  //     // First press
+  //     if (now - lastBackPressRef.current > EXIT_DELAY) {
+  //       lastBackPressRef.current = now;
+  //       ToastAndroid.show(
+  //         "Press back again to exit",
+  //         ToastAndroid.SHORT // ~1s only
+  //       );
+  //       return true;
+  //     }
+
+  //     // Second press → exit immediately
+  //     BackHandler.exitApp();
+  //     return true;
+  //   };
+
+  //   const sub = BackHandler.addEventListener(
+  //     "hardwareBackPress",
+  //     onBackPress
+  //   );
+
+  //   return () => sub.remove();
+  // }, [isSearchMode]);
+
+
+  useEffect(() => {
+    const backHandler = BackHandler.addEventListener(
+      'hardwareBackPress',
+      () => {
+        // If search mode is open, close it first
+        if (isSearchMode) {
+          setIsSearchMode(false);
+          setSearchQuery('');
+          Keyboard.dismiss();
+          return true; // Prevent default back behavior
+        }
+
+        // Exit the app when back is pressed on main screen
+        BackHandler.exitApp();
+        return true;
+      }
+    );
+
+    return () => backHandler.remove();
+  }, [isSearchMode]);
+
+
   useEffect(() => {
     if (!isInitialized) {
       initialize();
@@ -751,7 +846,7 @@ export default function ChatRoomsList() {
       if (!hasLoadedRef.current) {
         loadFromCache();
       }
-      
+
       // Request fresh data via socket
       setIsSyncing(true);
 
@@ -767,15 +862,27 @@ export default function ChatRoomsList() {
         });
       }
 
+      // Fallback: Clear loading state after a timeout if we have rooms (cached or socket)
+      // This ensures loading doesn't stay forever
+      const timeoutId = setTimeout(() => {
+        if (rooms.length > 0 || socketRooms.length > 0) {
+          console.log("⏰ [Rooms] Timeout: Clearing loading state");
+          setIsLoading(false);
+          setIsSyncing(false);
+          setIsRefreshing(false);
+        }
+      }, 5000); // 5 second timeout
+
       const handleNotification = (data: { roomId: string }) => {
         router.push(`/chat/${data.roomId}`);
       };
       eventEmitter.on("openChatRoom", handleNotification);
 
       return () => {
+        clearTimeout(timeoutId);
         eventEmitter.off("openChatRoom", handleNotification);
       };
-    }, [isConnected, isInitialized, loadFromCache, refreshRoomData, initialize])
+    }, [isConnected, isInitialized, loadFromCache, refreshRoomData, initialize, rooms.length, socketRooms.length])
   );
 
   // ==================== HANDLERS ====================
@@ -784,6 +891,12 @@ export default function ChatRoomsList() {
     setIsRefreshing(true);
     setIsSyncing(true);
     refreshRoomData();
+
+    // Fallback: Clear refreshing state after timeout
+    setTimeout(() => {
+      setIsRefreshing(false);
+      setIsSyncing(false);
+    }, 5000); // 5 second timeout for refresh
   }, [refreshRoomData]);
 
   const handleRoomPress = useCallback(
@@ -793,20 +906,20 @@ export default function ChatRoomsList() {
         setIsSearchMode(false);
         setSearchQuery("");
       }
-      
+
       markRoomAsRead(roomId);
       setRooms((prev) =>
         prev.map((r) =>
           r.roomId?.toString() === roomId ? { ...r, unreadCount: 0 } : r
         )
       );
-      router.push({ 
-        pathname: "/chat/[roomId]", 
-        params: { 
+      router.push({
+        pathname: "/chat/[roomId]",
+        params: {
           roomId,
           roomName: roomName || undefined,
           canSendMessage: canSendMessage !== undefined ? String(canSendMessage) : undefined,
-        } 
+        }
       });
     },
     [markRoomAsRead, isSearchMode]
