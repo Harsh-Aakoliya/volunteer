@@ -1256,7 +1256,7 @@ export default function AttachmentsScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        behavior={Platform.OS === "ios" ? "padding" : "padding"}
         style={styles.flex1}
         keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
       >

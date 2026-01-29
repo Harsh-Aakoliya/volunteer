@@ -1,29 +1,20 @@
 // components/chat/PollContent.tsx
-import React, { useState, useCallback } from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
   TextInput,
   TouchableOpacity,
   Alert,
-  SafeAreaView,
   ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
-  StyleSheet,
+  ScrollView,
   Keyboard,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import { API_URL } from "@/constants/api";
 import axios from "axios";
 import { AuthStorage } from "@/utils/authStorage";
 import { useSocket } from "@/contexts/SocketContext";
-import DraggableFlatList, {
-  ScaleDecorator,
-  RenderItemParams,
-} from "react-native-draggable-flatlist";
-import { GestureHandlerRootView } from "react-native-gesture-handler";
 
 type PollOption = {
   id: string;
@@ -51,8 +42,8 @@ export default function PollContent({
 }: PollContentProps) {
   const [question, setQuestion] = useState("");
   const [options, setOptions] = useState<PollOption[]>([
-    { id: `${Date.now()}-1`, text: "" },
-    { id: `${Date.now()}-2`, text: "" },
+    { id: "1", text: "" },
+    { id: "2", text: "" },
   ]);
   const [multipleChoice, setMultipleChoice] = useState(false);
   const [sending, setSending] = useState(false);
@@ -61,49 +52,40 @@ export default function PollContent({
   const validOptions = options.filter((opt) => opt.text.trim() !== "");
   const isCreateEnabled = question.trim() !== "" && validOptions.length >= 2;
 
-  // ==================== ACTIONS ====================
-
-  const addOption = useCallback(() => {
+  const addOption = () => {
     if (options.length < 12) {
-      setOptions((prev) => [
-        ...prev,
-        { id: `${Date.now()}-${Math.random()}`, text: "" },
-      ]);
+      setOptions([...options, { id: `${Date.now()}`, text: "" }]);
     }
-  }, [options.length]);
+  };
 
-  const removeOption = useCallback(
-    (optionId: string) => {
-      if (options.length > 1) {
-        setOptions((prev) => prev.filter((opt) => opt.id !== optionId));
-      }
-    },
-    [options.length]
-  );
+  const removeOption = (id: string) => {
+    if (options.length > 1) {
+      setOptions(options.filter((opt) => opt.id !== id));
+    }
+  };
 
-  const updateOptionText = useCallback((optionId: string, text: string) => {
-    setOptions((prev) =>
-      prev.map((opt) => (opt.id === optionId ? { ...opt, text } : opt))
-    );
-  }, []);
+  const updateOption = (id: string, text: string) => {
+    setOptions(options.map((opt) => (opt.id === id ? { ...opt, text } : opt)));
+  };
 
   const sendPoll = async () => {
     if (sending || !isCreateEnabled) return;
     Keyboard.dismiss();
     setSending(true);
+
     try {
       const response = await axios.post(`${API_URL}/api/poll`, {
-        question: question,
+        question,
         options: validOptions,
         isMultipleChoiceAllowed: multipleChoice,
         pollEndTime: null,
-        roomId: roomId,
+        roomId,
         createdBy: userId,
       });
 
       const createdPollId = response.data.poll.id;
-
       const token = await AuthStorage.getToken();
+
       const pollResponse = await axios.post(
         `${API_URL}/api/chat/rooms/${roomId}/messages`,
         {
@@ -111,9 +93,7 @@ export default function PollContent({
           messageType: "poll",
           pollId: createdPollId,
         },
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        }
+        { headers: { Authorization: `Bearer ${token}` } }
       );
 
       socketSendMessage(roomId, {
@@ -127,10 +107,7 @@ export default function PollContent({
         replyMessageId: 0,
       });
 
-      // Wait for keyboard to fully dismiss
-      setTimeout(() => {
-        onSuccess();
-      }, 150);
+      onSuccess();
     } catch (error) {
       console.error("Error creating poll:", error);
       Alert.alert("Error", "Failed to create poll. Please try again.");
@@ -139,642 +116,150 @@ export default function PollContent({
     }
   };
 
-  const renderOptionItem = ({
-    item,
-    drag,
-    isActive,
-  }: RenderItemParams<PollOption>) => (
-    <ScaleDecorator>
-      <View style={styles.optionRow}>
-        <TouchableOpacity
-          onLongPress={drag}
-          disabled={isActive}
-          style={styles.dragHandle}
-        >
-          <Ionicons
-            name="menu"
-            size={20}
-            color={isDark ? "#8E8E93" : "#C7C7CC"}
-          />
-        </TouchableOpacity>
-
-        <TextInput
-          placeholder="Option"
-          placeholderTextColor={isDark ? "#8E8E93" : "#C7C7CC"}
-          style={[
-            styles.optionInput,
-            {
-              color: isDark ? "#fff" : "#000",
-              borderBottomColor: isDark ? "#374151" : "#E5E7EB",
-            },
-          ]}
-          value={item.text}
-          onChangeText={(text) => updateOptionText(item.id, text)}
-        />
-
-        {options.length > 1 && (
-          <TouchableOpacity
-            onPress={() => removeOption(item.id)}
-            style={styles.removeButton}
-          >
-            <Ionicons
-              name="close-circle"
-              size={22}
-              color={isDark ? "#8E8E93" : "#C7C7CC"}
-            />
-          </TouchableOpacity>
-        )}
-      </View>
-    </ScaleDecorator>
-  );
-
-  // ==================== SHEET VERSION (for AttachmentSheet) ====================
-
-  if (showInSheet) {
-    return (
-      <View
-        style={[
-          styles.container,
-          { backgroundColor: isDark ? "#0E1621" : "#fff" },
-        ]}
+  return (
+    <View className={`flex-1 ${isDark ? "bg-[#0E1621]" : "bg-white"}`}>
+      <ScrollView
+        className="flex-1"
+        contentContainerClassName="p-4 pb-40"
+        keyboardShouldPersistTaps="handled"
       >
-        {/* Poll question header fixed at top */}
-        <View
-          style={[
-            styles.titleHeader,
-            { borderBottomColor: isDark ? "#374151" : "#E5E7EB" },
-          ]}
-        >
-          <View style={styles.titleHeaderRow}>
-            <Text
-              style={[
-                styles.sectionLabel,
-                { color: isDark ? "#3B82F6" : "#007AFF" },
-              ]}
-            >
-              Poll question
-            </Text>
-
-            <TouchableOpacity
-              onPress={sendPoll}
-              disabled={!isCreateEnabled || sending}
-              style={styles.createButton}
-            >
-              {sending ? (
-                <ActivityIndicator size="small" color={isDark ? "#60a5fa" : "#2563eb"} />
-              ) : (
-                <Text
-                  style={[
-                    styles.createButtonText,
-                    {
-                      color:
-                        isCreateEnabled && !sending
-                          ? isDark
-                            ? "#3B82F6"
-                            : "#007AFF"
-                          : isDark
-                          ? "#4B5563"
-                          : "#9CA3AF",
-                    },
-                  ]}
-                >
-                  CREATE
-                </Text>
-              )}
-            </TouchableOpacity>
-          </View>
-
-          <TextInput
-            placeholder="Ask a question"
-            placeholderTextColor={isDark ? "#8E8E93" : "#C7C7CC"}
-            style={[
-              styles.questionInput,
-              { color: isDark ? "#fff" : "#000" },
-            ]}
-            value={question}
-            onChangeText={setQuestion}
-            multiline={false}
-          />
+        {/* Header with Create button */}
+        <View className="flex-row items-center justify-between mb-4">
+          <Text className={`text-sm font-medium ${isDark ? "text-blue-400" : "text-blue-500"}`}>
+            Poll question
+          </Text>
+          <TouchableOpacity
+            onPress={sendPoll}
+            disabled={!isCreateEnabled || sending}
+          >
+            {sending ? (
+              <ActivityIndicator size="small" color={isDark ? "#60a5fa" : "#3b82f6"} />
+            ) : (
+              <Text
+                className={`text-sm font-semibold ${
+                  isCreateEnabled
+                    ? isDark
+                      ? "text-blue-400"
+                      : "text-blue-500"
+                    : isDark
+                    ? "text-gray-600"
+                    : "text-gray-400"
+                }`}
+              >
+                CREATE
+              </Text>
+            )}
+          </TouchableOpacity>
         </View>
 
-        {/* Scrollable area for answer options and settings */}
-        <BottomSheetScrollView
-          style={styles.scrollView}
-          contentContainerStyle={styles.scrollContent}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={true}
-        >
-          {/* Answer Options */}
-          <View
-            style={[
-              styles.optionsSection,
-              { borderBottomColor: isDark ? "#374151" : "#E5E7EB" },
-            ]}
-          >
-            <Text
-              style={[
-                styles.sectionLabel,
-                { color: isDark ? "#3B82F6" : "#007AFF" },
-              ]}
-            >
-              Answer options
-            </Text>
+        {/* Question Input */}
+        <TextInput
+          placeholder="Ask a question"
+          placeholderTextColor={isDark ? "#6b7280" : "#9ca3af"}
+          value={question}
+          onChangeText={setQuestion}
+          className={`text-base py-3 mb-6 border-b ${
+            isDark
+              ? "text-white border-gray-700"
+              : "text-black border-gray-200"
+          }`}
+        />
 
-            {/* Non-draggable list when shown inside sheet to avoid gesture conflicts */}
-            <View style={styles.optionsList}>
-              {options.map((item) => (
-                <View key={item.id} style={styles.optionRow}>
-                  <View style={styles.dragHandle}>
-                    <Ionicons
-                      name="menu"
-                      size={20}
-                      color={isDark ? "#8E8E93" : "#C7C7CC"}
-                    />
-                  </View>
+        {/* Answer Options Label */}
+        <Text className={`text-sm font-medium mb-3 ${isDark ? "text-blue-400" : "text-blue-500"}`}>
+          Answer options
+        </Text>
 
-                  <TextInput
-                    placeholder="Option"
-                    placeholderTextColor={isDark ? "#8E8E93" : "#C7C7CC"}
-                    style={[
-                      styles.optionInput,
-                      {
-                        color: isDark ? "#fff" : "#000",
-                        borderBottomColor: isDark ? "#374151" : "#E5E7EB",
-                      },
-                    ]}
-                    value={item.text}
-                    onChangeText={(text) => updateOptionText(item.id, text)}
-                  />
-
-                  {options.length > 1 && (
-                    <TouchableOpacity
-                      onPress={() => removeOption(item.id)}
-                      style={styles.removeButton}
-                    >
-                      <Ionicons
-                        name="close-circle"
-                        size={22}
-                        color={isDark ? "#8E8E93" : "#C7C7CC"}
-                      />
-                    </TouchableOpacity>
-                  )}
-                </View>
-              ))}
-
-              {/* Footer actions */}
-              <View style={styles.footer}>
-                {options.length < 12 && (
-                  <TouchableOpacity
-                    onPress={addOption}
-                    style={styles.addOptionButton}
-                  >
-                    <View
-                      style={[
-                        styles.addIconCircle,
-                        { backgroundColor: isDark ? "#3B82F6" : "#007AFF" },
-                      ]}
-                    >
-                      <Ionicons name="add" size={18} color="white" />
-                    </View>
-                    <Text
-                      style={[
-                        styles.addOptionText,
-                        { color: isDark ? "#3B82F6" : "#007AFF" },
-                      ]}
-                    >
-                      Add an Option...
-                    </Text>
-                  </TouchableOpacity>
-                )}
-
-                {options.length < 12 && (
-                  <Text
-                    style={[
-                      styles.remainingText,
-                      { color: isDark ? "#6B7280" : "#9CA3AF" },
-                    ]}
-                  >
-                    You can add {12 - options.length} more option
-                    {12 - options.length !== 1 ? "s" : ""}.
-                  </Text>
-                )}
-
-                {/* Settings */}
-                <View
-                  style={[
-                    styles.settingsSection,
-                    { borderTopColor: isDark ? "#374151" : "#E5E7EB" },
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.sectionLabel,
-                      { color: isDark ? "#3B82F6" : "#007AFF" },
-                    ]}
-                  >
-                    Settings
-                  </Text>
-
-                  <TouchableOpacity
-                    onPress={() => {
-                      if (validOptions.length >= 2) {
-                        setMultipleChoice(!multipleChoice);
-                      }
-                    }}
-                    disabled={validOptions.length < 2}
-                    style={[
-                      styles.settingRow,
-                      { borderBottomColor: isDark ? "#374151" : "#E5E7EB" },
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.settingText,
-                        {
-                          color:
-                            validOptions.length >= 2
-                              ? isDark
-                                ? "#fff"
-                                : "#000"
-                              : isDark
-                              ? "#4B5563"
-                              : "#9CA3AF",
-                        },
-                      ]}
-                    >
-                      Multiple Answers
-                    </Text>
-                    <View
-                      style={[
-                        styles.toggle,
-                        {
-                          backgroundColor:
-                            multipleChoice && validOptions.length >= 2
-                              ? isDark
-                                ? "#3B82F6"
-                                : "#007AFF"
-                              : isDark
-                              ? "#4B5563"
-                              : "#D1D5DB",
-                        },
-                      ]}
-                    >
-                      <View
-                        style={[
-                          styles.toggleCircle,
-                          multipleChoice && styles.toggleCircleActive,
-                        ]}
-                      />
-                    </View>
-                  </TouchableOpacity>
-                </View>
-
-                {/* Bottom padding for tab bar space when in half screen */}
-                {isHalfScreen && <View style={{ height: 140 }} />}
-              </View>
-            </View>
-          </View>
-        </BottomSheetScrollView>
-      </View>
-    );
-  }
-
-  // ==================== FULL SCREEN VERSION (original route) ====================
-
-  const Container = SafeAreaView;
-
-  return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      <Container
-        style={[
-          styles.container,
-          { backgroundColor: isDark ? "#0E1621" : "#fff" },
-        ]}
-      >
-        <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
-          style={styles.flex1}
-          keyboardVerticalOffset={0}
-        >
-          <View style={styles.flex1}>
-            {/* Poll Question */}
-            <View
-              style={[
-                styles.titleHeader,
-                { borderBottomColor: isDark ? "#374151" : "#E5E7EB" },
-              ]}
-            >
-              <View style={styles.titleHeaderRow}>
-                <Text
-                  style={[
-                    styles.sectionLabel,
-                    { color: isDark ? "#3B82F6" : "#007AFF" },
-                  ]}
-                >
-                  Poll question
-                </Text>
-
-                <TouchableOpacity
-                  onPress={sendPoll}
-                  disabled={!isCreateEnabled || sending}
-                  style={styles.createButton}
-                >
-                  {sending ? (
-                    <ActivityIndicator size="small" color={isDark ? "#60a5fa" : "#2563eb"} />
-                  ) : (
-                    <Text
-                      style={[
-                        styles.createButtonText,
-                        {
-                          color:
-                            isCreateEnabled && !sending
-                              ? isDark
-                                ? "#3B82F6"
-                                : "#007AFF"
-                              : isDark
-                              ? "#4B5563"
-                              : "#9CA3AF",
-                        },
-                      ]}
-                    >
-                      Create
-                    </Text>
-                  )}
-                </TouchableOpacity>
-              </View>
-
-              <TextInput
-                placeholder="Ask a question"
-                placeholderTextColor={isDark ? "#8E8E93" : "#C7C7CC"}
-                style={[
-                  styles.questionInput,
-                  { color: isDark ? "#fff" : "#000" },
-                ]}
-                value={question}
-                onChangeText={setQuestion}
-                multiline={false}
-              />
-            </View>
-
-            {/* Answer Options */}
-            <View
-              style={[
-                styles.optionsSection,
-                { borderBottomColor: isDark ? "#374151" : "#E5E7EB" },
-              ]}
-            >
-              <Text
-                style={[
-                  styles.sectionLabel,
-                  { color: isDark ? "#3B82F6" : "#007AFF" },
-                ]}
+        {/* Options List */}
+        {options.map((option, index) => (
+          <View key={option.id} className="flex-row items-center mb-3">
+            <TextInput
+              placeholder={`Option ${index + 1}`}
+              placeholderTextColor={isDark ? "#6b7280" : "#9ca3af"}
+              value={option.text}
+              onChangeText={(text) => updateOption(option.id, text)}
+              className={`flex-1 text-base py-3 border-b ${
+                isDark
+                  ? "text-white border-gray-700"
+                  : "text-black border-gray-200"
+              }`}
+            />
+            {options.length > 1 && (
+              <TouchableOpacity
+                onPress={() => removeOption(option.id)}
+                className="ml-3 p-1"
               >
-                Answer options
-              </Text>
+                <Ionicons
+                  name="close-circle"
+                  size={22}
+                  color={isDark ? "#6b7280" : "#9ca3af"}
+                />
+              </TouchableOpacity>
+            )}
+          </View>
+        ))}
 
-              <DraggableFlatList
-                data={options}
-                onDragEnd={({ data }) => setOptions(data)}
-                keyExtractor={(item) => item.id}
-                renderItem={renderOptionItem}
-                keyboardShouldPersistTaps="handled"
-                contentContainerStyle={styles.optionsList}
-                ListFooterComponent={
-                  <View style={styles.footer}>
-                    {options.length < 12 && (
-                      <TouchableOpacity
-                        onPress={addOption}
-                        style={styles.addOptionButton}
-                      >
-                        <View
-                          style={[
-                            styles.addIconCircle,
-                            { backgroundColor: isDark ? "#3B82F6" : "#007AFF" },
-                          ]}
-                        >
-                          <Ionicons name="add" size={18} color="white" />
-                        </View>
-                        <Text
-                          style={[
-                            styles.addOptionText,
-                            { color: isDark ? "#3B82F6" : "#007AFF" },
-                          ]}
-                        >
-                          Add an Option...
-                        </Text>
-                      </TouchableOpacity>
-                    )}
+        {/* Add Option Button */}
+        {options.length < 12 && (
+          <TouchableOpacity
+            onPress={addOption}
+            className="flex-row items-center py-3 mt-2"
+          >
+            <View
+              className={`w-6 h-6 rounded-full items-center justify-center mr-3 ${
+                isDark ? "bg-blue-500" : "bg-blue-500"
+              }`}
+            >
+              <Ionicons name="add" size={18} color="white" />
+            </View>
+            <Text className={`text-base ${isDark ? "text-blue-400" : "text-blue-500"}`}>
+              Add an Option...
+            </Text>
+          </TouchableOpacity>
+        )}
 
-                    {options.length < 12 && (
-                      <Text
-                        style={[
-                          styles.remainingText,
-                          { color: isDark ? "#6B7280" : "#9CA3AF" },
-                        ]}
-                      >
-                        You can add {12 - options.length} more option
-                        {12 - options.length !== 1 ? "s" : ""}.
-                      </Text>
-                    )}
+        {options.length < 12 && (
+          <Text className={`text-xs mt-1 ${isDark ? "text-gray-500" : "text-gray-400"}`}>
+            You can add {12 - options.length} more option
+            {12 - options.length !== 1 ? "s" : ""}.
+          </Text>
+        )}
 
-                    {/* Settings */}
-                    <View
-                      style={[
-                        styles.settingsSection,
-                        { borderTopColor: isDark ? "#374151" : "#E5E7EB" },
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.sectionLabel,
-                          { color: isDark ? "#3B82F6" : "#007AFF" },
-                        ]}
-                      >
-                        Settings
-                      </Text>
+        {/* Settings */}
+        <View className={`mt-6 pt-4 border-t ${isDark ? "border-gray-700" : "border-gray-200"}`}>
+          <Text className={`text-sm font-medium mb-3 ${isDark ? "text-blue-400" : "text-blue-500"}`}>
+            Settings
+          </Text>
 
-                      <TouchableOpacity
-                        onPress={() => {
-                          if (validOptions.length >= 2) {
-                            setMultipleChoice(!multipleChoice);
-                          }
-                        }}
-                        disabled={validOptions.length < 2}
-                        style={[
-                          styles.settingRow,
-                          { borderBottomColor: isDark ? "#374151" : "#E5E7EB" },
-                        ]}
-                      >
-                        <Text
-                          style={[
-                            styles.settingText,
-                            {
-                              color:
-                                validOptions.length >= 2
-                                  ? isDark
-                                    ? "#fff"
-                                    : "#000"
-                                  : isDark
-                                  ? "#4B5563"
-                                  : "#9CA3AF",
-                            },
-                          ]}
-                        >
-                          Multiple Answers
-                        </Text>
-                        <View
-                          style={[
-                            styles.toggle,
-                            {
-                              backgroundColor:
-                                multipleChoice && validOptions.length >= 2
-                                  ? isDark
-                                    ? "#3B82F6"
-                                    : "#007AFF"
-                                  : isDark
-                                  ? "#4B5563"
-                                  : "#D1D5DB",
-                            },
-                          ]}
-                        >
-                          <View
-                            style={[
-                              styles.toggleCircle,
-                              multipleChoice && styles.toggleCircleActive,
-                            ]}
-                          />
-                        </View>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                }
+          <TouchableOpacity
+            onPress={() => setMultipleChoice(!multipleChoice)}
+            className={`flex-row items-center justify-between py-3 border-b ${
+              isDark ? "border-gray-700" : "border-gray-200"
+            }`}
+          >
+            <Text className={`text-base ${isDark ? "text-white" : "text-black"}`}>
+              Multiple Answers
+            </Text>
+            <View
+              className={`w-12 h-7 rounded-full p-1 ${
+                multipleChoice
+                  ? isDark
+                    ? "bg-blue-500"
+                    : "bg-blue-500"
+                  : isDark
+                  ? "bg-gray-600"
+                  : "bg-gray-300"
+              }`}
+            >
+              <View
+                className={`w-5 h-5 rounded-full bg-white ${
+                  multipleChoice ? "ml-auto" : ""
+                }`}
               />
             </View>
-          </View>
-        </KeyboardAvoidingView>
-      </Container>
-    </GestureHandlerRootView>
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
+    </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  flex1: {
-    flex: 1,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    flexGrow: 1,
-  },
-  // Title Header (poll question)
-  titleHeader: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-  },
-  titleHeaderRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  sectionLabel: {
-    fontSize: 14,
-    fontWeight: "500",
-  },
-  createButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-  },
-  createButtonText: {
-    fontSize: 15,
-    fontWeight: "600",
-    letterSpacing: 0.5,
-  },
-  questionInput: {
-    fontSize: 16,
-    paddingVertical: 8,
-  },
-  optionsSection: {
-    flex: 1,
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    borderBottomWidth: 1,
-  },
-  optionsList: {
-    paddingBottom: 20,
-  },
-  optionRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 12,
-  },
-  dragHandle: {
-    marginRight: 12,
-  },
-  optionInput: {
-    flex: 1,
-    fontSize: 16,
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-  },
-  removeButton: {
-    marginLeft: 12,
-    padding: 4,
-  },
-  footer: {},
-  addOptionButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 12,
-  },
-  addIconCircle: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 12,
-  },
-  addOptionText: {
-    fontSize: 16,
-  },
-  remainingText: {
-    fontSize: 12,
-    marginTop: 4,
-    marginBottom: 16,
-  },
-  settingsSection: {
-    paddingTop: 12,
-    marginTop: 8,
-    borderTopWidth: 1,
-  },
-  settingRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-  },
-  settingText: {
-    fontSize: 16,
-  },
-  toggle: {
-    width: 48,
-    height: 28,
-    borderRadius: 14,
-    padding: 4,
-  },
-  toggleCircle: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: "#fff",
-  },
-  toggleCircleActive: {
-    marginLeft: "auto",
-  },
-});
