@@ -33,19 +33,18 @@ const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
 // Telegram-style avatar colors (lighter, more pastel)
 const AVATAR_COLORS = [
-  ["#FF8A80", "#FF5252"], // Red
-  ["#69F0AE", "#00E676"], // Green
-  ["#82B1FF", "#448AFF"], // Blue
-  ["#FFD180", "#FFAB40"], // Orange
-  ["#B388FF", "#7C4DFF"], // Purple
-  // ["#84FFFF", "#18FFFF"], // Cyan
-  // ["#CCFF90", "#B2FF59"], // Lime
-  ["#FF80AB", "#FF4081"], // Pink
-  ["#A7FFEB", "#64FFDA"], // Teal
-  ["#FFE57F", "#FFD740"], // Amber
-  ["#8C9EFF", "#536DFE"], // Indigo
-  ["#EA80FC", "#E040FB"], // Purple accent
+  ["#D32F2F", "#B71C1C"], // Red (strong)
+  ["#2E7D32", "#1B5E20"], // Green (deep)
+  ["#1565C0", "#0D47A1"], // Blue
+  ["#EF6C00", "#E65100"], // Orange (burnt)
+  ["#6A1B9A", "#4A148C"], // Purple
+  ["#C2185B", "#880E4F"], // Pink
+  ["#00695C", "#004D40"], // Teal
+  ["#FF8F00", "#FF6F00"], // Amber (darkened)
+  ["#283593", "#1A237E"], // Indigo
+  ["#8E24AA", "#6A1B9A"], // Purple accent
 ];
+
 
 // Get consistent color for a room based on its ID/name
 const getAvatarColor = (identifier: string): string[] => {

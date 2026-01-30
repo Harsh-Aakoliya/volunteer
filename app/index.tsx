@@ -6,12 +6,12 @@ import * as Application from 'expo-application';
 import { VersionChecker } from '@/components/VersionChecker';
 import * as Notifications from 'expo-notifications';
 
-import { Platform, Alert, TextInput, View, Text, TouchableOpacity } from 'react-native';
+import { Platform, Alert, TextInput, View, Text } from 'react-native';
 import CustomInput from '@/components/ui/CustomInput';
 import CustomButton from '@/components/ui/CustomButton';
 import { API_URL, setApiUrl, updateDevIP } from "@/constants/api";
 import useNetworkStatus from '@/hooks/userNetworkStatus';
-import Constants from 'expo-constants';
+import SplashScreen from '@/components/SplashScreen';
 import * as React from 'react';
 // const { DEV_IP, INTERNAL_IP, EXTERNAL_IP } = Constants?.expoConfig?.extra as { DEV_IP: string; INTERNAL_IP: string; EXTERNAL_IP: string };
 
@@ -357,15 +357,16 @@ export default function Index() {
     );
   }
 
-  // Show loading state while connectivity check is in progress
-  if (!connectivityCheckComplete) {
+  // Show only splash during connectivity + version check (no "Connecting to server..." text)
+  const showSplash = !connectivityCheckComplete || !versionCheckComplete;
+  if (showSplash) {
     return (
-      <View className="flex-1 justify-center items-center bg-gray-100">
-        <TouchableOpacity onPress={handleLoginToContinuePress} className="bg-blue-500 p-4 rounded-lg">
-          <Text className="text-white text-lg font-bold">
-            Connecting to server...
-          </Text>
-        </TouchableOpacity>
+      <>
+        <SplashScreen onPress={handleLoginToContinuePress} />
+        {/* Mount VersionChecker once connectivity is done so it can run and set versionCheckComplete */}
+        {connectivityCheckComplete && (Platform.OS === 'ios' || Platform.OS === 'android') && (
+          <VersionChecker onUpdateCheckComplete={() => setVersionCheckComplete(true)} />
+        )}
         {showIPModal && (
           <View className="absolute inset-0 bg-black/50 flex justify-center items-center z-50">
             <View className="bg-white p-6 rounded-xl w-11/12 max-w-md mx-4">
@@ -414,17 +415,10 @@ export default function Index() {
             </View>
           </View>
         )}
-      </View>
+      </>
     );
   }
 
-
-
-  return (
-    <>
-      {(Platform.OS === "ios" || Platform.OS === "android") && (
-        <VersionChecker onUpdateCheckComplete={() => setVersionCheckComplete(true)} />
-      )}
-    </>
-  );
+  // Both checks complete; auth/navigation runs in useEffect. Show splash until navigation.
+  return <SplashScreen onPress={handleLoginToContinuePress} />;
 }

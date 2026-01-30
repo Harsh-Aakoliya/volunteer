@@ -32,9 +32,11 @@ type Props = {
   pollId: number;
   currentUserId: string;
   onViewResults: (pollId: number) => void;
+  /** When true, only show question and options (no voting, no radio/checkbox, no View votes) */
+  readOnly?: boolean;
 };
 
-const PollMessage = ({ pollId, currentUserId, onViewResults }: Props) => {
+const PollMessage = ({ pollId, currentUserId, onViewResults, readOnly = false }: Props) => {
   const { width: windowWidth } = useWindowDimensions();
   const [pollData, setPollData] = useState<PollData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -225,12 +227,32 @@ const PollMessage = ({ pollId, currentUserId, onViewResults }: Props) => {
         {pollData.question}
       </Text>
       <Text style={{ fontSize: 12, color: '#6B7280', marginBottom: 12 }}>
-        {pollData.isMultipleChoiceAllowed ? 'Select one or more' : 'Select one'}
+        {readOnly
+          ? (pollData.isMultipleChoiceAllowed ? 'Multiple choice' : 'Single choice')
+          : (pollData.isMultipleChoiceAllowed ? 'Select one or more' : 'Select one')}
       </Text>
 
       {/* Options */}
       <View style={{ gap: 8 }}>
         {pollData.options.map((option) => {
+          if (readOnly) {
+            return (
+              <View
+                key={option.id}
+                style={{
+                  borderWidth: 1,
+                  borderColor: '#E5E7EB',
+                  borderRadius: 8,
+                  padding: 10,
+                  backgroundColor: '#F9FAFB',
+                }}
+              >
+                <Text style={{ fontSize: 14, color: '#4B5563' }}>
+                  {option.text}
+                </Text>
+              </View>
+            );
+          }
           const isSelected = selectedOptions.includes(option.id);
           const votingState = votingOptions[option.id] || 'idle';
 
@@ -293,22 +315,24 @@ const PollMessage = ({ pollId, currentUserId, onViewResults }: Props) => {
       </View>
 
       {/* Status & Actions */}
-      <View style={{ marginTop: 12, gap: 8 }}>
-        {/* View votes (for creator only) */}
-        {isCreator && (
-          <TouchableOpacity
-            onPress={() => onViewResults(pollId)}
-            style={{
-              alignItems: 'center',
-              paddingVertical: 10,
-            }}
-          >
-            <Text style={{ color: '#16A34A', fontSize: 16, fontWeight: '700' }}>
-              View votes
-            </Text>
-          </TouchableOpacity>
-        )}
-      </View>
+      {!readOnly && (
+        <View style={{ marginTop: 12, gap: 8 }}>
+          {/* View votes (for creator only) */}
+          {isCreator && (
+            <TouchableOpacity
+              onPress={() => onViewResults(pollId)}
+              style={{
+                alignItems: 'center',
+                paddingVertical: 10,
+              }}
+            >
+              <Text style={{ color: '#16A34A', fontSize: 16, fontWeight: '700' }}>
+                View votes
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
     </View>
   );
 };

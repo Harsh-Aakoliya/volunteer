@@ -49,7 +49,6 @@ import GlobalPollModal from "@/components/chat/GlobalPollModal";
 import RenderTable from "@/components/chat/Attechments/RenderTable";
 import MediaViewerModal from "@/components/chat/MediaViewerModal";
 import ChatMessageOptions from "@/components/chat/ChatMessageOptions";
-import ForwardMessagesModal from "@/components/chat/ForwardMessagesModal";
 import MessageInput from "@/components/chat/MessageInput";
 import AudioRecorder from "@/components/chat/AudioRecorder";
 import AudioMessagePlayer from "@/components/chat/AudioMessagePlayer";
@@ -581,7 +580,6 @@ export default function ChatRoomScreen() {
   const [selectedMessages, setSelectedMessages] = useState<Message[]>([]);
 
   // Modal states
-  const [showForwardModal, setShowForwardModal] = useState(false);
   const [showPollModal, setShowPollModal] = useState(false);
   const [activePollId, setActivePollId] = useState<number | null>(null);
   const [showTableModle, setShowTableModel] = useState(false);
@@ -1582,27 +1580,43 @@ const handleDeselectMessage = useCallback((message: Message) => {
       for (const message of messagesToForward) {
         try {
           const token = await AuthStorage.getToken();
+          const isPoll = message.messageType === "poll";
+          const isMedia = message.messageType === "media";
+          const payload: Record<string, unknown> = {
+            messageText: message.messageText || "",
+            messageType: message.messageType,
+            tableId: message.tableId,
+            isForward: true
+          };
+          if (isPoll && message.pollId != null) {
+            payload.forwardSourcePollId = message.pollId;
+            payload.pollId = null;
+          } else if (!isPoll) {
+            payload.pollId = message.pollId ?? null;
+          }
+          if (isMedia && message.mediaFilesId != null) {
+            payload.forwardSourceMediaId = message.mediaFilesId;
+            payload.mediaFilesId = null;
+          } else if (!isMedia) {
+            payload.mediaFilesId = message.mediaFilesId ?? null;
+          }
+
           const response = await axios.post(
             `${API_URL}/api/chat/rooms/${room.roomId}/messages`,
-            {
-              messageText: message.messageText || "",
-              mediaFilesId: message.mediaFilesId,
-              pollId: message.pollId,
-              messageType: message.messageType,
-              tableId: message.tableId
-            },
+            payload,
             { headers: { Authorization: `Bearer ${token}` } }
           );
 
           if (currentUser && response.data) {
+            const data = response.data;
             socketSendMessage(room.roomId.toString(), {
-              id: response.data.id,
-              messageText: message.messageText || "",
-              createdAt: response.data.createdAt,
-              messageType: message.messageType,
-              mediaFilesId: message.mediaFilesId,
-              pollId: message.pollId,
-              tableId: message.tableId
+              id: data.id,
+              messageText: data.messageText ?? message.messageText ?? "",
+              createdAt: data.createdAt,
+              messageType: data.messageType ?? message.messageType,
+              mediaFilesId: data.mediaFilesId ?? null,
+              pollId: data.pollId ?? null,
+              tableId: data.tableId ?? null
             });
           }
 
@@ -1612,8 +1626,14 @@ const handleDeselectMessage = useCallback((message: Message) => {
         }
       }
     }
+    // Mark each forwarded message as read for the current user (including own messages after forward)
+    // so unread count on main page updates correctly
+    for (const msg of messagesToForward) {
+      if (typeof msg.id === "number") {
+        await markMessageAsRead(msg.id);
+      }
+    }
     clearSelection();
-    setShowForwardModal(false);
   };
 
   const handleDeleteMessages = async (messageIds: (string | number)[]) => {
@@ -1850,7 +1870,8 @@ const TelegramHeader = React.memo(({
           isAdmin={isGroupAdmin}
           canSendMessage={canSendMessage}
           onClose={clearSelection}
-          onForwardPress={() => setShowForwardModal(true)}
+          onForward={handleForwardMessages}
+          currentRoomId={Array.isArray(roomId) ? String(roomId[0]) : String(roomId)}
           onDeletePress={handleDeleteMessages}
           roomId={Array.isArray(roomId) ? roomId[0] : roomId}
           roomMembers={roomMembers}
@@ -1863,8 +1884,11 @@ const TelegramHeader = React.memo(({
           memberCount={roomMembers.length}
           onlineCount={onlineUsers.length}
           onBackPress={() => {
-            // FIX: Use router.back() instead of router.replace()
-            router.back();
+            if (router.canGoBack()) {
+              router.back();              // normal flow
+            } else {
+              router.replace("/(drawer)"); // notification / cold start
+            }
           }}
           onAvatarPress={() => setShowMembersModal(true)}
           onMenuPress={isGroupAdmin ? () => router.push({
@@ -2015,16 +2039,6 @@ const TelegramHeader = React.memo(({
           mediaId={selectedMediaId || undefined}
           mediaFiles={selectedMediaFiles}
           initialIndex={selectedMediaIndex}
-        />
-      )}
-
-      {isGroupAdmin && (
-        <ForwardMessagesModal
-          visible={showForwardModal}
-          onClose={() => setShowForwardModal(false)}
-          selectedMessages={selectedMessages}
-          currentRoomId={roomId as string}
-          onForward={handleForwardMessages}
         />
       )}
 

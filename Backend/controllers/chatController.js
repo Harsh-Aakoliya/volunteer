@@ -1,5 +1,7 @@
 // Chat Controller
 import pool from "../config/database.js";
+import fs from "fs";
+import path from "path";
 const chatController = {
   async getChatUsers(req, res) {
     try {
@@ -557,7 +559,7 @@ async getChatRooms(req, res) {
     try {
       const { roomId } = req.params;
       console.log("req body ", req.body);
-      let { messageText, mediaFiles, messageType, mediaFilesId, pollId, tableId, replyMessageId, scheduledAt } = req.body; // Also receive mediaFiles, replyMessageId, and scheduledAt
+      let { messageText, mediaFiles, messageType, mediaFilesId, pollId, tableId, replyMessageId, scheduledAt, isForward, forwardSourcePollId, forwardSourceMediaId } = req.body; // Also receive mediaFiles, replyMessageId, scheduledAt, and forward clone hints
       console.log("Message text", messageText);
       console.log("Media files", mediaFiles);
       console.log("Message type", messageType);
@@ -571,6 +573,7 @@ async getChatRooms(req, res) {
       if (!tableId) tableId = null;
       if (!replyMessageId) replyMessageId = null;
       if (!scheduledAt) scheduledAt = null;
+      if (!isForward) isForward = false;
       const senderId = Number(req.user.userId) || 0;
       console.log(typeof(req.user.userId));
 
@@ -597,9 +600,37 @@ async getChatRooms(req, res) {
       //   });
       // }
 
+      // When forwarding poll: create a new poll row for this room and use its id (so votes don't sync across groups)
+      let sourceMediaIdForForward = null;
+      if (isForward && (messageType === "poll") && (forwardSourcePollId != null || pollId != null)) {
+        const sourcePollId = forwardSourcePollId != null ? forwardSourcePollId : pollId;
+        const pollRes = await pool.query(`SELECT "question", "options", "isMultipleChoiceAllowed", "pollEndTime" FROM poll WHERE "id" = $1`, [sourcePollId]);
+        if (pollRes.rows.length > 0) {
+          const row = pollRes.rows[0];
+          const opts = typeof row.options === "string" ? row.options : JSON.stringify(row.options);
+          const newPollRes = await pool.query(
+            `INSERT INTO poll ("question", "options", "isMultipleChoiceAllowed", "pollEndTime", "roomId", "createdBy", "createdAt", "votes")
+             VALUES ($1, $2::jsonb, $3, $4, $5, $6, NOW() AT TIME ZONE 'UTC', '{}'::jsonb)
+             RETURNING id`,
+            [row.question, opts, row.isMultipleChoiceAllowed || false, row.pollEndTime || new Date(Date.now() + 24 * 60 * 60 * 1000), roomIdInt, String(senderId)]
+          );
+          pollId = newPollRes.rows[0].id;
+          mediaFilesId = null;
+          tableId = null;
+        }
+      }
+
+      // When forwarding media: we will clone media after inserting the message; do not send original mediaFilesId
+      if (isForward && (messageType === "media") && (forwardSourceMediaId != null || mediaFilesId != null)) {
+        sourceMediaIdForForward = forwardSourceMediaId != null ? forwardSourceMediaId : mediaFilesId;
+        mediaFilesId = null;
+        pollId = null;
+        tableId = null;
+      }
+
       let newMessages = [];
       //store caption in media table (for old media upload system)
-      if (mediaFiles && messageType !== "media") {
+      if (mediaFiles && messageType !== "media" && !(isForward && messageType === "media")) {
         // Step 1: Get current driveUrlObject array from DB
         const { rows } = await pool.query(
           `SELECT "driveUrlObject" FROM media WHERE id = $1`,
@@ -668,6 +699,59 @@ async getChatRooms(req, res) {
         console.log("new message after updating is", here.rows[0]);
         newMessage = here.rows[0];
         console.log("new message;asdljf;alsdjf", newMessage);
+      }
+
+      // When forwarding media: clone source media (new folder + new media row) and set message's mediaFilesId
+      if (sourceMediaIdForForward != null && newMessage.id) {
+        const mediaBase = path.join(process.cwd(), "media", "chat");
+        const srcMediaRes = await pool.query(
+          `SELECT "roomId", "senderId", "createdAt", "driveUrlObject" FROM media WHERE "id" = $1`,
+          [sourceMediaIdForForward]
+        );
+        if (srcMediaRes.rows.length > 0) {
+          const src = srcMediaRes.rows[0];
+          let driveUrlObject = src.driveUrlObject;
+          if (typeof driveUrlObject === "string") driveUrlObject = JSON.parse(driveUrlObject);
+          if (Array.isArray(driveUrlObject) && driveUrlObject.length > 0) {
+            const createdAt = newMessage.createdAt || new Date();
+            const ts = new Date(createdAt).toISOString().replace(/[:.]/g, "-");
+            const permanentFolderName = `${ts}_${roomIdInt}_${senderId}_${newMessage.id}`;
+            const destDir = path.join(mediaBase, permanentFolderName);
+            if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
+            const newDriveUrlObject = [];
+            for (const item of driveUrlObject) {
+              const filename = item.filename || (item.url && item.url.split("/").pop()) || `file_${Date.now()}`;
+              const srcPath = path.join(mediaBase, String(item.url || "").replace(/^\//, ""));
+              if (fs.existsSync(srcPath)) {
+                const destPath = path.join(destDir, filename);
+                fs.copyFileSync(srcPath, destPath);
+                newDriveUrlObject.push({
+                  url: `${permanentFolderName}/${filename}`,
+                  filename: filename,
+                  originalName: item.originalName || filename,
+                  caption: item.caption || "",
+                  mimeType: item.mimeType || "",
+                  size: item.size || 0
+                });
+              }
+            }
+            if (newDriveUrlObject.length > 0) {
+              const mediaInsert = await pool.query(
+                `INSERT INTO media ("roomId", "senderId", "createdAt", "messageId", "driveUrlObject")
+                 VALUES ($1, $2, $3, $4, $5)
+                 RETURNING id`,
+                [roomIdInt, senderId, createdAt, newMessage.id, JSON.stringify(newDriveUrlObject)]
+              );
+              const newMediaId = mediaInsert.rows[0].id;
+              await pool.query(
+                `UPDATE chatmessages SET "mediaFilesId" = $1 WHERE "id" = $2`,
+                [newMediaId, newMessage.id]
+              );
+              newMessage.mediaFilesId = newMediaId;
+              mediaFilesId = newMediaId;
+            }
+          }
+        }
       }
 
       // Parse mediaFiles if exists
@@ -1553,38 +1637,26 @@ async getChatRooms(req, res) {
         });
       }
 
-      // Don't allow sender to mark their own message as read
-      if (senderId === userId) {
-        return res.json({
-          success: true,
-          message: "Message marked as read"
-        });
+      // If not sender: insert read status. If sender (e.g. after forwarding own message): skip insert but still sync unread.
+      if (senderId !== userId) {
+        const alreadyRead = await pool.query(
+          `SELECT 1 FROM messagereadstatus WHERE "messageId" = $1 AND "userId" = $2`,
+          [messageIdInt, userId.toString()]
+        );
+
+        if (alreadyRead.rows.length === 0) {
+          await pool.query(
+            `INSERT INTO messagereadstatus ("messageId", "userId", "roomId", "readAt")
+             VALUES ($1, $2, $3, NOW() AT TIME ZONE 'UTC')
+             ON CONFLICT ("messageId", "userId") 
+             DO UPDATE SET "readAt" = NOW() AT TIME ZONE 'UTC'`,
+            [messageIdInt, userId.toString(), roomId]
+          );
+        }
       }
-
-      // If already marked read, skip extra write
-      const alreadyRead = await pool.query(
-        `SELECT 1 FROM messagereadstatus WHERE "messageId" = $1 AND "userId" = $2`,
-        [messageIdInt, userId.toString()]
-      );
-
-      if (alreadyRead.rows.length > 0) {
-        return res.json({
-          success: true,
-          message: "Message already marked as read"
-        });
-      }
-
-      // Insert or update read status
-      await pool.query(
-        `INSERT INTO messagereadstatus ("messageId", "userId", "roomId", "readAt")
-         VALUES ($1, $2, $3, NOW() AT TIME ZONE 'UTC')
-         ON CONFLICT ("messageId", "userId") 
-         DO UPDATE SET "readAt" = NOW() AT TIME ZONE 'UTC'`,
-        [messageIdInt, userId.toString(), roomId]
-      );
 
       // --------------------------------------------------
-      // Sync in-memory unread counters + notify via socket
+      // Always sync in-memory unread + emit roomUpdate (including when sender marks own message, e.g. after forward)
       // --------------------------------------------------
       try {
         // unreadMessagesByUser is an alias to socket unreadCounts (see socket.js)

@@ -85,7 +85,7 @@ const MediaGrid: React.FC<MediaGridProps> = ({
         setMediaFiles([]);
       }
     } catch (error) {
-      console.error('Error loading media files:', error);
+      console.log("error loading media files",error);
       setError(true);
     } finally {
       setLoading(false);

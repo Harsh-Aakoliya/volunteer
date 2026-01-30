@@ -4,22 +4,29 @@ import {
     Text, 
     TouchableOpacity, 
     Alert,
-    Clipboard
+    Clipboard,
+    Platform
 } from "react-native";
-import { Message, ChatUser } from "@/types/type";
+import { Message, ChatUser, ChatRoom } from "@/types/type";
 import { Ionicons } from '@expo/vector-icons';
 import EditMessageModal from './EditMessageModal';
 import InfoMessageModal from './InfoMessageModal';
+import ForwardMessagesModal from './ForwardMessagesModal';
 import { ToastAndroid } from 'react-native';
+import { isHtmlContent, stripHtml } from '@/components/chat/message';
+
 type ChatMessageOptionProps = {
     selectedMessages: Message[];
-    setSelectedMessages:any;
-    isAdmin?: boolean; // This represents group admin status (admin of the specific chat room)
-    canSendMessage?: boolean; // Whether user can send messages in this room
+    setSelectedMessages: any;
+    isAdmin?: boolean;
+    canSendMessage?: boolean;
     onClose: () => void;
-    onForwardPress: () => void;
+    /** Called when user confirms forward; modal is shown inside this component. */
+    onForward: (selectedRooms: ChatRoom[], messagesToForward: Message[]) => Promise<void>;
     onDeletePress: (messageIds: (string | number)[]) => Promise<void>;
-    roomId?: string | number; // Add roomId prop
+    roomId?: string | number;
+    /** Current room id (string) for filtering in forward modal. */
+    currentRoomId: string;
     roomMembers?: ChatUser[];
     currentUser?: {
         userId: string;
@@ -31,12 +38,13 @@ type ChatMessageOptionProps = {
 const ChatMessageOptions: React.FC<ChatMessageOptionProps> = ({ 
     selectedMessages,
     setSelectedMessages,
-    isAdmin = false, // Group admin status - defaults to false for safety
-    canSendMessage = true, // Whether user can send messages - defaults to true for safety
-    onClose = ()=>console.log("closed calling"),
-    onForwardPress,
+    isAdmin = false,
+    canSendMessage = true,
+    onClose = () => {},
+    onForward,
     onDeletePress,
     roomId,
+    currentRoomId,
     roomMembers = [],
     currentUser = null,
     onMessageEdited
@@ -44,6 +52,7 @@ const ChatMessageOptions: React.FC<ChatMessageOptionProps> = ({
     const [showPinOptions, setShowPinOptions] = useState(false);
     const [showEditModal, setShowEditModal] = useState(false);
     const [showInfoModal, setShowInfoModal] = useState(false);
+    const [showForwardModal, setShowForwardModal] = useState(false);
     const selectedCount = selectedMessages.length;
     const isSingleSelection = selectedCount === 1;
     const selectedMessage = isSingleSelection ? selectedMessages[0] : null;
@@ -131,20 +140,50 @@ const ChatMessageOptions: React.FC<ChatMessageOptionProps> = ({
         onClose();
     };
 
-    // Copy functionality
+    // Copy functionality: plain text copies directly; rich text shows dialog (Plain vs Rich)
     const handleCopy = () => {
-        if (selectedMessage && selectedMessage.messageText) {
-            Clipboard.setString(selectedMessage.messageText);
-            ToastAndroid.show("Message copied to clipboard", ToastAndroid.SHORT);
-            // Alert.alert('Copied', 'Message copied to clipboard');
+        if (!selectedMessage?.messageText) return;
+        const text = selectedMessage.messageText;
+        if (isHtmlContent(text)) {
+            Alert.alert(
+                'Copy as',
+                'This message has formatting. How would you like to copy?',
+                [
+                    { text: 'Cancel', style: 'cancel' },
+                    {
+                        text: 'Plain text',
+                        onPress: () => {
+                            Clipboard.setString(stripHtml(text));
+                            if (Platform.OS === 'android') ToastAndroid.show('Copied as plain text', ToastAndroid.SHORT);
+                            onClose();
+                        }
+                    },
+                    {
+                        text: 'Rich text (with formatting)',
+                        onPress: () => {
+                            Clipboard.setString(text);
+                            if (Platform.OS === 'android') ToastAndroid.show('Copied with formatting', ToastAndroid.SHORT);
+                            onClose();
+                        }
+                    }
+                ]
+            );
+        } else {
+            Clipboard.setString(text);
+            if (Platform.OS === 'android') ToastAndroid.show('Message copied to clipboard', ToastAndroid.SHORT);
             onClose();
         }
     };
 
-    // Forward functionality
+    // Forward functionality – open modal inside this component (same as Edit)
     const handleForward = () => {
-        console.log(`Forwarding ${selectedCount} messages`);
-        onForwardPress();
+        setShowForwardModal(true);
+    };
+
+    const handleForwardComplete = async (selectedRooms: ChatRoom[], messagesToForward: Message[]) => {
+        await onForward(selectedRooms, messagesToForward);
+        setShowForwardModal(false);
+        onClose();
     };
 
     // Reply functionality
@@ -300,6 +339,15 @@ const ChatMessageOptions: React.FC<ChatMessageOptionProps> = ({
                     onClose();
                 }}
                 message={selectedMessage}
+            />
+
+            {/* Forward Message Modal – same pattern as EditMessageModal */}
+            <ForwardMessagesModal
+                visible={showForwardModal}
+                onClose={() => setShowForwardModal(false)}
+                selectedMessages={selectedMessages}
+                currentRoomId={currentRoomId}
+                onForward={handleForwardComplete}
             />
         </View>
     );

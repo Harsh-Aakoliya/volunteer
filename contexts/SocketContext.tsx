@@ -327,6 +327,7 @@ export function SocketProvider({ children }: SocketProviderProps) {
       }
 
       setState((prev) => {
+        const isFromCurrentUser = String(message.senderId || '') === String(prev.user?.id ?? '');
         const updatedRooms = prev.rooms.map((r) => {
           if (r.roomId === message.roomId.toString()) {
             return {
@@ -339,9 +340,9 @@ export function SocketProvider({ children }: SocketProviderProps) {
                 senderId: message.senderId,
                 timestamp: message.createdAt,
               },
-              unreadCount: message.senderId !== prev.user?.id
+              unreadCount: !isFromCurrentUser
                 ? (r.unreadCount || 0) + 1
-                : r.unreadCount,
+                : (r.unreadCount ?? 0),
             };
           }
           return r;

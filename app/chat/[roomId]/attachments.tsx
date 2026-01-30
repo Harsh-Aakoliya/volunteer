@@ -1,4 +1,5 @@
 // app/chat/[roomId]/attachments.tsx
+
 import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import {
   View,
@@ -10,7 +11,6 @@ import {
   Dimensions,
   Platform,
   Alert,
-  StyleSheet,
   Keyboard,
   FlatList,
   SafeAreaView,
@@ -20,12 +20,13 @@ import {
   ScrollView,
   Animated,
   Easing,
+  LayoutAnimation,
+  Linking,
 } from "react-native";
 import { BackHandler } from "react-native";
-
 import * as MediaLibrary from "expo-media-library";
 import { Ionicons } from "@expo/vector-icons";
-import Svg, { Path } from "react-native-svg";
+import Svg, { Path, Line, Circle } from "react-native-svg";
 import axios from "axios";
 import { API_URL } from "@/constants/api";
 import { AuthStorage } from "@/utils/authStorage";
@@ -36,21 +37,25 @@ import PollContent from "@/components/chat/PollContent";
 import CameraScreen from "@/components/chat/CameraScreen";
 import { Video, ResizeMode } from "expo-av";
 
-// ---------- RICH TEXT EDITOR IMPORTS ----------
-let RichEditor: any = null;
-let RichToolbar: any = null;
-let actions: any = {};
-
-if (Platform.OS !== 'web') {
-  try {
-    const richEditorModule = require('react-native-pell-rich-editor');
-    RichEditor = richEditorModule.RichEditor;
-    RichToolbar = richEditorModule.RichToolbar;
-    actions = richEditorModule.actions;
-  } catch (e) {
-    console.warn('react-native-pell-rich-editor not available');
-  }
-}
+import {
+  RichEditor,
+  RichToolbar,
+  actions,
+  cleanHtml,
+  stripHtml,
+  isHtmlContent,
+  AlignLeftIcon,
+  AlignCenterIcon,
+  AlignRightIcon,
+  BulletListIcon,
+  NumberListIcon,
+  ColorIndicatorIcon,
+  InlineColorPicker,
+  InlineLinkInput,
+  AnimatedToolbar,
+  ToolbarButton,
+  ToolbarDivider,
+} from "@/components/chat/message";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 const NUM_COLUMNS = 3;
@@ -58,20 +63,7 @@ const ITEM_MARGIN = 2;
 const ITEM_SIZE = (SCREEN_WIDTH - ITEM_MARGIN * (NUM_COLUMNS + 1)) / NUM_COLUMNS;
 const SELECTED_THUMB_SIZE = 64;
 
-// ---------- TYPES ----------
-interface SelectedMedia {
-  id: string;
-  uri: string;
-  filename: string;
-  mediaType: "photo" | "video";
-  duration?: number;
-  order: number;
-}
-
-type TabType = "gallery" | "poll";
-type GalleryItem = { type: "camera" } | { type: "media"; asset: MediaLibrary.Asset };
-
-// ---------- ICONS ----------
+// ---------- ATTACHMENTS-SPECIFIC SVG ICONS ----------
 const GalleryIcon = ({ size = 24, color = "#fff" }: { size?: number; color?: string }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
     <Path
@@ -89,6 +81,18 @@ const PollIcon = ({ size = 24, color = "#fff" }: { size?: number; color?: string
     />
   </Svg>
 );
+
+// ---------- TYPES ----------
+interface SelectedMedia {
+  id: string;
+  uri: string;
+  filename: string;
+  mediaType: "photo" | "video";
+  duration?: number;
+  order: number;
+}
+
+type GalleryItem = { type: "camera" } | { type: "media"; asset: MediaLibrary.Asset };
 
 // ---------- HELPER FUNCTIONS ----------
 const formatDuration = (seconds: number): string => {
@@ -128,56 +132,6 @@ const getMimeType = (filename: string, mediaType: "photo" | "video"): string => 
   }
 };
 
-const cleanHtml = (html: string) => {
-  if (!html) return "";
-  let text = html;
-  text = text.replace(
-    /<font\s+color=["']?((?:#[0-9a-fA-F]{3,6}|rgb\([^)]+\)|[a-z]+))["']?>(.*?)<\/font>/gi,
-    '<span style="color:$1">$2</span>'
-  );
-  text = text.replace(/^(<br\s*\/?>|&nbsp;|\s|<div>\s*<\/div>)+/, '');
-  text = text.replace(/(<br\s*\/?>|&nbsp;|\s|<div>\s*<\/div>)+$/, '');
-  return text.trim();
-};
-
-const stripHtml = (html: string) => {
-  if (!html) return "";
-  let text = html.replace(/<\/p>|<\/div>|<br\s*\/?>/gi, '\n');
-  text = text.replace(/<[^>]+>/g, '');
-  text = text.replace(/&nbsp;/g, ' ');
-  return text.trim();
-};
-
-// ---------- COLOR PICKER COMPONENT ----------
-const ColorPicker = ({ onSelect, type }: { onSelect: (color: string) => void; type: 'text' | 'background' }) => {
-  const colors = [
-    '#000000', '#FF0000', '#00FF00', '#0000FF', '#FFFF00',
-    '#FF00FF', '#00FFFF', '#FFA500', '#800080', '#008000',
-    '#FFC0CB', '#A52A2A', '#808080', '#FFFFFF', '#2AABEE'
-  ];
-
-  return (
-    <View style={styles.colorPickerContainer}>
-      <Text style={styles.colorPickerTitle}>
-        {type === 'text' ? 'Text Color' : 'Background Color'}
-      </Text>
-      <View style={styles.colorGrid}>
-        {colors.map((color) => (
-          <TouchableOpacity
-            key={color}
-            onPress={() => onSelect(color)}
-            style={[
-              styles.colorSwatch,
-              { backgroundColor: color },
-              color === '#FFFFFF' && styles.whiteSwatchBorder
-            ]}
-          />
-        ))}
-      </View>
-    </View>
-  );
-};
-
 // ---------- MEDIA PREVIEW MODAL ----------
 const MediaPreviewModal = React.memo(({
   visible,
@@ -207,32 +161,29 @@ const MediaPreviewModal = React.memo(({
       transparent={false}
       onRequestClose={onClose}
     >
-      <SafeAreaView style={styles.previewModalContainer}>
+      <SafeAreaView className="flex-1 bg-black">
         {/* Header */}
-        <View style={styles.previewModalHeader}>
-          <TouchableOpacity onPress={onClose} style={styles.previewCloseButton}>
+        <View className="flex-row items-center justify-between px-4 py-3 bg-black/90">
+          <TouchableOpacity onPress={onClose} className="w-11 h-11 items-center justify-center">
             <Ionicons name="close" size={28} color="#fff" />
           </TouchableOpacity>
-          <View style={styles.previewHeaderCenter}>
-            <Text style={styles.previewHeaderTitle}>
+          <View className="flex-1 items-center">
+            <Text className="text-white text-lg font-semibold">
               {isVideo ? 'Video' : 'Photo'}
             </Text>
             {isVideo && asset.duration && (
-              <Text style={styles.previewHeaderSubtitle}>
+              <Text className="text-gray-400 text-sm mt-0.5">
                 {formatDuration(asset.duration)}
               </Text>
             )}
           </View>
           <TouchableOpacity
             onPress={onSelect}
-            style={[
-              styles.previewSelectButton,
-              isSelected && styles.previewSelectButtonActive
-            ]}
+            className="w-11 h-11 items-center justify-center"
           >
             {isSelected ? (
-              <View style={styles.previewSelectedBadge}>
-                <Text style={styles.previewSelectedNumber}>{selectedOrder}</Text>
+              <View className="w-7 h-7 rounded-full bg-blue-500 items-center justify-center">
+                <Text className="text-white text-sm font-bold">{selectedOrder}</Text>
               </View>
             ) : (
               <Ionicons name="add-circle-outline" size={28} color="#fff" />
@@ -241,12 +192,12 @@ const MediaPreviewModal = React.memo(({
         </View>
 
         {/* Content */}
-        <View style={styles.previewModalContent}>
+        <View className="flex-1 items-center justify-center">
           {isVideo ? (
             <Video
               ref={videoRef}
               source={{ uri: asset.uri }}
-              style={styles.previewVideo}
+              style={{ width: SCREEN_WIDTH, height: SCREEN_HEIGHT - 200 }}
               resizeMode={ResizeMode.CONTAIN}
               useNativeControls
               shouldPlay={visible}
@@ -255,30 +206,29 @@ const MediaPreviewModal = React.memo(({
           ) : (
             <Image
               source={{ uri: asset.uri }}
-              style={styles.previewImage}
+              style={{ width: SCREEN_WIDTH, height: SCREEN_HEIGHT - 200 }}
               resizeMode="contain"
             />
           )}
         </View>
 
         {/* Bottom action */}
-        <View style={styles.previewModalFooter}>
+        <View className="px-5 py-4 bg-black/90">
           <TouchableOpacity
             onPress={() => {
               onSelect();
               onClose();
             }}
-            style={[
-              styles.previewActionButton,
-              isSelected && styles.previewActionButtonDeselect
-            ]}
+            className={`flex-row items-center justify-center py-3.5 rounded-xl ${
+              isSelected ? 'bg-red-500' : 'bg-blue-500'
+            }`}
           >
             <Ionicons
               name={isSelected ? "checkmark-circle" : "add-circle"}
               size={24}
               color="#fff"
             />
-            <Text style={styles.previewActionText}>
+            <Text className="text-white text-base font-semibold ml-2">
               {isSelected ? 'Deselect' : 'Select'}
             </Text>
           </TouchableOpacity>
@@ -323,9 +273,7 @@ const SelectedMediaCarouselModal = React.memo(({
     }
   }, []);
 
-  const viewabilityConfig = useRef({
-    itemVisiblePercentThreshold: 50,
-  }).current;
+  const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 50 }).current;
 
   const getItemLayout = useCallback(
     (_: any, index: number) => ({
@@ -339,10 +287,7 @@ const SelectedMediaCarouselModal = React.memo(({
   const handleScrollToIndexFailed = useCallback(
     (info: { index: number }) => {
       setTimeout(() => {
-        flatListRef.current?.scrollToIndex({
-          index: info.index,
-          animated: false,
-        });
+        flatListRef.current?.scrollToIndex({ index: info.index, animated: false });
       }, 500);
     },
     []
@@ -354,11 +299,11 @@ const SelectedMediaCarouselModal = React.memo(({
     const isVideo = item.mediaType === "video";
 
     return (
-      <View style={styles.carouselItem}>
+      <View style={{ width: SCREEN_WIDTH, height: SCREEN_HEIGHT - 180 }} className="items-center justify-center">
         {isVideo ? (
           <Video
             source={{ uri: item.uri }}
-            style={styles.carouselVideo}
+            style={{ width: SCREEN_WIDTH, height: '100%' }}
             resizeMode={ResizeMode.CONTAIN}
             useNativeControls
             shouldPlay={false}
@@ -366,7 +311,7 @@ const SelectedMediaCarouselModal = React.memo(({
         ) : (
           <Image
             source={{ uri: item.uri }}
-            style={styles.carouselImage}
+            style={{ width: SCREEN_WIDTH, height: '100%' }}
             resizeMode="contain"
           />
         )}
@@ -383,14 +328,14 @@ const SelectedMediaCarouselModal = React.memo(({
       transparent={false}
       onRequestClose={onClose}
     >
-      <SafeAreaView style={styles.carouselModalContainer}>
+      <SafeAreaView className="flex-1 bg-black">
         {/* Header */}
-        <View style={styles.carouselModalHeader}>
-          <TouchableOpacity onPress={onClose} style={styles.carouselCloseButton}>
+        <View className="flex-row items-center justify-between px-4 py-3 bg-black/90">
+          <TouchableOpacity onPress={onClose} className="w-11 h-11 items-center justify-center">
             <Ionicons name="close" size={28} color="#fff" />
           </TouchableOpacity>
-          <View style={styles.carouselHeaderCenter}>
-            <Text style={styles.carouselHeaderTitle}>
+          <View className="flex-1 items-center">
+            <Text className="text-white text-lg font-semibold">
               {currentIndex + 1} / {selectedMedia.length}
             </Text>
           </View>
@@ -403,7 +348,7 @@ const SelectedMediaCarouselModal = React.memo(({
                 }
               }
             }}
-            style={styles.carouselDeleteButton}
+            className="w-11 h-11 items-center justify-center"
           >
             <Ionicons name="trash-outline" size={24} color="#ef4444" />
           </TouchableOpacity>
@@ -434,14 +379,15 @@ const SelectedMediaCarouselModal = React.memo(({
 
         {/* Pagination dots */}
         {selectedMedia.length > 1 && selectedMedia.length <= 10 && (
-          <View style={styles.carouselDots}>
+          <View className="flex-row justify-center items-center py-4 gap-1.5">
             {selectedMedia.map((_, index) => (
               <View
                 key={index}
-                style={[
-                  styles.carouselDot,
-                  index === currentIndex && styles.carouselDotActive,
-                ]}
+                className={`rounded-full ${
+                  index === currentIndex 
+                    ? 'w-2.5 h-2.5 bg-blue-500' 
+                    : 'w-2 h-2 bg-white/40'
+                }`}
               />
             ))}
           </View>
@@ -451,19 +397,20 @@ const SelectedMediaCarouselModal = React.memo(({
   );
 });
 
-// ---------- CAMERA ITEM COMPONENT ----------
+// ---------- CAMERA ITEM ----------
 const CameraItem = React.memo(({ onPress }: { onPress: () => void }) => (
   <TouchableOpacity
-    style={[styles.mediaItem, styles.cameraContainer]}
+    style={{ width: ITEM_SIZE, height: ITEM_SIZE, margin: ITEM_MARGIN / 2 }}
+    className="bg-gray-100 rounded items-center justify-center"
     onPress={onPress}
     activeOpacity={0.7}
   >
     <Ionicons name="camera" size={32} color="#666" />
-    <Text style={styles.cameraText}>Camera</Text>
+    <Text className="mt-2 text-xs text-gray-500">Camera</Text>
   </TouchableOpacity>
 ));
 
-// ---------- MEDIA ITEM COMPONENT ----------
+// ---------- MEDIA ITEM ----------
 const MediaItem = React.memo(({
   item,
   selectedOrder,
@@ -480,36 +427,36 @@ const MediaItem = React.memo(({
 
   return (
     <TouchableOpacity
-      style={styles.mediaItem}
+      style={{ width: ITEM_SIZE, height: ITEM_SIZE, margin: ITEM_MARGIN / 2 }}
+      className="rounded overflow-hidden bg-gray-900"
       onPress={() => onPreview(item)}
       activeOpacity={0.7}
     >
       <Image
         source={{ uri: item.uri }}
-        style={styles.mediaImage}
+        className="flex-1 rounded"
         resizeMode="cover"
       />
 
       {isVideo && (
-        <View style={styles.videoOverlay}>
-          <View style={styles.videoPlayIconContainer}>
-            <Ionicons name="play-circle" size={32} color="rgba(255,255,255,0.9)" />
-          </View>
+        <View className="absolute inset-0 bg-black/15 rounded items-center justify-center">
+          <Ionicons name="play-circle" size={32} color="rgba(255,255,255,0.9)" />
         </View>
       )}
 
       {isVideo && (
-        <View style={styles.durationBadge}>
+        <View className="absolute bottom-1.5 left-1.5 bg-black/75 px-1.5 py-0.5 rounded flex-row items-center">
           <Ionicons name="videocam" size={12} color="white" />
-          <Text style={styles.durationText}>
+          <Text className="text-white text-[11px] font-semibold ml-1">
             {formatDuration(item.duration || 0)}
           </Text>
         </View>
       )}
 
-      {/* Selection bubble - separate touch handler */}
       <TouchableOpacity
-        style={[styles.selectionBubble, isSelected && styles.selectionBubbleSelected]}
+        className={`absolute top-2 right-2 w-6 h-6 rounded-full items-center justify-center border-2 ${
+          isSelected ? 'bg-blue-500 border-blue-500' : 'bg-white/30 border-white'
+        }`}
         onPress={(e) => {
           e.stopPropagation();
           onSelect(item);
@@ -517,7 +464,7 @@ const MediaItem = React.memo(({
         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
       >
         {isSelected && (
-          <Text style={styles.selectionNumber}>{selectedOrder}</Text>
+          <Text className="text-white text-xs font-bold">{selectedOrder}</Text>
         )}
       </TouchableOpacity>
     </TouchableOpacity>
@@ -538,25 +485,26 @@ const SelectedMediaThumbnail = React.memo(({
 
   return (
     <TouchableOpacity
-      style={styles.selectedThumb}
+      style={{ width: SELECTED_THUMB_SIZE, height: SELECTED_THUMB_SIZE }}
+      className="rounded-lg overflow-hidden bg-gray-200 mr-2"
       onPress={onPress}
       activeOpacity={0.8}
     >
       <Image
         source={{ uri: item.uri }}
-        style={styles.selectedThumbImage}
+        className="w-full h-full"
         resizeMode="cover"
       />
       {isVideo && (
-        <View style={styles.selectedThumbVideoIcon}>
+        <View className="absolute bottom-1 left-1 bg-black/60 rounded-full w-5 h-5 items-center justify-center">
           <Ionicons name="play" size={14} color="#fff" />
         </View>
       )}
-      <View style={styles.selectedThumbOrder}>
-        <Text style={styles.selectedThumbOrderText}>{item.order}</Text>
+      <View className="absolute top-1 left-1 bg-blue-500 rounded-full w-5 h-5 items-center justify-center">
+        <Text className="text-white text-[11px] font-bold">{item.order}</Text>
       </View>
       <TouchableOpacity
-        style={styles.selectedThumbRemove}
+        className="absolute -top-0.5 -right-0.5 bg-black/50 rounded-full"
         onPress={(e) => {
           e.stopPropagation();
           onRemove();
@@ -569,6 +517,7 @@ const SelectedMediaThumbnail = React.memo(({
   );
 });
 
+// ---------- TOOLBAR BUTTON ----------
 // ---------- MAIN COMPONENT ----------
 export default function AttachmentsScreen() {
   const params = useLocalSearchParams();
@@ -608,18 +557,18 @@ export default function AttachmentsScreen() {
   const [showRichTextToolbar, setShowRichTextToolbar] = useState(false);
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
   const [showColorPicker, setShowColorPicker] = useState<'text' | 'background' | null>(null);
+  const [showLinkInput, setShowLinkInput] = useState(false);
   const [inputHeight, setInputHeight] = useState(44);
+  const [currentTextColor, setCurrentTextColor] = useState('#000000');
+  const [currentBgColor, setCurrentBgColor] = useState('#FFFFFF');
+  const [formatActive, setFormatActive] = useState({ bold: false, italic: false, underline: false });
 
   // Refs
   const richTextRef = useRef<any>(null);
   const inputRef = useRef<TextInput>(null);
   const heightUpdateTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Count selected photos and videos
-  const selectedPhotosCount = useMemo(() =>
-    selectedMedia.filter(m => m.mediaType === "photo").length, [selectedMedia]);
-  const selectedVideosCount = useMemo(() =>
-    selectedMedia.filter(m => m.mediaType === "video").length, [selectedMedia]);
+  const isSwitchingRef = useRef(false);
+  const editorKeyRef = useRef(0);
 
   // Request permission and load media on mount
   useEffect(() => {
@@ -669,11 +618,7 @@ export default function AttachmentsScreen() {
       return true;
     };
 
-    const backHandler = BackHandler.addEventListener(
-      "hardwareBackPress",
-      backAction
-    );
-
+    const backHandler = BackHandler.addEventListener("hardwareBackPress", backAction);
     return () => backHandler.remove();
   }, [roomId]);
 
@@ -752,10 +697,16 @@ export default function AttachmentsScreen() {
   // Rich text toggle
   const handleToggleRichText = useCallback(() => {
     if (Platform.OS === 'web') return;
+    if (isSwitchingRef.current) return;
 
+    isSwitchingRef.current = true;
     const nextState = !showRichTextToolbar;
-    const wasKeyboardVisible = isKeyboardVisible;
+    const shouldFocusAfter = isKeyboardVisible;
 
+    setShowColorPicker(null);
+    setShowLinkInput(false);
+
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setShowRichTextToolbar(nextState);
 
     if (nextState) {
@@ -765,34 +716,83 @@ export default function AttachmentsScreen() {
       setTimeout(() => {
         if (richTextRef.current) {
           richTextRef.current.setContentHTML(finalHtml);
-          if (wasKeyboardVisible) {
-            richTextRef.current.focusContentEditor();
+          if (shouldFocusAfter) {
+            setTimeout(() => {
+              richTextRef.current?.focusContentEditor();
+              isSwitchingRef.current = false;
+            }, 150);
+          } else {
+            isSwitchingRef.current = false;
           }
+        } else {
+          isSwitchingRef.current = false;
         }
-      }, 100);
+      }, 50);
     } else {
       const plainText = stripHtml(caption);
       setCaption(plainText);
 
       setTimeout(() => {
-        if (wasKeyboardVisible) {
-          inputRef.current?.focus();
+        if (shouldFocusAfter && inputRef.current) {
+          inputRef.current.focus();
         }
+        isSwitchingRef.current = false;
       }, 100);
     }
   }, [showRichTextToolbar, caption, isKeyboardVisible]);
 
+  // Color picker handlers
   const handleColorSelect = useCallback((color: string) => {
     if (showColorPicker === 'text') {
       richTextRef.current?.setForeColor(color);
+      setCurrentTextColor(color);
     } else if (showColorPicker === 'background') {
       richTextRef.current?.setHiliteColor(color);
+      setCurrentBgColor(color);
     }
     setShowColorPicker(null);
+    
+    setTimeout(() => {
+      richTextRef.current?.focusContentEditor();
+    }, 50);
   }, [showColorPicker]);
 
   const toggleColorPicker = useCallback((type: 'text' | 'background') => {
+    setShowLinkInput(false);
     setShowColorPicker(prev => prev === type ? null : type);
+  }, []);
+
+  const toggleLinkInput = useCallback(() => {
+    setShowColorPicker(null);
+    setShowLinkInput(prev => !prev);
+  }, []);
+
+  const handleInsertLink = useCallback((url: string, text: string) => {
+    if (showRichTextToolbar && richTextRef.current) {
+      richTextRef.current?.insertLink(text, url);
+    } else {
+      setCaption(prev => prev + ` ${url} `);
+    }
+  }, [showRichTextToolbar]);
+
+  const handleBold = useCallback(() => {
+    richTextRef.current?.sendAction(actions.setBold, 'result');
+    setFormatActive(prev => ({ ...prev, bold: !prev.bold }));
+  }, []);
+  const handleItalic = useCallback(() => {
+    richTextRef.current?.sendAction(actions.setItalic, 'result');
+    setFormatActive(prev => ({ ...prev, italic: !prev.italic }));
+  }, []);
+  const handleUnderline = useCallback(() => {
+    richTextRef.current?.sendAction(actions.setUnderline, 'result');
+    setFormatActive(prev => ({ ...prev, underline: !prev.underline }));
+  }, []);
+
+  const handlePaste = useCallback((data: string) => {
+    if (!data || !richTextRef.current) return;
+    if (isHtmlContent(data)) {
+      richTextRef.current.insertHTML(data);
+    }
   }, []);
 
   // Send media
@@ -835,7 +835,6 @@ export default function AttachmentsScreen() {
       const tempFolderId = uploadResponse.data.tempFolderId;
       const uploadedFiles = uploadResponse.data.uploadedFiles;
 
-      // Clean caption for rich text
       const cleanedCaption = showRichTextToolbar ? cleanHtml(caption) : caption.trim();
 
       const filesWithCaptions = uploadedFiles.map((f: any) => ({
@@ -880,7 +879,12 @@ export default function AttachmentsScreen() {
   };
 
   // Camera send handler
-  const handleCameraSend = useCallback(async (uri: string, mediaType: 'photo' | 'video', duration?: number, cameraCaption?: string) => {
+  const handleCameraSend = useCallback(async (
+    uri: string, 
+    mediaType: 'photo' | 'video', 
+    duration?: number, 
+    cameraCaption?: string
+  ) => {
     if (isSending) return;
     setIsSending(true);
 
@@ -976,7 +980,7 @@ export default function AttachmentsScreen() {
     );
   }, [getSelectedOrder, handleSelectMedia, handlePreviewMedia, handleCameraPress]);
 
-  const keyExtractor = useCallback((item: GalleryItem, index: number) =>
+  const keyExtractor = useCallback((item: GalleryItem, idx: number) =>
     item.type === "camera" ? "camera" : item.asset.id, []);
 
   const currentTabKey = routes[index].key;
@@ -992,12 +996,12 @@ export default function AttachmentsScreen() {
             renderItem={renderGalleryItem}
             keyExtractor={keyExtractor}
             numColumns={NUM_COLUMNS}
-            contentContainerStyle={styles.flatListContent}
+            contentContainerStyle={{ paddingHorizontal: ITEM_MARGIN }}
             onEndReached={loadMoreMedia}
             onEndReachedThreshold={0.5}
             ListFooterComponent={
               isLoading ? (
-                <View style={styles.loadingFooter}>
+                <View className="py-5 items-center">
                   <ActivityIndicator size="small" color="#2AABEE" />
                 </View>
               ) : null
@@ -1024,10 +1028,10 @@ export default function AttachmentsScreen() {
   const renderTabBar = useCallback((props: any) => (
     <TabBar
       {...props}
-      indicatorStyle={styles.tabIndicator}
-      style={styles.tabBar as any}
-      tabStyle={styles.tab as any}
-      labelStyle={styles.tabLabel}
+      indicatorStyle={{ backgroundColor: '#3b82f6', height: 3, borderRadius: 1.5 }}
+      style={{ backgroundColor: '#fff', elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2 }}
+      tabStyle={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
+      labelStyle={{ fontWeight: '600', fontSize: 13, textTransform: 'none' }}
       inactiveColor="#6b7280"
       activeColor="#3b82f6"
       scrollEnabled={false}
@@ -1046,9 +1050,9 @@ export default function AttachmentsScreen() {
             icon = null;
         }
         return (
-          <View style={styles.tabLabelContainer}>
+          <View className="flex-row items-center justify-center gap-1.5">
             {icon}
-            <Text style={[styles.tabLabelText, { color }]}>
+            <Text style={{ color, fontWeight: '600', fontSize: 13 }}>
               {route.title}
             </Text>
           </View>
@@ -1057,24 +1061,18 @@ export default function AttachmentsScreen() {
     />
   ), []);
 
-  const isEmpty = useMemo(() => {
-    if (showRichTextToolbar) {
-      return stripHtml(caption).length === 0;
-    }
-    return caption.trim().length === 0;
-  }, [caption, showRichTextToolbar]);
-
   const maxInputHeight = 120;
+  const shouldShowToolbar = showRichTextToolbar && Platform.OS !== 'web' && RichToolbar;
 
   // Render selected media thumbnails bar
   const renderSelectedMediaBar = () => (
-    <View style={styles.selectedMediaBar}>
+    <View className="border-b border-gray-200 bg-gray-50">
       <FlatList
         data={selectedMedia}
         horizontal
         showsHorizontalScrollIndicator={false}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.selectedMediaList}
+        contentContainerStyle={{ paddingHorizontal: 12, paddingVertical: 10, gap: 8 }}
         renderItem={({ item, index }) => (
           <SelectedMediaThumbnail
             item={item}
@@ -1086,22 +1084,22 @@ export default function AttachmentsScreen() {
     </View>
   );
 
-  // Render rich text input bar
+  // Render input bar
   const renderInputBar = () => (
-    <View style={styles.inputBar}>
+    <View className="pb-2">
       {/* Selected media thumbnails */}
       {renderSelectedMediaBar()}
 
       {/* Input row */}
-      <View style={styles.inputRow}>
+      <View className="flex-row items-end px-3 pt-2.5 gap-2">
         {/* Format toggle button */}
         {Platform.OS !== 'web' && RichEditor && (
           <TouchableOpacity
             onPress={handleToggleRichText}
-            style={[
-              styles.formatButton,
-              showRichTextToolbar && styles.formatButtonActive
-            ]}
+            className={`w-10 h-11 rounded-full items-center justify-center ${
+              showRichTextToolbar ? 'bg-blue-100' : 'bg-gray-100'
+            }`}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
             <Ionicons
               name="text"
@@ -1112,19 +1110,22 @@ export default function AttachmentsScreen() {
         )}
 
         {/* Input container */}
-        <View style={styles.inputContainer}>
+        <View className="flex-1 bg-gray-50 rounded-3xl border border-gray-200 overflow-hidden min-h-[44px]">
           {showRichTextToolbar && Platform.OS !== 'web' && RichEditor ? (
             <View style={{ minHeight: 44, maxHeight: maxInputHeight }}>
               <RichEditor
+                key={`editor-${editorKeyRef.current}`}
                 ref={richTextRef}
                 onChange={setCaption}
                 placeholder="Add a caption..."
-                initialContentHTML={caption}
+                initialContentHTML=""
                 initialHeight={44}
                 androidHardwareAccelerationDisabled={true}
                 androidLayerType="software"
+                pasteAsPlainText={true}
+                onPaste={handlePaste}
                 editorStyle={{
-                  backgroundColor: "#f9fafb",
+                  backgroundColor: "#F9FAFB",
                   placeholderColor: "#9CA3AF",
                   contentCSSText: `
                     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -1137,7 +1138,7 @@ export default function AttachmentsScreen() {
                   `,
                 }}
                 style={{
-                  backgroundColor: '#f9fafb',
+                  backgroundColor: '#F9FAFB',
                   minHeight: 44,
                   maxHeight: maxInputHeight,
                 }}
@@ -1146,7 +1147,8 @@ export default function AttachmentsScreen() {
           ) : (
             <TextInput
               ref={inputRef}
-              style={[styles.captionInput, { height: inputHeight, maxHeight: maxInputHeight }]}
+              className="px-4 py-2.5 text-base text-gray-800"
+              style={{ height: inputHeight, maxHeight: maxInputHeight, textAlignVertical: 'center' }}
               placeholder="Add a caption..."
               placeholderTextColor="#999"
               value={caption}
@@ -1176,7 +1178,9 @@ export default function AttachmentsScreen() {
         <TouchableOpacity
           onPress={handleSendMedia}
           disabled={isSending || selectedMedia.length === 0}
-          style={[styles.sendButton, (isSending || selectedMedia.length === 0) && styles.sendButtonDisabled]}
+          className={`w-11 h-11 rounded-full items-center justify-center ${
+            isSending || selectedMedia.length === 0 ? 'bg-gray-300' : 'bg-blue-500'
+          }`}
         >
           {isSending ? (
             <ActivityIndicator size="small" color="#fff" />
@@ -1187,57 +1191,115 @@ export default function AttachmentsScreen() {
       </View>
 
       {/* Rich text toolbar */}
-      {showRichTextToolbar && isKeyboardVisible && Platform.OS !== 'web' && RichToolbar && (
-        <View style={styles.formatToolbar}>
-          <RichToolbar
-            editor={richTextRef}
-            selectedIconTint="#2AABEE"
-            iconTint="#666"
-            actions={[
-              actions.setBold,
-              actions.setItalic,
-              actions.setUnderline,
-              actions.setStrikethrough,
-              'textColor',
-              'backgroundColor',
-            ]}
-            iconMap={{
-              [actions.setBold]: ({ tintColor }: any) => (
-                <View style={styles.simpleToolIcon}>
-                  <Text style={[styles.textIconLabel, { color: tintColor }]}>B</Text>
-                </View>
-              ),
-              [actions.setItalic]: ({ tintColor }: any) => (
-                <View style={styles.simpleToolIcon}>
-                  <Text style={[styles.textIconLabel, { fontStyle: 'italic', color: tintColor }]}>I</Text>
-                </View>
-              ),
-              [actions.setUnderline]: ({ tintColor }: any) => (
-                <View style={styles.simpleToolIcon}>
-                  <Text style={[styles.textIconLabel, { textDecorationLine: 'underline', color: tintColor }]}>U</Text>
-                </View>
-              ),
-              [actions.setStrikethrough]: ({ tintColor }: any) => (
-                <View style={styles.simpleToolIcon}>
-                  <Text style={[styles.textIconLabel, { textDecorationLine: 'line-through', color: tintColor }]}>S</Text>
-                </View>
-              ),
-              textColor: ({ tintColor }: any) => (
-                <TouchableOpacity onPress={() => toggleColorPicker('text')} style={styles.simpleToolIcon}>
-                  <Ionicons name="color-palette" size={22} color={tintColor} />
-                </TouchableOpacity>
-              ),
-              backgroundColor: ({ tintColor }: any) => (
-                <TouchableOpacity onPress={() => toggleColorPicker('background')} style={styles.simpleToolIcon}>
-                  <Ionicons name="color-fill" size={22} color={tintColor} />
-                </TouchableOpacity>
-              ),
-            }}
-            style={styles.richToolbar}
-            flatContainerStyle={styles.flatToolbarContainer}
-          />
-        </View>
-      )}
+      <AnimatedToolbar visible={shouldShowToolbar}>
+        <ScrollView 
+          horizontal 
+          showsHorizontalScrollIndicator={false}
+          keyboardShouldPersistTaps="always"
+          contentContainerStyle={{ 
+            paddingHorizontal: 8, 
+            paddingVertical: 4,
+            alignItems: 'center',
+            paddingRight: 20,
+          }}
+        >
+          {/* Bold */}
+          <ToolbarButton onPress={handleBold} isActive={formatActive.bold} activeClass="bg-blue-100">
+            <Text className={`text-lg font-bold ${formatActive.bold ? 'text-blue-600' : 'text-gray-600'}`}>B</Text>
+          </ToolbarButton>
+          
+          {/* Italic */}
+          <ToolbarButton onPress={handleItalic} isActive={formatActive.italic} activeClass="bg-blue-100">
+            <Text className={`text-lg italic ${formatActive.italic ? 'text-blue-600' : 'text-gray-600'}`}>I</Text>
+          </ToolbarButton>
+          
+          {/* Underline */}
+          <ToolbarButton onPress={handleUnderline} isActive={formatActive.underline} activeClass="bg-blue-100">
+            <Text className={`text-lg ${formatActive.underline ? 'text-blue-600' : 'text-gray-600'}`} style={{ textDecorationLine: 'underline' }}>U</Text>
+          </ToolbarButton>
+          
+          {/* Strikethrough */}
+          <ToolbarButton onPress={() => richTextRef.current?.sendAction(actions.setStrikethrough, 'result')}>
+            <Text className="text-lg text-gray-600" style={{ textDecorationLine: 'line-through' }}>S</Text>
+          </ToolbarButton>
+
+          <ToolbarDivider />
+
+          {/* Text Color */}
+          <ToolbarButton 
+            onPress={() => toggleColorPicker('text')} 
+            isActive={showColorPicker === 'text'}
+            activeClass="bg-blue-100"
+          >
+            <ColorIndicatorIcon type="text" color={currentTextColor} />
+          </ToolbarButton>
+
+          {/* Background Color */}
+          <ToolbarButton 
+            onPress={() => toggleColorPicker('background')} 
+            isActive={showColorPicker === 'background'}
+            activeClass="bg-blue-100"
+          >
+            <ColorIndicatorIcon type="background" color={currentBgColor} />
+          </ToolbarButton>
+
+          <ToolbarDivider />
+
+          {/* Link */}
+          <ToolbarButton onPress={toggleLinkInput} isActive={showLinkInput} activeClass="bg-blue-100">
+            <Ionicons name="link" size={22} color={showLinkInput ? '#2AABEE' : '#666'} />
+          </ToolbarButton>
+
+          {/* Bullet List */}
+          <ToolbarButton onPress={() => richTextRef.current?.sendAction(actions.insertBulletsList, 'result')}>
+            <BulletListIcon color="#666" />
+          </ToolbarButton>
+
+          {/* Number List */}
+          <ToolbarButton onPress={() => richTextRef.current?.sendAction(actions.insertOrderedList, 'result')}>
+            <NumberListIcon color="#666" />
+          </ToolbarButton>
+
+          <ToolbarDivider />
+
+          {/* Align Left */}
+          <ToolbarButton onPress={() => richTextRef.current?.sendAction(actions.alignLeft, 'result')}>
+            <AlignLeftIcon color="#666" />
+          </ToolbarButton>
+
+          {/* Align Center */}
+          <ToolbarButton onPress={() => richTextRef.current?.sendAction(actions.alignCenter, 'result')}>
+            <AlignCenterIcon color="#666" />
+          </ToolbarButton>
+
+          {/* Align Right */}
+          <ToolbarButton onPress={() => richTextRef.current?.sendAction(actions.alignRight, 'result')}>
+            <AlignRightIcon color="#666" />
+          </ToolbarButton>
+        </ScrollView>
+      </AnimatedToolbar>
+
+      {/* Inline Color Picker - ONLY ONE, no Modal version */}
+      <InlineColorPicker
+        visible={showColorPicker !== null}
+        type={showColorPicker}
+        selectedColor={showColorPicker === 'text' ? currentTextColor : currentBgColor}
+        onSelect={handleColorSelect}
+        onClose={() => {
+          setShowColorPicker(null);
+          setTimeout(() => richTextRef.current?.focusContentEditor(), 50);
+        }}
+        selectedBorderClass="border-blue-500"
+      />
+
+      {/* Inline Link Input */}
+      <InlineLinkInput
+        visible={showLinkInput}
+        onInsert={handleInsertLink}
+        onClose={() => setShowLinkInput(false)}
+        editorRef={richTextRef}
+        accent="blue"
+      />
     </View>
   );
 
@@ -1254,14 +1316,14 @@ export default function AttachmentsScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView className="flex-1 bg-white">
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "padding"}
-        style={styles.flex1}
+        className="flex-1"
         keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
       >
         {/* Tab View */}
-        <View style={styles.tabViewContainer}>
+        <View className="flex-1">
           <TabView
             navigationState={{ index, routes }}
             renderScene={renderScene}
@@ -1276,7 +1338,7 @@ export default function AttachmentsScreen() {
 
         {/* Input Bar - Only shown for gallery with selected media */}
         {showInputBar && (
-          <View style={styles.inputBarContainer}>
+          <View className="border-t border-gray-200 bg-white">
             {renderInputBar()}
           </View>
         )}
@@ -1307,483 +1369,6 @@ export default function AttachmentsScreen() {
         onClose={() => setShowCarouselModal(false)}
         onRemove={handleRemoveMedia}
       />
-
-      {/* Color Picker Modal */}
-      {showColorPicker && (
-        <Modal transparent visible={!!showColorPicker} onRequestClose={() => setShowColorPicker(null)}>
-          <TouchableOpacity
-            style={styles.modalOverlay}
-            activeOpacity={1}
-            onPress={() => setShowColorPicker(null)}
-          >
-            <View style={styles.colorPickerModal}>
-              <ColorPicker
-                type={showColorPicker}
-                onSelect={handleColorSelect}
-              />
-            </View>
-          </TouchableOpacity>
-        </Modal>
-      )}
     </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#fff",
-  },
-  flex1: {
-    flex: 1,
-  },
-  tabViewContainer: {
-    flex: 1,
-  },
-  tabIndicator: {
-    backgroundColor: '#3b82f6',
-    height: 3,
-    borderRadius: 1.5,
-  },
-  tabBar: {
-    backgroundColor: '#fff',
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-  },
-  tab: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  tabLabel: {
-    fontWeight: '600',
-    fontSize: 13,
-    textTransform: 'none',
-  },
-  tabLabelContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    width: '100%',
-  },
-  tabLabelText: {
-    fontWeight: '600',
-    fontSize: 13,
-  },
-  inputBarContainer: {
-    borderTopWidth: 1,
-    borderTopColor: "#E5E7EB",
-    backgroundColor: "#fff",
-  },
-  inputBar: {
-    paddingBottom: 8,
-  },
-  // Selected media bar
-  selectedMediaBar: {
-    borderBottomWidth: 1,
-    borderBottomColor: "#E5E7EB",
-    backgroundColor: "#f9fafb",
-  },
-  selectedMediaList: {
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    gap: 8,
-  },
-  selectedThumb: {
-    width: SELECTED_THUMB_SIZE,
-    height: SELECTED_THUMB_SIZE,
-    borderRadius: 8,
-    overflow: 'hidden',
-    backgroundColor: '#e5e7eb',
-    marginRight: 8,
-  },
-  selectedThumbImage: {
-    width: '100%',
-    height: '100%',
-  },
-  selectedThumbVideoIcon: {
-    position: 'absolute',
-    bottom: 4,
-    left: 4,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    borderRadius: 10,
-    width: 20,
-    height: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  selectedThumbOrder: {
-    position: 'absolute',
-    top: 4,
-    left: 4,
-    backgroundColor: '#2AABEE',
-    borderRadius: 10,
-    width: 20,
-    height: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  selectedThumbOrderText: {
-    color: '#fff',
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  selectedThumbRemove: {
-    position: 'absolute',
-    top: -2,
-    right: -2,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    borderRadius: 12,
-  },
-  // Input row
-  inputRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    paddingHorizontal: 12,
-    paddingTop: 10,
-    gap: 8,
-  },
-  formatButton: {
-    width: 40,
-    height: 44,
-    borderRadius: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#F3F4F6',
-  },
-  formatButtonActive: {
-    backgroundColor: '#E0F2FE',
-  },
-  inputContainer: {
-    flex: 1,
-    backgroundColor: '#F9FAFB',
-    borderRadius: 22,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    overflow: 'hidden',
-    minHeight: 44,
-  },
-  captionInput: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    fontSize: 16,
-    color: '#1F2937',
-    minHeight: 44,
-    textAlignVertical: 'center',
-  },
-  sendButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: "#2AABEE",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  sendButtonDisabled: {
-    backgroundColor: "#ccc",
-  },
-  // Format toolbar
-  formatToolbar: {
-    backgroundColor: '#F9FAFB',
-    borderTopWidth: 1,
-    borderTopColor: '#E5E7EB',
-    marginTop: 8,
-  },
-  richToolbar: {
-    backgroundColor: '#F9FAFB',
-    height: 44,
-  },
-  flatToolbarContainer: {
-    paddingHorizontal: 8,
-    alignItems: 'center',
-  },
-  simpleToolIcon: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  textIconLabel: {
-    fontSize: 18,
-    fontWeight: '600',
-  },
-  // Gallery grid
-  flatListContent: {
-    paddingHorizontal: ITEM_MARGIN,
-  },
-  mediaItem: {
-    width: ITEM_SIZE,
-    height: ITEM_SIZE,
-    margin: ITEM_MARGIN / 2,
-    borderRadius: 4,
-    overflow: "hidden",
-    backgroundColor: "#1a1a1a",
-  },
-  mediaImage: {
-    flex: 1,
-    borderRadius: 4,
-  },
-  cameraContainer: {
-    backgroundColor: "#f3f4f6",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  cameraText: {
-    marginTop: 8,
-    fontSize: 12,
-    color: "#666",
-  },
-  videoOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.15)',
-    borderRadius: 4,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  videoPlayIconContainer: {
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  durationBadge: {
-    position: "absolute",
-    bottom: 6,
-    left: 6,
-    backgroundColor: "rgba(0,0,0,0.75)",
-    paddingHorizontal: 6,
-    paddingVertical: 3,
-    borderRadius: 4,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-  },
-  durationText: {
-    color: "#fff",
-    fontSize: 11,
-    fontWeight: "600",
-  },
-  selectionBubble: {
-    position: "absolute",
-    top: 8,
-    right: 8,
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    backgroundColor: "rgba(255,255,255,0.3)",
-    borderWidth: 2,
-    borderColor: "#fff",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  selectionBubbleSelected: {
-    backgroundColor: "#2AABEE",
-    borderColor: "#2AABEE",
-  },
-  selectionNumber: {
-    color: "#fff",
-    fontSize: 12,
-    fontWeight: "700",
-  },
-  loadingFooter: {
-    paddingVertical: 20,
-    alignItems: "center",
-  },
-  // Preview modal
-  previewModalContainer: {
-    flex: 1,
-    backgroundColor: '#000',
-  },
-  previewModalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: 'rgba(0,0,0,0.9)',
-  },
-  previewCloseButton: {
-    width: 44,
-    height: 44,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  previewHeaderCenter: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  previewHeaderTitle: {
-    color: '#fff',
-    fontSize: 17,
-    fontWeight: '600',
-  },
-  previewHeaderSubtitle: {
-    color: '#9ca3af',
-    fontSize: 13,
-    marginTop: 2,
-  },
-  previewSelectButton: {
-    width: 44,
-    height: 44,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  previewSelectButtonActive: {},
-  previewSelectedBadge: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: '#2AABEE',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  previewSelectedNumber: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  previewModalContent: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  previewImage: {
-    width: SCREEN_WIDTH,
-    height: SCREEN_HEIGHT - 200,
-  },
-  previewVideo: {
-    width: SCREEN_WIDTH,
-    height: SCREEN_HEIGHT - 200,
-  },
-  previewModalFooter: {
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    backgroundColor: 'rgba(0,0,0,0.9)',
-  },
-  previewActionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#2AABEE',
-    paddingVertical: 14,
-    borderRadius: 12,
-    gap: 8,
-  },
-  previewActionButtonDeselect: {
-    backgroundColor: '#ef4444',
-  },
-  previewActionText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  // Carousel modal
-  carouselModalContainer: {
-    flex: 1,
-    backgroundColor: '#000',
-  },
-  carouselModalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: 'rgba(0,0,0,0.9)',
-  },
-  carouselCloseButton: {
-    width: 44,
-    height: 44,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  carouselHeaderCenter: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  carouselHeaderTitle: {
-    color: '#fff',
-    fontSize: 17,
-    fontWeight: '600',
-  },
-  carouselDeleteButton: {
-    width: 44,
-    height: 44,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  carouselItem: {
-    width: SCREEN_WIDTH,
-    height: SCREEN_HEIGHT - 180,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  carouselImage: {
-    width: SCREEN_WIDTH,
-    height: '100%',
-  },
-  carouselVideo: {
-    width: SCREEN_WIDTH,
-    height: '100%',
-  },
-  carouselDots: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: 16,
-    gap: 6,
-  },
-  carouselDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: 'rgba(255,255,255,0.4)',
-  },
-  carouselDotActive: {
-    backgroundColor: '#2AABEE',
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-  },
-  // Color picker modal
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  colorPickerModal: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 20,
-    maxWidth: 320,
-  },
-  colorPickerContainer: {
-    padding: 4,
-  },
-  colorPickerTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#1F2937',
-    marginBottom: 12,
-  },
-  colorGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  colorSwatch: {
-    width: 40,
-    height: 40,
-    borderRadius: 8,
-    borderWidth: 2,
-    borderColor: 'transparent',
-  },
-  whiteSwatchBorder: {
-    borderColor: '#E5E7EB',
-  },
-});

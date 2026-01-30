@@ -1,24 +1,21 @@
 // app/_layout.tsx
 import { Stack } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Platform, Text, ToastAndroid, View } from 'react-native';
+import { Platform, ToastAndroid, Alert } from 'react-native';
 import * as FileSystem from 'expo-file-system';
 import * as React from 'react';
 
 import "../global.css";
 import { initializeNotifications } from '@/utils/notificationSetup';
 import { requestChatNotificationPermissions, setupChatNotificationListeners } from '@/utils/chatNotificationHandler';
-import useNetworkStatus from '@/hooks/userNetworkStatus';
-import OfflinePopup from '@/components/OfflinePopup';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SocketProvider } from '@/contexts/SocketContext';
 import { VideoCallProvider } from '@/contexts/VideoCallContext';
-import GlobalVideoCallNotification from '@/components/GlobalVideoCallNotification';
+import SplashScreen from '@/components/SplashScreen';
 
 // Inner component that uses socket context
 function AppContent() {
   const [isReady, setIsReady] = useState(true);
-  const isConnected = useNetworkStatus();
 
   useEffect(() => {
     if (Platform.OS === "web") {
@@ -52,8 +49,14 @@ function AppContent() {
           setupChatNotificationListeners();
         }
 
-      } catch (error) {
+      } catch (error: any) {
         console.error('Bootstrap error:', error);
+        if (Platform.OS !== 'web') {
+          Alert.alert(
+            'Startup Error',
+            error?.message || 'Something went wrong during startup. Please try again.'
+          );
+        }
       } finally {
         setIsReady(true);
       }
@@ -63,13 +66,7 @@ function AppContent() {
   }, []);
 
   if (!isReady) {
-    return (
-      <View className="flex-1 items-center justify-center bg-blue-500">
-        <Text className="text-white text-2xl font-bold">
-          Loading...
-        </Text>
-      </View>
-    );
+    return <SplashScreen />;
   }
 
   return (

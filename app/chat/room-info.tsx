@@ -16,7 +16,7 @@ import { AuthStorage } from '@/utils/authStorage';
 import { useFocusEffect } from '@react-navigation/native';
 import { TabView, TabBar } from 'react-native-tab-view';
 import MembersTab from '@/components/chat/roomSettings/MembersTab';
-import AnnouncementsTab from '@/components/chat/roomSettings/AnnouncementsTab';
+// import AnnouncementsTab from '@/components/chat/roomSettings/AnnouncementsTab';
 import MediaTab from '@/components/chat/roomSettings/MediaTab';
 import PollTab from '@/components/chat/roomSettings/PollTab';
 import { useSocket } from '@/contexts/SocketContext';
@@ -47,7 +47,7 @@ export default function RoomInfo() {
   const [index, setIndex] = useState(0);
   const [routes] = useState([
     { key: 'members', title: 'Members' },
-    { key: 'announcements', title: 'Announcements' },
+    // { key: 'announcements', title: 'Announcements' },
     { key: 'media', title: 'Media' },
     { key: 'poll', title: 'Poll' },
   ]);
@@ -137,10 +137,6 @@ export default function RoomInfo() {
             onlineUsers={onlineUsers}
           />
         );
-      case 'announcements':
-        return <AnnouncementsTab 
-          messages={messages}
-        />;
       case 'media':
         return <MediaTab 
           messages={messages}
@@ -152,7 +148,7 @@ export default function RoomInfo() {
       default:
         return null;
     }
-  }, [membersWithOnlineStatus, roomId, onlineUsers]);
+  }, [membersWithOnlineStatus, roomId, onlineUsers, messages]);
 
   // Custom TabBar
   const renderTabBar = useCallback((props: any) => (

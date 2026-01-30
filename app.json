@@ -4,12 +4,17 @@
       "slug": "Sevak",
       "version": "1.0.13",
       "userInterfaceStyle": "automatic",
-      "icon": "./assets/images/finallogo.png",
+      "icon": "./assets/images/sevakapplogo.png",
       "newArchEnabled": true,
+      "splash": {
+        "image": "./assets/images/sevakapplogo.png",
+        "resizeMode": "contain",
+        "backgroundColor": "#3b82f6"
+      },
       "web": {
         "bundler": "metro",
         "output": "static",
-        "favicon": "./assets/images/favicon.png"
+        "favicon": "./assets/images/sevakapplogo.png"
       },
       "host": "lan",
       "plugins": [

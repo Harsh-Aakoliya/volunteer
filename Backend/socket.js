@@ -200,10 +200,13 @@ const setupSocketIO = (io, app) => {
         [roomId]
       );
 
-      const roomIdStr = roomId.toString();
+      const roomIdStr = String(roomId);
+      const senderIdStr = String(senderId);
 
       for (const { userId } of result.rows) {
-        const userIdStr = userId.toString();
+        const userIdStr = String(userId);
+        const isSender = userIdStr === senderIdStr;
+
         const sockets = userSockets.get(userIdStr);
 
         if (sockets && sockets.size > 0) {
@@ -212,7 +215,7 @@ const setupSocketIO = (io, app) => {
             return userData?.rooms?.has(roomIdStr);
           });
 
-          if (!isInRoom && userIdStr !== senderId) {
+          if (!isSender && !isInRoom) {
             if (!unreadCounts[userIdStr]) unreadCounts[userIdStr] = {};
             unreadCounts[userIdStr][roomIdStr] =
               (unreadCounts[userIdStr][roomIdStr] || 0) + 1;
@@ -228,7 +231,7 @@ const setupSocketIO = (io, app) => {
               });
             }
           }
-        } else if (userIdStr !== senderId) {
+        } else if (!isSender) {
           if (!unreadCounts[userIdStr]) unreadCounts[userIdStr] = {};
           unreadCounts[userIdStr][roomIdStr] =
             (unreadCounts[userIdStr][roomIdStr] || 0) + 1;
@@ -536,7 +539,7 @@ const setupSocketIO = (io, app) => {
 
       io.to(`room_${roomIdStr}`).emit("newMessage", msgData);
 
-      await notifyRoomMembers(roomIdStr, msgData, sender.userId);
+      await notifyRoomMembers(roomIdStr, msgData, String(sender.userId));
 
       // Send notifications to offline users
       try {

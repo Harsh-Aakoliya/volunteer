@@ -90,14 +90,9 @@ export function VersionChecker({ onUpdateCheckComplete }: VersionCheckerProps) {
     setDownloadProgress(0);
   };
 
-  // Show loading while checking for updates
+  // While checking, render nothing so index keeps showing splash
   if (isCheckingVersion) {
-    return (
-      <View className="flex-1 bg-white justify-center items-center">
-        <ActivityIndicator size="large" color="#3B82F6" />
-        <Text className="mt-4 text-gray-600">Checking for updates...</Text>
-      </View>
-    );
+    return null;
   }
 
   // If no update required, don't render anything
