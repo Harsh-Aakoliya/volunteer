@@ -28,9 +28,6 @@ import { useSocket } from "@/contexts/SocketContext";
 import eventEmitter from "@/utils/eventEmitter";
 
 // ==================== CONSTANTS ====================
-
-const { width: SCREEN_WIDTH } = Dimensions.get("window");
-
 // Telegram-style avatar colors (lighter, more pastel)
 const AVATAR_COLORS = [
   ["#D32F2F", "#B71C1C"], // Red (strong)
@@ -761,50 +758,6 @@ export default function ChatRoomsList() {
 
   // Socket subscriptions are now handled in SocketContext
   // Real-time updates flow: socket -> context -> rooms state via useEffect
-
-  // ==================== EFFECTS ====================
-
-  // ==================== BACK HANDLER - EXIT APP ====================
-
-  // const EXIT_DELAY = 2000; // 2 seconds
-
-  // useEffect(() => {
-  //   const lastBackPressRef = useRef(0);
-
-  //   const onBackPress = () => {
-  //     // Close search first
-  //     if (isSearchMode) {
-  //       setIsSearchMode(false);
-  //       setSearchQuery("");
-  //       Keyboard.dismiss();
-  //       return true;
-  //     }
-
-  //     const now = Date.now();
-
-  //     // First press
-  //     if (now - lastBackPressRef.current > EXIT_DELAY) {
-  //       lastBackPressRef.current = now;
-  //       ToastAndroid.show(
-  //         "Press back again to exit",
-  //         ToastAndroid.SHORT // ~1s only
-  //       );
-  //       return true;
-  //     }
-
-  //     // Second press → exit immediately
-  //     BackHandler.exitApp();
-  //     return true;
-  //   };
-
-  //   const sub = BackHandler.addEventListener(
-  //     "hardwareBackPress",
-  //     onBackPress
-  //   );
-
-  //   return () => sub.remove();
-  // }, [isSearchMode]);
-
 
   useEffect(() => {
     const backHandler = BackHandler.addEventListener(

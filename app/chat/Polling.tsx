@@ -100,7 +100,7 @@ export default function Polling() {
       
       socketSendMessage(roomId as string, {
         id: pollResponse.data.id,
-        messageText: "Shared poll",
+        messageText: "",
         createdAt: pollResponse.data.createdAt,
         messageType: "poll",
         mediaFilesId: 0,

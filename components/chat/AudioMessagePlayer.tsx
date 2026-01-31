@@ -1,206 +1,206 @@
 // components/chat/AudioMessagePlayer.tsx
-import React, { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  ActivityIndicator
-} from 'react-native';
-import { Audio } from 'expo-av';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, Text, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { Audio } from 'expo-av';
+import { API_URL } from '@/constants/api';
 
 interface AudioMessagePlayerProps {
+  /** Full URL to the audio file (e.g. `${API_URL}/media/chat/${fileName}`) */
   audioUrl: string;
-  duration?: string;
-  isOwn?: boolean;
-  waves?: any[];
+  /** Optional duration in seconds (for display); if not provided we load to get it */
+  durationSeconds?: number;
+  isOwnMessage?: boolean;
 }
 
-export default function AudioMessagePlayer({ 
-  audioUrl, 
-  duration = "0:00", 
-  isOwn = false,
-  waves = []
+function formatTime(seconds: number): string {
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
+}
+
+export default function AudioMessagePlayer({
+  audioUrl,
+  durationSeconds: initialDuration,
+  isOwnMessage = false,
 }: AudioMessagePlayerProps) {
-  const [sound, setSound] = useState<Audio.Sound | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const [playbackPosition, setPlaybackPosition] = useState(0);
-  const [playbackDuration, setPlaybackDuration] = useState(0);
+  const [positionSeconds, setPositionSeconds] = useState(0);
+  const [durationSeconds, setDurationSeconds] = useState(initialDuration ?? 0);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(false);
+  const soundRef = useRef<Audio.Sound | null>(null);
 
+  // Load audio to get duration (without playing) so we show total length initially
   useEffect(() => {
-    return () => {
-      if (sound) {
-        sound.unloadAsync();
-      }
+    if (!audioUrl) return;
+    let cancelled = false;
+    const loadDuration = async () => {
+      try {
+        const { sound } = await Audio.Sound.createAsync(
+          { uri: audioUrl },
+          { shouldPlay: false }
+        );
+        if (cancelled) {
+          await sound.unloadAsync();
+          return;
+        }
+        const status = await sound.getStatusAsync();
+        if (status.isLoaded && status.durationMillis != null) {
+          setDurationSeconds(status.durationMillis / 1000);
+        }
+        await sound.unloadAsync();
+      } catch (_) {}
     };
-  }, [sound]);
+    loadDuration();
+    return () => {
+      cancelled = true;
+    };
+  }, [audioUrl]);
 
-  const loadAudio = async () => {
-    if (sound) return;
-
+  const loadAndPlay = async () => {
+    if (!audioUrl) return;
+    setLoading(true);
+    setError(false);
     try {
-      setIsLoading(true);
-      const { sound: newSound } = await Audio.Sound.createAsync(
+      if (soundRef.current) {
+        await soundRef.current.unloadAsync();
+        soundRef.current = null;
+      }
+      const { sound } = await Audio.Sound.createAsync(
         { uri: audioUrl },
-        { shouldPlay: false }
-      );
-      
-      newSound.setOnPlaybackStatusUpdate((status) => {
-        if (status.isLoaded) {
-          setPlaybackPosition(status.positionMillis);
-          setPlaybackDuration(status.durationMillis);
-          setIsPlaying(status.isPlaying);
-          if (status.didJustFinish) {
+        { shouldPlay: true, progressUpdateIntervalMillis: 300 },
+        (status) => {
+          if (!status.isLoaded) return;
+          setPositionSeconds((status.positionMillis ?? 0) / 1000);
+          if (status.durationMillis != null) {
+            setDurationSeconds(status.durationMillis / 1000);
+          }
+          const didFinish = (status as any).didJustFinishAndNotJustLooped ?? (status as any).didJustFinish;
+          if (didFinish) {
+            setPositionSeconds(0);
             setIsPlaying(false);
           }
         }
-      });
-
-      setSound(newSound);
-    } catch (error) {
-      console.error('Error loading audio:', error);
+      );
+      soundRef.current = sound;
+      setIsPlaying(true);
+    } catch (e) {
+      console.error('AudioMessagePlayer load error:', e);
+      setError(true);
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   };
 
-  const togglePlayback = async () => {
-    if (!sound) {
-      await loadAudio();
+  const togglePlayPause = async () => {
+    if (loading) return;
+    if (error) {
+      loadAndPlay();
       return;
     }
-
-    try {
-      if (isPlaying) {
-        await sound.pauseAsync();
-      } else {
-        await sound.playAsync();
-      }
-    } catch (error) {
-      console.error('Error toggling playback:', error);
+    if (isPlaying && soundRef.current) {
+      await soundRef.current.pauseAsync();
+      setIsPlaying(false);
+      return;
     }
+    if (soundRef.current) {
+      // Replay from start: seek to 0 then play so relistening works
+      try {
+        await soundRef.current.setPositionAsync(0);
+        setPositionSeconds(0);
+      } catch (_) {}
+      await soundRef.current.playAsync();
+      setIsPlaying(true);
+      return;
+    }
+    loadAndPlay();
   };
 
-  const getProgress = () => {
-    if (playbackDuration === 0) return 0;
-    return playbackPosition / playbackDuration;
-  };
+  useEffect(() => {
+    return () => {
+      if (soundRef.current) {
+        soundRef.current.unloadAsync();
+        soundRef.current = null;
+      }
+    };
+  }, [audioUrl]);
 
-  const formatTime = (milliseconds: number) => {
-    const seconds = Math.floor(milliseconds / 1000);
-    const minutes = Math.floor(seconds / 60);
-    const remainingSeconds = seconds % 60;
-    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
-  };
+  const progress = durationSeconds > 0 ? positionSeconds / durationSeconds : 0;
 
   return (
-    <View className={`flex-row items-center p-3 rounded-2xl ${isOwn ? 'bg-green-500' : 'bg-gray-200'}`}>
-      <TouchableOpacity 
-        onPress={togglePlayback} 
-        className="w-10 h-10 rounded-full bg-white/20 items-center justify-center mr-3"
-        disabled={isLoading}
-      >
-        {isLoading ? (
-          <ActivityIndicator size="small" color={isOwn ? "#fff" : "#25D366"} />
-        ) : (
-          <Ionicons
-            name={isPlaying ? "pause" : "play"}
-            size={20}
-            color={isOwn ? "#fff" : "#25D366"}
-          />
-        )}
-      </TouchableOpacity>
+    <View
+      style={{
+        width: 260,
+        backgroundColor: '#f3f4f6',
+        borderRadius: 12,
+        paddingVertical: 12,
+        paddingHorizontal: 14,
+        marginVertical: 4,
+      }}
+    >
+      {/* Top row: play button, progress bar, time (duration when idle, position when playing) */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
+        <TouchableOpacity
+          onPress={togglePlayPause}
+          style={{
+            width: 40,
+            height: 40,
+            borderRadius: 20,
+            backgroundColor: '#e5e7eb',
+            justifyContent: 'center',
+            alignItems: 'center',
+            marginRight: 12,
+          }}
+        >
+          {loading ? (
+            <ActivityIndicator size="small" color="#374151" />
+          ) : (
+            <Ionicons
+              name={isPlaying ? 'pause' : 'play'}
+              size={22}
+              color="#374151"
+            />
+          )}
+        </TouchableOpacity>
 
-      <View className="flex-1 mr-3">
-        <AudioWaveform
-          waves={waves}
-          isOwn={isOwn}
-          progress={getProgress()}
-          isPlaying={isPlaying}
-          duration={playbackDuration}
-        />
+        <View
+          style={{
+            flex: 1,
+            height: 4,
+            backgroundColor: '#e5e7eb',
+            borderRadius: 2,
+            overflow: 'hidden',
+          }}
+        >
+          <View
+            style={{
+              width: `${progress * 100}%`,
+              height: '100%',
+              backgroundColor: '#16a34a',
+              borderRadius: 2,
+            }}
+          />
+        </View>
+
+        <Text
+          style={{
+            marginLeft: 10,
+            fontSize: 13,
+            fontWeight: '600',
+            color: '#374151',
+            minWidth: 36,
+          }}
+        >
+          {isPlaying ? formatTime(positionSeconds) : formatTime(durationSeconds)}
+        </Text>
       </View>
 
-      <Text className={`text-sm font-semibold ${isOwn ? 'text-white' : 'text-green-600'}`}>
-        {formatTime(playbackDuration || 0) || duration}
-      </Text>
-    </View>
-  );
-}
-
-// Audio Waveform Component
-const AudioWaveform = ({ waves, isOwn, progress, isPlaying, duration }: any) => {
-  const MAX_BARS = 100;
-  const BAR_WIDTH = 2;
-  const BAR_SPACING = 1;
-
-  const getBarColor = (pitch: number, isPlayed: boolean) => {
-    const baseColor = pitch > 0.7 ? '#ff6b6b' :
-      pitch > 0.4 ? '#4ecdc4' :
-        pitch > 0.2 ? '#45b7d1' : '#25D366';
-
-    if (isPlayed) {
-      return baseColor;
-    } else {
-      return isOwn ? 'rgba(255,255,255,0.3)' : '#E0E0E0';
-    }
-  };
-
-  const renderWaveformBars = () => {
-    const bars = [];
-
-    if (waves && waves.length > 0) {
-      const visibleWaves = waves.slice(-MAX_BARS);
-      const currentPosition = progress * duration;
-
-      for (let i = 0; i < MAX_BARS; i++) {
-        const wave = visibleWaves[i] || null;
-        const wavePosition = wave ? wave.position : 0;
-        const isPlayed = wavePosition <= currentPosition;
-
-        bars.push(
-          <View
-            key={`wave-${i}-${wave?.id || i}`}
-            style={{
-              width: BAR_WIDTH,
-              height: wave ? Math.max(wave.height * 0.8, 3) : 3,
-              backgroundColor: wave ? getBarColor(wave.pitch, isPlayed) : (isOwn ? 'rgba(255,255,255,0.2)' : '#E0E0E0'),
-              marginRight: BAR_SPACING,
-              opacity: wave ? 1 : 0.3,
-              borderRadius: BAR_WIDTH / 2,
-            }}
-          />
-        );
-      }
-    } else {
-      // Generate mock waveform if no wave data
-      for (let i = 0; i < MAX_BARS; i++) {
-        const height = Math.random() * 20 + 5;
-        bars.push(
-          <View
-            key={`mock-${i}`}
-            style={{
-              width: BAR_WIDTH,
-              height: height,
-              backgroundColor: isOwn ? 'rgba(255,255,255,0.4)' : '#E0E0E0',
-              marginRight: BAR_SPACING,
-              borderRadius: BAR_WIDTH / 2,
-            }}
-          />
-        );
-      }
-    }
-
-    return bars;
-  };
-
-  return (
-    <View className="flex-row items-center justify-center">
-      {renderWaveformBars()}
-      {isPlaying && (
-        <View className="absolute top-0 w-1 h-full bg-white rounded-full" style={{ left: `${progress * 100}%` }} />
+      {error && (
+        <Text style={{ fontSize: 12, color: '#dc2626', marginTop: 4 }}>
+          Failed to load audio
+        </Text>
       )}
     </View>
   );
-};
+}

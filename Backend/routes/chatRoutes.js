@@ -28,7 +28,7 @@ router.post('/rooms/:roomId/leave', chatController.leaveRoom);// api/chat/rooms.
 router.put('/rooms/:roomId/members', chatController.updateRoomMembers);//${API_URL}/api/chat/rooms/${roomId}/members api/chat/rooms.ts->updateRoomMembers
 
 // Room messages
-router.post('/rooms/:roomId/messages', chatController.sendMessage);//${API_URL}/api/chat/rooms/${roomId}/messages // app/chat/[roomId].tsx -> sendMessage,handleForwardMessages, app/chat/create-chat-announcement.tsx -> sendAnnouncement, app/chat/Polling.tsx -> sendpollinmessage, app/chat/table.tsx -> sendTableToChat
+router.post('/rooms/:roomId/messages', chatController.sendMessage);//${API_URL}/api/chat/rooms/${roomId}/messages // app/chat/[roomId].tsx -> sendMessage,handleForwardMessages, app/chat/create-chat-announcement.tsx -> sendAnnouncement, app/chat/Polling.tsx -> sendpollinmessage,
 router.get('/rooms/:roomId/messages', chatController.getNewMessages); //${API_URL}/api/chat/rooms/${roomId}/messages api/chat/message.ts -> getNewMessages
 router.put('/rooms/:roomId/messages/:messageId', chatController.editMessage);//${API_URL}/api/chat/rooms/${roomIdValue}/messages/${messageId} // components/chat/EditMessageModal.tsx->handleSave
 router.delete('/rooms/:roomId/messages', chatController.deleteMessages);// app/chat/[roomId].tsx -> handleDeleteMessages

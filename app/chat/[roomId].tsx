@@ -1544,6 +1544,75 @@ const handleDeselectMessage = useCallback((message: Message) => {
     }
   }, [roomId]);
 
+  // Send recorded audio via same media API (move-to-chat-camera)
+  const handleSendAudio = useCallback(async (audioUri: string) => {
+    const roomIdStr = typeof roomId === 'string' ? roomId : (Array.isArray(roomId) ? roomId[0] : String(roomId));
+    if (!roomIdStr || !currentUser || sending) return;
+    setSending(true);
+    try {
+      const token = await AuthStorage.getToken();
+      const filename = `audio_${Date.now()}.m4a`;
+      const formData = new FormData();
+      // @ts-ignore – FormData append with object for React Native
+      formData.append("file", {
+        uri: Platform.OS === "ios" ? audioUri.replace("file://", "") : audioUri,
+        name: filename,
+        type: "audio/m4a",
+      });
+      formData.append("roomId", roomIdStr);
+      formData.append("senderId", currentUser.userId);
+
+      const response = await axios.post(
+        `${API_URL}/api/vm-media/move-to-chat-camera`,
+        formData,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "multipart/form-data",
+          },
+          transformRequest: (data: any) => data,
+          timeout: 60000,
+        }
+      );
+
+      if (response.data.success) {
+        const { messageId, mediaId, createdAt } = response.data;
+        const newMessage: Message = {
+          id: messageId,
+          roomId: parseInt(roomIdStr, 10),
+          senderId: currentUser.userId,
+          senderName: currentUser.fullName || "You",
+          messageText: "",
+          messageType: "media",
+          createdAt: createdAt || new Date().toISOString(),
+          mediaFilesId: mediaId,
+          pollId: 0,
+          tableId: 0,
+        };
+        addMessage(newMessage, true);
+        socketSendMessage(roomIdStr, {
+          id: messageId,
+          messageText: "",
+          createdAt: newMessage.createdAt,
+          messageType: "media",
+          mediaFilesId: mediaId,
+          pollId: 0,
+          tableId: 0,
+          replyMessageId: 0,
+        });
+        markAllMessagesAsReadInRoom();
+        setTimeout(() => scrollToBottomRef.current(), 200);
+      } else {
+        throw new Error(response.data?.error || "Upload failed");
+      }
+    } catch (error: any) {
+      console.error("Send audio error:", error);
+      Alert.alert("Send failed", error?.response?.data?.error || error?.message || "Could not send audio.");
+    } finally {
+      setSending(false);
+    }
+  }, [roomId, currentUser, sending, addMessage, socketSendMessage, markAllMessagesAsReadInRoom]);
+
   const markMessageAsRead = useCallback(async (messageId: string | number) => {
     if (typeof messageId !== "number") return;
     if (readSetRef.current.has(messageId)) return;
@@ -1992,8 +2061,6 @@ const TelegramHeader = React.memo(({
               replyToMessage={replyToMessage}
               onCancelReply={handleCancelReply}
               onAttachmentPress={() => {
-                // Navigate to attachments route instead of opening bottom sheet
-                console.log("Navigating to attachments route");
                 router.push({
                   pathname: "/chat/[roomId]/attachments",
                   params: { roomId: roomId as string, userId: currentUser?.userId ?? "" },
@@ -2002,6 +2069,7 @@ const TelegramHeader = React.memo(({
               isAttachmentSheetOpen={false}
               onFocus={handleMainInputFocus}
               onBlur={handleMainInputBlur}
+              onSendAudio={handleSendAudio}
             />
           ) : (
             <View className="p-3 bg-white/95 m-2 rounded-lg items-center border border-gray-200">

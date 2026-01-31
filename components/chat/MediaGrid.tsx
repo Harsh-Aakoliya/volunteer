@@ -11,6 +11,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import { API_URL } from '@/constants/api';
 import { AuthStorage } from '@/utils/authStorage';
+import AudioMessagePlayer from '@/components/chat/AudioMessagePlayer';
 
 interface MediaFile {
   id: number;
@@ -221,8 +222,22 @@ const MediaGrid: React.FC<MediaGridProps> = ({
     }
 
     const fileCount = mediaFiles.length;
+    const singleFile = mediaFiles[0];
 
-    // Single file - full width, square aspect ratio
+    // Single file + audio → show inline audio player (play/pause, progress)
+    if (fileCount === 1 && singleFile.mimeType.startsWith('audio')) {
+      const audioUrl = `${API_URL}/media/chat/${singleFile.fileName}`;
+      return (
+        <View style={{ marginVertical: 4 }}>
+          <AudioMessagePlayer
+            audioUrl={audioUrl}
+            isOwnMessage={isOwnMessage}
+          />
+        </View>
+      );
+    }
+
+    // Single file (image/video) - full width, square aspect ratio
     if (fileCount === 1) {
       return (
         <View style={{ marginVertical: 4 }}>

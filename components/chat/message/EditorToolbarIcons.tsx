@@ -43,7 +43,8 @@ export const NumberListIcon = ({ size = 20, color = "#666" }: { size?: number; c
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
     <Path d="M4 5.5L4.5 5L5 5.5V9" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
     <Path d="M3.5 15H5.5L3.5 17.5H5.5" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-    <Line x1="9" y1="6" x2="21" y2="6" stroke={color} strokeWidth="2" strokeLinecap="round" />
+      <Path d="M3.5 15H5.5L3.5 17.5H5.5" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      <Line x1="9" y1="6" x2="21" y2="6" stroke={color} strokeWidth="2" strokeLinecap="round" />
     <Line x1="9" y1="12" x2="21" y2="12" stroke={color} strokeWidth="2" strokeLinecap="round" />
     <Line x1="9" y1="18" x2="21" y2="18" stroke={color} strokeWidth="2" strokeLinecap="round" />
   </Svg>
