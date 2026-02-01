@@ -288,7 +288,7 @@ const createChatMessagesTable = async (client) => {
       CREATE TABLE IF NOT EXISTS chatmessages (
           "id" SERIAL PRIMARY KEY,
           "roomId" INTEGER,
-          "senderId" VARCHAR(50),
+          "senderId" INTEGER,
           "messageText" TEXT NOT NULL,
           "createdAt" TIMESTAMPTZ DEFAULT (NOW() AT TIME ZONE 'UTC'),
           "messageType" "messageType" NOT NULL DEFAULT 'text',

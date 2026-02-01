@@ -319,6 +319,19 @@ export default function MessageInput({
     };
   }, []);
 
+  // When replying, focus input after a short delay so keyboard stays open and input stays on screen
+  useEffect(() => {
+    if (!replyToMessage || recordingMode !== 'idle') return;
+    const t = setTimeout(() => {
+      if (showRichTextToolbar && richTextRef.current) {
+        richTextRef.current.focusContentEditor?.();
+      } else if (inputRef.current) {
+        inputRef.current.focus();
+      }
+    }, 100);
+    return () => clearTimeout(t);
+  }, [replyToMessage, recordingMode, showRichTextToolbar]);
+
   // Link detection
   useEffect(() => {
     const links = extractLinks(messageText);
@@ -632,28 +645,29 @@ export default function MessageInput({
           </View>
         </View>
       ) : (
-      <View className="flex-row items-end px-3 py-2" style={{ alignItems: 'center' }}>
-        {/* Pill-shaped input: Aa inside left border, then input, then attachment + camera when empty */}
+      <View className="px-3 py-2">
+        {/* Reply preview bar – above pill when replying, keeps input row visible and on screen */}
+        {replyToMessage ? (
+          <View className="flex-row items-center mb-2 px-1 py-2 bg-green-100 rounded-xl border-l-[3px] border-green-600">
+            <View className="flex-1 mr-1">
+              <Text className="text-green-600 text-xs font-bold">
+                {replyToMessage.senderId === currentUser?.userId ? 'You' : replyToMessage.senderName}
+              </Text>
+              <Text className="text-gray-600 text-xs" numberOfLines={2} ellipsizeMode="tail">
+                {getReplyPreviewText(replyToMessage)}
+              </Text>
+            </View>
+            <TouchableOpacity onPress={onCancelReply} className="p-2">
+              <Ionicons name="close" size={18} color="#666" />
+            </TouchableOpacity>
+          </View>
+        ) : null}
+        {/* Main row: pill + green button – always visible so input never goes off screen */}
+        <View className="flex-row items-end" style={{ alignItems: 'center' }}>
         <View
           className="flex-1 flex-row items-center bg-white rounded-3xl border border-gray-300 min-h-[40px] px-2 mr-2"
           style={{ maxHeight: maxInputHeight }}
         >
-          {/* Reply Preview (full width when present) */}
-          {replyToMessage ? (
-            <View className="flex-1 mx-1 mt-2 p-2.5 bg-green-100 rounded-xl border-l-[3px] border-green-600 flex-row justify-between mb-1">
-              <View className="flex-1">
-                <Text className="text-green-600 text-xs font-bold mb-0.5">
-                  {replyToMessage.senderId === currentUser?.userId ? 'You' : replyToMessage.senderName}
-                </Text>
-                <Text className="text-gray-600 text-xs" numberOfLines={3} ellipsizeMode="tail">
-                  {getReplyPreviewText(replyToMessage)}
-                </Text>
-              </View>
-              <TouchableOpacity onPress={onCancelReply} className="p-1">
-                <Ionicons name="close" size={16} color="#666" />
-              </TouchableOpacity>
-            </View>
-          ) : (
             <>
               {/* Aa (format / rich text) – inside pill, left side, WhatsApp-style */}
               {Platform.OS !== 'web' && RichEditor && (
@@ -767,7 +781,6 @@ export default function MessageInput({
                 </>
               )}
             </>
-          )}
         </View>
 
         {/* Right: Green circle – mic when empty (if onSendAudio) else +, send when typing (WhatsApp-style) */}
@@ -795,6 +808,7 @@ export default function MessageInput({
             <Ionicons name="send" size={20} color="#fff" />
           )}
         </TouchableOpacity>
+        </View>
       </View>
       )}
 

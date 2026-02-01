@@ -545,7 +545,7 @@ export default function LoginForm() {
               }));
             })
           }
-          disabled={!isMobileAllowed || isCheckingMobile || Platform.OS === "web" ? false : true}
+          disabled={false}
           className="mt-2"
         >
           <Text className="text-right text-sm text-blue-500 font-JakartaMedium">

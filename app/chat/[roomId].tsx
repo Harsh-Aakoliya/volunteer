@@ -2035,9 +2035,10 @@ const TelegramHeader = React.memo(({
       {/* --- MESSAGE INPUT SECTION --- */}
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
+        keyboardVerticalOffset={Platform.OS === "ios" ? insets.top : 0}
+        style={{ flex: 0 }}
       >
-        <View style={{ backgroundColor: '#E5DDD5' }}>
+        <View style={{ backgroundColor: '#E5DDD5', paddingBottom: insets.bottom }}>
           <View className="pb-1">
           {canSendMessage ? (
             <MessageInput
