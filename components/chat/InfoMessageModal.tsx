@@ -226,7 +226,7 @@ const InfoMessageModal: React.FC<InfoMessageModalProps> = ({
                   <View className="flex-1">
                     <Text className="text-sm text-[#111827]">{u.fullName}</Text>
                     <Text className="text-xs text-[#6B7280]">
-                      {formatISTDate(u.readAt)} {formatISTTime(u.readAt)}
+                      {formatISTDate(u.readAt)}
                     </Text>
                   </View>
                 </View>

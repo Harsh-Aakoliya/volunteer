@@ -29,6 +29,9 @@ interface MediaGridProps {
   isLoading?: boolean;
 }
 
+// Simple in-memory cache so we don't refetch the same mediaFilesId
+const mediaCache: Map<number, MediaFile[]> = new Map();
+
 const MediaGrid: React.FC<MediaGridProps> = ({
   mediaFilesId,
   messageId,
@@ -47,6 +50,23 @@ const MediaGrid: React.FC<MediaGridProps> = ({
   const borderRadius = 8;
 
   useEffect(() => {
+    // Guard: nothing to load
+    if (!mediaFilesId) {
+      setMediaFiles([]);
+      setLoading(false);
+      setError(false);
+      return;
+    }
+
+    // Use cache when available to avoid unnecessary API calls
+    const cached = mediaCache.get(mediaFilesId);
+    if (cached) {
+      setMediaFiles(cached);
+      setLoading(false);
+      setError(false);
+      return;
+    }
+
     loadMediaFiles();
   }, [mediaFilesId]);
 
@@ -81,6 +101,8 @@ const MediaGrid: React.FC<MediaGridProps> = ({
           size: file.size || 0
         }));
         setMediaFiles(transformedFiles);
+        // Cache for future renders / scrolls
+        mediaCache.set(mediaFilesId, transformedFiles);
         console.log("transformed file",transformedFiles);
       } else {
         setMediaFiles([]);

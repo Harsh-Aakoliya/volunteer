@@ -13,12 +13,12 @@ export function ToolbarButton({
   onPress,
   isActive = false,
   children,
-  activeClass = 'bg-green-100',
+  activeClass = 'bg-[#E3F2FD]', // WhatsApp-style light blue background
 }: ToolbarButtonProps) {
   return (
     <TouchableOpacity
       onPress={onPress}
-      className={`px-3 py-2.5 rounded-md mx-0.5 min-h-[36px] justify-center ${isActive ? activeClass : ''}`}
+      className={`px-3 py-2 rounded-md mx-0.5 min-h-[36px] justify-center items-center ${isActive ? activeClass : ''}`}
       activeOpacity={0.6}
       hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
     >

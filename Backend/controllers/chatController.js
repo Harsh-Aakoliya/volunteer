@@ -1560,10 +1560,11 @@ const chatController = {
 
             // Get all room members (including sender - sender should show as read)
             const membersResult = await pool.query(
-                `SELECT sm.seid::text as "userId", sm.sevakname as "fullName"
-                 FROM chatroomusers cru
-                          JOIN "SevakMaster" sm ON cru."userId" = sm.seid
-                 WHERE cru."roomId" = $1`,
+                `SELECT sm.seid as "userId", sm.sevakname as "fullName"
+                FROM chatroomusers cru
+                JOIN "SevakMaster" sm ON cru."userId" = sm.seid
+                WHERE cru."roomId" = $1
+                `,
                 [roomId]
             );
 
@@ -1571,7 +1572,7 @@ const chatController = {
             const readStatusResult = await pool.query(
                 `SELECT mrs."userId", mrs."readAt" as "readAt", sm.sevakname as "fullName"
                  FROM messagereadstatus mrs
-                          JOIN "SevakMaster" sm ON mrs."userId" = sm.seid::text
+                          JOIN "SevakMaster" sm ON mrs."userId" = sm.seid
                  WHERE mrs."messageId" = $1`,
                 [messageIdInt]
             );
@@ -1590,6 +1591,7 @@ const chatController = {
                     userId: member.userId,
                     fullName: member.fullName
                 }));
+            console.log("read and unread userids",readUserIds,unreadBy);    
 
             res.json({
                 success: true,

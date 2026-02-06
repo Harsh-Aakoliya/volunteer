@@ -21,7 +21,8 @@ type PollData = {
   id: number;
   question: string;
   options: PollOption[];
-  votes: { [optionId: string]: string[] } | null;
+  // Backend can return legacy string[] or objects with userId, so keep this loose
+  votes: any;
   isActive: boolean;
   pollEndTime: string;
   isMultipleChoiceAllowed: boolean;
@@ -35,6 +36,9 @@ type Props = {
   /** When true, only show question and options (no voting, no radio/checkbox, no View votes) */
   readOnly?: boolean;
 };
+
+// In-memory cache so each pollId is fetched only once per app session
+const pollCache: Map<number, PollData> = new Map();
 
 const PollMessage = ({ pollId, currentUserId, onViewResults, readOnly = false }: Props) => {
   const { width: windowWidth } = useWindowDimensions();
@@ -60,7 +64,8 @@ const PollMessage = ({ pollId, currentUserId, onViewResults, readOnly = false }:
         return;
       }
       // new: {userId, votedAt}[]
-      if (Array.isArray(arr) && arr.some((v) => v && typeof v === "object" && String(v.userId) === String(currentUserId))) {
+      // @ts-ignore – backend returns objects with userId; we defensively cast here
+      if (Array.isArray(arr) && arr.some((v) => v && typeof v === "object" && String((v as any).userId) === String(currentUserId))) {
         picked.push(optionId);
       }
     });
@@ -69,8 +74,15 @@ const PollMessage = ({ pollId, currentUserId, onViewResults, readOnly = false }:
 
   const fetchPollData = async () => {
     try {
-      const response = await axios.get(`${API_URL}/api/poll/${pollId}`);
-      const data = response.data.polldata;
+      // If we already have this poll in cache, use it instead of refetching
+      const cached = pollCache.get(pollId);
+      const data = cached ?? (await (async () => {
+        const response = await axios.get(`${API_URL}/api/poll/${pollId}`);
+        const fresh = response.data.polldata as PollData;
+        pollCache.set(pollId, fresh);
+        return fresh;
+      })());
+
       setPollData(data);
       
       // Initialize voting states
@@ -147,12 +159,14 @@ const PollMessage = ({ pollId, currentUserId, onViewResults, readOnly = false }:
         selectedOptions: optionsToSubmit
       });
       
-      const updatedPoll = response.data.poll;
+      const updatedPoll = response.data.poll as PollData;
       if (typeof updatedPoll.options === 'string') {
         updatedPoll.options = JSON.parse(updatedPoll.options);
       }
       
       setPollData(updatedPoll);
+      // Update cache so future renders don't refetch
+      pollCache.set(pollId, updatedPoll);
       
       // Update voting states
       const userVotedOptions: string[] = deriveUserVotes(updatedPoll.votes);
@@ -161,10 +175,11 @@ const PollMessage = ({ pollId, currentUserId, onViewResults, readOnly = false }:
       if (updatedPoll.votes) {
         Object.keys(updatedPoll.votes).forEach(optId => {
           const voters = updatedPoll.votes![optId] || [];
+          // @ts-ignore – backend returns objects with userId; we defensively cast here
           const didVote =
             Array.isArray(voters) &&
             (voters.some((v) => String(v) === String(currentUserId)) ||
-              voters.some((v) => v && typeof v === "object" && String(v.userId) === String(currentUserId)));
+              voters.some((v) => v && typeof v === "object" && String((v as any).userId) === String(currentUserId)));
           if (didVote) {
             votingStates[optId] = 'voted';
           } else {

@@ -52,7 +52,7 @@ export function VersionChecker({ onUpdateCheckComplete }: VersionCheckerProps) {
       
       console.log("Server version data:", versionData);
       
-      if (versionData.versiontopublish !== appVersion) {
+      if (false) {
         setServerVersion(versionData.versiontopublish);
         setVersionDescription(versionData.Description[versionData.versiontopublish] || "New version available");
         setUpdateRequired(true);

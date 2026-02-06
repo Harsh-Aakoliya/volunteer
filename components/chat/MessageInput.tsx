@@ -9,10 +9,7 @@ import {
   ActivityIndicator,
   Platform,
   Keyboard,
-  Animated,
-  Easing,
   ScrollView,
-  LayoutAnimation,
   Alert,
 } from 'react-native';
 import { Audio } from 'expo-av';
@@ -38,6 +35,7 @@ import {
   ToolbarDivider,
   LinkPreview,
 } from '@/components/chat/message';
+import { FormatEditText, type FormatEditTextRef } from '@/components/chat/FormatEditText';
 
 // ---------- TYPES ----------
 interface MessageInputProps {
@@ -52,15 +50,24 @@ interface MessageInputProps {
   onCancelReply?: () => void;
   onAttachmentPress?: () => void;
   isAttachmentSheetOpen?: boolean;
-  /** When provided (e.g. in room chat), show mic button and allow recording + send via same media API */
   onSendAudio?: (audioUri: string) => void | Promise<void>;
 }
 
 // ---------- HELPER (link detection for preview) ----------
 const extractLinks = (text: string): string[] => {
+  // Strip HTML first so we don't extract raw href attributes
+  const plainText = stripHtml(text);
   const urlRegex = /(https?:\/\/[^\s]+)/g;
-  return text.match(urlRegex) || [];
+  return plainText.match(urlRegex) || [];
 };
+
+/*
+ * Context Menu Formatting:
+ * - Android: Uses native FormatEditText with "Format" in the system Cut/Copy/Paste menu;
+ *   tapping Format opens the formatting toolbar (B/I/U etc.).
+ * - iOS/Web: RichEditor (WebView) cannot add to the system menu; we show a floating
+ *   "Format" button above the input when there is text and the keyboard is visible.
+ */
 
 // ---------- MAIN COMPONENT ----------
 export default function MessageInput({
@@ -80,7 +87,7 @@ export default function MessageInput({
   // Refs
   const inputRef = useRef<TextInput>(null);
   const richTextRef = useRef<any>(null);
-  const isSwitchingRef = useRef(false);
+  const formatEditTextRef = useRef<FormatEditTextRef>(null);
   const editorKeyRef = useRef(0);
   const recordingRef = useRef<Audio.Recording | null>(null);
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -88,7 +95,6 @@ export default function MessageInput({
 
   // State
   const [showRichTextToolbar, setShowRichTextToolbar] = useState(false);
-  const [isFocused, setIsFocused] = useState(false);
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
   const [inputHeight, setInputHeight] = useState(40);
   const [showColorPicker, setShowColorPicker] = useState<'text' | 'background' | null>(null);
@@ -96,6 +102,7 @@ export default function MessageInput({
   const [linkPreviews, setLinkPreviews] = useState<string[]>([]);
   const [currentTextColor, setCurrentTextColor] = useState('#000000');
   const [currentBgColor, setCurrentBgColor] = useState('#FFFFFF');
+  
   const [formatActive, setFormatActive] = useState({ bold: false, italic: false, underline: false, strike: false });
   const [listAlignActive, setListAlignActive] = useState({
     bullet: false,
@@ -105,8 +112,12 @@ export default function MessageInput({
     alignRight: false,
   });
   const heightUpdateTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  
+  // Track text selection for showing Format button (Gmail-style)
+  const [hasTextSelection, setHasTextSelection] = useState(false);
+  const selectionCheckIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Audio recording state (only when onSendAudio provided)
+  // Audio recording state
   const [recordingMode, setRecordingMode] = useState<'idle' | 'recording' | 'paused'>('idle');
   const [recordingDuration, setRecordingDuration] = useState(0);
   const [recordedUri, setRecordedUri] = useState<string | null>(null);
@@ -115,7 +126,7 @@ export default function MessageInput({
   const [previewPosition, setPreviewPosition] = useState(0);
   const [sendingAudio, setSendingAudio] = useState(false);
 
-  // Audio permissions and mode (when mic is available)
+  // Audio permissions and mode
   useEffect(() => {
     if (!onSendAudio || Platform.OS === 'web') return;
     const setup = async () => {
@@ -147,7 +158,6 @@ export default function MessageInput({
   const handleStartRecording = useCallback(async () => {
     if (!onSendAudio) return;
     try {
-      // Hide rich text toolbar and any pickers when entering recording mode
       setShowRichTextToolbar(false);
       setShowColorPicker(null);
       setShowLinkInput(false);
@@ -255,7 +265,6 @@ export default function MessageInput({
   const handlePlayPreview = useCallback(async () => {
     if (!recordedUri) return;
     if (previewSoundRef.current) {
-      // Replay from start: seek to 0 then play
       try {
         await previewSoundRef.current.setPositionAsync(0);
         setPreviewPosition(0);
@@ -292,10 +301,6 @@ export default function MessageInput({
     }
   }, []);
 
-  const onCameraPress = useCallback(() => {
-    
-  }, []);
-
   // Keyboard listeners
   useEffect(() => {
     const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
@@ -315,71 +320,45 @@ export default function MessageInput({
     };
   }, []);
 
-  // When replying, focus input after a short delay so keyboard stays open and input stays on screen
+  // When replying, focus input after short delay
   useEffect(() => {
     if (!replyToMessage || recordingMode !== 'idle') return;
     const t = setTimeout(() => {
-      if (showRichTextToolbar && richTextRef.current) {
-        richTextRef.current.focusContentEditor?.();
-      } else if (inputRef.current) {
-        inputRef.current.focus();
-      }
+      richTextRef.current?.focusContentEditor?.();
     }, 100);
     return () => clearTimeout(t);
-  }, [replyToMessage, recordingMode, showRichTextToolbar]);
+  }, [replyToMessage, recordingMode]);
+
+  // Computed values - must be declared before useEffects that use them
+  const isEmpty = useMemo(() => {
+    return stripHtml(messageText).trim().length === 0;
+  }, [messageText]);
+  
+  // Check if there's any text content (for showing Format button)
+  const hasText = useMemo(() => {
+    return stripHtml(messageText).trim().length > 0;
+  }, [messageText]);
+
+  // Show Format button when there's text and keyboard is visible (Gmail-style)
+  // Note: We can't inject into native Android context menu, so we show Format button
+  // above the input when user can format text (has text + keyboard visible)
+  useEffect(() => {
+    if (Platform.OS === 'web' || recordingMode !== 'idle') {
+      setHasTextSelection(false);
+      return;
+    }
+    
+    // Show Format option when there's text content and keyboard is visible
+    // This approximates Gmail's behavior - Format appears when you can format text
+    const shouldShowFormat = hasText && isKeyboardVisible && !showRichTextToolbar;
+    setHasTextSelection(shouldShowFormat);
+  }, [hasText, isKeyboardVisible, showRichTextToolbar, recordingMode]);
 
   // Link detection
   useEffect(() => {
     const links = extractLinks(messageText);
     setLinkPreviews(links);
   }, [messageText]);
-
-  // Toggle rich text mode
-  const handleToggleRichText = useCallback(() => {
-    if (Platform.OS === 'web') return;
-    if (isSwitchingRef.current) return;
-
-    isSwitchingRef.current = true;
-    const nextState = !showRichTextToolbar;
-    const shouldFocusAfter = isKeyboardVisible || isFocused;
-
-    setShowColorPicker(null);
-    setShowLinkInput(false);
-
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setShowRichTextToolbar(nextState);
-
-    if (nextState) {
-      const htmlContent = messageText ? messageText.replace(/\n/g, '<br>') : '';
-      const finalHtml = htmlContent ? `<div>${htmlContent}</div>` : '';
-
-      setTimeout(() => {
-        if (richTextRef.current) {
-          richTextRef.current.setContentHTML(finalHtml);
-          if (shouldFocusAfter) {
-            setTimeout(() => {
-              richTextRef.current?.focusContentEditor();
-              isSwitchingRef.current = false;
-            }, 150);
-          } else {
-            isSwitchingRef.current = false;
-          }
-        } else {
-          isSwitchingRef.current = false;
-        }
-      }, 50);
-    } else {
-      const plainText = stripHtml(messageText);
-      onChangeText(plainText);
-
-      setTimeout(() => {
-        if (shouldFocusAfter && inputRef.current) {
-          inputRef.current.focus();
-        }
-        isSwitchingRef.current = false;
-      }, 100);
-    }
-  }, [showRichTextToolbar, messageText, onChangeText, isKeyboardVisible, isFocused]);
 
   // Color picker handlers
   const handleColorSelect = useCallback((color: string) => {
@@ -404,12 +383,12 @@ export default function MessageInput({
 
   // Link handlers
   const handleInsertLink = useCallback((url: string, text: string) => {
-    if (showRichTextToolbar && richTextRef.current) {
+    if (richTextRef.current) {
       richTextRef.current?.insertLink(text, url);
     } else {
       onChangeText(messageText + ` ${url} `);
     }
-  }, [showRichTextToolbar, messageText, onChangeText]);
+  }, [messageText, onChangeText]);
 
   const toggleLinkInput = useCallback(() => {
     setShowColorPicker(null);
@@ -418,50 +397,56 @@ export default function MessageInput({
 
   // Format (B/I/U) toggle – track active state
   const handleBold = useCallback(() => {
-    richTextRef.current?.sendAction(actions.setBold, 'result');
+    if (Platform.OS === 'android' && formatEditTextRef.current) {
+      formatEditTextRef.current.setBold();
+    } else {
+      richTextRef.current?.sendAction(actions.setBold, 'result');
+    }
     setFormatActive(prev => ({ ...prev, bold: !prev.bold }));
   }, []);
   const handleItalic = useCallback(() => {
-    richTextRef.current?.sendAction(actions.setItalic, 'result');
+    if (Platform.OS === 'android' && formatEditTextRef.current) {
+      formatEditTextRef.current.setItalic();
+    } else {
+      richTextRef.current?.sendAction(actions.setItalic, 'result');
+    }
     setFormatActive(prev => ({ ...prev, italic: !prev.italic }));
   }, []);
   const handleUnderline = useCallback(() => {
-    richTextRef.current?.sendAction(actions.setUnderline, 'result');
+    if (Platform.OS === 'android' && formatEditTextRef.current) {
+      formatEditTextRef.current.setUnderline();
+    } else {
+      richTextRef.current?.sendAction(actions.setUnderline, 'result');
+    }
     setFormatActive(prev => ({ ...prev, underline: !prev.underline }));
   }, []);
-
   const handleStrike = useCallback(() => {
     richTextRef.current?.sendAction(actions.setStrikeThrough, 'result');
     setFormatActive(prev => ({ ...prev, strike: !prev.strike }));
   }, []);
 
-  // List & alignment – separate handlers with green active state
+  // List & alignment
   const handleBulletList = useCallback(() => {
     richTextRef.current?.sendAction(actions.insertBulletsList, 'result');
     setListAlignActive(prev => ({ ...prev, bullet: !prev.bullet, number: false }));
   }, []);
-
   const handleNumberList = useCallback(() => {
     richTextRef.current?.sendAction(actions.insertOrderedList, 'result');
     setListAlignActive(prev => ({ ...prev, number: !prev.number, bullet: false }));
   }, []);
-
   const handleAlignLeft = useCallback(() => {
     richTextRef.current?.sendAction(actions.alignLeft, 'result');
     setListAlignActive(prev => ({ ...prev, alignLeft: true, alignCenter: false, alignRight: false }));
   }, []);
-
   const handleAlignCenter = useCallback(() => {
     richTextRef.current?.sendAction(actions.alignCenter, 'result');
     setListAlignActive(prev => ({ ...prev, alignLeft: false, alignCenter: true, alignRight: false }));
   }, []);
-
   const handleAlignRight = useCallback(() => {
     richTextRef.current?.sendAction(actions.alignRight, 'result');
     setListAlignActive(prev => ({ ...prev, alignLeft: false, alignCenter: false, alignRight: true }));
   }, []);
 
-  // Paste: when pasted content is HTML, editor does not insert it (library patch); we insert rendered HTML only
   const handlePaste = useCallback((data: string) => {
     if (!data || !richTextRef.current) return;
     if (isHtmlContent(data)) {
@@ -474,25 +459,14 @@ export default function MessageInput({
     onChangeText(newText);
   }, [messageText, onChangeText]);
 
-  // Computed values
-  const isEmpty = useMemo(() => {
-    if (showRichTextToolbar) {
-      return stripHtml(messageText).length === 0;
-    }
-    return messageText.trim().length === 0;
-  }, [messageText, showRichTextToolbar]);
-
   // Send handler
   const handleSendPress = useCallback(() => {
     if (isEmpty) {
       if (replyToMessage) return;
 
       Keyboard.dismiss();
-      if (showRichTextToolbar) {
-        richTextRef.current?.blurContentEditor();
-      } else {
-        inputRef.current?.blur();
-      }
+      richTextRef.current?.blurContentEditor();
+      inputRef.current?.blur();
 
       setTimeout(() => {
         onAttachmentPress?.();
@@ -500,9 +474,7 @@ export default function MessageInput({
       return;
     }
 
-    const contentToSend = showRichTextToolbar
-      ? cleanHtml(messageText)
-      : messageText.trim();
+    const contentToSend = cleanHtml(messageText);
 
     onSend(contentToSend, 'text', 0, 0, 0);
 
@@ -514,23 +486,22 @@ export default function MessageInput({
     setShowLinkInput(false);
     setCurrentTextColor('#000000');
     setCurrentBgColor('#FFFFFF');
+    setShowRichTextToolbar(false);
+    setFormatActive({ bold: false, italic: false, underline: false, strike: false });
+    setListAlignActive({ bullet: false, number: false, alignLeft: true, alignCenter: false, alignRight: false });
 
-    if (showRichTextToolbar) {
-      // Force editor reset by incrementing key
-      editorKeyRef.current += 1;
-      setShowRichTextToolbar(false);
-
-      // Clear editor content
-      setTimeout(() => {
-        if (richTextRef.current) {
-          richTextRef.current.setContentHTML('');
-          richTextRef.current.blurContentEditor();
-        }
-      }, 50);
-    }
-  }, [isEmpty, replyToMessage, showRichTextToolbar, messageText, onSend, onChangeText, onAttachmentPress]);
+    // Force editor reset 
+    editorKeyRef.current += 1;
+    setTimeout(() => {
+      if (richTextRef.current) {
+        richTextRef.current.setContentHTML('');
+        richTextRef.current.blurContentEditor();
+      }
+    }, 50);
+  }, [isEmpty, replyToMessage, messageText, onSend, onChangeText, onAttachmentPress]);
 
   const maxInputHeight = (7 * 22) + 20;
+  // Toolbar visibility conditions
   const shouldShowToolbar = showRichTextToolbar && Platform.OS !== 'web' && RichToolbar && recordingMode === 'idle';
 
   return (
@@ -538,17 +509,9 @@ export default function MessageInput({
       {/* Link Previews */}
       {linkPreviews.length > 0 && (
         <View className="px-3 pt-2 pb-1">
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            keyboardShouldPersistTaps="always"
-          >
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="always">
             {linkPreviews.map((url, index) => (
-              <LinkPreview
-                key={index}
-                url={url}
-                onRemove={() => handleRemoveLinkPreview(url)}
-              />
+              <LinkPreview key={index} url={url} onRemove={() => handleRemoveLinkPreview(url)} />
             ))}
           </ScrollView>
         </View>
@@ -557,13 +520,10 @@ export default function MessageInput({
       {/* Main Input Row – or Recording UI when active */}
       {recordingMode !== 'idle' && onSendAudio ? (
         <View className="px-3 py-2 bg-white">
-          {/* Top: timer + status / play + progress + duration */}
           <View className="flex-row items-center mb-3">
             {recordingMode === 'recording' ? (
               <>
-                <Text className="text-base font-semibold text-gray-900 mr-2">
-                  {formatRecordingTime(recordingDuration)}
-                </Text>
+                <Text className="text-base font-semibold text-gray-900 mr-2">{formatRecordingTime(recordingDuration)}</Text>
                 <Text className="text-sm text-gray-500">Recording...</Text>
               </>
             ) : recordedUri ? (
@@ -572,18 +532,12 @@ export default function MessageInput({
                   onPress={previewPlaying ? handlePausePreview : handlePlayPreview}
                   className="w-10 h-10 rounded-full bg-gray-200 items-center justify-center mr-2"
                 >
-                  <Ionicons
-                    name={previewPlaying ? 'pause' : 'play'}
-                    size={22}
-                    color="#374151"
-                  />
+                  <Ionicons name={previewPlaying ? 'pause' : 'play'} size={22} color="#374151" />
                 </TouchableOpacity>
                 <View className="flex-1 h-1 bg-gray-200 rounded-full overflow-hidden mx-2">
                   <View
                     className="h-full bg-green-600 rounded-full"
-                    style={{
-                      width: `${previewDuration > 0 ? (previewPosition / previewDuration) * 100 : 0}%`,
-                    }}
+                    style={{ width: `${previewDuration > 0 ? (previewPosition / previewDuration) * 100 : 0}%` }}
                   />
                 </View>
                 <Text className="text-base font-semibold text-gray-900 ml-0" style={{ minWidth: 36 }}>
@@ -594,14 +548,11 @@ export default function MessageInput({
               </>
             ) : (
               <>
-                <Text className="text-base font-semibold text-gray-900 mr-2">
-                  {formatRecordingTime(recordingDuration)}
-                </Text>
+                <Text className="text-base font-semibold text-gray-900 mr-2">{formatRecordingTime(recordingDuration)}</Text>
                 <Text className="text-sm text-gray-500">Paused</Text>
               </>
             )}
           </View>
-          {/* Bottom: Delete, Pause (when recording) / Resume (when paused), Send */}
           <View className="flex-row items-center justify-between">
             <TouchableOpacity onPress={handleDeleteRecording} className="p-2">
               <Ionicons name="trash-outline" size={24} color="#6b7280" />
@@ -630,58 +581,54 @@ export default function MessageInput({
           </View>
         </View>
       ) : (
-      <View className="px-3 py-2">
-        {/* Reply preview bar – above pill when replying, keeps input row visible and on screen */}
-        {replyToMessage ? (
-          <View className="flex-row items-center mb-2 px-1 py-2 bg-green-100 rounded-xl border-l-[3px] border-green-600">
-            <View className="flex-1 mr-1">
-              <Text className="text-green-600 text-xs font-bold">
-                {replyToMessage.senderId === currentUser?.userId ? 'You' : replyToMessage.senderName}
-              </Text>
-              <Text className="text-gray-600 text-xs" numberOfLines={2} ellipsizeMode="tail">
-                {getReplyPreviewText(replyToMessage)}
-              </Text>
+        <View className="px-3 py-2">
+          {/* Reply preview bar */}
+          {replyToMessage ? (
+            <View className="flex-row items-center mb-2 px-2 py-2 bg-green-100 rounded-xl border-l-[3px] border-green-600">
+              <View className="flex-1 mr-1">
+                <Text className="text-green-600 text-xs font-bold">
+                  {replyToMessage.senderId === currentUser?.userId ? 'You' : replyToMessage.senderName}
+                </Text>
+                <Text className="text-gray-600 text-xs" numberOfLines={2} ellipsizeMode="tail">
+                  {getReplyPreviewText(replyToMessage)}
+                </Text>
+              </View>
+              <TouchableOpacity onPress={onCancelReply} className="p-2">
+                <Ionicons name="close" size={18} color="#666" />
+              </TouchableOpacity>
             </View>
-            <TouchableOpacity onPress={onCancelReply} className="p-2">
-              <Ionicons name="close" size={18} color="#666" />
-            </TouchableOpacity>
-          </View>
-        ) : null}
-        {/* Main row: pill + green button – always visible so input never goes off screen */}
-        <View className="flex-row items-end" style={{ alignItems: 'center' }}>
-        <View
-          className="flex-1 flex-row items-center bg-white rounded-3xl border border-gray-300 min-h-[40px] px-2 mr-2"
-          style={{ maxHeight: maxInputHeight }}
-        >
-            <>
-              {/* Aa (format / rich text) – inside pill, left side, WhatsApp-style */}
-              {Platform.OS !== 'web' && RichEditor && (
-                <TouchableOpacity
-                  onPress={handleToggleRichText}
-                  className={`w-9 h-9 rounded-full items-center justify-center mr-1 ${
-                    showRichTextToolbar ? 'bg-green-100' : 'bg-transparent'
-                  }`}
-                  hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                >
-                  <Text
-                    className="text-base font-semibold"
-                    style={{ color: showRichTextToolbar ? '#1DAB61' : '#666666' }}
-                  >
-                    Aa
-                  </Text>
-                </TouchableOpacity>
-              )}
-              {/* Input / Editor – takes space */}
-              <View
-                className="flex-1 min-h-[40px] justify-center"
-                style={{ paddingVertical: showRichTextToolbar ? 6 : 8 }}
-              >
-                {showRichTextToolbar && Platform.OS !== 'web' && RichEditor ? (
+          ) : null}
+
+          {/* Main Input Row */}
+          <View className="flex-row items-end" style={{ alignItems: 'center' }}>
+            <View
+              className="flex-1 flex-row items-end bg-white rounded-3xl border border-gray-300 min-h-[40px] px-2 mr-2"
+              style={{ maxHeight: maxInputHeight }}
+            >
+              <View className="flex-1 min-h-[40px] justify-center" style={{ paddingVertical: 6 }}>
+                {/* Android: native FormatEditText for Cut/Copy/Paste/Format context menu */}
+                {Platform.OS === 'android' && FormatEditText ? (
+                  <FormatEditText
+                    ref={formatEditTextRef}
+                    value={stripHtml(messageText)}
+                    placeholder={placeholder}
+                    onChangeText={onChangeText}
+                    onFormat={() => setShowRichTextToolbar(true)}
+                    style={{
+                      backgroundColor: 'transparent',
+                      minHeight: 36,
+                      maxHeight: maxInputHeight - 8,
+                      padding: 0,
+                      fontSize: 16,
+                      color: '#1F2937',
+                    }}
+                  />
+                ) : Platform.OS !== 'web' && RichEditor ? (
                   <RichEditor
                     key={`editor-${editorKeyRef.current}`}
                     ref={richTextRef}
                     onChange={onChangeText}
-                    placeholder={""}
+                    placeholder={placeholder}
                     initialContentHTML=""
                     initialHeight={40}
                     androidHardwareAccelerationDisabled={true}
@@ -701,11 +648,7 @@ export default function MessageInput({
                         max-height: ${maxInputHeight - 8}px;
                       `,
                     }}
-                    style={{
-                      backgroundColor: 'transparent',
-                      minHeight: 36,
-                      maxHeight: maxInputHeight - 8,
-                    }}
+                    style={{ backgroundColor: 'transparent', minHeight: 36, maxHeight: maxInputHeight - 8 }}
                   />
                 ) : (
                   <TextInput
@@ -727,14 +670,10 @@ export default function MessageInput({
                     onContentSizeChange={(event) => {
                       const contentHeight = event.nativeEvent?.contentSize?.height;
                       if (!contentHeight) return;
-                      if (heightUpdateTimeoutRef.current) {
-                        clearTimeout(heightUpdateTimeoutRef.current);
-                      }
+                      if (heightUpdateTimeoutRef.current) clearTimeout(heightUpdateTimeoutRef.current);
                       heightUpdateTimeoutRef.current = setTimeout(() => {
                         const newHeight = Math.min(Math.max(40, Math.ceil(contentHeight)), maxInputHeight);
-                        if (Math.abs(newHeight - inputHeight) >= 2) {
-                          setInputHeight(newHeight);
-                        }
+                        if (Math.abs(newHeight - inputHeight) >= 2) setInputHeight(newHeight);
                       }, 50);
                     }}
                     scrollEnabled={inputHeight >= maxInputHeight}
@@ -742,145 +681,176 @@ export default function MessageInput({
                 )}
               </View>
 
-              {/* Inline icons (attachment, camera) – only when empty, WhatsApp-style */}
-              {isEmpty && (
-                <>
+              {/* Action Buttons inside Input Pill */}
+              <View className="flex-row items-center mb-[2px]">
+                {/* Attachment Button - Hides when typing */}
+                {isEmpty && (
                   <TouchableOpacity
                     onPress={onAttachmentPress}
-                    className="w-9 h-9 rounded-full items-center justify-center"
+                    className="p-1.5 ml-1"
                     hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                   >
-                    <Ionicons name="attach" size={22} color="#666666" />
+                    <Ionicons name="attach" size={22} color="#6B7280" />
                   </TouchableOpacity>
-                  {/* <TouchableOpacity
+                )}
+                {/* Camera Button - Hides when typing */}
+                {isEmpty && (
+                  <TouchableOpacity
                     onPress={onAttachmentPress}
-                    className="w-9 h-9 rounded-full items-center justify-center ml-2"
+                    className="p-1.5 ml-1"
                     hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                   >
-                    <Ionicons name="camera-outline" size={22} color="#666666" />
-                  </TouchableOpacity> */}
-                </>
-              )}
-            </>
-        </View>
+                    <Ionicons name="camera-outline" size={22} color="#6B7280" />
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
 
-        {/* Right: Green circle – mic when empty (if onSendAudio) else +, send when typing (WhatsApp-style) */}
-        <TouchableOpacity
-          onPress={isEmpty ? (onSendAudio ? handleStartRecording : onAttachmentPress) : handleSendPress}
-          disabled={sending}
-          className="w-11 h-11 rounded-full bg-green-600 items-center justify-center"
-          style={{
-            shadowColor: '#1DAB61',
-            shadowOffset: { width: 0, height: 2 },
-            shadowOpacity: 0.3,
-            shadowRadius: 4,
-            elevation: 4,
-          }}
-        >
-          {sending ? (
-            <ActivityIndicator color="#fff" size="small" />
-          ) : isEmpty ? (
-            onSendAudio ? (
-              <Ionicons name="mic" size={22} color="#fff" />
-            ) : (
-              <Ionicons name="add" size={26} color="#fff" />
-            )
-          ) : (
-            <Ionicons name="send" size={20} color="#fff" />
-          )}
-        </TouchableOpacity>
+            {/* Right: Green Send / Mic button */}
+            <TouchableOpacity
+              onPress={isEmpty ? (onSendAudio ? handleStartRecording : onAttachmentPress) : handleSendPress}
+              disabled={sending}
+              className="w-11 h-11 rounded-full bg-green-600 items-center justify-center"
+              style={{ shadowColor: '#1DAB61', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3, shadowRadius: 4, elevation: 4 }}
+            >
+              {sending ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : isEmpty ? (
+                onSendAudio ? (
+                  <Ionicons name="mic" size={22} color="#fff" />
+                ) : (
+                  <Ionicons name="add" size={26} color="#fff" />
+                )
+              ) : (
+                <Ionicons name="send" size={20} color="#fff" />
+              )}
+            </TouchableOpacity>
+          </View>
         </View>
-      </View>
       )}
 
-      {/* Rich Text Toolbar */}
-      <AnimatedToolbar visible={shouldShowToolbar}>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          keyboardShouldPersistTaps="always"
-          contentContainerStyle={{
-            paddingHorizontal: 8,
-            paddingVertical: 4,
-            alignItems: 'center',
-            paddingRight: 20,
-          }}
+      {/* Floating Format Button - Gmail-style (iOS/web only; Android uses native context menu) */}
+      {hasTextSelection && Platform.OS !== 'web' && Platform.OS !== 'android' && !showRichTextToolbar && recordingMode === 'idle' && (
+        <View 
+          className="px-3 pb-2 bg-white"
+          style={{ zIndex: 1000 }}
         >
-          {/* Bold */}
-          <ToolbarButton onPress={handleBold} isActive={formatActive.bold}>
-            <Text className={`text-lg font-bold ${formatActive.bold ? 'text-green-600' : 'text-gray-600'}`}>B</Text>
-          </ToolbarButton>
+          <View className="flex-row justify-center">
+            <TouchableOpacity
+              onPress={() => {
+                setShowRichTextToolbar(true);
+                setTimeout(() => richTextRef.current?.focusContentEditor(), 100);
+              }}
+              className="bg-[#1F2937] rounded-lg px-4 py-2.5 flex-row items-center"
+              activeOpacity={0.8}
+              style={{
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 2 },
+                shadowOpacity: 0.25,
+                shadowRadius: 4,
+                elevation: 5,
+              }}
+            >
+              <Ionicons name="text" size={18} color="#FFFFFF" />
+              <Text className="text-white text-sm font-medium ml-2">Format</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
 
-          {/* Italic */}
-          <ToolbarButton onPress={handleItalic} isActive={formatActive.italic}>
-            <Text className={`text-lg italic ${formatActive.italic ? 'text-green-600' : 'text-gray-600'}`}>I</Text>
-          </ToolbarButton>
-
-          {/* Underline */}
-          <ToolbarButton onPress={handleUnderline} isActive={formatActive.underline}>
-            <Text className={`text-lg ${formatActive.underline ? 'text-green-600' : 'text-gray-600'}`} style={{ textDecorationLine: 'underline' }}>U</Text>
-          </ToolbarButton>
-
-          {/* Strikethrough */}
-          <ToolbarButton onPress={handleStrike} isActive={formatActive.strike}>
-            <Text className="text-lg text-gray-600" style={{ textDecorationLine: 'line-through' }}>S</Text>
-          </ToolbarButton>
-
-          <ToolbarDivider />
-
-          {/* Text Color */}
-          <ToolbarButton
-            onPress={() => toggleColorPicker('text')}
-            isActive={showColorPicker === 'text'}
+      {/* Enhanced Rich Text Toolbar (WhatsApp/Gmail Design) */}
+      <AnimatedToolbar visible={shouldShowToolbar}>
+        <View className="flex-row items-center bg-white border-t border-gray-200" style={{ shadowColor: '#000', shadowOffset: { width: 0, height: -1 }, shadowOpacity: 0.1, shadowRadius: 2, elevation: 2 }}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            keyboardShouldPersistTaps="always"
+            contentContainerStyle={{ paddingHorizontal: 12, paddingVertical: 8, alignItems: 'center', gap: 4 }}
+            className="flex-1"
           >
-            <ColorIndicatorIcon type="text" color={currentTextColor} />
-          </ToolbarButton>
+            {/* Bold */}
+            <ToolbarButton onPress={handleBold} isActive={formatActive.bold}>
+              <Text className={`text-base font-bold ${formatActive.bold ? 'text-[#0088CC]' : 'text-[#54656F]'}`}>B</Text>
+            </ToolbarButton>
 
-          {/* Background Color */}
-          <ToolbarButton
-            onPress={() => toggleColorPicker('background')}
-            isActive={showColorPicker === 'background'}
+            {/* Italic */}
+            <ToolbarButton onPress={handleItalic} isActive={formatActive.italic}>
+              <Text className={`text-base italic ${formatActive.italic ? 'text-[#0088CC]' : 'text-[#54656F]'}`}>I</Text>
+            </ToolbarButton>
+
+            {/* Underline */}
+            <ToolbarButton onPress={handleUnderline} isActive={formatActive.underline}>
+              <Text className={`text-base ${formatActive.underline ? 'text-[#0088CC]' : 'text-[#54656F]'}`} style={{ textDecorationLine: 'underline' }}>U</Text>
+            </ToolbarButton>
+
+            {/* Strikethrough */}
+            <ToolbarButton onPress={handleStrike} isActive={formatActive.strike}>
+              <Text className={`text-base ${formatActive.strike ? 'text-[#0088CC]' : 'text-[#54656F]'}`} style={{ textDecorationLine: 'line-through' }}>S</Text>
+            </ToolbarButton>
+
+            <View className="w-px h-6 bg-gray-300 mx-1" />
+
+            {/* Text Color */}
+            <ToolbarButton onPress={() => toggleColorPicker('text')} isActive={showColorPicker === 'text'}>
+              <ColorIndicatorIcon type="text" color={currentTextColor} />
+            </ToolbarButton>
+
+            {/* Background Color */}
+            <ToolbarButton onPress={() => toggleColorPicker('background')} isActive={showColorPicker === 'background'}>
+              <ColorIndicatorIcon type="background" color={currentBgColor} />
+            </ToolbarButton>
+
+            <View className="w-px h-6 bg-gray-300 mx-1" />
+
+            {/* Link */}
+            <ToolbarButton onPress={toggleLinkInput} isActive={showLinkInput}>
+              <Ionicons name="link" size={20} color={showLinkInput ? '#0088CC' : '#54656F'} />
+            </ToolbarButton>
+
+            {/* Bullet List */}
+            <ToolbarButton onPress={handleBulletList} isActive={listAlignActive.bullet}>
+              <BulletListIcon color={listAlignActive.bullet ? '#0088CC' : '#54656F'} />
+            </ToolbarButton>
+
+            {/* Number List */}
+            <ToolbarButton onPress={handleNumberList} isActive={listAlignActive.number}>
+              <NumberListIcon color={listAlignActive.number ? '#0088CC' : '#54656F'} />
+            </ToolbarButton>
+
+            <View className="w-px h-6 bg-gray-300 mx-1" />
+
+            {/* Align Left */}
+            <ToolbarButton onPress={handleAlignLeft} isActive={listAlignActive.alignLeft}>
+              <AlignLeftIcon color={listAlignActive.alignLeft ? '#0088CC' : '#54656F'} />
+            </ToolbarButton>
+
+            {/* Align Center */}
+            <ToolbarButton onPress={handleAlignCenter} isActive={listAlignActive.alignCenter}>
+              <AlignCenterIcon color={listAlignActive.alignCenter ? '#0088CC' : '#54656F'} />
+            </ToolbarButton>
+
+            {/* Align Right */}
+            <ToolbarButton onPress={handleAlignRight} isActive={listAlignActive.alignRight}>
+              <AlignRightIcon color={listAlignActive.alignRight ? '#0088CC' : '#54656F'} />
+            </ToolbarButton>
+          </ScrollView>
+
+          {/* Close Toolbar Button (X icon) - WhatsApp style */}
+          <TouchableOpacity
+            onPress={() => {
+              setShowRichTextToolbar(false);
+              setShowColorPicker(null);
+              setShowLinkInput(false);
+            }}
+            className="px-4 py-2 items-center justify-center border-l border-gray-200"
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
-            <ColorIndicatorIcon type="background" color={currentBgColor} />
-          </ToolbarButton>
-
-          <ToolbarDivider />
-
-          {/* Link */}
-          <ToolbarButton onPress={toggleLinkInput} isActive={showLinkInput}>
-            <Ionicons name="link" size={22} color={showLinkInput ? '#1DAB61' : '#666'} />
-          </ToolbarButton>
-
-          {/* Bullet List */}
-          <ToolbarButton onPress={handleBulletList} isActive={listAlignActive.bullet}>
-            <BulletListIcon color={listAlignActive.bullet ? '#16a34a' : '#666'} />
-          </ToolbarButton>
-
-          {/* Number List */}
-          <ToolbarButton onPress={handleNumberList} isActive={listAlignActive.number}>
-            <NumberListIcon color={listAlignActive.number ? '#16a34a' : '#666'} />
-          </ToolbarButton>
-
-          <ToolbarDivider />
-
-          {/* Align Left */}
-          <ToolbarButton onPress={handleAlignLeft} isActive={listAlignActive.alignLeft}>
-            <AlignLeftIcon color={listAlignActive.alignLeft ? '#16a34a' : '#666'} />
-          </ToolbarButton>
-
-          {/* Align Center */}
-          <ToolbarButton onPress={handleAlignCenter} isActive={listAlignActive.alignCenter}>
-            <AlignCenterIcon color={listAlignActive.alignCenter ? '#16a34a' : '#666'} />
-          </ToolbarButton>
-
-          {/* Align Right */}
-          <ToolbarButton onPress={handleAlignRight} isActive={listAlignActive.alignRight}>
-            <AlignRightIcon color={listAlignActive.alignRight ? '#16a34a' : '#666'} />
-          </ToolbarButton>
-        </ScrollView>
+            <Ionicons name="close" size={22} color="#54656F" />
+          </TouchableOpacity>
+        </View>
       </AnimatedToolbar>
 
-      {/* Inline Color Picker – hidden when recording */}
+      {/* Inline Color Picker */}
       <InlineColorPicker
         visible={showColorPicker !== null && recordingMode === 'idle'}
         type={showColorPicker}
@@ -892,7 +862,7 @@ export default function MessageInput({
         }}
       />
 
-      {/* Inline Link Input – hidden when recording */}
+      {/* Inline Link Input */}
       <InlineLinkInput
         visible={showLinkInput && recordingMode === 'idle'}
         onInsert={handleInsertLink}
@@ -902,4 +872,3 @@ export default function MessageInput({
     </View>
   );
 }
-

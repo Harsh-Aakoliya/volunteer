@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="SqlDialectMappings">
+    <file url="file://$PROJECT_DIR$/Backend/models/DepartmentMaster.sql" dialect="GenericSQL" />
+    <file url="file://$PROJECT_DIR$/Backend/models/SevakMaster.sql" dialect="GenericSQL" />
+    <file url="file://$PROJECT_DIR$/Backend/models/chatmessages.sql" dialect="GenericSQL" />
+    <file url="file://$PROJECT_DIR$/Backend/models/chatrooms.sql" dialect="GenericSQL" />
+    <file url="file://$PROJECT_DIR$/Backend/models/chatroomusers.sql" dialect="GenericSQL" />
+    <file url="file://$PROJECT_DIR$/Backend/models/media.sql" dialect="GenericSQL" />
+    <file url="file://$PROJECT_DIR$/Backend/models/messagereadstatus.sql" dialect="GenericSQL" />
+    <file url="file://$PROJECT_DIR$/Backend/models/notification_tokens.sql" dialect="GenericSQL" />
+    <file url="file://$PROJECT_DIR$/Backend/models/poll.sql" dialect="GenericSQL" />
+  </component>
+</project>
