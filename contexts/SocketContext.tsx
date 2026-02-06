@@ -255,12 +255,13 @@ export function SocketProvider({ children }: SocketProviderProps) {
               }
               
               newLastMessage = {
-                id: data.lastMessage.id,
+                  replyMessageId: 0, replyMessageText: "", replyMessageType: "", replySenderName: "",
+                  id: data.lastMessage.id,
                 text: displayText,
                 messageType: data.lastMessage.messageType,
                 senderName: data.lastMessage.sender?.userName || 'Unknown',
                 senderId: data.lastMessage.sender?.userId || '',
-                timestamp: data.lastMessage.createdAt,
+                timestamp: data.lastMessage.createdAt
               };
             }
             
@@ -326,7 +327,7 @@ export function SocketProvider({ children }: SocketProviderProps) {
         displayText = typeMap[message.messageType] || message.messageText;
       }
 
-      setState((prev) => {
+      setState((prev) : any=> {
         const isFromCurrentUser = String(message.senderId || '') === String(prev.user?.id ?? '');
         const updatedRooms = prev.rooms.map((r) => {
           if (r.roomId === message.roomId.toString()) {

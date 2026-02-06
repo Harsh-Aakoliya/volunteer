@@ -33,7 +33,6 @@ import { AuthStorage } from "@/utils/authStorage";
 import { useSocket } from "@/contexts/SocketContext";
 import { router } from "expo-router";
 import PollContent from "./PollContent";
-import AnnouncementContent from "./AnnouncementContent";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 const NUM_COLUMNS = 3;
@@ -648,20 +647,6 @@ export default function AttachmentSheet({
               showInSheet={true}
               isHalfScreen={currentIndex === 0}
             />
-          </View>
-        );
-      case "announcement":
-        return (
-          <View style={styles.tabContentContainer}>
-            {Platform.OS !== "web" ? 
-            <AnnouncementContent
-              roomId={roomId}
-              userId={userId}
-              onSuccess={handleSuccess}
-              onBack={handleBackToGallery}
-              showInSheet={true}
-              isHalfScreen={currentIndex === 0}
-            /> : <></>}
           </View>
         );
       default:

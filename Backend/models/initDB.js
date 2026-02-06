@@ -467,7 +467,6 @@ const addUsersTableColumns = async (client) => {
   }
 };
 
-
 // 12. Add foreign key constraints
 const addForeignKeyConstraints = async (client) => {
   try {
@@ -593,4 +592,3 @@ const addForeignKeyConstraints = async (client) => {
 };
 
 export default initDB;
-

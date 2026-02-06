@@ -20,14 +20,6 @@ class EventEmitter {
     if (!this.events[event]) return;
     this.events[event].forEach(listener => listener(...args));
   }
-
-  removeAllListeners(event?: string) {
-    if (event) {
-      delete this.events[event];
-    } else {
-      this.events = {};
-    }
-  }
 }
 
 export default new EventEmitter();

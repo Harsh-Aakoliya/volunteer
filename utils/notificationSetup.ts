@@ -1,5 +1,4 @@
 // utils/notificationSetup.ts
-import * as Notifications from "expo-notifications";
 import { handleAppStartNotificationToken } from "@/api/auth";
 import { notificationHandler } from "@/utils/notificationHandler";
 

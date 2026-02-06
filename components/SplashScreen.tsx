@@ -6,7 +6,7 @@ import { View, Image, TouchableOpacity, StyleSheet, ImageSourcePropType } from '
 
 const LOGO = require('@/assets/images/sevakapplogo.png');
 
-const TINT_BACKGROUND = '#E5DDD5'; // same as roomid's background color
+const TINT_BACKGROUND = '#E5DDD5'; // same as room's background color
 
 export interface SplashScreenProps {
   /** Optional: when provided, the splash is pressable (e.g. for 7-tap dev mode) */

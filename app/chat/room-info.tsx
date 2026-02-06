@@ -16,12 +16,10 @@ import { AuthStorage } from '@/utils/authStorage';
 import { useFocusEffect } from '@react-navigation/native';
 import { TabView, TabBar } from 'react-native-tab-view';
 import MembersTab from '@/components/chat/roomSettings/MembersTab';
-// import AnnouncementsTab from '@/components/chat/roomSettings/AnnouncementsTab';
 import MediaTab from '@/components/chat/roomSettings/MediaTab';
 import PollTab from '@/components/chat/roomSettings/PollTab';
 import { useSocket } from '@/contexts/SocketContext';
 import socketManager from '@/utils/socketManager';
-import { Message } from '@/types/type';
 
 interface Member {
   userId: string;

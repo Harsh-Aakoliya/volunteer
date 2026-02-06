@@ -2,7 +2,6 @@
 import axios from 'axios';
 import { API_URL } from '@/constants/api';
 import { AuthStorage } from '@/utils/authStorage';
-import { User, SearchUsersRequest, SearchUsersResponse, SearchFiltersResponse } from '@/types/type';
 
 export const fetchUserProfile = async () => {
   try {

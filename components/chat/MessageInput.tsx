@@ -48,8 +48,6 @@ interface MessageInputProps {
   sending?: boolean;
   disabled?: boolean;
   currentUser?: { userId: string; fullName: string | null; } | null;
-  onFocus?: () => void;
-  onBlur?: () => void;
   replyToMessage?: any | null;
   onCancelReply?: () => void;
   onAttachmentPress?: () => void;
@@ -72,8 +70,6 @@ export default function MessageInput({
   placeholder = 'Message',
   sending = false,
   currentUser,
-  onFocus,
-  onBlur,
   replyToMessage,
   onCancelReply,
   onAttachmentPress,
@@ -534,17 +530,6 @@ export default function MessageInput({
     }
   }, [isEmpty, replyToMessage, showRichTextToolbar, messageText, onSend, onChangeText, onAttachmentPress]);
 
-  // Focus handlers
-  const handleFocus = useCallback(() => {
-    setIsFocused(true);
-    onFocus?.();
-  }, [onFocus]);
-
-  const handleBlur = useCallback(() => {
-    setIsFocused(false);
-    onBlur?.();
-  }, [onBlur]);
-
   const maxInputHeight = (7 * 22) + 20;
   const shouldShowToolbar = showRichTextToolbar && Platform.OS !== 'web' && RichToolbar && recordingMode === 'idle';
 
@@ -703,8 +688,6 @@ export default function MessageInput({
                     androidLayerType="software"
                     pasteAsPlainText={true}
                     onPaste={handlePaste}
-                    onFocus={handleFocus}
-                    onBlur={handleBlur}
                     editorStyle={{
                       backgroundColor: 'transparent',
                       placeholderColor: '#9CA3AF',
@@ -754,8 +737,6 @@ export default function MessageInput({
                         }
                       }, 50);
                     }}
-                    onFocus={handleFocus}
-                    onBlur={handleBlur}
                     scrollEnabled={inputHeight >= maxInputHeight}
                   />
                 )}

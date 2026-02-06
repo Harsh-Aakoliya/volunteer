@@ -7,9 +7,7 @@ interface UserProfileProps {
 }
 
 const UserProfile: React.FC<UserProfileProps> = ({ user }) => {
-  const displayName = user?.sevakname || user?.fullName || "User Name";
   const mobile = user?.mobileno || user?.mobileNumber || "-";
-  const roleText = user?.usertype || (user?.isadmin ? "Admin" : "Sevak");
   const sevakId = user?.sevakid || user?.seid || user?.userId || "-";
   const formatBirthdate = (birthdate?: string | Date) => {
     if (!birthdate) return "-";

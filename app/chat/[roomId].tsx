@@ -16,8 +16,6 @@ import {
   ToastAndroid,
   LayoutAnimation,
   UIManager,
-  EmitterSubscription,
-  Keyboard,
 } from "react-native";
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 // Enable LayoutAnimation for Android
@@ -46,7 +44,6 @@ import MembersModal from "@/components/chat/MembersModal";
 import MessageStatus from "@/components/chat/MessageStatus";
 import VideoCallNotification from "@/components/chat/VideoCallNotification";
 import GlobalPollModal from "@/components/chat/GlobalPollModal";
-import RenderTable from "@/components/chat/Attechments/RenderTable";
 import MediaViewerModal from "@/components/chat/MediaViewerModal";
 import ChatMessageOptions from "@/components/chat/ChatMessageOptions";
 import MessageInput from "@/components/chat/MessageInput";
@@ -1164,11 +1161,6 @@ const handleDeselectMessage = useCallback((message: Message) => {
     setVideoCallData(null);
   }, [roomId]);
 
-  // Focus handlers
-  const handleMainInputFocus = useCallback(() => {}, []);
-  const handleMainInputBlur = useCallback(() => {}, []);
-
-
   // ==================== FOCUS EFFECT ====================
 
   const hasFocusedOnce = useRef(false);
@@ -2068,8 +2060,6 @@ const TelegramHeader = React.memo(({
                 });
               }}
               isAttachmentSheetOpen={false}
-              onFocus={handleMainInputFocus}
-              onBlur={handleMainInputBlur}
               onSendAudio={handleSendAudio}
             />
           ) : (
@@ -2121,10 +2111,6 @@ const TelegramHeader = React.memo(({
         currentUserId={currentUser?.userId || ""}
         totalMembers={roomMembers.length}
       />
-
-      {showTableModle && tableId !== null && currentUser?.userId && (
-        <RenderTable tableId={tableId} visible={showTableModle} setShowTable={setShowTableModel} />
-      )}
 
       {/* Scheduled Messages Modal */}
       <Modal

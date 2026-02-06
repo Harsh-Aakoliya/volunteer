@@ -85,6 +85,10 @@ export interface RoomData {
     senderName: string;
     senderId: string;
     timestamp: string;
+      replyMessageId:number,
+      replyMessageType:string;
+      replyMessageText:string;
+      replySenderName:string;
   } | null;
   unreadCount: number;
 }

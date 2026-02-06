@@ -2,6 +2,7 @@
 // Clean Socket.IO server implementation with improved video call support
 
 import { sendChatNotifications } from "./controllers/chatNotificationController.js";
+import {useDebugValue} from "react";
 
 const setupSocketIO = (io, app) => {
   // Make io globally available
@@ -299,7 +300,7 @@ const setupSocketIO = (io, app) => {
     // Single unified event that returns ALL room data in one batch
     socket.on("requestRoomData", async ({ userId }) => {
       if (!userId) return;
-
+      console.log("Type of user id",typeof(userId));
       const userIdStr = String(userId);
 
       if (isThrottled(userIdStr)) return;

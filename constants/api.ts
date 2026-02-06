@@ -4,9 +4,6 @@ let currentApiUrl = "http://localhost:8080"; // Will be set dynamically based on
 // Function to get current API URL
 export const getApiUrl = (): string => currentApiUrl;
 
-// Function to get current Socket URL
-export const getSocketUrl = (): string => currentApiUrl;
-
 // Function to set new API URL
 export const setApiUrl = (newUrl: string): void => {
   currentApiUrl = newUrl;
@@ -56,4 +53,3 @@ const createDynamicString = () => {
 
 // Export dynamic string objects that behave like regular strings
 export const API_URL = createDynamicString() as any as string;
-export const SOCKET_URL = createDynamicString() as any as string;

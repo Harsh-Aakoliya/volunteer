@@ -520,21 +520,3 @@ export const sendChatNotifications = async (message, senderInfo, roomInfo, io, s
     console.error('Error in sendChatNotifications:', error);
   }
 };
-
-// Create notification channels (for Android)
-export const createChatNotificationChannel = () => {
-  return {
-    channelId: 'chat_channel',
-    channelName: 'Chat Messages',
-    channelDescription: 'Notifications for chat messages',
-    importance: 'high',
-    sound: 'default',
-    vibration: true,
-    showBadge: true
-  };
-};
-
-export default {
-  sendChatNotifications,
-  createChatNotificationChannel
-};

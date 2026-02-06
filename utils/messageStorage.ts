@@ -74,22 +74,6 @@ export const MessageStorage = {
     }
   },
 
-  // Get metadata for a room
-  getMetadata: async (roomId: string): Promise<MessageMetadata | null> => {
-    try {
-      const metadataKey = MessageStorage.getMetadataKey(roomId);
-      const data = await AsyncStorage.getItem(metadataKey);
-      
-      if (data) {
-        return JSON.parse(data) as MessageMetadata;
-      }
-      return null;
-    } catch (error) {
-      console.error('❌ Error getting metadata from cache:', error);
-      return null;
-    }
-  },
-
   // Add a single message to cache (for real-time updates)
   addMessage: async (roomId: string, message: Message): Promise<void> => {
     try {
@@ -148,39 +132,6 @@ export const MessageStorage = {
     } catch (error) {
       console.error('❌ Error removing messages from cache:', error);
     }
-  },
-
-  // Clear cache for a specific room
-  clearRoomCache: async (roomId: string): Promise<void> => {
-    try {
-      const cacheKey = MessageStorage.getCacheKey(roomId);
-      const metadataKey = MessageStorage.getMetadataKey(roomId);
-      await AsyncStorage.multiRemove([cacheKey, metadataKey]);
-      console.log(`🗑️ Cleared cache for room ${roomId}`);
-    } catch (error) {
-      console.error('❌ Error clearing room cache:', error);
-    }
-  },
-
-  // Clear all message caches
-  clearAllCaches: async (): Promise<void> => {
-    try {
-      const allKeys = await AsyncStorage.getAllKeys();
-      const messageKeys = allKeys.filter(
-        key => key.startsWith(MESSAGE_CACHE_PREFIX) || key.startsWith(MESSAGE_METADATA_PREFIX)
-      );
-      await AsyncStorage.multiRemove(messageKeys);
-      console.log('🗑️ Cleared all message caches');
-    } catch (error) {
-      console.error('❌ Error clearing all caches:', error);
-    }
-  },
-
-  // Check if cache is stale
-  isCacheStale: (timestamp: number, maxAgeMinutes: number = 30): boolean => {
-    const now = Date.now();
-    const maxAge = maxAgeMinutes * 60 * 1000;
-    return (now - timestamp) > maxAge;
   },
 
   // Detect changes between cached and fresh messages

@@ -18,10 +18,7 @@ import {
   useWindowDimensions,
   Modal,
   ScrollView,
-  Animated,
-  Easing,
   LayoutAnimation,
-  Linking,
 } from "react-native";
 import { BackHandler } from "react-native";
 import * as MediaLibrary from "expo-media-library";

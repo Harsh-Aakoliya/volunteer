@@ -44,7 +44,6 @@ const [mobileNumber, setMobileNumber] = useState<string>("");
   const [confirmPassword, setConfirmPassword] = useState("");
 
   // Loading states
-  const [isLoading, setIsLoading] = useState(false);
   const [isCheckingMobile, setIsCheckingMobile] = useState(false);
   const [isSettingPassword, setIsSettingPassword] = useState(false);
   const [verificationStatus, setVerificationStatus] = useState<"idle" | "pending" | "success" | "failed">("idle");
@@ -450,45 +449,6 @@ const [mobileNumber, setMobileNumber] = useState<string>("");
 
             {/* Password Requirements */}
             <View className="mb-4 ml-1">
-        {/* <Text className="text-xs text-gray-500 mb-2">Password must:</Text>
-         <View className="flex-row items-center mb-1">
-          <Ionicons
-            name={password.length >= 4 ? "checkmark-circle" : "ellipse-outline"}
-            size={14}
-            color={password.length >= 4 ? "#22C55E" : "#9CA3AF"}
-          />
-          <Text
-            className={`text-xs ml-1 ${
-              password.length >= 4 ? "text-green-600" : "text-gray-500"
-            }`}
-          >
-            Be at least 4 characters
-          </Text>
-        </View> */}
-        {/* <View className="flex-row items-center">
-          <Ionicons
-            name={
-              password.length <= 20 && password.length > 0
-                ? "checkmark-circle"
-                : "ellipse-outline"
-            }
-            size={14}
-            color={
-              password.length <= 20 && password.length > 0
-                ? "#22C55E"
-                : "#9CA3AF"
-            }
-          />
-          <Text
-            className={`text-xs ml-1 ${
-              password.length <= 20 && password.length > 0
-                ? "text-green-600"
-                : "text-gray-500"
-            }`}
-          >
-            Be less than 20 characters
-          </Text>
-        </View>  */}
       </View>
 
       {/* Set Password Button */}
@@ -508,9 +468,6 @@ const [mobileNumber, setMobileNumber] = useState<string>("");
               onPress={() => {}}
               loading={isSettingPassword}
               bgVariant="primary"
-              // IconRight={() => (
-              //   <Ionicons name="checkmark-circle" size={20} color="white" />
-              // )}
             />
           </View>
         )}
@@ -583,22 +540,6 @@ const [mobileNumber, setMobileNumber] = useState<string>("");
           className="flex-1 bg-white justify-start"
         >
           <View className="flex-1 px-[10%] pt-8">
-            {/* Header Section */}
-            {/* <View className="items-center mb-8">
-              <View
-                className={`w-20 h-20 rounded-2xl items-center justify-center mb-5 ${headerConfig.iconBgColor}`}
-              >
-                <Ionicons
-                  name={headerConfig.icon}
-                  size={40}
-                  color="white"
-                />
-              </View>
-              <Text className="text-2xl font-JakartaBold text-gray-800 mb-2">
-                {headerConfig.title}
-              </Text>
-            </View> */}
-
             {/* Form Section with Animation */}
             <Animated.View
               style={{ opacity: fadeAnim }}

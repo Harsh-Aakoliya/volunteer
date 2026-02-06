@@ -21,7 +21,6 @@ import { AuthStorage } from "@/utils/authStorage";
 export const CustomDrawer = (props: DrawerContentComponentProps) => {
   const router = useRouter();
   const [userProfile, setUserProfile] = useState<any>(null);
-  const [isLoading, setIsLoading] = useState(true);
   const [showProfileSheet, setShowProfileSheet] = useState(false);
   const [showChangePasswordSheet, setShowChangePasswordSheet] = useState(false);
   useEffect(() => {
@@ -30,13 +29,11 @@ export const CustomDrawer = (props: DrawerContentComponentProps) => {
 
   const loadUserProfile = async () => {
     try {
-      setIsLoading(true);
       const profileData = await AuthStorage.getUser();
       setUserProfile(profileData);
     } catch (error) {
       console.error("Error loading user profile:", error);
     } finally {
-      setIsLoading(false);
     }
   };
 

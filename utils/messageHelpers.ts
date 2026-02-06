@@ -1,8 +1,6 @@
 // utils/messageHelpers.ts
 import { Message } from '@/types/type';
 import { formatISTDate } from '@/utils/dateUtils';
-import { MessageStatus } from '@/types/chat.types';
-
 export interface GroupedMessages {
   [date: string]: Message[];
 }
@@ -89,7 +87,7 @@ export const formatDateForDisplay = (dateString: string): string => {
   return dateString;
 };
 
-export const getMessageStatus = (message: Message): MessageStatus => {
+export const getMessageStatus = (message: Message) => {
   if (typeof message.id === 'number') {
     return 'delivered';
   }

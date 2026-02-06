@@ -27,7 +27,6 @@ export class NotificationHandler {
   private navigationQueue: NotificationData[] = [];
   private isAppReady = false;
   private processedNotifications = new Set<string>();
-  private navigationInProgress = new Set<string>();
 
   static getInstance(): NotificationHandler {
     if (!NotificationHandler.instance) {
@@ -143,45 +142,12 @@ export class NotificationHandler {
     }
   }
 
-
-
   // Show in-app notification when app is in foreground
   private showInAppNotification(notification: Notifications.Notification) {
     // You can implement a custom in-app notification here
     // For now, we'll just log it
     console.log('Showing in-app notification:', notification.request.content);
   }
-
-  // Clear all notifications
-  static async clearAllNotifications() {
-    await Notifications.dismissAllNotificationsAsync();
-  }
-
-  // Clear specific notification
-  static async clearNotification(identifier: string) {
-    await Notifications.dismissNotificationAsync(identifier);
-  }
 }
-
 // Export singleton instance
 export const notificationHandler = NotificationHandler.getInstance();
-
-// Helper function to create notification data
-export const createNotificationData = (
-  type: 'chat' | 'chat_message',
-  options: {
-    announcementId?: number;
-    roomId?: string;
-    title?: string;
-    body?: string;
-  }
-): NotificationData => {
-  return {
-    type,
-    announcementId: options.announcementId?.toString(),
-    roomId: options.roomId,
-    title: options.title,
-    body: options.body,
-    route: type === 'chat' ? '/(drawer)' : `/chat/${options.roomId}`
-  };
-};

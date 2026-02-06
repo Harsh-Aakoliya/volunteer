@@ -16,6 +16,9 @@ interface NotificationGroup {
 
 // In-memory store for notification groups
 const notificationGroups = new Map<string, NotificationGroup>();
+// Track if we've already navigated from a notification to prevent duplicate navigation
+let hasNavigatedFromNotification = false;
+let lastNavigatedRoomId: string | null = null;
 
 // Configure notification behavior when app is in foreground
 Notifications.setNotificationHandler({
@@ -61,10 +64,6 @@ export const setupChatNotificationListeners = () => {
   return subscription;
 };
 
-// Track if we've already navigated from a notification to prevent duplicate navigation
-let hasNavigatedFromNotification = false;
-let lastNavigatedRoomId: string | null = null;
-
 // Handle chat notification tap navigation
 export const handleChatNotificationTap = async (data: any) => {
   try {
@@ -105,132 +104,6 @@ export const handleChatNotificationTap = async (data: any) => {
   }
 };
 
-// Create or update grouped notification for a room
-export const createGroupedChatNotification = async (
-  roomName: string,
-  senderName: string,
-  messageContent: string,
-  roomId: string
-) => {
-  try {
-    const existingGroup = notificationGroups.get(roomId);
-    const timestamp = new Date().toISOString();
-    
-    if (existingGroup) {
-      // Update existing group
-      existingGroup.messages.push({
-        senderName,
-        messageContent,
-        timestamp
-      });
-      
-      // Keep only last 3 messages to avoid notification being too long
-      if (existingGroup.messages.length > 3) {
-        existingGroup.messages = existingGroup.messages.slice(-3);
-      }
-      
-      // Cancel previous notification
-      await Notifications.cancelScheduledNotificationAsync(existingGroup.notificationId);
-    } else {
-      // Create new group
-      const newGroup: NotificationGroup = {
-        roomId,
-        roomName,
-        messages: [{
-          senderName,
-          messageContent,
-          timestamp
-        }],
-        notificationId: `chat_${roomId}_${Date.now()}`
-      };
-      notificationGroups.set(roomId, newGroup);
-    }
-    
-    const group = notificationGroups.get(roomId)!;
-    const messageCount = group.messages.length;
-    
-    // Create notification body based on message count
-    let notificationBody: string;
-    if (messageCount === 1) {
-      notificationBody = `${senderName}: ${messageContent}`;
-    } else {
-      const uniqueSenders = [...new Set(group.messages.map(m => m.senderName))];
-      if (uniqueSenders.length === 1) {
-        notificationBody = `${uniqueSenders[0]}: ${messageCount} messages`;
-      } else {
-        notificationBody = `${uniqueSenders.length} people: ${messageCount} messages`;
-      }
-    }
-    
-    // Schedule the notification
-    await Notifications.scheduleNotificationAsync({
-      content: {
-        title: roomName,
-        body: notificationBody,
-        data: {
-          type: 'chat_message',
-          roomId: roomId,
-          roomName: roomName,
-          messageCount: messageCount,
-          timestamp: timestamp
-        },
-      },
-      trigger: null, // Show immediately
-    });
-    
-    // Update the notification ID in the group
-    group.notificationId = `chat_${roomId}_${Date.now()}`;
-    
-    console.log(`📱 Grouped chat notification created for room ${roomId} with ${messageCount} messages`);
-  } catch (error) {
-    console.error('Error creating grouped notification:', error);
-  }
-};
-
-// Create local notification for testing (development only)
-export const createTestChatNotification = async (
-  roomName: string,
-  senderName: string,
-  messageContent: string,
-  roomId: string
-) => {
-  try {
-    await Notifications.scheduleNotificationAsync({
-      content: {
-        title: roomName,
-        body: `${senderName}: ${messageContent}`,
-        data: {
-          type: 'chat_message',
-          roomId: roomId,
-          roomName: roomName,
-          senderName: senderName,
-          messageType: 'text',
-          timestamp: new Date().toISOString()
-        },
-      },
-      trigger: null, // Show immediately
-    });
-    
-    console.log('📱 Test chat notification created');
-  } catch (error) {
-    console.error('Error creating test notification:', error);
-  }
-};
-
-// Get notification settings for chat channel
-export const getChatNotificationChannelSettings = () => {
-  return {
-    name: 'Chat Messages',
-    description: 'Notifications for chat messages',
-    sound: 'default',
-    priority: Notifications.AndroidNotificationPriority.HIGH,
-    vibrationPattern: [0, 250, 250, 250],
-    lightColor: '#0284c7', // Blue color for chat notifications
-    lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
-    bypassDnd: false,
-  };
-};
-
 // Request notification permissions
 export const requestChatNotificationPermissions = async () => {
   try {
@@ -246,40 +119,6 @@ export const requestChatNotificationPermissions = async () => {
   } catch (error) {
     console.error('Error requesting notification permissions:', error);
     return false;
-  }
-};
-
-// Clear all chat notifications (useful when user opens chat)
-export const clearChatNotifications = async () => {
-  try {
-    // Get all scheduled notifications
-    const scheduledNotifications = await Notifications.getAllScheduledNotificationsAsync();
-    
-    // Get all delivered notifications
-    const deliveredNotifications = await Notifications.getPresentedNotificationsAsync();
-    
-    // Filter chat notifications
-    const chatScheduledIds = scheduledNotifications
-      .filter(notif => notif.content.data?.type === 'chat_message')
-      .map(notif => notif.identifier);
-    
-    const chatDeliveredIds = deliveredNotifications
-      .filter(notif => notif.request.content.data?.type === 'chat_message')
-      .map(notif => notif.request.identifier);
-    
-    // Cancel scheduled chat notifications
-    if (chatScheduledIds.length > 0) {
-      await Notifications.cancelScheduledNotificationAsync(chatScheduledIds[0]);
-    }
-    
-    // Dismiss delivered chat notifications
-    if (chatDeliveredIds.length > 0) {
-      await Notifications.dismissNotificationAsync(chatDeliveredIds[0]); // Dismiss the first one as an example
-    }
-    
-    console.log(`🧹 Cleared ${chatScheduledIds.length + chatDeliveredIds.length} chat notifications`);
-  } catch (error) {
-    console.error('Error clearing chat notifications:', error);
   }
 };
 
@@ -308,14 +147,4 @@ export const clearRoomNotifications = async (roomId: string) => {
   } catch (error) {
     console.error('Error clearing room notifications:', error);
   }
-};
-
-export default {
-  setupChatNotificationListeners,
-  createTestChatNotification,
-  createGroupedChatNotification,
-  getChatNotificationChannelSettings,
-  requestChatNotificationPermissions,
-  clearChatNotifications,
-  clearRoomNotifications
 };
