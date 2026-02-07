@@ -592,7 +592,6 @@ export default function ChatRoomScreen() {
 
   // Scheduled messages
   const [scheduledMessages, setScheduledMessages] = useState<any[]>([]);
-  const [showScheduledMessages, setShowScheduledMessages] = useState(false);
 
   // Video call notification state
   const [showVideoCallNotification, setShowVideoCallNotification] = useState(false);
@@ -1033,7 +1032,7 @@ const handleDeselectMessage = useCallback((message: Message) => {
     }
   }, [roomId, loadCachedMessages, syncMessagesWithServer]);
 
-  const loadScheduledMessages = async () => {
+  const loadScheduledMessages = useCallback(async () => {
     try {
       if (!roomId) return;
       const response = await getScheduledMessages(roomId as string);
@@ -1043,17 +1042,15 @@ const handleDeselectMessage = useCallback((message: Message) => {
     } catch (error) {
       console.error("Error loading scheduled messages:", error);
     }
-  };
+  }, [roomId]);
 
   // ==================== SOCKET SUBSCRIPTIONS ====================
 
-  // Handle new messages
+  // Handle new messages (includes scheduled messages when they fire - real-time for sender & receiver)
   const handleNewMessage = useCallback((message: ChatMessage) => {
     console.log("📨 [ChatRoom] New message received:", message.id);
     
-    // Don't add own messages (they're added optimistically)
     if (currentUser && (message.messageType === "media" || message.messageType === "poll" || message.messageType === "table" || message.messageType === "announcement" || message.messageType === "text")) {
-      console.log("message received in chat room", message, message.senderId, currentUser?.userId);
       const newMessage: Message = {
         id: message.id,
         roomId: message.roomId,
@@ -1069,10 +1066,13 @@ const handleDeselectMessage = useCallback((message: Message) => {
         replySenderName: message.replySenderName,
         replyMessageText: message.replyMessageText,
       };
-      console.log("newMessage", newMessage);
       addMessage(newMessage, true);
+      // Refresh scheduled list when sender gets their scheduled message (it just fired)
+      if (String(message.senderId) === String(currentUser.userId)) {
+        loadScheduledMessages();
+      }
     }
-  }, [currentUser?.userId, addMessage]);
+  }, [currentUser?.userId, addMessage, loadScheduledMessages]);
 
   // Handle message edited
   const handleMessageEdited = useCallback((data: MessageEditedEvent) => {
@@ -1167,11 +1167,13 @@ const handleDeselectMessage = useCallback((message: Message) => {
 
   useFocusEffect(
     useCallback(() => {
-      // console.log("useFocusEffect calling");
       if (roomId && !hasFocusedOnce.current) {
-        // console.log("useFocusEffect calling 2");
-        hasFocusedOnce.current = true; //this is causing the issue for media grid messages send
+        hasFocusedOnce.current = true;
         loadRoomDetails();
+      }
+      // Refresh scheduled messages when returning to chat (e.g. from scheduled screen)
+      if (roomId) {
+        loadScheduledMessages();
       }
       return () => {
         setSelectedMessages([]);
@@ -1241,6 +1243,7 @@ const handleDeselectMessage = useCallback((message: Message) => {
     if ((!text.trim() && !mediaFilesId && !pollId && !tableId) || !roomId || !currentUser || sending) return;
 
     const trimmedMessage = text.trim();
+    const isScheduled = !!scheduledAt;
 
     try {
       setSending(true);
@@ -1254,33 +1257,31 @@ const handleDeselectMessage = useCallback((message: Message) => {
       if (replyToMessage) {
         formattedReplyText = getReplyPreviewText(replyToMessage);
       }
-      
-      const optimisticMessage: Message = {
-        id: tempId,
-        roomId: parseInt(roomId as string),
-        senderId: currentUser.userId,
-        senderName: currentUser.fullName || "You",
-        messageText: trimmedMessage,
-        messageType: messageType,
-        createdAt: new Date().toISOString(),
-        mediaFilesId: mediaFilesId,
-        pollId: pollId,
-        tableId: tableId,
-        replyMessageId: replyMessageId,
-        ...(replyMessageId && replyToMessage && {
-          replySenderName: replyToMessage.senderName,
-          replyMessageText: formattedReplyText,
-          replyMessageType: replyToMessage.messageType
-        })
-      };
 
-      // Add optimistic message
-      addMessage(optimisticMessage, false);
-      
-      // Auto-scroll to bottom after adding optimistic message
-      setTimeout(() => {
-        scrollToBottomRef.current();
-      }, 100);
+      // Only add optimistic message for immediate send (not scheduled)
+      if (!isScheduled) {
+        const optimisticMessage: Message = {
+          id: tempId,
+          roomId: parseInt(roomId as string),
+          senderId: currentUser.userId,
+          senderName: currentUser.fullName || "You",
+          messageText: trimmedMessage,
+          messageType: messageType,
+          createdAt: new Date().toISOString(),
+          mediaFilesId: mediaFilesId,
+          pollId: pollId,
+          tableId: tableId,
+          replyMessageId: replyMessageId,
+          ...(replyMessageId && replyToMessage && {
+            replySenderName: replyToMessage.senderName,
+            replyMessageText: formattedReplyText,
+            replyMessageType: replyToMessage.messageType
+          })
+        };
+
+        addMessage(optimisticMessage, false);
+        setTimeout(() => scrollToBottomRef.current(), 100);
+      }
 
       const token = await AuthStorage.getToken();
       const response = await axios.post(
@@ -1299,8 +1300,7 @@ const handleDeselectMessage = useCallback((message: Message) => {
 
       if (response.data.success && response.data.scheduledMessage) {
         loadScheduledMessages();
-        // Remove optimistic message for scheduled
-        removeMessage(tempId, false);
+        setReplyToMessage(null);
         return;
       }
 
@@ -1847,6 +1847,8 @@ const TelegramHeader = React.memo(({
   onAvatarPress,
   onMenuPress,
   onVideoCallPress,
+  onCalendarPress,
+  scheduledCount,
   isSyncing,
 }: {
   roomName: string;
@@ -1856,6 +1858,8 @@ const TelegramHeader = React.memo(({
   onAvatarPress: () => void;
   onMenuPress?: () => void;
   onVideoCallPress?: () => void;
+  onCalendarPress?: () => void;
+  scheduledCount?: number;
   isSyncing: boolean;
 }) => {
   const getInitials = (name: string) => {
@@ -1899,13 +1903,11 @@ const TelegramHeader = React.memo(({
         </View>
       </TouchableOpacity>
 
-      {/* <View className="flex-row items-center">
-        {onAvatarPress && (
-          <TouchableOpacity onPress={onAvatarPress} className="p-2">
-            <Ionicons name="ellipsis-vertical" size={20} color="#000" />
-          </TouchableOpacity>
-        )}
-      </View> */}
+      {scheduledCount !== undefined && scheduledCount > 0 && onCalendarPress && (
+        <TouchableOpacity onPress={onCalendarPress} className="p-2">
+          <Ionicons name="calendar-outline" size={24} color="#0088CC" />
+        </TouchableOpacity>
+      )}
     </View>
   );
 });
@@ -1957,6 +1959,15 @@ const TelegramHeader = React.memo(({
             params: { roomId },
           }) : undefined}
           onVideoCallPress={handleVideoCallPress}
+          onCalendarPress={
+            scheduledMessages.length > 0
+              ? () => router.push({
+                  pathname: "/chat/[roomId]/scheduled",
+                  params: { roomId: Array.isArray(roomId) ? roomId[0] : roomId, roomName: displayRoomName },
+                })
+              : undefined
+          }
+          scheduledCount={scheduledMessages.length}
           isSyncing={isSyncing}
         />
       )}
@@ -2111,47 +2122,6 @@ const TelegramHeader = React.memo(({
         currentUserId={currentUser?.userId || ""}
         totalMembers={roomMembers.length}
       />
-
-      {/* Scheduled Messages Modal */}
-      <Modal
-        visible={showScheduledMessages}
-        animationType="slide"
-        transparent={false}
-        onRequestClose={() => setShowScheduledMessages(false)}
-      >
-        <View style={{ flex: 1, backgroundColor: 'white', paddingTop: insets.top }}>
-          <View className="flex-row items-center justify-between px-4 py-3 border-b border-gray-200">
-            <TouchableOpacity onPress={() => setShowScheduledMessages(false)} className="p-2">
-              <Ionicons name="arrow-back" size={24} color="#374151" />
-            </TouchableOpacity>
-            <Text className="text-lg font-semibold text-gray-900">Scheduled Messages</Text>
-            <TouchableOpacity onPress={loadScheduledMessages} className="p-2">
-              <Ionicons name="refresh" size={24} color="#374151" />
-            </TouchableOpacity>
-          </View>
-
-          <ScrollView className="flex-1 px-4 py-4">
-            {scheduledMessages.length === 0 ? (
-              <View className="flex-1 justify-center items-center py-8">
-                <Ionicons name="time-outline" size={60} color="#d1d5db" />
-                <Text className="text-gray-500 mt-4 text-center">No scheduled messages</Text>
-              </View>
-            ) : (
-              scheduledMessages.map((message, index) => (
-                <View key={index} className="mb-4 p-4 bg-gray-50 rounded-lg">
-                  <Text className="text-base text-gray-900 mb-2">{message.messageText}</Text>
-                  <View className="flex-row items-center">
-                    <Ionicons name="time-outline" size={16} color="#6b7280" />
-                    <Text className="text-sm text-gray-600 ml-1">
-                      Scheduled for {formatISTDate(message.scheduledAt)}
-                    </Text>
-                  </View>
-                </View>
-              ))
-            )}
-          </ScrollView>
-        </View>
-      </Modal>
 
       <AudioRecorder
         isVisible={showAudioRecorder}

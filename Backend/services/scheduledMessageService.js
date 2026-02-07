@@ -17,10 +17,10 @@ class ScheduledMessageService {
     console.log('Starting scheduled message service...');
     this.isRunning = true;
     
-    // Check for scheduled messages every minute
+    // Check for scheduled messages every 10 seconds (fast for testing; increase to 60000 for production)
     this.intervalId = setInterval(async () => {
       await this.checkAndSendScheduledMessages();
-    }, 60000); // 60 seconds
+    }, 10000); // 10 seconds
 
     // Also check immediately on start
     this.checkAndSendScheduledMessages();

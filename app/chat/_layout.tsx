@@ -60,6 +60,14 @@ export default function ChatLayout() {
       />
 
       <Stack.Screen
+        name="[roomId]/scheduled"
+        options={{
+          headerShown: false,
+          presentation: 'card',
+        }}
+      />
+
+      <Stack.Screen
         name="Polling"
         options={{ headerShown: false }}
       />

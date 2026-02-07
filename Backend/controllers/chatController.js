@@ -305,7 +305,7 @@ const chatController = {
                 LEFT JOIN "SevakMaster" e ON m."editedBy"::integer = e."seid"
                      LEFT JOIN chatmessages rm ON m."replyMessageId" = rm."id"
                      LEFT JOIN "SevakMaster" ru ON rm."senderId"::integer = ru."seid"
-                 WHERE m."roomId" = $1
+                 WHERE m."roomId" = $1 AND m."isScheduled" = FALSE
                  ORDER BY m."createdAt" DESC`,
                 [roomIdInt]
             );
@@ -908,14 +908,16 @@ const chatController = {
                 });
             }
 
-            // Get scheduled messages for this room
+            // Get scheduled messages for this room - only the current user's own scheduled messages
             const result = await pool.query(
                 `SELECT cm.*, sm.sevakname as "senderName"
                  FROM chatmessages cm
                           JOIN "SevakMaster" sm ON cm."senderId"::integer = sm.seid
-                 WHERE cm."roomId" = $1 AND cm."isScheduled" = TRUE AND cm."createdAt" > NOW() AT TIME ZONE 'UTC'
+                 WHERE cm."roomId" = $1 AND cm."isScheduled" = TRUE 
+                   AND cm."senderId"::integer = $2 
+                   AND cm."createdAt" > NOW() AT TIME ZONE 'UTC'
                  ORDER BY cm."createdAt" ASC`,
-                [roomIdInt]
+                [roomIdInt, userId]
             );
 
             res.status(200).json({
@@ -931,11 +933,15 @@ const chatController = {
     // Send scheduled message when time comes (called by scheduler)
     async sendScheduledMessage(messageId) {
         try {
-            // Get the scheduled message
+            // Get the scheduled message with reply info
             const result = await pool.query(
-                `SELECT cm.*, sm.sevakname as "senderName"
+                `SELECT cm.*, sm.sevakname as "senderName",
+                        rm."messageText" as "replyMessageText", rm."messageType" as "replyMessageType",
+                        ru.sevakname as "replySenderName"
                  FROM chatmessages cm
-                          JOIN "SevakMaster" sm ON cm."senderId"::integer = sm.seid
+                 JOIN "SevakMaster" sm ON cm."senderId"::integer = sm.seid
+                 LEFT JOIN chatmessages rm ON cm."replyMessageId" = rm."id"
+                 LEFT JOIN "SevakMaster" ru ON rm."senderId"::integer = ru.seid
                  WHERE cm."id" = $1 AND cm."isScheduled" = TRUE`,
                 [messageId]
             );
@@ -953,77 +959,9 @@ const chatController = {
                 [messageId]
             );
 
-            // Get the io instance and other app data
-            const io = global.io; // We'll need to make io globally available
-            const lastMessageByRoom = global.lastMessageByRoom;
-            const unreadMessagesByUser = global.unreadMessagesByUser;
-
-            // Update last message for this room
-            if (lastMessageByRoom) {
-                lastMessageByRoom[message.roomId] = {
-                    id: message.id,
-                    messageText: message.messageText,
-                    createdAt: message.createdAt,
-                    messageType: message.messageType,
-                    mediaFilesId: message.mediaFilesId,
-                    pollId: message.pollId,
-                    tableId: message.tableId,
-                    replyMessageId: message.replyMessageId,
-                    sender: {
-                        userId: message.senderId,
-                        userName: message.senderName
-                    }
-                };
-            }
-
-            // Get all members of the room
-            const membersResult = await pool.query(
-                `SELECT "userId" FROM chatroomusers WHERE "roomId" = $1`,
-                [message.roomId]
-            );
-
-            const memberIds = membersResult.rows.map(row => row.userId);
-
-            // Emit the message to all room members
-            if (io) {
-                io.to(`room_${message.roomId}`).emit('newMessage', {
-                    id: message.id,
-                    roomId: message.roomId,
-                    messageText: message.messageText,
-                    messageType: message.messageType,
-                    createdAt: message.createdAt,
-                    mediaFilesId: message.mediaFilesId,
-                    pollId: message.pollId,
-                    tableId: message.tableId,
-                    replyMessageId: message.replyMessageId,
-                    sender: {
-                        userId: message.senderId,
-                        userName: message.senderName
-                    }
-                });
-
-                // Update unread counts for all members except sender
-                memberIds.forEach(memberId => {
-                    if (memberId !== message.senderId) {
-                        if (!unreadMessagesByUser[memberId]) {
-                            unreadMessagesByUser[memberId] = {};
-                        }
-                        if (!unreadMessagesByUser[memberId][message.roomId]) {
-                            unreadMessagesByUser[memberId][message.roomId] = 0;
-                        }
-                        unreadMessagesByUser[memberId][message.roomId]++;
-                    }
-                });
-
-                // Emit unread count updates
-                memberIds.forEach(memberId => {
-                    if (memberId !== message.senderId) {
-                        io.to(`user_${memberId}`).emit('unreadCountUpdate', {
-                            roomId: message.roomId,
-                            unreadCount: unreadMessagesByUser[memberId][message.roomId]
-                        });
-                    }
-                });
+            // Use same real-time flow as normal send: newMessage, roomUpdate, notifications
+            if (typeof global.broadcastScheduledMessage === 'function') {
+                await global.broadcastScheduledMessage(message);
             }
 
             console.log(`Scheduled message ${messageId} sent successfully`);
@@ -2050,7 +1988,7 @@ const chatController = {
                 LEFT JOIN "SevakMaster" e ON m."editedBy"::integer = e.seid
                     LEFT JOIN chatmessages rm ON m."replyMessageId" = rm."id"
                     LEFT JOIN "SevakMaster" ru ON rm."senderId"::integer = ru.seid
-                WHERE m."roomId" = $1
+                WHERE m."roomId" = $1 AND m."isScheduled" = FALSE
             `;
 
             const params = [roomIdInt];

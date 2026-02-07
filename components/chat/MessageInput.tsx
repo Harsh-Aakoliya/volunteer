@@ -6,15 +6,19 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
+  Pressable,
   ActivityIndicator,
   Platform,
   Keyboard,
   ScrollView,
   Alert,
+  Modal,
+  TouchableWithoutFeedback,
 } from 'react-native';
 import { Audio } from 'expo-av';
 import { Ionicons } from '@expo/vector-icons';
 import { getReplyPreviewText } from '@/utils/messageHelpers';
+import DateTimePicker from '@/components/chat/DateTimePicker';
 import {
   RichEditor,
   RichToolbar,
@@ -92,6 +96,11 @@ export default function MessageInput({
   const [currentTextColor, setCurrentTextColor] = useState('#000000');
   const [currentBgColor, setCurrentBgColor] = useState('#FFFFFF');
   
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [showCustomTimePicker, setShowCustomTimePicker] = useState(false);
+  const [customScheduleDate, setCustomScheduleDate] = useState<Date | null>(null);
+  const [customScheduleTime, setCustomScheduleTime] = useState<string | null>(null);
+
   const [formatActive, setFormatActive] = useState({ bold: false, italic: false, underline: false, strike: false });
   const [listAlignActive, setListAlignActive] = useState({
     bullet: false,
@@ -418,6 +427,33 @@ export default function MessageInput({
     return stripHtml(messageText).trim().length === 0;
   }, [messageText]);
 
+  const resetAfterSend = useCallback(() => {
+    onChangeText('');
+    setInputHeight(40);
+    setLinkPreviews([]);
+    setShowColorPicker(null);
+    setShowLinkInput(false);
+    setCurrentTextColor('#000000');
+    setCurrentBgColor('#FFFFFF');
+    setFormatActive({ bold: false, italic: false, underline: false, strike: false });
+    setListAlignActive({
+      bullet: false,
+      number: false,
+      alignLeft: true,
+      alignCenter: false,
+      alignRight: false,
+    });
+    setShowRichTextToolbar(false);
+    setTimeout(() => {
+      if (richTextRef.current) {
+        richTextRef.current.setContentHTML('');
+        richTextRef.current.focusContentEditor();
+      } else if (inputRef.current) {
+        inputRef.current.focus();
+      }
+    }, 50);
+  }, [onChangeText]);
+
 // Send handler
 const handleSendPress = useCallback(() => {
   if (isEmpty) {
@@ -437,38 +473,24 @@ const handleSendPress = useCallback(() => {
 
   onSend(contentToSend, 'text', 0, 0, 0);
 
-  // Reset everything
-  onChangeText('');
-  setInputHeight(40);
-  setLinkPreviews([]);
-  setShowColorPicker(null);
-  setShowLinkInput(false);
-  setCurrentTextColor('#000000');
-  setCurrentBgColor('#FFFFFF');
-  // Don't close the toolbar anymore - keep it open for next message
-  // setShowRichTextToolbar(false);
-  setFormatActive({ bold: false, italic: false, underline: false, strike: false });
-  setListAlignActive({
-    bullet: false,
-    number: false,
-    alignLeft: true,
-    alignCenter: false,
-    alignRight: false,
-  });
-  setShowRichTextToolbar(false);
+  resetAfterSend();
+}, [isEmpty, replyToMessage, messageText, onSend, onAttachmentPress, resetAfterSend]);
 
-  // Force editor reset and keep focus
-  setTimeout(() => {
-    if (richTextRef.current) {
-      richTextRef.current.setContentHTML('');
-      // Keep the editor focused instead of blurring
-      richTextRef.current.focusContentEditor();
-    } else if (inputRef.current) {
-      // For web or fallback TextInput, also keep focus
-      inputRef.current.focus();
-    }
-  }, 50);
-}, [isEmpty, replyToMessage, messageText, onSend, onChangeText, onAttachmentPress]);
+  const handleScheduleSend = useCallback((scheduledAt: string) => {
+    if (isEmpty) return;
+    const contentToSend = cleanHtml(messageText);
+    onSend(contentToSend, 'text', 0, 0, 0, scheduledAt);
+    setShowScheduleModal(false);
+    setShowCustomTimePicker(false);
+    setCustomScheduleDate(null);
+    setCustomScheduleTime(null);
+    resetAfterSend();
+  }, [isEmpty, messageText, onSend, resetAfterSend]);
+
+  const handleLongPressSend = useCallback(() => {
+    if (isEmpty) return;
+    setShowScheduleModal(true);
+  }, [isEmpty]);
 
   const maxInputHeight = (7 * 22) + 20;
   
@@ -674,8 +696,10 @@ const handleSendPress = useCallback(() => {
             </View>
 
             {/* Right: Green Send / Mic button */}
-            <TouchableOpacity
+            <Pressable
               onPress={isEmpty ? (onSendAudio ? handleStartRecording : onAttachmentPress) : handleSendPress}
+              onLongPress={!isEmpty ? handleLongPressSend : undefined}
+              delayLongPress={400}
               disabled={sending}
               className="w-11 h-11 rounded-full bg-green-600 items-center justify-center"
               style={{ shadowColor: '#1DAB61', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3, shadowRadius: 4, elevation: 4 }}
@@ -691,7 +715,7 @@ const handleSendPress = useCallback(() => {
               ) : (
                 <Ionicons name="send" size={20} color="#fff" />
               )}
-            </TouchableOpacity>
+            </Pressable>
           </View>
         </View>
       )}
@@ -787,6 +811,106 @@ const handleSendPress = useCallback(() => {
           editorRef={richTextRef}
         />
       )}
+
+      {/* Schedule Message Modal */}
+      <Modal
+        visible={showScheduleModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowScheduleModal(false)}
+      >
+        <TouchableWithoutFeedback onPress={() => setShowScheduleModal(false)}>
+          <View className="flex-1 justify-end bg-black/40">
+            <TouchableWithoutFeedback>
+              <View className="bg-white rounded-t-2xl px-4 pb-8 pt-4">
+                <Text className="text-lg font-semibold text-gray-900 mb-4 text-center">Schedule Message</Text>
+
+                {!showCustomTimePicker ? (
+                  <>
+                    <TouchableOpacity
+                      onPress={() => handleScheduleSend(new Date(Date.now() + 10 * 1000).toISOString())}
+                      className="py-3 border-b border-gray-100"
+                    >
+                      <Text className="text-base text-gray-900">Send in 10 seconds (testing)</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => handleScheduleSend(new Date(Date.now() + 5 * 60 * 1000).toISOString())}
+                      className="py-3 border-b border-gray-100"
+                    >
+                      <Text className="text-base text-gray-900">Send in 5 minutes</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => handleScheduleSend(new Date(Date.now() + 10 * 60 * 1000).toISOString())}
+                      className="py-3 border-b border-gray-100"
+                    >
+                      <Text className="text-base text-gray-900">Send in 10 minutes</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => handleScheduleSend(new Date(Date.now() + 30 * 60 * 1000).toISOString())}
+                      className="py-3 border-b border-gray-100"
+                    >
+                      <Text className="text-base text-gray-900">Send in 30 minutes</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => handleScheduleSend(new Date(Date.now() + 60 * 60 * 1000).toISOString())}
+                      className="py-3 border-b border-gray-100"
+                    >
+                      <Text className="text-base text-gray-900">Send in 1 hour</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => setShowCustomTimePicker(true)}
+                      className="py-3"
+                    >
+                      <Text className="text-base text-green-600 font-medium">Pick date & time</Text>
+                    </TouchableOpacity>
+                  </>
+                ) : (
+                  <View className="py-4">
+                    <DateTimePicker
+                      selectedDate={customScheduleDate}
+                      setSelectedDate={setCustomScheduleDate}
+                      selectedTime={customScheduleTime}
+                      setSelectedTime={setCustomScheduleTime}
+                    />
+                    <View className="flex-row gap-3 mt-4">
+                      <TouchableOpacity
+                        onPress={() => {
+                          setShowCustomTimePicker(false);
+                          setCustomScheduleDate(null);
+                          setCustomScheduleTime(null);
+                        }}
+                        className="flex-1 py-3 bg-gray-200 rounded-lg items-center"
+                      >
+                        <Text className="text-base font-medium text-gray-700">Back</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => {
+                          if (customScheduleDate && customScheduleTime) {
+                            const [h, m] = customScheduleTime.split(':').map(Number);
+                            const scheduled = new Date(customScheduleDate);
+                            scheduled.setHours(h, m, 0, 0);
+                            if (scheduled > new Date()) {
+                              handleScheduleSend(scheduled.toISOString());
+                            } else {
+                              Alert.alert('Invalid time', 'Please select a future date and time.');
+                            }
+                          } else {
+                            Alert.alert('Select time', 'Please select both date and time.');
+                          }
+                        }}
+                        disabled={!customScheduleDate || !customScheduleTime}
+                        className={`flex-1 py-3 rounded-lg items-center ${!customScheduleDate || !customScheduleTime ? 'bg-gray-300' : 'bg-green-600'}`}
+                      >
+                        <Text className="text-base font-medium text-white">Schedule</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                )}
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
     </View>
   );
 }

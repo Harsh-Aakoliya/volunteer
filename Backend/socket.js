@@ -53,7 +53,7 @@ const setupSocketIO = (io, app) => {
           `SELECT m.*, sm."sevakname" as "senderName"
            FROM chatmessages m 
            JOIN "SevakMaster" sm ON m."senderId"::integer = sm."seid"
-           WHERE m."roomId" = $1 
+           WHERE m."roomId" = $1 AND m."isScheduled" = FALSE
            ORDER BY m."createdAt" DESC 
            LIMIT 1`,
           [roomId]
@@ -240,6 +240,113 @@ const setupSocketIO = (io, app) => {
       }
     } catch (error) {
       console.error("❌ [Socket] Room notify error:", error);
+    }
+  };
+
+  /**
+   * Broadcast a scheduled message when it fires - same flow as sendMessage.
+   * Used by chatController.sendScheduledMessage.
+   */
+  global.broadcastScheduledMessage = async (message) => {
+    const roomIdStr = String(message.roomId);
+    const senderIdStr = String(message.senderId);
+    const senderName = message.senderName || "Unknown";
+
+    // Format reply text for display
+    let replyMessageText = message.replyMessageText || null;
+    if (message.replyMessageId && message.replyMessageType) {
+      if (message.replyMessageType === 'poll') replyMessageText = '📊 Poll';
+      else if (message.replyMessageType === 'media') replyMessageText = '📷 Media';
+      else if (message.replyMessageType === 'table') replyMessageText = '📋 Table';
+      else if (message.replyMessageType === 'announcement') replyMessageText = '📢 Announcement';
+    }
+
+    const msgData = {
+      id: message.id,
+      roomId: roomIdStr,
+      messageText: message.messageText,
+      messageType: message.messageType || "text",
+      createdAt: message.createdAt,
+      sender: { userId: message.senderId, userName: senderName },
+      mediaFilesId: message.mediaFilesId || null,
+      pollId: message.pollId || null,
+      tableId: message.tableId || null,
+      replyMessageId: message.replyMessageId || null,
+      replySenderName: message.replySenderName || null,
+      replyMessageText: replyMessageText,
+    };
+
+    lastMessages[roomIdStr] = msgData;
+
+    // Mark message as read for sender
+    try {
+      const pool = await import("./config/database.js").then((m) => m.default);
+      const roomIdInt = parseInt(message.roomId, 10);
+      await pool.query(
+        `INSERT INTO messagereadstatus ("messageId", "userId", "roomId", "readAt")
+         VALUES ($1, $2, $3, NOW() AT TIME ZONE 'UTC')
+         ON CONFLICT ("messageId", "userId") 
+         DO UPDATE SET "readAt" = NOW() AT TIME ZONE 'UTC'`,
+        [message.id, senderIdStr, roomIdInt]
+      );
+    } catch (readError) {
+      console.error('Error marking scheduled message as read for sender:', readError);
+    }
+
+    // Mark message as read for online users in room
+    try {
+      const pool = await import("./config/database.js").then((m) => m.default);
+      const roomSockets = await io.in(`room_${roomIdStr}`).fetchSockets();
+      const onlineUsersInRoom = new Set();
+      for (const roomSocket of roomSockets) {
+        const userData = socketUsers.get(roomSocket.id);
+        if (userData && userData.userId && userData.rooms?.has(roomIdStr)) {
+          const userIdStr = String(userData.userId);
+          if (userIdStr !== senderIdStr && onlineUsers.has(userIdStr)) {
+            onlineUsersInRoom.add(userIdStr);
+          }
+        }
+      }
+      if (onlineUsersInRoom.size > 0) {
+        const userIdsArray = Array.from(onlineUsersInRoom);
+        for (const userIdStr of userIdsArray) {
+          try {
+            await pool.query(
+              `INSERT INTO messagereadstatus ("messageId", "userId", "roomId", "readAt")
+               VALUES ($1, $2, $3, NOW() AT TIME ZONE 'UTC')
+               ON CONFLICT ("messageId", "userId") 
+               DO UPDATE SET "readAt" = NOW() AT TIME ZONE 'UTC'`,
+              [message.id, userIdStr, parseInt(message.roomId, 10)]
+            );
+          } catch (_) {}
+        }
+      }
+    } catch (readError) {
+      console.error('Error marking scheduled message as read for online users:', readError);
+    }
+
+    io.to(`room_${roomIdStr}`).emit("newMessage", msgData);
+    await notifyRoomMembers(roomIdStr, msgData, senderIdStr);
+
+    // Send push notifications to offline users
+    try {
+      const pool = await import("./config/database.js").then((m) => m.default);
+      const roomResult = await pool.query(
+        'SELECT "roomName" FROM chatrooms WHERE "roomId" = $1',
+        [message.roomId]
+      );
+      const roomName = roomResult.rows.length > 0 ? roomResult.rows[0].roomName : "Chat";
+      await sendChatNotifications(
+        msgData,
+        { userId: message.senderId, userName: senderName },
+        { roomId: roomIdStr, roomName },
+        io,
+        socketUsers,
+        userSockets,
+        onlineUsers
+      );
+    } catch (error) {
+      console.error("❌ [Socket] Scheduled message notification error:", error);
     }
   };
 

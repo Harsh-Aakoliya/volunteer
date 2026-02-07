@@ -186,11 +186,15 @@ const server = httpServer.listen(PORT, "0.0.0.0", () => {
 
   console.log(`Server running on port ${PORT}`);
   addresses.forEach((addr) => console.log(`http://${addr}:${PORT}`));
+
+  // Start scheduled message service (sends messages when their scheduled time arrives)
+  scheduledMessageService.start();
 });
 
 // 🔥 Graceful shutdown
 const shutdown = () => {
   console.log("🛑 Shutting down server...");
+  scheduledMessageService.stop();
   server.close(() => {
     console.log("✅ Server closed cleanly");
     process.exit(0);
