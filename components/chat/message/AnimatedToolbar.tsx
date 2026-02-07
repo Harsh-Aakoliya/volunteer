@@ -30,11 +30,6 @@ export function AnimatedToolbar({
     outputRange: [0, 50],
   });
 
-  const translateY = animValue.interpolate({
-    inputRange: [0, 1],
-    outputRange: [30, 0],
-  });
-
   const opacity = animValue.interpolate({
     inputRange: [0, 0.5, 1],
     outputRange: [0, 0.7, 1],
@@ -46,7 +41,6 @@ export function AnimatedToolbar({
       style={{
         height: containerHeight,
         opacity,
-        transform: [{ translateY }],
       }}
     >
       {children}
