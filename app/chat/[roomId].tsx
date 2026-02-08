@@ -16,6 +16,7 @@ import {
   ToastAndroid,
   LayoutAnimation,
   UIManager,
+  ImageBackground,
 } from "react-native";
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 // Enable LayoutAnimation for Android
@@ -1921,7 +1922,7 @@ const TelegramHeader = React.memo(({
       <View 
         style={{ 
           flex: 1, 
-          backgroundColor: 'white',
+          backgroundColor: '#E5DDD5', // Match chat background – avoids white flash during keyboard transitions
           paddingTop: insets.top, // Only top safe area
         }}
       >
@@ -1972,76 +1973,77 @@ const TelegramHeader = React.memo(({
         />
       )}
 
-      {/* --- MESSAGES LIST --- */}
-      <View className="flex-1 bg-[#E5DDD5]" style={{ position: 'relative' }}>
-        <FlatList
-          ref={flatListRef}
-          data={preparedListData}
-          keyExtractor={keyExtractor}
-          renderItem={renderItem}
-          inverted={true}
-          contentContainerStyle={{ paddingVertical: 10, paddingHorizontal: 6 }}
-          onScroll={handleScroll}
-          scrollEventThrottle={16}
-          onViewableItemsChanged={onViewableItemsChanged}
-          viewabilityConfig={viewabilityConfig}
-          removeClippedSubviews={Platform.OS === 'android'}
-          keyboardDismissMode="interactive"
-          keyboardShouldPersistTaps="handled"
-          ListEmptyComponent={
-            <View className="flex-1 justify-center items-center pb-[300px]">
-              <Ionicons name="chatbubble-outline" size={60} color="#AEBAC1" />
-              <Text className="text-gray-500 mt-4 text-center bg-[#E5DDD5] px-2 py-1">
-                No messages yet.
-              </Text>
-            </View>
-          }
-        />
-        
-        {/* Scroll to Bottom Button */}
-        {showScrollToBottom && (
-  <TouchableOpacity
-    onPress={scrollToBottom}
-    style={{
-      position: 'absolute',
-      bottom: 10,
-      right: 10,
-      width: 48,
-      height: 48,
-      borderRadius: 24,
-      backgroundColor: '#0088CC',
-      justifyContent: 'center',
-      alignItems: 'center',
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.25,
-      shadowRadius: 3.84,
-      elevation: 5,
-      zIndex: 1000,
-    }}
-    activeOpacity={0.7}
-  >
-    {/* Custom Double Arrow Down SVG */}
-    <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
-        <Path
-          d="M7 6 L12 11 L17 6 M7 13 L12 18 L17 13"
-          stroke="#FFFFFF"
-          strokeWidth={2.5}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </Svg>
-    </TouchableOpacity>
-  )}
-      </View>
-
-      {/* --- MESSAGE INPUT SECTION --- */}
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        keyboardVerticalOffset={Platform.OS === "ios" ? insets.top : 0}
-        style={{ flex: 0 }}
+      {/* --- MESSAGES + INPUT (single ImageBackground to avoid flash on keyboard) --- */}
+      <ImageBackground
+        source={require("@/assets/images/chatbackground.png")}
+        resizeMode="repeat"
+        style={{ flex: 1 }}
       >
-        <View style={{ backgroundColor: '#E5DDD5', paddingBottom: insets.bottom }}>
+        <View style={{ flex: 1, position: 'relative' }}>
+          <FlatList
+            ref={flatListRef}
+            data={preparedListData}
+            keyExtractor={keyExtractor}
+            renderItem={renderItem}
+            inverted={true}
+            contentContainerStyle={{ paddingVertical: 10, paddingHorizontal: 6 }}
+            onScroll={handleScroll}
+            scrollEventThrottle={16}
+            onViewableItemsChanged={onViewableItemsChanged}
+            viewabilityConfig={viewabilityConfig}
+            removeClippedSubviews={Platform.OS === 'android'}
+            keyboardDismissMode="interactive"
+            keyboardShouldPersistTaps="handled"
+            ListEmptyComponent={
+              <View className="flex-1 justify-center items-center pb-[300px]">
+                <Ionicons name="chatbubble-outline" size={60} color="#AEBAC1" />
+                <Text className="text-gray-500 mt-4 text-center bg-white/80 px-2 py-1">
+                  No messages yet.
+                </Text>
+              </View>
+            }
+          />
+          {showScrollToBottom && (
+            <TouchableOpacity
+              onPress={scrollToBottom}
+              style={{
+                position: 'absolute',
+                bottom: 10,
+                right: 10,
+                width: 36,
+                height: 36,
+                borderRadius: 18,
+                backgroundColor: '#FFFFFF',
+                justifyContent: 'center',
+                alignItems: 'center',
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 2 },
+                shadowOpacity: 0.2,
+                shadowRadius: 3,
+                elevation: 5,
+                zIndex: 1000,
+              }}
+              activeOpacity={0.7}
+            >
+              <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
+                <Path
+                  d="M7 6 L12 11 L17 6 M7 13 L12 18 L17 13"
+                  stroke="#000000"
+                  strokeWidth={2.5}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </Svg>
+            </TouchableOpacity>
+          )}
+        </View>
+
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          keyboardVerticalOffset={Platform.OS === "ios" ? insets.top : 0}
+          style={{ flex: 0 }}
+        >
+          <View style={{ paddingBottom: insets.bottom }}>
           <View className="pb-1">
           {canSendMessage ? (
             <MessageInput
@@ -2081,8 +2083,9 @@ const TelegramHeader = React.memo(({
             </View>
           )}
           </View>
-        </View>
-      </KeyboardAvoidingView>
+          </View>
+        </KeyboardAvoidingView>
+      </ImageBackground>
 
       {/* --- MODALS --- */}
       <MembersModal

@@ -9,7 +9,6 @@ import {
   Pressable,
   ActivityIndicator,
   Platform,
-  Keyboard,
   ScrollView,
   Alert,
   Modal,
@@ -88,7 +87,6 @@ export default function MessageInput({
 
   // State
   const [showRichTextToolbar, setShowRichTextToolbar] = useState(false);
-  const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
   const [inputHeight, setInputHeight] = useState(40);
   const [showColorPicker, setShowColorPicker] = useState<'text' | 'background' | null>(null);
   const [showLinkInput, setShowLinkInput] = useState(false);
@@ -294,25 +292,6 @@ export default function MessageInput({
     }
   }, []);
 
-  // Keyboard listeners
-  useEffect(() => {
-    const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
-    const hideEvent = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
-
-    const keyboardShowListener = Keyboard.addListener(showEvent, () => {
-      setIsKeyboardVisible(true);
-    });
-
-    const keyboardHideListener = Keyboard.addListener(hideEvent, () => {
-      setIsKeyboardVisible(false);
-    });
-
-    return () => {
-      keyboardShowListener?.remove();
-      keyboardHideListener?.remove();
-    };
-  }, []);
-
   // When replying, focus input after short delay
   useEffect(() => {
     if (!replyToMessage || recordingMode !== 'idle') return;
@@ -328,7 +307,7 @@ export default function MessageInput({
     setLinkPreviews(links);
   }, [messageText]);
 
-  // Close toolbar handler - simple, no animation
+  // Close toolbar handler
   const handleCloseToolbar = useCallback(() => {
     setShowColorPicker(null);
     setShowLinkInput(false);
@@ -384,7 +363,7 @@ export default function MessageInput({
     setFormatActive(prev => ({ ...prev, underline: !prev.underline }));
   }, []);
   const handleStrike = useCallback(() => {
-    richTextRef.current?.sendAction(actions.setStrikeThrough, 'result');
+    richTextRef.current?.sendAction(actions.setStrikethrough, 'result');
     setFormatActive(prev => ({ ...prev, strike: !prev.strike }));
   }, []);
 
@@ -454,27 +433,21 @@ export default function MessageInput({
     }, 50);
   }, [onChangeText]);
 
-// Send handler
-const handleSendPress = useCallback(() => {
-  if (isEmpty) {
-    if (replyToMessage) return;
-
-    // Keyboard.dismiss();
-    richTextRef.current?.blurContentEditor();
-    inputRef.current?.blur();
-
-    setTimeout(() => {
-      onAttachmentPress?.();
-    }, 100);
-    return;
-  }
-
-  const contentToSend = cleanHtml(messageText);
-
-  onSend(contentToSend, 'text', 0, 0, 0);
-
-  resetAfterSend();
-}, [isEmpty, replyToMessage, messageText, onSend, onAttachmentPress, resetAfterSend]);
+  // Send handler
+  const handleSendPress = useCallback(() => {
+    if (isEmpty) {
+      if (replyToMessage) return;
+      richTextRef.current?.blurContentEditor();
+      inputRef.current?.blur();
+      setTimeout(() => {
+        onAttachmentPress?.();
+      }, 100);
+      return;
+    }
+    const contentToSend = cleanHtml(messageText);
+    onSend(contentToSend, 'text', 0, 0, 0);
+    resetAfterSend();
+  }, [isEmpty, replyToMessage, messageText, onSend, onAttachmentPress, resetAfterSend]);
 
   const handleScheduleSend = useCallback((scheduledAt: string) => {
     if (isEmpty) return;
@@ -494,11 +467,10 @@ const handleSendPress = useCallback(() => {
 
   const maxInputHeight = (7 * 22) + 20;
   
-  // Toolbar visibility - simple boolean check
   const shouldShowToolbar = showRichTextToolbar && Platform.OS !== 'web' && RichToolbar && recordingMode === 'idle';
 
   return (
-    <View className="bg-white w-full">
+    <View className="bg-[#E5DDD5] w-full pb-1">
       {/* Link Previews */}
       {linkPreviews.length > 0 && (
         <View className="px-3 pt-2 pb-1">
@@ -510,8 +482,9 @@ const handleSendPress = useCallback(() => {
         </View>
       )}
 
-      {/* Main Input Row – or Recording UI when active */}
+      {/* Main Input Area */}
       {recordingMode !== 'idle' && onSendAudio ? (
+        // ... Recording View (unchanged) ...
         <View className="px-3 py-2 bg-white">
           <View className="flex-row items-center mb-3">
             {recordingMode === 'recording' ? (
@@ -562,7 +535,7 @@ const handleSendPress = useCallback(() => {
             <TouchableOpacity
               onPress={handleSendAudio}
               disabled={sendingAudio}
-              className="w-11 h-11 rounded-full bg-green-600 items-center justify-center"
+              className="w-10 h-10 rounded-full bg-green-600 items-center justify-center min-h-[40px]"
               style={{ shadowColor: '#1DAB61', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3, shadowRadius: 4, elevation: 4 }}
             >
               {sendingAudio ? (
@@ -574,153 +547,164 @@ const handleSendPress = useCallback(() => {
           </View>
         </View>
       ) : (
-        <View className="px-3 py-2">
-          {/* Reply preview bar */}
-          {replyToMessage ? (
-            <View className="flex-row items-center mb-2 px-2 py-2 bg-green-100 rounded-xl border-l-[3px] border-green-600">
-              <View className="flex-1 mr-1">
-                <Text className="text-green-600 text-xs font-bold">
-                  {replyToMessage.senderId === currentUser?.userId ? 'You' : replyToMessage.senderName}
-                </Text>
-                <Text className="text-gray-600 text-xs" numberOfLines={2} ellipsizeMode="tail">
-                  {getReplyPreviewText(replyToMessage)}
-                </Text>
-              </View>
-              <TouchableOpacity onPress={onCancelReply} className="p-2">
-                <Ionicons name="close" size={18} color="#666" />
-              </TouchableOpacity>
-            </View>
-          ) : null}
+        // ... Normal Input View ...
+        <View className="px-2 pt-1">
+          {/* Container Row: White Bubble + Send Button */}
+          <View className="flex-row items-end">
+            
+            {/* White Bubble: Contains Reply & Input */}
+            <View className="flex-1 bg-white rounded-[22px] border border-gray-200 overflow-hidden mr-2 min-h-[44px]">
+              
+              {/* Reply Preview Section - Inside the bubble */}
+              {replyToMessage && (
+                <View className="mt-2 mx-2 mb-1 p-2 bg-gray-100 rounded-lg border-l-[4px] border-green-600 flex-row items-start justify-between">
+                  <View className="flex-1 mr-2">
+                    <Text className="text-green-600 text-xs font-bold mb-0.5">
+                      {replyToMessage.senderId === currentUser?.userId ? 'You' : replyToMessage.senderName}
+                    </Text>
+                    <Text className="text-gray-600 text-xs" numberOfLines={2} ellipsizeMode="tail">
+                      {getReplyPreviewText(replyToMessage)}
+                    </Text>
+                  </View>
+                  
+                  <TouchableOpacity 
+                    onPress={onCancelReply} 
+                    className="bg-gray-200 rounded-full p-0.5 mt-0.5"
+                    hitSlop={{ top: 5, bottom: 5, left: 5, right: 5 }}
+                  >
+                    <Ionicons name="close" size={14} color="#666" />
+                  </TouchableOpacity>
+                </View>
+              )}
 
-          {/* Main Input Row */}
-          <View className="flex-row" style={{ alignItems: 'center' }}>
-            <View
-              className="flex-1 flex-row bg-white rounded-3xl border border-gray-300 min-h-[40px] px-2 mr-2"
-              style={{ maxHeight: maxInputHeight, alignItems: 'center' }}
-            >
-              <View className="flex-1 min-h-[40px] justify-center" style={{ paddingVertical: 6 }}>
-                {Platform.OS !== 'web' && RichEditor ? (
-                  <RichEditor
-                    key={`editor-${editorKeyRef.current}`}
-                    ref={richTextRef}
-                    onChange={onChangeText}
-                    placeholder={placeholder}
-                    initialContentHTML=""
-                    initialHeight={40}
-                    androidHardwareAccelerationDisabled={true}
-                    androidLayerType="software"
-                    pasteAsPlainText={true}
-                    onPaste={handlePaste}
-                    showsVerticalScrollIndicator={false}
-                    editorStyle={{
-                      backgroundColor: 'transparent',
-                      placeholderColor: '#9CA3AF',
-                      contentCSSText: `
-                        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-                        font-size: 16px;
-                        line-height: 22px;
-                        color: #1F2937;
-                        padding: 7px 4px;
-                        min-height: 36px;
-                        max-height: ${maxInputHeight - 8}px;
-                        scrollbar-width: none;
-                        -ms-overflow-style: none;
-                      `,
-                    }}
-                    style={{ backgroundColor: 'transparent', minHeight: 36, maxHeight: maxInputHeight - 8 }}
-                  />
-                ) : (
-                  <TextInput
-                    ref={inputRef}
-                    value={messageText}
-                    onChangeText={onChangeText}
-                    placeholder={placeholder}
-                    placeholderTextColor="#9CA3AF"
-                    multiline
-                    className="px-2 py-1 text-base text-gray-800"
-                    style={{
-                      minHeight: 36,
-                      height: inputHeight,
-                      maxHeight: maxInputHeight - 8,
-                      lineHeight: 22,
-                      textAlignVertical: 'center',
-                      paddingVertical: 8,
-                    }}
-                    onContentSizeChange={(event) => {
-                      const contentHeight = event.nativeEvent?.contentSize?.height;
-                      if (!contentHeight) return;
-                      if (heightUpdateTimeoutRef.current) clearTimeout(heightUpdateTimeoutRef.current);
-                      heightUpdateTimeoutRef.current = setTimeout(() => {
-                        const newHeight = Math.min(Math.max(40, Math.ceil(contentHeight)), maxInputHeight);
-                        if (Math.abs(newHeight - inputHeight) >= 2) setInputHeight(newHeight);
-                      }, 50);
-                    }}
-                    scrollEnabled={inputHeight >= maxInputHeight}
-                  />
-                )}
-              </View>
-
-              {/* Action Buttons - when toolbar is visible, Aa is hidden so only show this when we have buttons (input expands when toolbar open + has text) */}
-              {(!showRichTextToolbar && Platform.OS !== 'web') || isEmpty ? (
-                <View
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    minWidth: showRichTextToolbar && isEmpty ? 40 : 44,
-                  }}
-                >
-                  {!showRichTextToolbar && Platform.OS !== 'web' && (
-                    <TouchableOpacity
-                      onPress={() => {
-                        setShowRichTextToolbar(true);
-                        setTimeout(() => richTextRef.current?.focusContentEditor(), 100);
+              {/* Text Input Row - Inside the bubble, below reply */}
+              <View 
+                className="flex-row items-center px-1 pb-1" 
+                style={{ maxHeight: maxInputHeight }}
+              >
+                <View className="flex-1 justify-center" style={{ paddingVertical: 2, paddingLeft: 6 }}>
+                  {Platform.OS !== 'web' && RichEditor ? (
+                    <RichEditor
+                      key={`editor-${editorKeyRef.current}`}
+                      ref={richTextRef}
+                      onChange={onChangeText}
+                      placeholder={placeholder}
+                      placeholderTextColor="#4B5563"
+                      initialContentHTML=""
+                      initialHeight={40}
+                      androidHardwareAccelerationDisabled={true}
+                      androidLayerType="software"
+                      pasteAsPlainText={true}
+                      onPaste={handlePaste}
+                      showsVerticalScrollIndicator={false}
+                      editorStyle={{
+                        backgroundColor: 'transparent',
+                        placeholderColor: '#4B5563',
+                        contentCSSText: `
+                          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+                          font-size: 16px;
+                          font-weight: 400;
+                          line-height: 22px;
+                          color: #1F2937;
+                          padding: 8px 0px; 
+                          min-height: 36px;
+                          max-height: ${maxInputHeight - 20}px;
+                          overflow-y: auto;
+                          overflow-x: hidden;
+                          scrollbar-width: none;
+                          -ms-overflow-style: none;
+                          -webkit-overflow-scrolling: touch;
+                        `,
                       }}
-                      style={{ padding: 8 }}
-                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                    >
-                      <Ionicons name="text-outline" size={22} color="#6B7280" />
-                    </TouchableOpacity>
-                  )}
-                  {isEmpty && (
-                    <TouchableOpacity
-                      onPress={onAttachmentPress}
-                      style={{ padding: 8 }}
-                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                    >
-                      <Ionicons name="attach" size={24} color="#6B7280" />
-                    </TouchableOpacity>
+                      style={{ backgroundColor: 'transparent', minHeight: 36, maxHeight: maxInputHeight - 20 }}
+                    />
+                  ) : (
+                    <TextInput
+                      ref={inputRef}
+                      value={messageText}
+                      onChangeText={onChangeText}
+                      placeholder={placeholder}
+                      placeholderTextColor="#9CA3AF"
+                      multiline
+                      className="text-base text-gray-800"
+                      style={{
+                        minHeight: 40,
+                        height: inputHeight,
+                        maxHeight: maxInputHeight - 20,
+                        lineHeight: 22,
+                        paddingVertical: 8,
+                        paddingHorizontal: 4,
+                      }}
+                      onContentSizeChange={(event) => {
+                        const contentHeight = event.nativeEvent?.contentSize?.height;
+                        if (!contentHeight) return;
+                        if (heightUpdateTimeoutRef.current) clearTimeout(heightUpdateTimeoutRef.current);
+                        heightUpdateTimeoutRef.current = setTimeout(() => {
+                          const newHeight = Math.min(Math.max(40, Math.ceil(contentHeight)), maxInputHeight);
+                          if (Math.abs(newHeight - inputHeight) >= 2) setInputHeight(newHeight);
+                        }, 50);
+                      }}
+                      scrollEnabled={inputHeight >= maxInputHeight - 20}
+                    />
                   )}
                 </View>
-              ) : null}
+
+                {/* Inner Action Buttons: initially Attachment + Aa; when typing, only Aa */}
+                <View className="flex-row items-center justify-end pr-1">
+                  {!showRichTextToolbar && Platform.OS !== 'web' && (
+                    <>
+                      {isEmpty && (
+                        <TouchableOpacity onPress={onAttachmentPress} className="p-1">
+                          <Ionicons name="attach" size={24} color="#4B5563" />
+                        </TouchableOpacity>
+                      )}
+                      <TouchableOpacity
+                        onPress={() => {
+                          setShowRichTextToolbar(true);
+                          setTimeout(() => richTextRef.current?.focusContentEditor(), 100);
+                        }}
+                        className="p-2"
+                      >
+                        <Ionicons name="text" size={24} color="#4B5563" />
+                      </TouchableOpacity>
+                    </>
+                  )}
+                </View>
+              </View>
             </View>
 
-            {/* Right: Green Send / Mic button */}
+            {/* Right: Send / Mic Button */}
             <Pressable
               onPress={isEmpty ? (onSendAudio ? handleStartRecording : onAttachmentPress) : handleSendPress}
               onLongPress={!isEmpty ? handleLongPressSend : undefined}
               delayLongPress={400}
               disabled={sending}
-              className="w-11 h-11 rounded-full bg-green-600 items-center justify-center"
-              style={{ shadowColor: '#1DAB61', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3, shadowRadius: 4, elevation: 4 }}
+              className="min-h-[50px] min-w-[50px] rounded-full bg-green-600 items-center justify-center mb-0"
+              style={{ 
+                shadowColor: '#000', 
+                shadowOffset: { width: 0, height: 1 }, 
+                shadowOpacity: 0.2, 
+                shadowRadius: 3, 
+                elevation: 3 
+              }}
             >
               {sending ? (
                 <ActivityIndicator color="#fff" size="small" />
               ) : isEmpty ? (
                 onSendAudio ? (
-                  <Ionicons name="mic" size={22} color="#fff" />
+                  <Ionicons name="mic" size={24} color="#fff" />
                 ) : (
-                  <Ionicons name="add" size={26} color="#fff" />
+                  <Ionicons name="mic" size={24} color="#fff" />
                 )
               ) : (
-                <Ionicons name="send" size={20} color="#fff" />
+                <Ionicons name="send" size={22} color="#fff" style={{ marginLeft: 2 }} />
               )}
             </Pressable>
           </View>
         </View>
       )}
 
-      {/* Rich Text Toolbar - Simple Show/Hide, No Animation */}
+      {/* Rich Text Toolbar (unchanged) */}
       {shouldShowToolbar && (
         <View className="flex-row items-center bg-[#F3F4F6] border-t border-b border-gray-200 py-1">
           <ScrollView
@@ -733,6 +717,7 @@ const handleSendPress = useCallback(() => {
             <ToolbarButton onPress={handleBold} isActive={formatActive.bold}>
               <Text className={`text-lg font-bold ${formatActive.bold ? 'text-green-600' : 'text-gray-700'}`}>B</Text>
             </ToolbarButton>
+             {/* ... (rest of toolbar buttons) ... */}
             <ToolbarButton onPress={handleItalic} isActive={formatActive.italic}>
               <Text className={`text-lg italic ${formatActive.italic ? 'text-green-600' : 'text-gray-700'}`}>I</Text>
             </ToolbarButton>
@@ -777,7 +762,6 @@ const handleSendPress = useCallback(() => {
             </ToolbarButton>
           </ScrollView>
 
-          {/* Close Toolbar Button - Simple, No Animation */}
           <TouchableOpacity
             onPress={handleCloseToolbar}
             className="px-3 py-2 border-l border-gray-300 items-center justify-center"
@@ -788,7 +772,7 @@ const handleSendPress = useCallback(() => {
         </View>
       )}
 
-      {/* Inline Color Picker */}
+      {/* Inline Color Picker & Link Input & Modal (unchanged) */}
       {showColorPicker !== null && recordingMode === 'idle' && (
         <InlineColorPicker
           visible={true}
@@ -802,7 +786,6 @@ const handleSendPress = useCallback(() => {
         />
       )}
 
-      {/* Inline Link Input */}
       {showLinkInput && recordingMode === 'idle' && (
         <InlineLinkInput
           visible={true}
@@ -812,7 +795,6 @@ const handleSendPress = useCallback(() => {
         />
       )}
 
-      {/* Schedule Message Modal */}
       <Modal
         visible={showScheduleModal}
         transparent

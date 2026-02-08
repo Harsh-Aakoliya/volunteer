@@ -250,12 +250,10 @@ const MediaGrid: React.FC<MediaGridProps> = ({
     if (fileCount === 1 && singleFile.mimeType.startsWith('audio')) {
       const audioUrl = `${API_URL}/media/chat/${singleFile.fileName}`;
       return (
-        <View style={{ marginVertical: 4 }}>
           <AudioMessagePlayer
             audioUrl={audioUrl}
             isOwnMessage={isOwnMessage}
           />
-        </View>
       );
     }
 

@@ -251,26 +251,54 @@ const SelectedMediaCarouselModal = React.memo(({
 }) => {
   const flatListRef = useRef<FlatList>(null);
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
+  const prevLengthRef = useRef(selectedMedia.length);
 
+  // Sync to initialIndex when modal opens
   useEffect(() => {
-    if (visible && initialIndex >= 0) {
-      setCurrentIndex(initialIndex);
+    if (visible && initialIndex >= 0 && selectedMedia.length > 0) {
+      const safeIndex = Math.min(initialIndex, selectedMedia.length - 1);
+      setCurrentIndex(safeIndex);
+      prevLengthRef.current = selectedMedia.length;
       setTimeout(() => {
         flatListRef.current?.scrollToIndex({
-          index: initialIndex,
+          index: safeIndex,
           animated: false,
         });
       }, 100);
     }
   }, [visible, initialIndex]);
 
-  const onViewableItemsChanged = useCallback(({ viewableItems }: any) => {
-    if (viewableItems.length > 0 && viewableItems[0].index !== null) {
-      setCurrentIndex(viewableItems[0].index);
-    }
-  }, []);
+  // When selection list changes (delete): adjust currentIndex and scroll
+  useEffect(() => {
+    if (!visible || selectedMedia.length === 0) return;
+    const prevLen = prevLengthRef.current;
+    prevLengthRef.current = selectedMedia.length;
 
-  const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 50 }).current;
+    if (selectedMedia.length < prevLen) {
+      // Item was removed
+      const newIndex = currentIndex >= selectedMedia.length
+        ? Math.max(0, selectedMedia.length - 1)
+        : currentIndex;
+      setCurrentIndex(newIndex);
+      setTimeout(() => {
+        flatListRef.current?.scrollToIndex({
+          index: newIndex,
+          animated: false,
+        });
+      }, 50);
+    }
+  }, [selectedMedia.length, visible]);
+
+  const handleScroll = useCallback(
+    (e: { nativeEvent: { contentOffset: { x: number } } }) => {
+      const x = e.nativeEvent.contentOffset.x;
+      const idx = Math.round(x / SCREEN_WIDTH);
+      if (idx >= 0 && idx < selectedMedia.length) {
+        setCurrentIndex(idx);
+      }
+    },
+    [selectedMedia.length]
+  );
 
   const getItemLayout = useCallback(
     (_: any, index: number) => ({
@@ -289,6 +317,17 @@ const SelectedMediaCarouselModal = React.memo(({
     },
     []
   );
+
+  const handleRemoveCurrent = useCallback(() => {
+    const media = selectedMedia[currentIndex];
+    if (!media) return;
+    if (selectedMedia.length === 1) {
+      onRemove(media.id);
+      onClose();
+      return;
+    }
+    onRemove(media.id);
+  }, [currentIndex, selectedMedia, onRemove, onClose]);
 
   const currentMedia = selectedMedia[currentIndex];
 
@@ -337,14 +376,7 @@ const SelectedMediaCarouselModal = React.memo(({
             </Text>
           </View>
           <TouchableOpacity
-            onPress={() => {
-              if (currentMedia) {
-                onRemove(currentMedia.id);
-                if (selectedMedia.length === 1) {
-                  onClose();
-                }
-              }
-            }}
+            onPress={handleRemoveCurrent}
             className="w-11 h-11 items-center justify-center"
           >
             <Ionicons name="trash-outline" size={24} color="#ef4444" />
@@ -360,8 +392,8 @@ const SelectedMediaCarouselModal = React.memo(({
           horizontal
           pagingEnabled
           showsHorizontalScrollIndicator={false}
-          onViewableItemsChanged={onViewableItemsChanged}
-          viewabilityConfig={viewabilityConfig}
+          onScroll={handleScroll}
+          scrollEventThrottle={16}
           getItemLayout={getItemLayout}
           onScrollToIndexFailed={handleScrollToIndexFailed}
           initialNumToRender={1}

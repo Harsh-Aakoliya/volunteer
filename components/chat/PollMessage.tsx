@@ -299,12 +299,16 @@ const PollMessage = ({ pollId, currentUserId, onViewResults, readOnly = false }:
                     justifyContent: 'center',
                     marginRight: 10,
                   }}>
-                    {isSelected && (
-                      <Ionicons 
-                        name={pollData.isMultipleChoiceAllowed ? "checkmark" : "radio-button-on"} 
-                        size={pollData.isMultipleChoiceAllowed ? 12 : 18} 
-                        color="white" 
-                      />
+                    {isSelected && pollData.isMultipleChoiceAllowed && (
+                      <Ionicons name="checkmark" size={12} color="white" />
+                    )}
+                    {isSelected && !pollData.isMultipleChoiceAllowed && (
+                      <View style={{
+                        width: 8,
+                        height: 8,
+                        borderRadius: 4,
+                        backgroundColor: 'white',
+                      }} />
                     )}
                   </View>
                   
