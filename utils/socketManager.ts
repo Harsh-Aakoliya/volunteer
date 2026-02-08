@@ -177,6 +177,9 @@ class SocketManager {
   // App state
   private appStateSubscription: any = null;
   private isAppActive = true;
+  private backgroundOfflineTimer: ReturnType<typeof setTimeout> | null = null;
+  private readonly BACKGROUND_OFFLINE_DELAY_MS = 2500; // Delay before going offline to avoid false transitions (e.g. keyboard)
+  private didGoOfflineWhileBackground = false;
   
   // Event subscriptions
   private subscriptions = new Map<string, EventSubscription[]>();
@@ -288,6 +291,11 @@ class SocketManager {
   }
 
   disconnect(): void {
+    if (this.backgroundOfflineTimer) {
+      clearTimeout(this.backgroundOfflineTimer);
+      this.backgroundOfflineTimer = null;
+    }
+    this.didGoOfflineWhileBackground = false;
     if (this.socket) {
       if (this.user) {
         this.socket.emit("userOffline", { userId: this.user.id });
@@ -635,6 +643,10 @@ class SocketManager {
   }
 
   stopAppStateListener(): void {
+    if (this.backgroundOfflineTimer) {
+      clearTimeout(this.backgroundOfflineTimer);
+      this.backgroundOfflineTimer = null;
+    }
     if (this.appStateSubscription) {
       this.appStateSubscription.remove();
       this.appStateSubscription = null;
@@ -647,17 +659,30 @@ class SocketManager {
 
     if (!wasActive && this.isAppActive) {
       // App came to foreground
+      if (this.backgroundOfflineTimer) {
+        clearTimeout(this.backgroundOfflineTimer);
+        this.backgroundOfflineTimer = null;
+      }
       console.log("✅ [Socket] App active");
       if (!this.socket?.connected && this.user) {
         this.connect(this.user);
       } else {
         this.setUserOnline();
-        this.requestRoomData();
+        // Only refresh room list if we actually went offline (avoids jerk from brief focus loss e.g. on send)
+        if (this.didGoOfflineWhileBackground) {
+          this.didGoOfflineWhileBackground = false;
+          this.requestRoomData();
+        }
       }
     } else if (wasActive && !this.isAppActive) {
-      // App went to background
-      console.log("💤 [Socket] App background");
-      this.setUserOffline();
+      // App went to background – delay offline to avoid false transitions (keyboard, modals)
+      console.log("💤 [Socket] App background (delayed offline)");
+      if (this.backgroundOfflineTimer) clearTimeout(this.backgroundOfflineTimer);
+      this.backgroundOfflineTimer = setTimeout(() => {
+        this.backgroundOfflineTimer = null;
+        this.didGoOfflineWhileBackground = true;
+        this.setUserOffline();
+      }, this.BACKGROUND_OFFLINE_DELAY_MS);
     }
   }
 

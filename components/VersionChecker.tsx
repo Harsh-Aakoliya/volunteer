@@ -1,9 +1,17 @@
-import React, { useState, useEffect, version } from "react";
-import { View, Text, Alert, Modal, TouchableOpacity, ActivityIndicator } from "react-native";
-import * as Application from 'expo-application';
-import { API_URL, getApiUrl } from "@/constants/api";
-import { Updater } from "./Updater";
-import axios from "axios";
+import React, { useState, useEffect, useRef } from "react";
+import {
+  View,
+  Text,
+  Modal,
+  TouchableOpacity,
+  ActivityIndicator,
+} from "react-native";
+import * as Application from "expo-application";
+import { Ionicons } from "@expo/vector-icons";
+import { getApiUrl } from "@/constants/api";
+import { Updater, type UpdaterHandle } from "./Updater";
+import type { DownloadStatus } from "@/utils/apkDownloadService";
+
 interface VersionCheckerProps {
   onUpdateCheckComplete?: (updateRequired: boolean) => void;
 }
@@ -12,17 +20,18 @@ export function VersionChecker({ onUpdateCheckComplete }: VersionCheckerProps) {
   const [updateRequired, setUpdateRequired] = useState(false);
   const [serverVersion, setServerVersion] = useState<string | null>(null);
   const [currentVersion, setCurrentVersion] = useState<string | null>(null);
-  const [isDownloading, setIsDownloading] = useState(false);
+  const [downloadStatus, setDownloadStatus] = useState<DownloadStatus>("idle");
   const [downloadProgress, setDownloadProgress] = useState(0);
   const [versionDescription, setVersionDescription] = useState("");
   const [isCheckingVersion, setIsCheckingVersion] = useState(true);
+  const [retryCount, setRetryCount] = useState(0);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [canRetry, setCanRetry] = useState(false);
+
+  const updaterRef = useRef<UpdaterHandle>(null);
 
   useEffect(() => {
-    // Wait a bit to ensure API_URL is set from index.tsx
-    const timer = setTimeout(() => {
-      checkForUpdates();
-    }, 100);
-    
+    const timer = setTimeout(() => checkForUpdates(), 100);
     return () => clearTimeout(timer);
   }, []);
 
@@ -30,123 +39,195 @@ export function VersionChecker({ onUpdateCheckComplete }: VersionCheckerProps) {
     try {
       const appVersion = Application.nativeApplicationVersion;
       setCurrentVersion(appVersion as string);
-      
-      // Use getApiUrl() to get the current API URL value directly
       const apiUrl = getApiUrl();
-      console.log("Current app version:", appVersion);
-      console.log("API_URL from getApiUrl():", apiUrl);
-      
+
       if (!apiUrl || apiUrl === "http://localhost:8080") {
-        console.warn("⚠️ API_URL not properly configured, skipping version check");
         setIsCheckingVersion(false);
-        if (onUpdateCheckComplete) {
-          onUpdateCheckComplete(false);
-        }
+        onUpdateCheckComplete?.(false);
         return;
       }
-      
+
       const response = await fetch(`${apiUrl}/api/version`);
-      console.log("response got",response);
       const versionData = await response.json();
-      console.log("versiondata",versionData);
-      
-      console.log("Server version data:", versionData);
-      
-      if (false) {
+
+      if (versionData.versiontopublish !== appVersion) {
         setServerVersion(versionData.versiontopublish);
-        setVersionDescription(versionData.Description[versionData.versiontopublish] || "New version available");
+        setVersionDescription(
+          versionData.Description?.[versionData.versiontopublish] ||
+            "New version available"
+        );
         setUpdateRequired(true);
-        setIsCheckingVersion(false);
       } else {
-        // No update required, notify parent component
-        setIsCheckingVersion(false);
-        if (onUpdateCheckComplete) {
-          onUpdateCheckComplete(false); // false means no update required
-        }
+        onUpdateCheckComplete?.(false);
       }
     } catch (error) {
-      console.error('Error checking for updates:', error);
+      console.error("Error checking for updates:", error);
+      onUpdateCheckComplete?.(false);
+    } finally {
       setIsCheckingVersion(false);
-      // If error in checking, proceed with app normally
-      if (onUpdateCheckComplete) {
-        onUpdateCheckComplete(false);
-      }
     }
   };
 
-  const handleUpdateProgress = (progress: number) => {
-    setDownloadProgress(progress);
+  const handleStateChange = (status: DownloadStatus) => {
+    setDownloadStatus(status);
+    if (status === "fileNotFound") {
+      setErrorMessage("Update file not found on server");
+    }
   };
 
-  const handleUpdateComplete = () => {
-    setIsDownloading(false);
-    setUpdateRequired(false);
-    // After successful update, we don't need to call onUpdateCheckComplete
-    // because the app will restart with the new version
+  const handleFailed = (error: string, retryPossible: boolean) => {
+    setErrorMessage(error);
+    setCanRetry(retryPossible);
   };
 
   const startUpdate = () => {
-    setIsDownloading(true);
+    setDownloadStatus("checking");
     setDownloadProgress(0);
+    setErrorMessage(null);
   };
 
-  // While checking, render nothing so index keeps showing splash
-  if (isCheckingVersion) {
-    return null;
-  }
+  const handleRetry = () => {
+    setRetryCount((c) => c + 1);
+    setErrorMessage(null);
+    setDownloadStatus("downloading");
+    updaterRef.current?.retry();
+  };
 
-  // If no update required, don't render anything
-  if (!updateRequired) {
-    return null;
-  }
+  const handlePause = async () => {
+    await updaterRef.current?.pause();
+  };
+
+  const handleResume = async () => {
+    await updaterRef.current?.resume();
+  };
+
+  const handleUpdateComplete = () => {
+    setUpdateRequired(false);
+  };
+
+  const isDownloading = ["checking", "downloading"].includes(downloadStatus);
+  const isPaused = downloadStatus === "paused";
+  const isFailed = downloadStatus === "failed";
+  const isFileNotFound = downloadStatus === "fileNotFound";
+
+  if (isCheckingVersion) return null;
+  if (!updateRequired) return null;
 
   return (
     <Modal
       visible={updateRequired}
       animationType="fade"
       transparent={false}
-      onRequestClose={() => {}} // Prevent closing
+      onRequestClose={() => {}}
     >
       <View className="flex-1 bg-white justify-center items-center p-6">
         <View className="w-full max-w-md">
           <Text className="text-2xl font-bold text-center mb-4 text-gray-800">
             Update Required
           </Text>
-          
           <Text className="text-center mb-2 text-gray-600">
-            Current Version: {currentVersion}
+            Current: {currentVersion} → Latest: {serverVersion}
           </Text>
-          
-          <Text className="text-center mb-4 text-gray-600">
-            Latest Version: {serverVersion}
-          </Text>
-          
           <View className="bg-blue-50 p-4 rounded-lg mb-6">
             <Text className="text-sm text-blue-800 text-center">
-              New Update Description: {versionDescription}
+              {versionDescription}
             </Text>
           </View>
-          
-          {isDownloading ? (
-            <View className="items-center">
-              <Text className="text-lg font-medium mb-4 text-gray-700">
-                Downloading Update...
+
+          {/* File not found */}
+          {isFileNotFound && (
+            <View className="items-center mb-4">
+              <Ionicons name="cloud-offline-outline" size={48} color="#EF4444" />
+              <Text className="text-red-600 font-medium mt-2 text-center">
+                Update file not available
               </Text>
-              
+              <Text className="text-gray-600 text-sm mt-1 text-center">
+                The update file for this version is not present on the server.
+                Please try again later.
+              </Text>
+            </View>
+          )}
+
+          {/* Failed with retry */}
+          {isFailed && (
+            <View className="items-center mb-4">
+              <Ionicons name="alert-circle-outline" size={48} color="#EF4444" />
+              <Text className="text-red-600 font-medium mt-2 text-center">
+                Download failed
+              </Text>
+              <Text className="text-gray-600 text-sm mt-1 text-center">
+                {errorMessage}
+              </Text>
+              {canRetry && (
+                <TouchableOpacity
+                  onPress={handleRetry}
+                  className="mt-4 bg-blue-500 py-3 px-6 rounded-lg flex-row items-center gap-2"
+                >
+                  <Ionicons name="refresh" size={20} color="white" />
+                  <Text className="text-white font-semibold">Retry</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
+
+          {/* Download in progress */}
+          {(isDownloading || isPaused) && !isFileNotFound && (
+            <View className="items-center mb-4">
+              <Text className="text-lg font-medium mb-4 text-gray-700">
+                {downloadStatus === "checking"
+                  ? "Checking update file..."
+                  : isPaused
+                  ? "Download paused"
+                  : "Downloading update..."}
+              </Text>
+              <Text className="text-xs text-gray-500 mb-2">
+                Progress appears in notification when app is in background
+              </Text>
               <View className="w-full bg-gray-200 rounded-full h-4 mb-4">
                 <View
-                  className="bg-blue-500 h-4 rounded-full transition-all duration-300"
+                  className="bg-blue-500 h-4 rounded-full"
                   style={{ width: `${downloadProgress * 100}%` }}
                 />
               </View>
-              
               <Text className="text-sm text-gray-600 mb-4">
-                {Math.round(downloadProgress * 100)}% Complete
+                {Math.round(downloadProgress * 100)}%
               </Text>
-              
-              <ActivityIndicator size="large" color="#3B82F6" />
+              <View className="flex-row gap-3">
+                {isPaused ? (
+                  <TouchableOpacity
+                    onPress={handleResume}
+                    className="bg-green-500 py-3 px-6 rounded-lg flex-row items-center gap-2"
+                  >
+                    <Ionicons name="play" size={20} color="white" />
+                    <Text className="text-white font-semibold">Resume</Text>
+                  </TouchableOpacity>
+                ) : downloadStatus === "downloading" ? (
+                  <TouchableOpacity
+                    onPress={handlePause}
+                    className="bg-amber-500 py-3 px-6 rounded-lg flex-row items-center gap-2"
+                  >
+                    <Ionicons name="pause" size={20} color="white" />
+                    <Text className="text-white font-semibold">Pause</Text>
+                  </TouchableOpacity>
+                ) : null}
+                {isFailed && canRetry && (
+                  <TouchableOpacity
+                    onPress={handleRetry}
+                    className="bg-blue-500 py-3 px-6 rounded-lg flex-row items-center gap-2"
+                  >
+                    <Ionicons name="refresh" size={20} color="white" />
+                    <Text className="text-white font-semibold">Retry</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+              {downloadStatus === "checking" && (
+                <ActivityIndicator size="large" color="#3B82F6" className="mt-4" />
+              )}
             </View>
-          ) : (
+          )}
+
+          {/* Update Now button - only when idle and not file-not-found */}
+          {downloadStatus === "idle" && !isFileNotFound && (
             <TouchableOpacity
               onPress={startUpdate}
               className="bg-blue-500 py-4 px-6 rounded-lg"
@@ -156,23 +237,31 @@ export function VersionChecker({ onUpdateCheckComplete }: VersionCheckerProps) {
               </Text>
             </TouchableOpacity>
           )}
-          
+
           <Text className="text-xs text-gray-500 text-center mt-4">
             This update is required to continue using the app
           </Text>
         </View>
-        
-        {/* Hidden Updater component */}
-        {isDownloading && (
-          <View style={{ position: 'absolute', left: -1000 }}>
-            <Updater
-              version={serverVersion}
-              onProgress={handleUpdateProgress}
-              onDone={handleUpdateComplete}
-            />
-          </View>
+
+        {/* Updater - keep mounted when download started (incl. failed, for retry) */}
+        {(isDownloading || isPaused || isFailed) && serverVersion && (
+          <Updater
+            ref={updaterRef}
+            version={serverVersion}
+            onProgress={setDownloadProgress}
+            onDone={handleUpdateComplete}
+            onFileNotFound={() => {
+              setDownloadStatus("fileNotFound");
+            }}
+            onFailed={handleFailed}
+            onStateChange={handleStateChange}
+            onPaused={() => setDownloadStatus("paused")}
+            onResumed={() => setDownloadStatus("downloading")}
+            retryCount={retryCount}
+            maxRetries={3}
+          />
         )}
       </View>
     </Modal>
   );
-} 
+}
