@@ -31,6 +31,7 @@ import { updateDevIP } from "@/constants/api";
 import { getDefaultDevIP } from "@/app/index";
 import { useSimCards } from "@/hooks/useSimCards";
 import Constants from 'expo-constants';
+
 const { DEV_IP, INTERNAL_IP, EXTERNAL_IP } = Constants?.expoConfig?.extra as { DEV_IP: string; INTERNAL_IP: string; EXTERNAL_IP: string };
 
 interface SimCard {
@@ -44,14 +45,10 @@ type LoginStep = "password" | "setPassword";
 export default function LoginForm() {
   // ==================== STATE MANAGEMENT ====================
   
-  // Step management
   const [currentStep, setCurrentStep] = useState<LoginStep>("password");
-
-  // Form fields
   const [mobileNumber, setMobileNumber] = useState(Platform.OS === "web" ? "5551234567" : "");
   const [password, setPassword] = useState(Platform.OS === "web" ? "1111" : "");
   const [confirmPassword, setConfirmPassword] = useState("");
-  // Loading states
   const [isLoading, setIsLoading] = useState(false);
   const [isCheckingMobile, setIsCheckingMobile] = useState(false);
   const [isSettingPassword, setIsSettingPassword] = useState(false);
@@ -61,8 +58,18 @@ export default function LoginForm() {
   const [isMobileAllowed, setIsMobileAllowed] = useState(false);
   const [mobileCheckMessage, setMobileCheckMessage] = useState("");
   const [hasMobileCheckResult, setHasMobileCheckResult] = useState(false);
+  const [availableSimCards, setAvailableSimCards] = useState<SimCard[]>([]);
+  const [showSimPickerModal, setShowSimPickerModal] = useState(false);
+  const [devIP, setDevIP] = useState(DEV_IP);
+  const [showIPModal, setShowIPModal] = useState(false);
+  const [fadeAnim] = useState(new Animated.Value(1));
+  const [clickCount, setClickCount] = useState(0); // Track taps
 
-  // UI states
+  const {
+    fetchSimCards,
+    isLoading: isFetchingSim,
+  } = useSimCards();
+
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [touched, setTouched] = useState({
@@ -71,24 +78,6 @@ export default function LoginForm() {
     confirmPassword: false,
   });
 
-  // SIM related states
-  const [availableSimCards, setAvailableSimCards] = useState<SimCard[]>([]);
-  const [showSimPickerModal, setShowSimPickerModal] = useState(false);
-
-  // Dev mode states
-  const [devIP, setDevIP] = useState(DEV_IP);
-  const [showIPModal, setShowIPModal] = useState(false);
-
-  // Animation
-  const [fadeAnim] = useState(new Animated.Value(1));
-
-  // Hook for SIM cards
-  const {
-    fetchSimCards,
-    isLoading: isFetchingSim,
-  } = useSimCards();
-
-  // Track last checked number to avoid duplicate calls
   const lastCheckedNumberRef = useRef<string>("");
 
   // ==================== AUTH CHECK ON MOUNT ====================
@@ -103,15 +92,12 @@ export default function LoginForm() {
       const authStatus = await checkAuthStatus();
 
       if (authStatus.isAuthenticated) {
-        // User is already logged in, redirect to success page
         console.log("User already authenticated, redirecting...");
         router.replace("/(drawer)");
         return;
       }
 
-      // User not authenticated, proceed with login flow
       setIsCheckingAuth(false);
-      // Fetch mobile numbers after auth check
       handleFetchMobileNumbers();
     } catch (error) {
       console.error("Error checking auth status:", error);
@@ -223,7 +209,6 @@ export default function LoginForm() {
           return;
         }
 
-        // Allowed
         setIsMobileAllowed(true);
         setMobileCheckMessage("");
         setVerificationStatus("success");
@@ -299,11 +284,6 @@ export default function LoginForm() {
               text: "Try Again",
               style: "default",
             },
-            // {
-            //   text: "Change Number",
-            //   onPress: handleBackToMobile,
-            //   style: "cancel",
-            // },
           ]
         );
       }
@@ -373,7 +353,6 @@ export default function LoginForm() {
       console.log("Set password response:", response);
 
       if (response.success) {
-        // Show password reminder alert
         Alert.alert(
           "",
           "Password Set Successfully",
@@ -400,7 +379,27 @@ export default function LoginForm() {
     }
   };
 
-  // ==================== DEV MODE ====================
+  // ==================== DEV MODE - BOTTOM RIGHT TAP ====================
+
+  const handleBottomRightPress = () => {
+    setClickCount((prevCount) => {
+      const newCount = prevCount + 1;
+      console.log("Bottom-right tap count:", newCount);
+
+      if (newCount >= 7) {
+        console.log("🔧 7 taps detected - opening IP modal");
+        setShowIPModal(true);
+        return 0; // Reset counter
+      }
+
+      // Reset counter after 2 seconds of inactivity
+      setTimeout(() => {
+        setClickCount(0);
+      }, 2000);
+
+      return newCount;
+    });
+  };
 
   const handleLongPressButton = () => {
     Keyboard.dismiss();
@@ -458,42 +457,41 @@ export default function LoginForm() {
 
   const renderPasswordStep = () => (
     <View pointerEvents={verificationStatus !== "success" ? "none" : "auto"}>
-      {/* Mobile Number Display */}
       <CustomInput
-          label=""
-          placeholder="Enter 10-digit mobile number"
-          value={mobileNumber}
-          onChangeText={setMobileNumber}
-          editable={false}
-          keyboardType="phone-pad"
-          maxLength={10}
-          leftIcon={
-            <Ionicons name="call-outline" size={20} color="#6B7280" />
-          }
-          rightIcon={
-            <Pressable
-              onPress={handleFetchMobileNumbers}
-              disabled={isFetchingSim}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              className="bg-blue-100 p-2 rounded-lg"
-            >
-              {isFetchingSim ? (
-                <ActivityIndicator size="small" color="#3B82F6" />
-              ) : (
-                <Ionicons
-                  name="phone-portrait-outline"
-                  size={20}
-                  color="#3B82F6"
-                />
-              )}
-            </Pressable>
-          }
-          error={
-            !mobileNumber && touched.mobile ? "Mobile number is required" : ""
-          }
-          touched={touched.mobile}
-          onBlur={() => setTouched((prev) => ({ ...prev, mobile: true }))}
-        />
+        label=""
+        placeholder="Enter 10-digit mobile number"
+        value={mobileNumber}
+        onChangeText={setMobileNumber}
+        editable={false}
+        keyboardType="phone-pad"
+        maxLength={10}
+        leftIcon={
+          <Ionicons name="call-outline" size={20} color="#6B7280" />
+        }
+        rightIcon={
+          <Pressable
+            onPress={handleFetchMobileNumbers}
+            disabled={isFetchingSim}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            className="bg-blue-100 p-2 rounded-lg"
+          >
+            {isFetchingSim ? (
+              <ActivityIndicator size="small" color="#3B82F6" />
+            ) : (
+              <Ionicons
+                name="phone-portrait-outline"
+                size={20}
+                color="#3B82F6"
+              />
+            )}
+          </Pressable>
+        }
+        error={
+          !mobileNumber && touched.mobile ? "Mobile number is required" : ""
+        }
+        touched={touched.mobile}
+        onBlur={() => setTouched((prev) => ({ ...prev, mobile: true }))}
+      />
       {isCheckingMobile && (
         <View className="flex-row items-center mt-2">
           <ActivityIndicator size="small" color="#3B82F6" />
@@ -504,7 +502,6 @@ export default function LoginForm() {
         <Text className="mt-2 text-sm text-red-500">{mobileCheckMessage}</Text>
       )}
 
-      {/* Password Input */}
       <View className="mb-6 mt-4">
         <CustomInput
           label=""
@@ -554,7 +551,6 @@ export default function LoginForm() {
         </Pressable>
       </View>
 
-      {/* Sign In Button */}
       <Pressable
         onPress={handleLogin}
         onLongPress={handleLongPressButton}
@@ -577,56 +573,46 @@ export default function LoginForm() {
           </View>
         )}
       </Pressable>
-
-      {/* Back Button */}
-      {/* <Pressable
-        onPress={handleBackToMobile}
-        className="mt-4 flex-row items-center justify-center"
-      >
-        <Ionicons name="arrow-back" size={16} color="#6B7280" />
-        <Text className="text-gray-500 ml-1">Use a different number</Text>
-      </Pressable> */}
     </View>
   );
 
   const renderSetPasswordStep = () => (
     <View pointerEvents={verificationStatus !== "success" ? "none" : "auto"}>
-      {/* Mobile Number Display */}
       <CustomInput
-          label=""
-          placeholder="Enter 10-digit mobile number"
-          value={mobileNumber}
-          onChangeText={setMobileNumber}
-          editable={false}
-          keyboardType="phone-pad"
-          maxLength={10}
-          leftIcon={
-            <Ionicons name="call-outline" size={20} color="#6B7280" />
-          }
-          rightIcon={
-            <Pressable
-              onPress={handleFetchMobileNumbers}
-              disabled={isFetchingSim}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              className="bg-blue-100 p-2 rounded-lg"
-            >
-              {isFetchingSim ? (
-                <ActivityIndicator size="small" color="#3B82F6" />
-              ) : (
-                <Ionicons
-                  name="phone-portrait-outline"
-                  size={20}
-                  color="#3B82F6"
-                />
-              )}
-            </Pressable>
-          }
-          error={
-            !mobileNumber && touched.mobile ? "Mobile number is required" : ""
-          }
-          touched={touched.mobile}
-          onBlur={() => setTouched((prev) => ({ ...prev, mobile: true }))}
-        />
+        label=""
+        placeholder="Enter 10-digit mobile number"
+        value={mobileNumber}
+        onChangeText={setMobileNumber}
+        editable={false}
+        keyboardType="phone-pad"
+        maxLength={10}
+        leftIcon={
+          <Ionicons name="call-outline" size={20} color="#6B7280" />
+        }
+        rightIcon={
+          <Pressable
+            onPress={handleFetchMobileNumbers}
+            disabled={isFetchingSim}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            className="bg-blue-100 p-2 rounded-lg"
+          >
+            {isFetchingSim ? (
+              <ActivityIndicator size="small" color="#3B82F6" />
+            ) : (
+              <Ionicons
+                name="phone-portrait-outline"
+                size={20}
+                color="#3B82F6"
+              />
+            )}
+          </Pressable>
+        }
+        error={
+          !mobileNumber && touched.mobile ? "Mobile number is required" : ""
+        }
+        touched={touched.mobile}
+        onBlur={() => setTouched((prev) => ({ ...prev, mobile: true }))}
+      />
       {isCheckingMobile && (
         <View className="flex-row items-center mt-2">
           <ActivityIndicator size="small" color="#3B82F6" />
@@ -637,7 +623,6 @@ export default function LoginForm() {
         <Text className="mt-2 text-sm text-red-500">{mobileCheckMessage}</Text>
       )}
 
-      {/* New Password Input */}
       <View className="mb-4 mt-4">
         <CustomInput
           label=""
@@ -667,7 +652,6 @@ export default function LoginForm() {
         />
       </View>
 
-      {/* Confirm Password Input */}
       <View className="mb-6">
         <CustomInput
           label=""
@@ -704,7 +688,6 @@ export default function LoginForm() {
           }
         />
 
-        {/* Match indicator */}
         {confirmPassword.length > 0 && (
           <View className="flex-row items-center mt-2 ml-1">
             <Ionicons
@@ -731,55 +714,13 @@ export default function LoginForm() {
         )}
       </View>
 
-            {/* Password Requirements */}
-      <View className="mb-4 ml-1">
-        {/* <Text className="text-xs text-gray-500 mb-2">Password must:</Text>
-         <View className="flex-row items-center mb-1">
-          <Ionicons
-            name={password.length >= 4 ? "checkmark-circle" : "ellipse-outline"}
-            size={14}
-            color={password.length >= 4 ? "#22C55E" : "#9CA3AF"}
-          />
-          <Text
-            className={`text-xs ml-1 ${
-              password.length >= 4 ? "text-green-600" : "text-gray-500"
-            }`}
-          >
-            Be at least 4 characters
-          </Text>
-        </View> */}
-        {/* <View className="flex-row items-center">
-          <Ionicons
-            name={
-              password.length <= 20 && password.length > 0
-                ? "checkmark-circle"
-                : "ellipse-outline"
-            }
-            size={14}
-            color={
-              password.length <= 20 && password.length > 0
-                ? "#22C55E"
-                : "#9CA3AF"
-            }
-          />
-          <Text
-            className={`text-xs ml-1 ${
-              password.length <= 20 && password.length > 0
-                ? "text-green-600"
-                : "text-gray-500"
-            }`}
-          >
-            Be less than 20 characters
-          </Text>
-        </View>  */}
-      </View>
+      <View className="mb-4 ml-1" />
 
-      {/* Set Password Button */}
       <Pressable
         onPress={handleSetPassword}
         onLongPress={handleLongPressButton}
         delayLongPress={3000}
-          disabled={isSettingPassword || !isMobileAllowed || isCheckingMobile}
+        disabled={isSettingPassword || !isMobileAllowed || isCheckingMobile}
       >
         {({ pressed }) => (
           <View
@@ -791,14 +732,10 @@ export default function LoginForm() {
               onPress={() => {}}
               loading={isSettingPassword}
               bgVariant="primary"
-              // IconRight={() => (
-              //   <Ionicons name="checkmark-circle" size={20} color="white" />
-              // )}
             />
           </View>
         )}
       </Pressable>
-
     </View>
   );
 
@@ -816,23 +753,23 @@ export default function LoginForm() {
   const headerConfig = getHeaderConfig();
 
   // ==================== MAIN RENDER ====================
-const handleClose = () => {
-  setVerificationStatus("idle");
-  setVerificationMessage("");
-  setMobileNumber("");
-  setPassword("");
-  setConfirmPassword("");
-  setShowPassword(false);
-  setShowConfirmPassword(false);
-  BackHandler.exitApp();
-};
+  const handleClose = () => {
+    setVerificationStatus("idle");
+    setVerificationMessage("");
+    setMobileNumber("");
+    setPassword("");
+    setConfirmPassword("");
+    setShowPassword(false);
+    setShowConfirmPassword(false);
+    BackHandler.exitApp();
+  };
+
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : "height"}
       className="flex-1 bg-white"
       keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
     >
-      {/* Full Screen Overlay - Now outside ScrollView for full coverage */}
       <Modal
         visible={verificationStatus === "pending" || verificationStatus === "failed"}
         transparent
@@ -894,7 +831,6 @@ const handleClose = () => {
           className="flex-1 bg-white justify-start"
         >
           <View className="flex-1 px-[10%] pt-8">
-            {/* Header Section */}
             <View className="items-center mb-8">
               <View
                 className={`w-20 h-20 rounded-2xl items-center justify-center mb-5 ${headerConfig.iconBgColor}`}
@@ -910,13 +846,25 @@ const handleClose = () => {
               </Text>
             </View>
 
-            {/* Form Section with Animation */}
             <Animated.View
               style={{ opacity: fadeAnim }}
             >
               {renderCurrentStep()}
             </Animated.View>
           </View>
+
+          {/* Bottom-right corner tap area */}
+          <Pressable
+            onPress={handleBottomRightPress}
+            style={{
+              position: 'absolute',
+              bottom: 20,
+              right: 20,
+              width: 80,
+              height: 80,
+              // backgroundColor: 'rgba(255,0,0,0.1)', // Uncomment for debugging
+            }}
+          />
         </Pressable>
       </ScrollView>
 
@@ -1017,6 +965,7 @@ const handleClose = () => {
                   onPress={() => {
                     Keyboard.dismiss();
                     setShowIPModal(false);
+                    setClickCount(0);
                   }}
                   bgVariant="secondary"
                 />
@@ -1044,6 +993,7 @@ const handleClose = () => {
                       `Backend IP updated to:\n${formattedUrl}`
                     );
                     setShowIPModal(false);
+                    setClickCount(0);
                   }}
                   bgVariant="success"
                 />

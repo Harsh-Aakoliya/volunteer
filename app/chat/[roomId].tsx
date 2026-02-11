@@ -360,7 +360,7 @@ const MessageItem = React.memo(({
                     {isSelected && <View className="absolute inset-0 bg-[#0088CC]/15 -mx-4" />}
 
                     <Animated.View
-                      className={`max-w-[75%] px-3 pt-2 pb-1.5 mx-2 shadow-sm ${
+                      className={`${message.messageType === 'media' ? 'max-w-[90%]' : 'max-w-[75%]'} px-3 pt-2 pb-1.5 mx-2 shadow-sm ${
                         isOwnMessage 
                           ? 'self-end bg-[#DCF8C6] ml-[60px]' 
                           : 'self-start bg-white mr-[60px]'

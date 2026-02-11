@@ -251,54 +251,26 @@ const SelectedMediaCarouselModal = React.memo(({
 }) => {
   const flatListRef = useRef<FlatList>(null);
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
-  const prevLengthRef = useRef(selectedMedia.length);
 
-  // Sync to initialIndex when modal opens
   useEffect(() => {
-    if (visible && initialIndex >= 0 && selectedMedia.length > 0) {
-      const safeIndex = Math.min(initialIndex, selectedMedia.length - 1);
-      setCurrentIndex(safeIndex);
-      prevLengthRef.current = selectedMedia.length;
+    if (visible && initialIndex >= 0) {
+      setCurrentIndex(initialIndex);
       setTimeout(() => {
         flatListRef.current?.scrollToIndex({
-          index: safeIndex,
+          index: initialIndex,
           animated: false,
         });
       }, 100);
     }
   }, [visible, initialIndex]);
 
-  // When selection list changes (delete): adjust currentIndex and scroll
-  useEffect(() => {
-    if (!visible || selectedMedia.length === 0) return;
-    const prevLen = prevLengthRef.current;
-    prevLengthRef.current = selectedMedia.length;
-
-    if (selectedMedia.length < prevLen) {
-      // Item was removed
-      const newIndex = currentIndex >= selectedMedia.length
-        ? Math.max(0, selectedMedia.length - 1)
-        : currentIndex;
-      setCurrentIndex(newIndex);
-      setTimeout(() => {
-        flatListRef.current?.scrollToIndex({
-          index: newIndex,
-          animated: false,
-        });
-      }, 50);
+  const onViewableItemsChanged = useCallback(({ viewableItems }: any) => {
+    if (viewableItems.length > 0 && viewableItems[0].index !== null) {
+      setCurrentIndex(viewableItems[0].index);
     }
-  }, [selectedMedia.length, visible]);
+  }, []);
 
-  const handleScroll = useCallback(
-    (e: { nativeEvent: { contentOffset: { x: number } } }) => {
-      const x = e.nativeEvent.contentOffset.x;
-      const idx = Math.round(x / SCREEN_WIDTH);
-      if (idx >= 0 && idx < selectedMedia.length) {
-        setCurrentIndex(idx);
-      }
-    },
-    [selectedMedia.length]
-  );
+  const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 50 }).current;
 
   const getItemLayout = useCallback(
     (_: any, index: number) => ({
@@ -317,17 +289,6 @@ const SelectedMediaCarouselModal = React.memo(({
     },
     []
   );
-
-  const handleRemoveCurrent = useCallback(() => {
-    const media = selectedMedia[currentIndex];
-    if (!media) return;
-    if (selectedMedia.length === 1) {
-      onRemove(media.id);
-      onClose();
-      return;
-    }
-    onRemove(media.id);
-  }, [currentIndex, selectedMedia, onRemove, onClose]);
 
   const currentMedia = selectedMedia[currentIndex];
 
@@ -376,7 +337,14 @@ const SelectedMediaCarouselModal = React.memo(({
             </Text>
           </View>
           <TouchableOpacity
-            onPress={handleRemoveCurrent}
+            onPress={() => {
+              if (currentMedia) {
+                onRemove(currentMedia.id);
+                if (selectedMedia.length === 1) {
+                  onClose();
+                }
+              }
+            }}
             className="w-11 h-11 items-center justify-center"
           >
             <Ionicons name="trash-outline" size={24} color="#ef4444" />
@@ -392,8 +360,8 @@ const SelectedMediaCarouselModal = React.memo(({
           horizontal
           pagingEnabled
           showsHorizontalScrollIndicator={false}
-          onScroll={handleScroll}
-          scrollEventThrottle={16}
+          onViewableItemsChanged={onViewableItemsChanged}
+          viewabilityConfig={viewabilityConfig}
           getItemLayout={getItemLayout}
           onScrollToIndexFailed={handleScrollToIndexFailed}
           initialNumToRender={1}
@@ -655,19 +623,66 @@ export default function AttachmentsScreen() {
     if (isLoading) return;
     setIsLoading(true);
     try {
-      const result = await MediaLibrary.getAssetsAsync({
-        first: 30,
-        after: cursor,
-        mediaType: ["photo", "video"],
-        sortBy: ["creationTime"],
-      });
-      if (cursor) {
+      if (Platform.OS === "android" && !cursor) {
+        // On Android, getAssetsAsync without album often returns only Camera/Screenshots.
+        // Fetch from ALL albums (Downloads, saved, custom folders, etc.) and merge.
+        const albums = await MediaLibrary.getAlbumsAsync({ includeSmartAlbums: true });
+        const perAlbumLimit = 80;
+        const allAssets: MediaLibrary.Asset[] = [];
+        const seenIds = new Set<string>();
+
+        const albumPromises = albums.map(async (album) => {
+          try {
+            const result = await MediaLibrary.getAssetsAsync({
+              first: perAlbumLimit,
+              album,
+              mediaType: ["photo", "video"],
+              sortBy: ["creationTime"],
+            });
+            return result.assets;
+          } catch {
+            return [];
+          }
+        });
+
+        const albumResults = await Promise.all(albumPromises);
+        for (const assets of albumResults) {
+          for (const asset of assets) {
+            if (!seenIds.has(asset.id)) {
+              seenIds.add(asset.id);
+              allAssets.push(asset);
+            }
+          }
+        }
+
+        // Sort by creationTime descending (newest first)
+        allAssets.sort((a, b) => (b.creationTime || 0) - (a.creationTime || 0));
+
+        setMediaAssets(allAssets);
+        setEndCursor(undefined);
+        setHasMore(false); // Album-based load doesn't support pagination for now
+      } else if (cursor) {
+        // iOS or load more (Android fallback)
+        const result = await MediaLibrary.getAssetsAsync({
+          first: 30,
+          after: cursor,
+          mediaType: ["photo", "video"],
+          sortBy: ["creationTime"],
+        });
         setMediaAssets(prev => [...prev, ...result.assets]);
+        setEndCursor(result.endCursor);
+        setHasMore(result.hasNextPage);
       } else {
+        // iOS: single library fetch
+        const result = await MediaLibrary.getAssetsAsync({
+          first: 30,
+          mediaType: ["photo", "video"],
+          sortBy: ["creationTime"],
+        });
         setMediaAssets(result.assets);
+        setEndCursor(result.endCursor);
+        setHasMore(result.hasNextPage);
       }
-      setEndCursor(result.endCursor);
-      setHasMore(result.hasNextPage);
     } catch (error) {
       console.error("Error loading media:", error);
     } finally {

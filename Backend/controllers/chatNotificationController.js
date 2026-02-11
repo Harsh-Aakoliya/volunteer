@@ -110,37 +110,41 @@ const isReplyToUser = async (message, userId) => {
 };
 
 // Get user's current app state from socket connections
-const getUserAppState = (userId, io, socketToUser, userToSockets, onlineUsersSet) => {
+// messageRoomId: the room where the message was sent - used to check if user is viewing that exact room
+const getUserAppState = (userId, io, socketToUser, userToSockets, onlineUsersSet, messageRoomId = null) => {
   const userIdStr = String(userId);
+  const messageRoomIdStr = messageRoomId ? String(messageRoomId) : null;
   const userSockets = userToSockets.get(userIdStr) || new Set();
   
   // Check if user is online
   const isOnline = onlineUsersSet.has(userIdStr);
   
   if (!isOnline || userSockets.size === 0) {
-    return { isOnline: false, isOnChatTab: false, currentRoomId: null };
+    return { isOnline: false, isOnChatTab: false, isInThisRoom: false, currentRoomId: null };
   }
 
   let isOnChatTab = false;
+  let isInThisRoom = false;
   let currentRoomId = null;
 
   // Check all user's sockets to determine their state
   for (const socketId of userSockets) {
     const userInfo = socketToUser.get(socketId);
-    if (userInfo) {
-      // Check if user is in any chat room (means they're on chat tab)
-      if (userInfo.rooms && userInfo.rooms.size > 0) {
-        isOnChatTab = true;
-        // Get the first/current room they're in
-        currentRoomId = Array.from(userInfo.rooms)[0];
-        break;
+    if (userInfo?.rooms && userInfo.rooms.size > 0) {
+      isOnChatTab = true;
+      currentRoomId = Array.from(userInfo.rooms)[0];
+      // Only skip notification if user is viewing the SAME room as the message
+      if (messageRoomIdStr && userInfo.rooms.has(messageRoomIdStr)) {
+        isInThisRoom = true;
       }
+      break;
     }
   }
 
   return {
     isOnline: true,
     isOnChatTab,
+    isInThisRoom,
     currentRoomId
   };
 };
@@ -369,9 +373,10 @@ export const sendChatNotifications = async (message, senderInfo, roomInfo, io, s
   try {
     console.log('📱 Processing chat notifications for room:', roomInfo.roomId);
     
-    // Get all room members except sender
+    // Get all room members except sender (include canSendMessage for notification payload)
     const membersResult = await pool.query(
-      `SELECT sm."seid"::text as "userId", sm."sevakname" as "fullName" FROM chatroomusers cru
+      `SELECT sm."seid"::text as "userId", sm."sevakname" as "fullName", cru."canSendMessage"
+       FROM chatroomusers cru
        JOIN "SevakMaster" sm ON cru."userId" = sm."seid"
        WHERE cru."roomId" = $1 AND sm."seid"::text != $2`,
       [roomInfo.roomId, senderInfo.userId]
@@ -386,33 +391,36 @@ export const sendChatNotifications = async (message, senderInfo, roomInfo, io, s
     }
 
     // Group users by their notification needs
+    // Skip notification ONLY when user is in the SAME room as the message
     const usersToNotify = [];
     const notificationData = {};
 
     for (const member of members) {
       const userId = member.userId;
-      const userState = getUserAppState(userId, io, socketToUser, userToSockets, onlineUsersSet);
+      const userState = getUserAppState(userId, io, socketToUser, userToSockets, onlineUsersSet, roomInfo.roomId);
       
       console.log(`User ${userId} state:`, userState);
       
-      // Simplified logic: Only skip notification if user is online AND on chat tab
-      // Otherwise, send notification
-      const shouldNotify = !(userState.isOnline && userState.isOnChatTab);
+      // Only skip notification if user is actively viewing this exact room
+      const shouldNotify = !(userState.isOnline && userState.isInThisRoom);
       
       if (shouldNotify) {
-        console.log(`  → User ${userId} will receive notification (online: ${userState.isOnline}, onChatTab: ${userState.isOnChatTab})`);
+        console.log(`  → User ${userId} will receive notification (online: ${userState.isOnline}, isInThisRoom: ${userState.isInThisRoom})`);
         usersToNotify.push(userId);
         
         // Check if this is a reply to user's message
         const isReply = await isReplyToUser(message, userId);
         
+        const memberCanSend = member.canSendMessage === true || member.canSendMessage === 1;
+        
         notificationData[userId] = {
           fullName: member.fullName,
           isReply,
-          isOnline: userState.isOnline
+          isOnline: userState.isOnline,
+          canSendMessage: memberCanSend
         };
       } else {
-        console.log(`  → User ${userId} is online and on chat tab, skipping notification`);
+        console.log(`  → User ${userId} is viewing this room, skipping notification`);
       }
     }
 
@@ -480,6 +488,7 @@ export const sendChatNotifications = async (message, senderInfo, roomInfo, io, s
         senderName: safeString(senderInfo.userName),
         messageType: safeString(message.messageType || 'text'),
         isReply: safeString(Boolean(userData.isReply)),
+        canSendMessage: safeString(Boolean(userData.canSendMessage)),
         timestamp: safeString(message.createdAt || new Date().toISOString())
       };
 

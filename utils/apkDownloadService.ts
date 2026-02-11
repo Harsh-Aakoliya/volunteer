@@ -16,7 +16,6 @@ export type DownloadStatus =
   | "checking"
   | "fileNotFound"
   | "downloading"
-  | "paused"
   | "failed"
   | "completed";
 

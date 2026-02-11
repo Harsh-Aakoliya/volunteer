@@ -6,21 +6,19 @@ import * as Application from 'expo-application';
 import { VersionChecker } from '@/components/VersionChecker';
 import * as Notifications from 'expo-notifications';
 
-import { Platform, Alert, TextInput, View, Text } from 'react-native';
+import { Platform, Alert, TextInput, View, Text, Pressable } from 'react-native';
 import CustomInput from '@/components/ui/CustomInput';
 import CustomButton from '@/components/ui/CustomButton';
 import { API_URL, setApiUrl, updateDevIP } from "@/constants/api";
 import useNetworkStatus from '@/hooks/userNetworkStatus';
 import SplashScreen from '@/components/SplashScreen';
 import * as React from 'react';
-// const { DEV_IP, INTERNAL_IP, EXTERNAL_IP } = Constants?.expoConfig?.extra as { DEV_IP: string; INTERNAL_IP: string; EXTERNAL_IP: string };
 
-// console.log(DEV_IP, INTERNAL_IP, EXTERNAL_IP);
-const DEV_IP = "http://10.72.10.242:8080";
+const DEV_IP = "http://10.27.61.242:8080";
 const EXTERNAL_IP = "http://103.47.172.58:50160";
 const INTERNAL_IP = "http://192.168.2.134:3000";
-// Export dev mode status and DEV_IP for use in other components
-export const getDevModeStatus = () => true; // Set to true to enable manual IP configuration for development
+
+export const getDevModeStatus = () => true;
 export const getDefaultDevIP = () => DEV_IP;
 
 const isWeb = Platform.OS === ('web' as any);
@@ -35,10 +33,12 @@ export default function Index() {
   const [showDevIpInput, setShowDevIpInput] = useState(false);
   const [devIpInput, setDevIpInput] = useState('');
   const [hasNavigated, setHasNavigated] = useState(false);
+  const [clickCount, setClickCount] = useState(0);
+  const [showIPModal, setShowIPModal] = useState(false);
+  const [devIP, setDevIP] = useState(getDefaultDevIP());
 
   useEffect(() => {
-
-    const isDevMode = getDevModeStatus(); // Use exported function for consistency
+    const isDevMode = getDevModeStatus();
 
     const pingServer = async (baseUrl: string, from: string, timeoutMs: number = 5000): Promise<boolean> => {
       try {
@@ -89,7 +89,6 @@ export default function Index() {
       }
       console.log("🔍 Starting server connectivity check...");
 
-      // Step 0: Check internet connectivity first
       console.log("isConnected:", isConnected);
       if (!isConnected) {
         console.log("❌ No internet connection available");
@@ -100,17 +99,14 @@ export default function Index() {
         return;
       }
 
-      // Step 1: Check if user is in dev mode
       console.log("isDevMode:", isDevMode);
       if (isDevMode) {
         console.log("⚙️ Dev mode - prompting for manual IP");
-        // setShowDevIpInput(true);
         setApiUrl(DEV_IP);
         setConnectivityCheckComplete(true);
         return;
       }
 
-      // Step 2: Try internal network first
       console.log("🏠 Checking internal network connection...");
       setApiUrl(INTERNAL_IP);
       const internalOk = await pingServer(INTERNAL_IP, "internal");
@@ -123,7 +119,6 @@ export default function Index() {
         return;
       }
 
-      // Step 3: Try external network
       console.log("🌐 Checking external network connection...");
       setApiUrl(EXTERNAL_IP);
       const externalOk = await pingServer(EXTERNAL_IP, "external");
@@ -136,7 +131,6 @@ export default function Index() {
         return;
       }
 
-      // Step 4: Both internal and external failed - check internet connectivity
       console.log("❌ Both internal and external connections failed. Checking internet...");
       const hasInternet = await checkInternet();
 
@@ -205,7 +199,6 @@ export default function Index() {
     }
   };
 
-  // Step 2: Start version check only after connectivity is established (skip for web)
   useEffect(() => {
     if (!connectivityCheckComplete) return;
 
@@ -214,31 +207,24 @@ export default function Index() {
       setVersionCheckComplete(true);
     } else {
       console.log("🔄 Connectivity established, starting version check...");
-      // This will trigger the VersionChecker component to run
-      setVersionCheckComplete(false); // Reset in case it was set before
+      setVersionCheckComplete(false);
     }
   }, [connectivityCheckComplete]);
 
-  // Step 3: Define auth check function with useCallback at top level :TODO
   const checkAuthStatus = useCallback(async () => {
     try {
-      setHasNavigated(true); // Prevent multiple navigation attempts
+      setHasNavigated(true);
       const token = await AuthStorage.getToken();
       console.log("Token:", token);
       
       if (token) {
-        // Check if app was opened from a notification
         try {
           const initialNotification = await Notifications.getLastNotificationResponseAsync();
           
-          // If there's a pending notification with roomId, navigate directly to that room
-          // Use replace to avoid adding to navigation stack
           if (initialNotification?.notification?.request?.content?.data?.roomId) {
             const roomId = initialNotification.notification.request.content.data.roomId;
             console.log("📱 App opened from notification, navigating to room:", roomId);
-            // Small delay to ensure router is ready
             setTimeout(() => {
-              // Use replace instead of push to avoid navigation stack issues
               router.replace(`/chat/${roomId}`);
             }, 500);
             return;
@@ -248,7 +234,6 @@ export default function Index() {
         }
         
         console.log("Redirecting to chat");
-        // Online status is handled by _layout.tsx via useOnlineStatus hook
         router.replace("/(drawer)");
       } else {
         console.log("Redirecting to login");
@@ -260,42 +245,29 @@ export default function Index() {
     }
   }, [router]);
 
-  // Step 4: Navigate to appropriate screen only after both connectivity and version checks are complete
   useEffect(() => {
     if (!connectivityCheckComplete || !versionCheckComplete || hasNavigated) return;
 
     console.log("🔄 Both connectivity and version checks complete, checking auth status...");
     checkAuthStatus();
   }, [connectivityCheckComplete, versionCheckComplete, hasNavigated, checkAuthStatus]);
-  const [showIPModal, setShowIPModal] = useState(false);
-  const [clickCount, setClickCount] = useState(0); // New state for click tracking
-  const [devIP, setDevIP] = useState(getDefaultDevIP()); // Initialize with default dev IP
 
-  const handleLoginToContinuePress = () => {
+  // Handler for bottom-right corner taps
+  const handleBottomRightPress = () => {
     setClickCount((prevCount) => {
       const newCount = prevCount + 1;
-      console.log("newCount", newCount);
+      console.log("Bottom-right tap count:", newCount);
 
       if (newCount >= 7) {
-        Alert.alert(
-          "🔧 Developer Mode Activated",
-          "You will now be redirected to login screen to set backend IP.",
-          [
-            {
-              text: "OK",
-              onPress: () => {
-                // Navigate to login WITH state to trigger IP modal
-                router.replace({
-                  pathname: '/login',
-                  params: { showDevIpModal: 'true' },
-                });
-                setClickCount(0); // Reset counter
-              },
-            },
-          ]
-        );
-        return 0; // Reset immediately even if alert dismissed without OK
+        console.log("🔧 7 taps detected - opening IP modal");
+        setShowIPModal(true);
+        return 0; // Reset counter
       }
+
+      // Reset counter after 2 seconds of inactivity
+      setTimeout(() => {
+        setClickCount(0);
+      }, 2000);
 
       return newCount;
     });
@@ -357,16 +329,30 @@ export default function Index() {
     );
   }
 
-  // Show only splash during connectivity + version check (no "Connecting to server..." text)
   const showSplash = !connectivityCheckComplete || !versionCheckComplete;
   if (showSplash) {
     return (
-      <>
-        <SplashScreen onPress={handleLoginToContinuePress} />
-        {/* Mount VersionChecker once connectivity is done so it can run and set versionCheckComplete */}
+      <View style={{ flex: 1 }}>
+        <SplashScreen />
+        
+        {/* Bottom-right corner tap area */}
+        <Pressable
+          onPress={handleBottomRightPress}
+          style={{
+            position: 'absolute',
+            bottom: 20,
+            right: 20,
+            width: 80,
+            height: 80,
+            // backgroundColor: 'rgba(255,0,0,0.1)', // Uncomment for debugging
+          }}
+        />
+
         {connectivityCheckComplete && (Platform.OS === 'ios' || Platform.OS === 'android') && (
           <VersionChecker onUpdateCheckComplete={() => setVersionCheckComplete(true)} />
         )}
+        
+        {/* IP Modal */}
         {showIPModal && (
           <View className="absolute inset-0 bg-black/50 flex justify-center items-center z-50">
             <View className="bg-white p-6 rounded-xl w-11/12 max-w-md mx-4">
@@ -406,7 +392,7 @@ export default function Index() {
                     setDevIP(formattedUrl);
                     Alert.alert("Success", `Backend IP updated to:\n${formattedUrl}`);
                     setShowIPModal(false);
-                    setClickCount(0); // Fully reset counter
+                    setClickCount(0);
                   }}
                   bgVariant="success"
                   className="flex-1"
@@ -415,10 +401,9 @@ export default function Index() {
             </View>
           </View>
         )}
-      </>
+      </View>
     );
   }
 
-  // Both checks complete; auth/navigation runs in useEffect. Show splash until navigation.
-  return <SplashScreen onPress={handleLoginToContinuePress} />;
+  return <SplashScreen />;
 }

@@ -1,13 +1,12 @@
 // app/_layout.tsx
 import { Stack } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Platform, ToastAndroid, Alert } from 'react-native';
-import * as FileSystem from 'expo-file-system';
+import { Platform, Alert, AppState } from 'react-native';
 import * as React from 'react';
 
 import "../global.css";
 import { initializeNotifications } from '@/utils/notificationSetup';
-import { requestChatNotificationPermissions, setupChatNotificationListeners } from '@/utils/chatNotificationHandler';
+import { requestChatNotificationPermissions, setupChatNotificationListeners, clearAllNotifications } from '@/utils/chatNotificationHandler';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SocketProvider } from '@/contexts/SocketContext';
 import { VideoCallProvider } from '@/contexts/VideoCallContext';
@@ -25,28 +24,17 @@ function AppContent() {
 
     const bootstrap = async () => {
       try {
-        // 🧹 STEP 1: Clean up leftover APK first
-        const apkPath = FileSystem.documentDirectory + 'update.apk';
-        try {
-          const info = await FileSystem.getInfoAsync(apkPath);
-          if (info.exists) {
-            ToastAndroid.show('Cleaning leftover update.apk', ToastAndroid.SHORT);
-            console.log('🧹 Cleaning leftover update.apk:', apkPath);
-            await FileSystem.deleteAsync(apkPath, { idempotent: true });
-            console.log('✅ APK cleanup complete');
-            ToastAndroid.show('APK cleanup complete', ToastAndroid.SHORT);
-          }
-        } catch (cleanupError) {
-          console.warn('⚠️ APK cleanup failed:', cleanupError);
-        }
-
-        // 🛠️ STEP 2: Initialize notifications and listeners
+        // Initialize notifications and listeners (don't delete update.apk on startup -
+        // it may have been downloaded in background and user needs to install)
         if (Platform.OS !== 'web') {
           await initializeNotifications();
           await requestChatNotificationPermissions();
           
           // Setup chat notification listeners for deep linking
           setupChatNotificationListeners();
+
+          // Clear all pending notifications when app opens (cold start)
+          await clearAllNotifications();
         }
 
       } catch (error: any) {
@@ -63,6 +51,15 @@ function AppContent() {
     };
 
     bootstrap();
+
+    // Clear notifications whenever app comes to foreground (from notification tap, app icon, recent apps)
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        clearAllNotifications();
+      }
+    });
+
+    return () => subscription.remove();
   }, []);
 
   if (!isReady) {

@@ -2,6 +2,7 @@ import path from "path";
 import fs from "fs";
 import { v4 as uuidv4 } from 'uuid';
 import pool from "../config/database.js";
+import { compressFile, compressBuffer, isImage, isVideo } from "../utils/compressMedia.js";
 
 const VmMediaController = {  
     // Upload files to temporary folder
@@ -43,23 +44,42 @@ const VmMediaController = {
                 console.log("filePath ",filePath);
                 // console.log("file.fileData ",file.fileData);
                 try {
-                    // Convert base64 to buffer and write file
-                    const buffer = Buffer.from(file.fileData, 'base64');
-                    // console.log("buffer ",buffer);
-                    if(file.mimeType === 'audio/mp4') {
-                        console.log("writing to wav file");
+                    // Convert base64 to buffer
+                    let buffer = Buffer.from(file.fileData, 'base64');
+                    let finalFileName = fileName;
+                    let finalMimeType = file.mimeType;
+                    let finalSize = buffer.length;
+
+                    // Compress images before storing (skip audio)
+                    if (file.mimeType !== 'audio/mp4' && (isImage(file.mimeType) || isVideo(file.mimeType))) {
+                        try {
+                            const compressed = await compressBuffer(buffer, file.mimeType, file.name);
+                            if (compressed.buffer && !compressed.skipped) {
+                                buffer = compressed.buffer;
+                                finalSize = compressed.size;
+                                finalMimeType = compressed.mimeType;
+                                if (compressed.extension) {
+                                    finalFileName = `${fileId}${compressed.extension}`;
+                                }
+                            }
+                        } catch (compErr) {
+                            console.warn("Compression failed, using original:", compErr.message);
+                        }
+                    }
+
+                    if (file.mimeType === 'audio/mp4') {
                         fs.writeFileSync(`./atemp.mp3`, buffer);
                     } else {
-                        fs.writeFileSync(filePath, buffer);
+                        const finalPath = path.join(UPLOAD_DIR, finalFileName);
+                        fs.writeFileSync(finalPath, buffer);
                     }
-                    console.log("buffer written to file");
                     uploadedFiles.push({
                         id: fileId,
                         originalName: file.name,
-                        fileName: fileName,
-                        mimeType: file.mimeType,
-                        size: buffer.length,
-                        url: `temp_${folderId}/${fileName}`,
+                        fileName: finalFileName,
+                        mimeType: finalMimeType,
+                        size: finalSize,
+                        url: `temp_${folderId}/${finalFileName}`,
                         caption: ""
                     });
                     console.log("uploadedFiles ",uploadedFiles);
@@ -171,21 +191,34 @@ const VmMediaController = {
             const driveUrlObject = [];
             
             for (const fileInfo of filesWithCaptions) {
-                const tempFilePath = path.join(tempFolderPath, fileInfo.fileName);
-                const permanentFilePath = path.join(permanentFolderPath, fileInfo.fileName);
-                
+                let tempFilePath = path.join(tempFolderPath, fileInfo.fileName);
+                let fileName = fileInfo.fileName;
+                let fileSize = fileInfo.size || 0;
+                let mimeType = fileInfo.mimeType || "";
+
                 if (fs.existsSync(tempFilePath)) {
-                    // Move file
+                    try {
+                        const compResult = await compressFile(tempFilePath, mimeType);
+                        if (compResult.success && compResult.fileName) {
+                            fileName = compResult.fileName;
+                            fileSize = compResult.size;
+                            if (compResult.mimeType) mimeType = compResult.mimeType;
+                            tempFilePath = path.join(tempFolderPath, fileName);
+                        }
+                    } catch (compErr) {
+                        console.warn("Compression failed for", fileName, compErr.message);
+                    }
+
+                    const permanentFilePath = path.join(permanentFolderPath, fileName);
                     fs.renameSync(tempFilePath, permanentFilePath);
-                    
-                    // Add to driveUrlObject
+
                     driveUrlObject.push({
-                        url: `${permanentFolderName}/${fileInfo.fileName}`,
-                        filename: fileInfo.fileName,
+                        url: `${permanentFolderName}/${fileName}`,
+                        filename: fileName,
                         originalName: fileInfo.originalName || fileInfo.fileName,
                         caption: fileInfo.caption || "",
-                        mimeType: fileInfo.mimeType || "",
-                        size: fileInfo.size || 0
+                        mimeType,
+                        size: fileSize
                     });
                 }
             }
@@ -253,15 +286,28 @@ const VmMediaController = {
 
             for (const file of req.files) {
                 try {
-                    // Generate unique filename to avoid conflicts (same as uploadFiles method)
                     const fileId = uuidv4();
-                    const fileExtension = path.extname(file.originalname) || (file.mimetype?.includes('video') ? '.mp4' : '.jpg');
-                    const fileName = `${fileId}${fileExtension}`;
-                    const targetPath = path.join(TARGET_DIR, fileName);
-                    
-                    // Move file from multer temp location to our temp folder
+                    let fileExtension = path.extname(file.originalname) || (file.mimetype?.includes('video') ? '.mp4' : '.jpg');
+                    let fileName = `${fileId}${fileExtension}`;
+                    let targetPath = path.join(TARGET_DIR, fileName);
+                    let fileSize = file.size;
+                    let mimeType = file.mimetype;
+
                     if (fs.existsSync(file.path)) {
                         fs.renameSync(file.path, targetPath);
+
+                        // Compress before storing in temp
+                        try {
+                            const compResult = await compressFile(targetPath, mimeType);
+                            if (compResult.success && compResult.fileName) {
+                                fileName = compResult.fileName;
+                                fileSize = compResult.size;
+                                if (compResult.mimeType) mimeType = compResult.mimeType;
+                                targetPath = path.join(TARGET_DIR, fileName);
+                            }
+                        } catch (compErr) {
+                            console.warn("Compression failed for", file.originalname, compErr.message);
+                        }
                     } else {
                         console.error(`File not found at multer path: ${file.path}`);
                         continue;
@@ -270,9 +316,9 @@ const VmMediaController = {
                     uploadedFiles.push({
                         id: fileId,
                         originalName: file.originalname,
-                        fileName: fileName,
-                        mimeType: file.mimetype,
-                        size: file.size,
+                        fileName,
+                        mimeType,
+                        size: fileSize,
                         url: `temp_${tempFolderId}/${fileName}`,
                         caption: ""
                     });
@@ -362,22 +408,36 @@ const VmMediaController = {
                 fs.mkdirSync(permanentFolderPath, { recursive: true });
             }
 
-            // 4. Move File
-            // Sanitize filename
+            // 4. Move and compress file
             const originalName = req.file.originalname;
             const safeFileName = `${Date.now()}_${originalName.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
             const targetPath = path.join(permanentFolderPath, safeFileName);
 
             fs.renameSync(req.file.path, targetPath);
 
+            let finalFileName = safeFileName;
+            let finalSize = req.file.size;
+            let finalMime = req.file.mimetype;
+
+            try {
+                const compResult = await compressFile(targetPath, req.file.mimetype);
+                if (compResult.success && compResult.fileName) {
+                    finalFileName = compResult.fileName;
+                    finalSize = compResult.size;
+                    if (compResult.mimeType) finalMime = compResult.mimeType;
+                }
+            } catch (compErr) {
+                console.warn("Compression failed for camera upload:", compErr.message);
+            }
+
             // 5. Create Drive Object
             const driveUrlObject = [{
-                url: `${permanentFolderName}/${safeFileName}`,
-                filename: safeFileName,
+                url: `${permanentFolderName}/${finalFileName}`,
+                filename: finalFileName,
                 originalName: originalName,
                 caption: caption || "",
-                mimeType: req.file.mimetype,
-                size: req.file.size,
+                mimeType: finalMime,
+                size: finalSize,
                 duration: duration ? parseInt(duration) : 0
             }];
 
@@ -502,21 +562,34 @@ const VmMediaController = {
             const driveUrlObject = [];
             
             for (const fileInfo of filesWithCaptions) {
-                const tempFilePath = path.join(tempFolderPath, fileInfo.fileName);
-                const permanentFilePath = path.join(permanentFolderPath, fileInfo.fileName);
-                
+                let tempFilePath = path.join(tempFolderPath, fileInfo.fileName);
+                let fileName = fileInfo.fileName;
+                let fileSize = fileInfo.size || 0;
+                let mimeType = fileInfo.mimeType || "";
+
                 if (fs.existsSync(tempFilePath)) {
-                    // Move file
+                    try {
+                        const compResult = await compressFile(tempFilePath, mimeType);
+                        if (compResult.success && compResult.fileName) {
+                            fileName = compResult.fileName;
+                            fileSize = compResult.size;
+                            if (compResult.mimeType) mimeType = compResult.mimeType;
+                            tempFilePath = path.join(tempFolderPath, fileName);
+                        }
+                    } catch (compErr) {
+                        console.warn("Compression failed for", fileName, compErr.message);
+                    }
+
+                    const permanentFilePath = path.join(permanentFolderPath, fileName);
                     fs.renameSync(tempFilePath, permanentFilePath);
-                    
-                    // Add to driveUrlObject
+
                     driveUrlObject.push({
-                        url: `${permanentFolderName}/${fileInfo.fileName}`,
-                        filename: fileInfo.fileName,
+                        url: `${permanentFolderName}/${fileName}`,
+                        filename: fileName,
                         originalName: fileInfo.originalName || fileInfo.fileName,
                         caption: fileInfo.caption || "",
-                        mimeType: fileInfo.mimeType || "",
-                        size: fileInfo.size || 0
+                        mimeType,
+                        size: fileSize
                     });
                 }
             }

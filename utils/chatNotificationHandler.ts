@@ -79,13 +79,21 @@ export const handleChatNotificationTap = async (data: any) => {
         return;
       }
       
-      console.log(`📱 Navigating to chat room: ${roomId}`);
+      const canSendMessage = data?.canSendMessage === 'true' || data?.canSendMessage === '1';
+      const roomName = data?.roomName || '';
+      
+      console.log(`📱 Navigating to chat room: ${roomId}, canSendMessage: ${canSendMessage}`);
       hasNavigatedFromNotification = true;
       lastNavigatedRoomId = roomId;
       
-      // Use replace instead of push to avoid adding to navigation stack
-      // This ensures back button goes to chat list, not re-opens the room
-      router.replace(`/chat/${roomId}`);
+      // Use replace - pass canSendMessage so room shows message input immediately without waiting for API
+      router.replace({
+        pathname: `/chat/${roomId}`,
+        params: {
+          roomName,
+          canSendMessage: canSendMessage ? 'true' : 'false',
+        },
+      });
       
       // Reset flag after a delay to allow normal navigation
       setTimeout(() => {
@@ -119,6 +127,21 @@ export const requestChatNotificationPermissions = async () => {
   } catch (error) {
     console.error('Error requesting notification permissions:', error);
     return false;
+  }
+};
+
+// Clear all pending notifications from the notification panel (when user opens app)
+export const clearAllNotifications = async () => {
+  try {
+    const deliveredNotifications = await Notifications.getPresentedNotificationsAsync();
+    for (const notif of deliveredNotifications) {
+      await Notifications.dismissNotificationAsync(notif.request.identifier);
+    }
+    if (deliveredNotifications.length > 0) {
+      console.log(`🧹 Cleared ${deliveredNotifications.length} notification(s) from panel`);
+    }
+  } catch (error) {
+    console.error('Error clearing all notifications:', error);
   }
 };
 
