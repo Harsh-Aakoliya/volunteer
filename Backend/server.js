@@ -188,7 +188,7 @@ const server = httpServer.listen(PORT, "0.0.0.0", () => {
   addresses.forEach((addr) => console.log(`http://${addr}:${PORT}`));
 
   // Start scheduled message service (sends messages when their scheduled time arrives)
-  scheduledMessageService.start();
+  // scheduledMessageService.start();
 });
 
 // 🔥 Graceful shutdown

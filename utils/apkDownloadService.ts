@@ -1,7 +1,7 @@
 /**
  * APK Download Service
  * - Checks if file exists on server before download
- * - Uses react-native-background-downloader for Android (notification, pause, resume, background)
+ * - Uses native-downloader for Android (notification, background when app killed)
  * - Fallback to expo-file-system for web/other
  */
 

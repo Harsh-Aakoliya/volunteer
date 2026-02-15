@@ -92,7 +92,7 @@ android {
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
-        versionName "1.0.15"
+        versionName "1.0.16"
     }
     signingConfigs {
         debug {
@@ -147,9 +147,6 @@ android {
 }
 
 dependencies {
-    // MMKV is required by @kesha-antonov/react-native-background-downloader
-    // If you're using react-native-mmkv, remove this line to avoid duplicate class errors
-    implementation 'com.tencent:mmkv-shared:2.2.4'
     // The version of react-native is set by the React Native Gradle Plugin
     implementation("com.facebook.react:react-android")
 

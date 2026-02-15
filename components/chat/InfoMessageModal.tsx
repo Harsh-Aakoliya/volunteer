@@ -55,7 +55,11 @@ const InfoMessageModal: React.FC<InfoMessageModalProps> = ({
         { headers: { Authorization: `Bearer ${token}` } }
       );
       if (response.data.success) {
-        setData(response.data.data);
+        console.log("response.data.data", response.data.data);
+        let data = response.data.data;
+        data.readBy = data.readBy.filter((item: any) => item.userId !== message.senderId);
+        data.unreadBy = data.unreadBy.filter((item: any) => item.userId !== message.senderId);
+        setData(data);
       }
     } catch (err) {
       console.error("Error fetching read status:", err);

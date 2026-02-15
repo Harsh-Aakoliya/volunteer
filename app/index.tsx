@@ -348,9 +348,11 @@ export default function Index() {
           }}
         />
 
-        {connectivityCheckComplete && (Platform.OS === 'ios' || Platform.OS === 'android') && (
-          <VersionChecker onUpdateCheckComplete={() => setVersionCheckComplete(true)} />
-        )}
+{connectivityCheckComplete && (Platform.OS === 'ios' || Platform.OS === 'android') && (
+        <VersionChecker onUpdateCheckComplete={(updateRequired) => {
+          if (!updateRequired) setVersionCheckComplete(true);
+        }} />
+      )}
         
         {/* IP Modal */}
         {showIPModal && (

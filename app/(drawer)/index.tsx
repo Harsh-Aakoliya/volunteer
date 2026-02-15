@@ -194,6 +194,8 @@ import RenderHtml from 'react-native-render-html';
 const RoomItem = memo(({ room, currentUserId, onPress, onLongPress }: RoomItemProps) => {
   const hasUnread = room.unreadCount > 0;
   const scaleAnim = useRef(new Animated.Value(1)).current;
+  const timeColor = hasUnread ? "#2196F3" : "#8E8E93";
+  const previewColor = "#8E8E93"; // sender + last message text color (same for read/unread)
 
   // Helper function to format reply preview for last message
   const getReplyPreviewTextForLastMessage = (reply: { messageType: string; messageText: string }): string => {
@@ -336,7 +338,7 @@ const RoomItem = memo(({ room, currentUserId, onPress, onLongPress }: RoomItemPr
                 <Text
                   style={{
                     fontSize: 13,
-                    color: hasUnread ? "#2196F3" : "#8E8E93",
+                    color: timeColor,
                     fontWeight: hasUnread ? "600" : "400",
                   }}
                 >
@@ -358,26 +360,24 @@ const RoomItem = memo(({ room, currentUserId, onPress, onLongPress }: RoomItemPr
                 style={{
                   flex: 1,
                   fontSize: 15,
-                  color: hasUnread ? "#1C1C1E" : "#8E8E93",
-                  fontWeight: hasUnread ? "500" : "400",
+                  color: previewColor,
+                  fontWeight: "400",
                   marginRight: 8,
                 }}
                 numberOfLines={1}
                 ellipsizeMode="tail"
               >
                 {room.lastMessage && !previewPrefix && (
-                  <Text style={{ color: "#2196F3", fontWeight: "600" }}>
+                  <Text style={{ fontWeight: "600" }}>
                     {room.lastMessage.senderName?.split(" ")[0]}:{" "}
                   </Text>
                 )}
                 {previewPrefix && (
-                  <Text style={{ color: "#2196F3", fontWeight: "500" }}>
+                  <Text style={{ fontWeight: "600" }}>
                     {previewPrefix}
                   </Text>
                 )}
-                <Text style={{ color: isMediaMessage ? "#2196F3" : undefined }}>
-                  {messagePreview}
-                </Text>
+                <Text>{messagePreview}</Text>
               </Text>
 
               {/* Unread Badge */}
@@ -814,15 +814,14 @@ export default function ChatRoomsList() {
         });
       }
 
-      // Fallback: Clear loading state after a timeout if we have rooms (cached or socket)
-      // This ensures loading doesn't stay forever
+      // Fallback: Clear loading state after a timeout even if there are no rooms yet.
+      // This prevents the "Loading chats..." spinner from staying forever when the
+      // server returns 0 rooms (empty list is still a valid state).
       const timeoutId = setTimeout(() => {
-        if (rooms.length > 0 || socketRooms.length > 0) {
-          console.log("⏰ [Rooms] Timeout: Clearing loading state");
-          setIsLoading(false);
-          setIsSyncing(false);
-          setIsRefreshing(false);
-        }
+        console.log("⏰ [Rooms] Timeout: Clearing loading state (rooms:", rooms.length, "socketRooms:", socketRooms.length, ")");
+        setIsLoading(false);
+        setIsSyncing(false);
+        setIsRefreshing(false);
       }, 5000); // 5 second timeout
 
       const handleNotification = (data: { roomId: string }) => {

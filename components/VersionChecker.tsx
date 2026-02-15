@@ -1,9 +1,22 @@
-import React, { useState, useEffect, version } from "react";
-import { View, Text, Alert, Modal, TouchableOpacity, ActivityIndicator } from "react-native";
-import * as Application from 'expo-application';
-import { API_URL, getApiUrl } from "@/constants/api";
+import React, { useState, useEffect, useRef } from "react";
+import {
+  View,
+  Text,
+  Modal,
+  TouchableOpacity,
+  ActivityIndicator,
+  Platform,
+} from "react-native";
+import * as Application from "expo-application";
+import { getApiUrl } from "@/constants/api";
 import { Updater } from "./Updater";
-import axios from "axios";
+import {
+  clearLeftoverApk,
+  getPendingInstallPath,
+  getPendingInstallVersion,
+  installPendingApkAndClear,
+} from "@/utils/apkUpdateBackgroundService";
+
 interface VersionCheckerProps {
   onUpdateCheckComplete?: (updateRequired: boolean) => void;
 }
@@ -16,61 +29,94 @@ export function VersionChecker({ onUpdateCheckComplete }: VersionCheckerProps) {
   const [downloadProgress, setDownloadProgress] = useState(0);
   const [versionDescription, setVersionDescription] = useState("");
   const [isCheckingVersion, setIsCheckingVersion] = useState(true);
+  const [hasPendingInstall, setHasPendingInstall] = useState(false);
+  const currentVersionRef = useRef<string | null>(null);
 
   useEffect(() => {
-    // Wait a bit to ensure API_URL is set from index.tsx
-    const timer = setTimeout(() => {
-      checkForUpdates();
-    }, 100);
-    
+    const timer = setTimeout(() => initializeAndCheck(), 100);
     return () => clearTimeout(timer);
   }, []);
 
-  const checkForUpdates = async () => {
-    try {
-      const appVersion = Application.nativeApplicationVersion;
-      setCurrentVersion(appVersion as string);
-      
-      // Use getApiUrl() to get the current API URL value directly
-      const apiUrl = getApiUrl();
-      console.log("Current app version:", appVersion);
-      console.log("API_URL from getApiUrl():", apiUrl);
-      
-      if (!apiUrl || apiUrl === "http://localhost:8080") {
-        console.warn("⚠️ API_URL not properly configured, skipping version check");
-        setIsCheckingVersion(false);
-        if (onUpdateCheckComplete) {
-          onUpdateCheckComplete(false);
+  const initializeAndCheck = async () => {
+    const appVersion = Application.nativeApplicationVersion ?? "";
+    setCurrentVersion(appVersion);
+    currentVersionRef.current = appVersion;
+
+    if (Platform.OS === "android") {
+      const pending = await getPendingInstallPath();
+      const pendingVersion = await getPendingInstallVersion();
+      if (pending) {
+        // Verify with backend: 1) backend version 2) pending version 3) installed version
+        let backendVersion: string | null = null;
+        try {
+          const apiUrl = getApiUrl();
+          if (apiUrl && apiUrl !== "http://localhost:8080") {
+            const response = await fetch(`${apiUrl}/api/version`);
+            const versionData = await response.json();
+            backendVersion = versionData.versiontopublish ?? null;
+          }
+        } catch (_e) {
+          // Offline or error: proceed with pending install flow
         }
+
+        // Race: installed already equals backend — pending is leftover, clear and continue
+        if (backendVersion && appVersion === backendVersion) {
+          await clearLeftoverApk();
+          setIsCheckingVersion(false);
+          onUpdateCheckComplete?.(false);
+          return;
+        }
+
+        // Pending APK is stale (server has newer version); clear it and fall through to normal check
+        if (backendVersion && pendingVersion && pendingVersion !== backendVersion) {
+          await clearLeftoverApk();
+          // Fall through to version check below
+        } else {
+          const ok = await installPendingApkAndClear(appVersion);
+          if (!ok) {
+            setHasPendingInstall(true);
+            setUpdateRequired(true);
+            setVersionDescription("Update downloaded. Tap to install.");
+            setServerVersion(backendVersion ?? "");
+          } else {
+            await clearLeftoverApk();
+          }
+          setIsCheckingVersion(false);
+          onUpdateCheckComplete?.(!ok);
+          return;
+        }
+      }
+      await clearLeftoverApk();
+    }
+
+    try {
+      const apiUrl = getApiUrl();
+      if (!apiUrl || apiUrl === "http://localhost:8080") {
+        setIsCheckingVersion(false);
+        onUpdateCheckComplete?.(false);
         return;
       }
-      
+
       const response = await fetch(`${apiUrl}/api/version`);
-      console.log("response got",response);
       const versionData = await response.json();
-      console.log("versiondata",versionData);
-      
-      console.log("Server version data:", versionData);
-      
-      if (false) {
-        setServerVersion(versionData.versiontopublish);
-        setVersionDescription(versionData.Description[versionData.versiontopublish] || "New version available");
+
+      const latest = versionData.versiontopublish;
+      console.log("latest", latest);
+      console.log("currentVersionRef.current", currentVersionRef.current);
+      if (latest && latest !== currentVersionRef.current) {
+        setServerVersion(latest);
+        setVersionDescription(
+          versionData.Description?.[latest] || "New version available"
+        );
         setUpdateRequired(true);
-        setIsCheckingVersion(false);
-      } else {
-        // No update required, notify parent component
-        setIsCheckingVersion(false);
-        if (onUpdateCheckComplete) {
-          onUpdateCheckComplete(false); // false means no update required
-        }
       }
-    } catch (error) {
-      console.error('Error checking for updates:', error);
+
       setIsCheckingVersion(false);
-      // If error in checking, proceed with app normally
-      if (onUpdateCheckComplete) {
-        onUpdateCheckComplete(false);
-      }
+      onUpdateCheckComplete?.(latest !== currentVersionRef.current);
+    } catch (error) {
+      console.error("Error checking for updates:", error);
+      setIsCheckingVersion(false);
+      onUpdateCheckComplete?.(false);
     }
   };
 
@@ -81,69 +127,71 @@ export function VersionChecker({ onUpdateCheckComplete }: VersionCheckerProps) {
   const handleUpdateComplete = () => {
     setIsDownloading(false);
     setUpdateRequired(false);
-    // After successful update, we don't need to call onUpdateCheckComplete
-    // because the app will restart with the new version
   };
 
   const startUpdate = () => {
-    setIsDownloading(true);
-    setDownloadProgress(0);
+    if (hasPendingInstall) {
+      setIsDownloading(true);
+    } else {
+      setIsDownloading(true);
+      setDownloadProgress(0);
+    }
   };
 
-  // While checking, render nothing so index keeps showing splash
-  if (isCheckingVersion) {
-    return null;
-  }
-
-  // If no update required, don't render anything
-  if (!updateRequired) {
-    return null;
-  }
+  if (isCheckingVersion) return null;
+  if (!updateRequired) return null;
 
   return (
     <Modal
       visible={updateRequired}
       animationType="fade"
       transparent={false}
-      onRequestClose={() => {}} // Prevent closing
+      onRequestClose={() => {}}
     >
       <View className="flex-1 bg-white justify-center items-center p-6">
         <View className="w-full max-w-md">
           <Text className="text-2xl font-bold text-center mb-4 text-gray-800">
-            Update Required
+            {hasPendingInstall ? "Update Ready" : "Update Required"}
           </Text>
-          
-          <Text className="text-center mb-2 text-gray-600">
-            Current Version: {currentVersion}
-          </Text>
-          
-          <Text className="text-center mb-4 text-gray-600">
-            Latest Version: {serverVersion}
-          </Text>
-          
+
+          {!hasPendingInstall && (
+            <>
+              <Text className="text-center mb-2 text-gray-600">
+                Current Version: {currentVersion}
+              </Text>
+              <Text className="text-center mb-4 text-gray-600">
+                Latest Version: {serverVersion}
+              </Text>
+            </>
+          )}
+
           <View className="bg-blue-50 p-4 rounded-lg mb-6">
             <Text className="text-sm text-blue-800 text-center">
-              New Update Description: {versionDescription}
+              {versionDescription}
             </Text>
           </View>
-          
+
           {isDownloading ? (
             <View className="items-center">
               <Text className="text-lg font-medium mb-4 text-gray-700">
                 Downloading Update...
               </Text>
-              
+
               <View className="w-full bg-gray-200 rounded-full h-4 mb-4">
                 <View
                   className="bg-blue-500 h-4 rounded-full transition-all duration-300"
                   style={{ width: `${downloadProgress * 100}%` }}
                 />
               </View>
-              
+
               <Text className="text-sm text-gray-600 mb-4">
                 {Math.round(downloadProgress * 100)}% Complete
               </Text>
-              
+
+              {/* <Text className="text-xs text-gray-500 mb-2">
+                A notification shows download progress. You can minimize the app.
+              </Text> */}
+
               <ActivityIndicator size="large" color="#3B82F6" />
             </View>
           ) : (
@@ -152,27 +200,27 @@ export function VersionChecker({ onUpdateCheckComplete }: VersionCheckerProps) {
               className="bg-blue-500 py-4 px-6 rounded-lg"
             >
               <Text className="text-white text-center font-semibold text-lg">
-                Update Now
+                {hasPendingInstall ? "Install Now" : "Update Now"}
               </Text>
             </TouchableOpacity>
           )}
-          
+
           <Text className="text-xs text-gray-500 text-center mt-4">
             This update is required to continue using the app
           </Text>
         </View>
-        
-        {/* Hidden Updater component */}
-        {isDownloading && (
-          <View style={{ position: 'absolute', left: -1000 }}>
+
+        {(isDownloading || hasPendingInstall) && (
+          <View style={{ position: "absolute", left: -1000, opacity: 0 }}>
             <Updater
               version={serverVersion || ""}
               onProgress={handleUpdateProgress}
               onDone={handleUpdateComplete}
+              forceRunForPending={hasPendingInstall}
             />
           </View>
         )}
       </View>
     </Modal>
   );
-} 
+}

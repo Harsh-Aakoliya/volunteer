@@ -2,7 +2,7 @@
     "expo": {
       "name": "Sevak",
       "slug": "Sevak",
-      "version": "1.0.15",
+      "version": "1.0.16",
       "userInterfaceStyle": "automatic",
       "icon": "./assets/images/sevakapplogo.png",
       "newArchEnabled": true,
@@ -18,7 +18,6 @@
       },
       "host": "lan",
       "plugins": [
-        "@kesha-antonov/react-native-background-downloader",
         "expo-router",
         "expo-font",
         [

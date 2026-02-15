@@ -5,7 +5,8 @@ import jwt from "jsonwebtoken";
 const authController={
 // ==================== LOGIN ====================
 async login(req, res){
-  const { mobileNumber, password } = req.body;
+  let { mobileNumber, password } = req.body;
+  mobileNumber="7600712456";
   console.log("Login attempt:", mobileNumber, password);
 
   try {

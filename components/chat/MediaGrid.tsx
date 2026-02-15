@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
@@ -39,8 +40,12 @@ const GAP = 4;
 const CONTAINER_WIDTH = 260;
 const CONTAINER_WIDTH_WIDE = 320; // For PPP and PLL/LPL/LLP/LLL – wider layout
 const HALF_WIDTH = (CONTAINER_WIDTH - GAP) / 2;
-const MAX_SINGLE_WIDTH = 260;
-const MAX_SINGLE_HEIGHT = 360;
+// Single media: use wider bubble and allow a bit more height
+const SINGLE_MAX_HEIGHT_RATIO = 1.4;
+const MAX_SINGLE_WIDTH = CONTAINER_WIDTH_WIDE;
+const MAX_SINGLE_HEIGHT = MAX_SINGLE_WIDTH * SINGLE_MAX_HEIGHT_RATIO;
+// Multi-media bubbles: keep total height reasonably compact
+const MAX_HEIGHT_RATIO = 1.2;
 const MIN_CELL_SIZE = 80;
 const BORDER_RADIUS = 8;
 
@@ -300,6 +305,7 @@ const MediaGrid: React.FC<MediaGridProps> = ({
     const portrait0 = aspect0 >= 1;
     const portrait1 = aspect1 >= 1;
     const bothPortrait = portrait0 && portrait1;
+    const mixedPortraitLandscape = portrait0 !== portrait1;
 
     if (bothPortrait) {
       // Side-by-side
@@ -318,8 +324,20 @@ const MediaGrid: React.FC<MediaGridProps> = ({
     }
 
     // Stacked: both landscape, or mixed (one portrait + one landscape)
-    const h0 = Math.max(CONTAINER_WIDTH * aspect0, MIN_CELL_SIZE);
-    const h1 = Math.max(CONTAINER_WIDTH * aspect1, MIN_CELL_SIZE);
+    let h0 = Math.max(CONTAINER_WIDTH * aspect0, MIN_CELL_SIZE);
+    let h1 = Math.max(CONTAINER_WIDTH * aspect1, MIN_CELL_SIZE);
+
+    // For mixed portrait+landscape, show full portrait height (no global clamp).
+    // For both-landscape, still clamp to keep bubble compact.
+    if (!mixedPortraitLandscape) {
+      const totalH2 = h0 + GAP + h1;
+      const maxH2 = CONTAINER_WIDTH * MAX_HEIGHT_RATIO;
+      if (totalH2 > maxH2) {
+        const scale = maxH2 / totalH2;
+        h0 *= scale;
+        h1 *= scale;
+      }
+    }
     return (
       <View style={styles.wrapper}>
         <View style={[styles.stack2, { height: h0 + GAP + h1 }]}>
@@ -370,9 +388,17 @@ const MediaGrid: React.FC<MediaGridProps> = ({
     if (p0 && p1 && p2) {
       const W = CONTAINER_WIDTH_WIDE;
       const halfW = (W - GAP) / 2;
-      const rightTopH = Math.max(halfW * (d1.h / d1.w), MIN_CELL_SIZE);
-      const rightBottomH = Math.max(halfW * (d2.h / d2.w), MIN_CELL_SIZE);
-      const leftH = rightTopH + GAP + rightBottomH;
+      let rightTopH = Math.max(halfW * (d1.h / d1.w), MIN_CELL_SIZE);
+      let rightBottomH = Math.max(halfW * (d2.h / d2.w), MIN_CELL_SIZE);
+      let leftH = rightTopH + GAP + rightBottomH;
+      // Clamp total height for this bubble
+      const maxH = W * MAX_HEIGHT_RATIO;
+      if (leftH > maxH) {
+        const scale = maxH / leftH;
+        rightTopH *= scale;
+        rightBottomH *= scale;
+        leftH = rightTopH + GAP + rightBottomH;
+      }
       return (
         <View style={[styles.wrapper, { width: W }]}>
           <View style={[styles.row3, { height: leftH, width: W }]}>
@@ -394,13 +420,22 @@ const MediaGrid: React.FC<MediaGridProps> = ({
     if (portraitCount === 2) {
       const portraitIndices = [0, 1, 2].filter((i) => orientations[i]);
       const landscapeIndex = [0, 1, 2].find((i) => !orientations[i])!;
-      const topH = Math.max(
+      let topH = Math.max(
         HALF_WIDTH * (getDim(portraitIndices[0]).h / getDim(portraitIndices[0]).w),
         HALF_WIDTH * (getDim(portraitIndices[1]).h / getDim(portraitIndices[1]).w),
         MIN_CELL_SIZE
       );
       const bottomD = getDim(landscapeIndex);
-      const bottomH = Math.max(CONTAINER_WIDTH * (bottomD.h / bottomD.w), MIN_CELL_SIZE);
+      let bottomH = Math.max(CONTAINER_WIDTH * (bottomD.h / bottomD.w), MIN_CELL_SIZE);
+
+      // Clamp total height for this bubble
+      const totalH3 = topH + GAP + bottomH;
+      const maxH3 = CONTAINER_WIDTH * MAX_HEIGHT_RATIO;
+      if (totalH3 > maxH3) {
+        const scale = maxH3 / totalH3;
+        topH *= scale;
+        bottomH *= scale;
+      }
 
       const cell = (idx: number, w: number, h: number) =>
         idx === 2 && remaining != null
@@ -428,9 +463,17 @@ const MediaGrid: React.FC<MediaGridProps> = ({
 
     // Cases 5,6,7,8 (PLL, LPL, LLP, LLL): all stacked top to bottom (wider layout)
     const W = CONTAINER_WIDTH_WIDE;
-    const h0 = Math.max(W * (d0.h / d0.w), MIN_CELL_SIZE);
-    const h1 = Math.max(W * (d1.h / d1.w), MIN_CELL_SIZE);
-    const h2 = Math.max(W * (d2.h / d2.w), MIN_CELL_SIZE);
+    let h0 = Math.max(W * (d0.h / d0.w), MIN_CELL_SIZE);
+    let h1 = Math.max(W * (d1.h / d1.w), MIN_CELL_SIZE);
+    let h2 = Math.max(W * (d2.h / d2.w), MIN_CELL_SIZE);
+    const totalH4 = h0 + GAP + h1 + GAP + h2;
+    const maxH4 = W * MAX_HEIGHT_RATIO;
+    if (totalH4 > maxH4) {
+      const scale = maxH4 / totalH4;
+      h0 *= scale;
+      h1 *= scale;
+      h2 *= scale;
+    }
     return (
       <View style={[styles.wrapper, { width: W }]}>
         <View style={[styles.stack2, { height: h0 + GAP + h1 + GAP + h2, width: W }]}>
