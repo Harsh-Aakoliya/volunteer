@@ -58,13 +58,13 @@ const chatController = {
                     const unreadResult = await pool.query(
                         `SELECT COUNT(*) as count
                          FROM chatmessages m
-                         WHERE m."roomId" = $1
-                           AND m."senderId"::integer != $2
+                         WHERE m."roomId" = $1::integer
+                           AND m."senderId" != $2::integer
                            AND m."isScheduled" = FALSE
                            AND NOT EXISTS (
                              SELECT 1 FROM messagereadstatus mrs
-                             WHERE mrs."messageId" = m.id AND mrs."userId" = $2::text
-                             )`,
+                             WHERE mrs."messageId" = m.id AND mrs."userId" = $2::integer
+                           )`,
                         [room.id, userId]
                     );
 

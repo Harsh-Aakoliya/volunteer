@@ -375,7 +375,7 @@ const MediaGrid: React.FC<MediaGridProps> = ({
             onPress={() => onMediaPress(mediaFiles, 3)}
             activeOpacity={1}
           >
-            <View style={styles.plusInner}>
+            <View>
               <Text style={styles.plusText}>+{remaining}</Text>
             </View>
           </TouchableOpacity>
@@ -670,14 +670,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: 'rgba(0,0,0,0.5)',
-  },
-  plusInner: {
-    backgroundColor: 'rgba(0,0,0,0.8)',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: BORDER_RADIUS,
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   plusText: { color: 'white', fontSize: 20, fontWeight: 'bold' },
 });

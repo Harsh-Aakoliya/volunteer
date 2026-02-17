@@ -93,7 +93,7 @@ export default function MessageInput({
   const [linkPreviews, setLinkPreviews] = useState<string[]>([]);
   const [currentTextColor, setCurrentTextColor] = useState('#000000');
   const [currentBgColor, setCurrentBgColor] = useState('#FFFFFF');
-  
+
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [showCustomTimePicker, setShowCustomTimePicker] = useState(false);
   const [customScheduleDate, setCustomScheduleDate] = useState<Date | null>(null);
@@ -203,7 +203,7 @@ export default function MessageInput({
     if (recordingRef.current) {
       try {
         await recordingRef.current.stopAndUnloadAsync();
-      } catch (_) {}
+      } catch (_) { }
       recordingRef.current = null;
     }
     setRecordingMode('idle');
@@ -259,7 +259,7 @@ export default function MessageInput({
       try {
         await previewSoundRef.current.setPositionAsync(0);
         setPreviewPosition(0);
-      } catch (_) {}
+      } catch (_) { }
       await previewSoundRef.current.playAsync();
       setPreviewPlaying(true);
       return;
@@ -282,7 +282,7 @@ export default function MessageInput({
       );
       previewSoundRef.current = sound;
       setPreviewPlaying(true);
-    } catch (_) {}
+    } catch (_) { }
   }, [recordedUri]);
 
   const handlePausePreview = useCallback(async () => {
@@ -423,12 +423,14 @@ export default function MessageInput({
       alignRight: false,
     });
     setShowRichTextToolbar(false);
+    // Clear editor content without forcibly changing focus.
+    // Forcing focus here can cause the keyboard to briefly close and reopen
+    // on some devices, making the input jump behind the keyboard.
     setTimeout(() => {
       if (richTextRef.current) {
         richTextRef.current.setContentHTML('');
-        richTextRef.current.focusContentEditor();
       } else if (inputRef.current) {
-        inputRef.current.focus();
+        inputRef.current.clear();
       }
     }, 50);
   }, [onChangeText]);
@@ -466,7 +468,7 @@ export default function MessageInput({
   }, [isEmpty]);
 
   const maxInputHeight = (7 * 22) + 20;
-  
+
   const shouldShowToolbar = showRichTextToolbar && Platform.OS !== 'web' && RichToolbar && recordingMode === 'idle';
 
   return (
@@ -551,10 +553,10 @@ export default function MessageInput({
         <View className="px-2 pt-1">
           {/* Container Row: White Bubble + Send Button */}
           <View className="flex-row items-end">
-            
+
             {/* White Bubble: Contains Reply & Input */}
             <View className="flex-1 bg-white rounded-[22px] border border-gray-200 overflow-hidden mr-2 min-h-[44px]">
-              
+
               {/* Reply Preview Section - Inside the bubble */}
               {replyToMessage && (
                 <View className="mt-2 mx-2 mb-1 p-2 bg-gray-100 rounded-lg border-l-[4px] border-green-600 flex-row items-start justify-between">
@@ -566,9 +568,9 @@ export default function MessageInput({
                       {getReplyPreviewText(replyToMessage)}
                     </Text>
                   </View>
-                  
-                  <TouchableOpacity 
-                    onPress={onCancelReply} 
+
+                  <TouchableOpacity
+                    onPress={onCancelReply}
                     className="bg-gray-200 rounded-full p-0.5 mt-0.5"
                     hitSlop={{ top: 5, bottom: 5, left: 5, right: 5 }}
                   >
@@ -578,8 +580,8 @@ export default function MessageInput({
               )}
 
               {/* Text Input Row - Inside the bubble, below reply */}
-              <View 
-                className="flex-row items-center px-1 pb-1" 
+              <View
+                className="flex-row items-center px-1 pb-1"
                 style={{ maxHeight: maxInputHeight }}
               >
                 <View className="flex-1 justify-center" style={{ paddingVertical: 2, paddingLeft: 6 }}>
@@ -680,12 +682,12 @@ export default function MessageInput({
               delayLongPress={400}
               disabled={sending}
               className="min-h-[50px] min-w-[50px] rounded-full bg-green-600 items-center justify-center mb-0"
-              style={{ 
-                shadowColor: '#000', 
-                shadowOffset: { width: 0, height: 1 }, 
-                shadowOpacity: 0.2, 
-                shadowRadius: 3, 
-                elevation: 3 
+              style={{
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 1 },
+                shadowOpacity: 0.2,
+                shadowRadius: 3,
+                elevation: 3
               }}
             >
               {sending ? (
@@ -704,63 +706,39 @@ export default function MessageInput({
         </View>
       )}
 
-      {/* Rich Text Toolbar (unchanged) */}
+      {/* Rich Text Toolbar - use pell's built-in toolbar so active styles follow cursor */}
       {shouldShowToolbar && (
         <View className="flex-row items-center bg-[#F3F4F6] border-t border-b border-gray-200 py-1">
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            keyboardShouldPersistTaps="always"
-            contentContainerStyle={{ paddingHorizontal: 8, alignItems: 'center' }}
-            className="flex-1"
-          >
-            <ToolbarButton onPress={handleBold} isActive={formatActive.bold}>
-              <Text className={`text-lg font-bold ${formatActive.bold ? 'text-green-600' : 'text-gray-700'}`}>B</Text>
-            </ToolbarButton>
-             {/* ... (rest of toolbar buttons) ... */}
-            <ToolbarButton onPress={handleItalic} isActive={formatActive.italic}>
-              <Text className={`text-lg italic ${formatActive.italic ? 'text-green-600' : 'text-gray-700'}`}>I</Text>
-            </ToolbarButton>
-            <ToolbarButton onPress={handleUnderline} isActive={formatActive.underline}>
-              <Text className={`text-lg ${formatActive.underline ? 'text-green-600' : 'text-gray-700'}`} style={{ textDecorationLine: 'underline' }}>U</Text>
-            </ToolbarButton>
-            <ToolbarButton onPress={handleStrike} isActive={formatActive.strike}>
-              <Text className={`text-lg ${formatActive.strike ? 'text-green-600' : 'text-gray-700'}`} style={{ textDecorationLine: 'line-through' }}>S</Text>
-            </ToolbarButton>
+          <View className="flex-1">
+            {RichToolbar && (
+              <RichToolbar
+                editor={richTextRef}
+                actions={[
+                  actions.setBold,
+                  actions.setItalic,
+                  actions.setUnderline,
+                  actions.setStrikethrough,
+                  actions.insertBulletsList,
+                  actions.insertOrderedList,
+                  actions.alignLeft,
+                  actions.alignCenter,
+                  actions.alignRight
+                ]}
+                iconTint="#4B5563"
+                selectedIconTint="#16a34a"
+                style={{ backgroundColor: 'transparent' }}
+              />
+            )}
+          </View>
 
-            <ToolbarDivider />
 
-            <ToolbarButton onPress={() => toggleColorPicker('text')} isActive={showColorPicker === 'text'}>
-              <ColorIndicatorIcon type="text" color={currentTextColor} />
-            </ToolbarButton>
-            <ToolbarButton onPress={() => toggleColorPicker('background')} isActive={showColorPicker === 'background'}>
-              <ColorIndicatorIcon type="background" color={currentBgColor} />
-            </ToolbarButton>
-
-            <ToolbarDivider />
-
-            <ToolbarButton onPress={toggleLinkInput} isActive={showLinkInput}>
-              <Ionicons name="link" size={22} color={showLinkInput ? '#1DAB61' : '#4B5563'} />
-            </ToolbarButton>
-            <ToolbarButton onPress={handleBulletList} isActive={listAlignActive.bullet}>
-              <BulletListIcon color={listAlignActive.bullet ? '#16a34a' : '#4B5563'} />
-            </ToolbarButton>
-            <ToolbarButton onPress={handleNumberList} isActive={listAlignActive.number}>
-              <NumberListIcon color={listAlignActive.number ? '#16a34a' : '#4B5563'} />
-            </ToolbarButton>
-
-            <ToolbarDivider />
-
-            <ToolbarButton onPress={handleAlignLeft} isActive={listAlignActive.alignLeft}>
-              <AlignLeftIcon color={listAlignActive.alignLeft ? '#16a34a' : '#4B5563'} />
-            </ToolbarButton>
-            <ToolbarButton onPress={handleAlignCenter} isActive={listAlignActive.alignCenter}>
-              <AlignCenterIcon color={listAlignActive.alignCenter ? '#16a34a' : '#4B5563'} />
-            </ToolbarButton>
-            <ToolbarButton onPress={handleAlignRight} isActive={listAlignActive.alignRight}>
-              <AlignRightIcon color={listAlignActive.alignRight ? '#16a34a' : '#4B5563'} />
-            </ToolbarButton>
-          </ScrollView>
+          {/* Our own color pickers (text + background) */}
+          <ToolbarButton onPress={() => toggleColorPicker('text')} isActive={showColorPicker === 'text'}>
+            <ColorIndicatorIcon type="text" color={currentTextColor} />
+          </ToolbarButton>
+          <ToolbarButton onPress={() => toggleColorPicker('background')} isActive={showColorPicker === 'background'}>
+            <ColorIndicatorIcon type="background" color={currentBgColor} />
+          </ToolbarButton>
 
           <TouchableOpacity
             onPress={handleCloseToolbar}
@@ -771,6 +749,7 @@ export default function MessageInput({
           </TouchableOpacity>
         </View>
       )}
+
 
       {/* Inline Color Picker & Link Input & Modal (unchanged) */}
       {showColorPicker !== null && recordingMode === 'idle' && (

@@ -14,7 +14,7 @@ import useNetworkStatus from '@/hooks/userNetworkStatus';
 import SplashScreen from '@/components/SplashScreen';
 import * as React from 'react';
 
-const DEV_IP = "http://10.27.61.242:8080";
+const DEV_IP = "http://10.219.135.242:8080";
 const EXTERNAL_IP = "http://103.47.172.58:50160";
 const INTERNAL_IP = "http://192.168.2.134:3000";
 

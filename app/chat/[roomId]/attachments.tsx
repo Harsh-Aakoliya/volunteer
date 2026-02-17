@@ -19,11 +19,13 @@ import {
   Modal,
   ScrollView,
   LayoutAnimation,
+  Animated,
+  Easing,
 } from "react-native";
 import { BackHandler } from "react-native";
 import * as MediaLibrary from "expo-media-library";
 import { Ionicons } from "@expo/vector-icons";
-import Svg, { Path, Line, Circle } from "react-native-svg";
+import Svg, { Path, Line, Circle as SvgCircle } from "react-native-svg";
 import axios from "axios";
 import { API_URL } from "@/constants/api";
 import { AuthStorage } from "@/utils/authStorage";
@@ -60,6 +62,16 @@ const ITEM_MARGIN = 2;
 const ITEM_SIZE = (SCREEN_WIDTH - ITEM_MARGIN * (NUM_COLUMNS + 1)) / NUM_COLUMNS;
 const SELECTED_THUMB_SIZE = 64;
 
+// ---------- UPLOAD STATUS TYPES ----------
+type UploadStatus = 'idle' | 'pending' | 'uploading' | 'success' | 'error';
+
+interface UploadProgress {
+  [id: string]: {
+    progress: number;
+    status: UploadStatus;
+  };
+}
+
 // ---------- ATTACHMENTS-SPECIFIC SVG ICONS ----------
 const GalleryIcon = ({ size = 24, color = "#fff" }: { size?: number; color?: string }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
@@ -78,6 +90,82 @@ const PollIcon = ({ size = 24, color = "#fff" }: { size?: number; color?: string
     />
   </Svg>
 );
+
+// ---------- CIRCULAR PROGRESS COMPONENT ----------
+const CircularProgress = React.memo(({
+  progress,
+  size = 40,
+  strokeWidth = 3,
+  backgroundColor = 'rgba(255,255,255,0.3)',
+  progressColor = '#3b82f6',
+}: {
+  progress: number;
+  size?: number;
+  strokeWidth?: number;
+  backgroundColor?: string;
+  progressColor?: string;
+}) => {
+  const radius = (size - strokeWidth) / 2;
+  const circumference = radius * 2 * Math.PI;
+  const clampedProgress = Math.min(Math.max(progress, 0), 100);
+  const strokeDashoffset = circumference - (clampedProgress / 100) * circumference;
+
+  return (
+    <Svg width={size} height={size}>
+      {/* Background circle */}
+      <SvgCircle
+        cx={size / 2}
+        cy={size / 2}
+        r={radius}
+        stroke={backgroundColor}
+        strokeWidth={strokeWidth}
+        fill="none"
+      />
+      {/* Progress circle */}
+      <SvgCircle
+        cx={size / 2}
+        cy={size / 2}
+        r={radius}
+        stroke={progressColor}
+        strokeWidth={strokeWidth}
+        fill="none"
+        strokeDasharray={`${circumference} ${circumference}`}
+        strokeDashoffset={strokeDashoffset}
+        strokeLinecap="round"
+        transform={`rotate(-90 ${size / 2} ${size / 2})`}
+      />
+    </Svg>
+  );
+});
+
+// ---------- ANIMATED SPINNER ----------
+const AnimatedSpinner = React.memo(({ size = 24, color = "#3b82f6" }: { size?: number; color?: string }) => {
+  const spinValue = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const animation = Animated.loop(
+      Animated.timing(spinValue, {
+        toValue: 1,
+        duration: 1000,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      })
+    );
+    animation.start();
+    return () => animation.stop();
+  }, [spinValue]);
+
+  const spin = spinValue.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '360deg'],
+  });
+
+  return (
+    <Animated.View style={{ transform: [{ rotate: spin }] }}>
+      <Ionicons name="sync" size={size} color={color} />
+    </Animated.View>
+  );
+});
 
 // ---------- TYPES ----------
 interface SelectedMedia {
@@ -468,53 +556,173 @@ const MediaItem = React.memo(({
   );
 });
 
-// ---------- SELECTED MEDIA THUMBNAIL ----------
+// ---------- SELECTED MEDIA THUMBNAIL WITH UPLOAD PROGRESS ----------
 const SelectedMediaThumbnail = React.memo(({
   item,
   onPress,
   onRemove,
+  uploadState,
+  isUploading,
 }: {
   item: SelectedMedia;
   onPress: () => void;
   onRemove: () => void;
+  uploadState?: { progress: number; status: UploadStatus };
+  isUploading: boolean;
 }) => {
   const isVideo = item.mediaType === "video";
+  const status = uploadState?.status || 'idle';
+  const progress = uploadState?.progress || 0;
+
+  const showProgress = isUploading && (status === 'pending' || status === 'uploading');
+  const showSuccess = status === 'success';
+  const showError = status === 'error';
 
   return (
     <TouchableOpacity
       style={{ width: SELECTED_THUMB_SIZE, height: SELECTED_THUMB_SIZE }}
       className="rounded-lg overflow-hidden bg-gray-200 mr-2"
-      onPress={onPress}
-      activeOpacity={0.8}
+      onPress={isUploading ? undefined : onPress}
+      activeOpacity={isUploading ? 1 : 0.8}
+      disabled={isUploading}
     >
       <Image
         source={{ uri: item.uri }}
         className="w-full h-full"
         resizeMode="cover"
       />
-      {isVideo && (
+
+      {/* Video indicator */}
+      {isVideo && !isUploading && (
         <View className="absolute bottom-1 left-1 bg-black/60 rounded-full w-5 h-5 items-center justify-center">
           <Ionicons name="play" size={14} color="#fff" />
         </View>
       )}
-      <View className="absolute top-1 left-1 bg-blue-500 rounded-full w-5 h-5 items-center justify-center">
-        <Text className="text-white text-[11px] font-bold">{item.order}</Text>
-      </View>
-      <TouchableOpacity
-        className="absolute -top-0.5 -right-0.5 bg-black/50 rounded-full"
-        onPress={(e) => {
-          e.stopPropagation();
-          onRemove();
-        }}
-        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-      >
-        <Ionicons name="close-circle" size={20} color="#fff" />
-      </TouchableOpacity>
+
+      {/* Normal state - Order badge and remove button */}
+      {!isUploading && (
+        <>
+          <View className="absolute top-1 left-1 bg-blue-500 rounded-full w-5 h-5 items-center justify-center">
+            <Text className="text-white text-[11px] font-bold">{item.order}</Text>
+          </View>
+          <TouchableOpacity
+            className="absolute -top-0.5 -right-0.5 bg-black/50 rounded-full"
+            onPress={(e) => {
+              e.stopPropagation();
+              onRemove();
+            }}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Ionicons name="close-circle" size={20} color="#fff" />
+          </TouchableOpacity>
+        </>
+      )}
+
+      {/* Upload progress overlay */}
+      {showProgress && (
+        <View className="absolute inset-0 bg-black/50 items-center justify-center">
+          <View className="relative items-center justify-center">
+            <CircularProgress
+              progress={progress}
+              size={44}
+              strokeWidth={3}
+              backgroundColor="rgba(255,255,255,0.3)"
+              progressColor="#3b82f6"
+            />
+            <View className="absolute items-center justify-center">
+              <Text className="text-white text-[10px] font-bold">
+                {Math.round(progress)}%
+              </Text>
+            </View>
+          </View>
+        </View>
+      )}
+
+      {/* Success overlay */}
+      {showSuccess && (
+        <View className="absolute inset-0 bg-green-500/60 items-center justify-center">
+          <View className="w-8 h-8 rounded-full bg-green-500 items-center justify-center">
+            <Ionicons name="checkmark" size={22} color="#fff" />
+          </View>
+        </View>
+      )}
+
+      {/* Error overlay */}
+      {showError && (
+        <View className="absolute inset-0 bg-red-500/60 items-center justify-center">
+          <View className="w-8 h-8 rounded-full bg-red-500 items-center justify-center">
+            <Ionicons name="alert" size={20} color="#fff" />
+          </View>
+        </View>
+      )}
     </TouchableOpacity>
   );
 });
 
-// ---------- TOOLBAR BUTTON ----------
+// ---------- UPLOAD PROGRESS BAR (for entire upload) ----------
+const OverallProgressBar = React.memo(({
+  progress,
+  currentFile,
+  totalFiles,
+  status,
+}: {
+  progress: number;
+  currentFile: number;
+  totalFiles: number;
+  status: 'uploading' | 'processing' | 'complete' | 'error';
+}) => {
+  const getStatusText = () => {
+    switch (status) {
+      case 'uploading':
+        return `Uploading ${currentFile} of ${totalFiles}...`;
+      case 'processing':
+        return 'Processing...';
+      case 'complete':
+        return 'Complete!';
+      case 'error':
+        return 'Upload failed';
+      default:
+        return 'Preparing...';
+    }
+  };
+
+  const getStatusColor = () => {
+    switch (status) {
+      case 'complete':
+        return 'bg-green-500';
+      case 'error':
+        return 'bg-red-500';
+      default:
+        return 'bg-blue-500';
+    }
+  };
+
+  return (
+    <View className="px-4 py-3 bg-gray-50">
+      <View className="flex-row items-center justify-between mb-2">
+        <View className="flex-row items-center">
+          {status === 'uploading' && <AnimatedSpinner size={16} color="#3b82f6" />}
+          {status === 'processing' && <AnimatedSpinner size={16} color="#3b82f6" />}
+          {status === 'complete' && <Ionicons name="checkmark-circle" size={16} color="#22c55e" />}
+          {status === 'error' && <Ionicons name="alert-circle" size={16} color="#ef4444" />}
+          <Text className="ml-2 text-sm font-medium text-gray-700">
+            {getStatusText()}
+          </Text>
+        </View>
+        <Text className="text-sm font-semibold text-gray-600">
+          {Math.round(progress)}%
+        </Text>
+      </View>
+      <View className="h-2 bg-gray-200 rounded-full overflow-hidden">
+        <View
+          className={`h-full rounded-full ${getStatusColor()}`}
+          style={{ width: `${Math.min(progress, 100)}%` }}
+        />
+      </View>
+    </View>
+  );
+});
+
 // ---------- MAIN COMPONENT ----------
 export default function AttachmentsScreen() {
   const params = useLocalSearchParams();
@@ -541,6 +749,13 @@ export default function AttachmentsScreen() {
   const [endCursor, setEndCursor] = useState<string | undefined>();
   const [hasMore, setHasMore] = useState(true);
   const [showCamera, setShowCamera] = useState(false);
+
+  // Upload progress state
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<UploadProgress>({});
+  const [overallProgress, setOverallProgress] = useState(0);
+  const [currentUploadIndex, setCurrentUploadIndex] = useState(0);
+  const [uploadPhase, setUploadPhase] = useState<'idle' | 'uploading' | 'processing' | 'complete' | 'error'>('idle');
 
   // Preview modal state
   const [previewAsset, setPreviewAsset] = useState<MediaLibrary.Asset | null>(null);
@@ -608,6 +823,14 @@ export default function AttachmentsScreen() {
 
   useEffect(() => {
     const backAction = () => {
+      if (isUploading) {
+        Alert.alert(
+          "Upload in Progress",
+          "Please wait for the upload to complete before leaving.",
+          [{ text: "OK" }]
+        );
+        return true;
+      }
       router.replace({
         pathname: "/chat/[roomId]",
         params: { roomId },
@@ -617,15 +840,13 @@ export default function AttachmentsScreen() {
 
     const backHandler = BackHandler.addEventListener("hardwareBackPress", backAction);
     return () => backHandler.remove();
-  }, [roomId]);
+  }, [roomId, isUploading]);
 
   const loadMedia = async (cursor?: string) => {
     if (isLoading) return;
     setIsLoading(true);
     try {
       if (Platform.OS === "android" && !cursor) {
-        // On Android, getAssetsAsync without album often returns only Camera/Screenshots.
-        // Fetch from ALL albums (Downloads, saved, custom folders, etc.) and merge.
         const albums = await MediaLibrary.getAlbumsAsync({ includeSmartAlbums: true });
         const perAlbumLimit = 80;
         const allAssets: MediaLibrary.Asset[] = [];
@@ -655,14 +876,12 @@ export default function AttachmentsScreen() {
           }
         }
 
-        // Sort by creationTime descending (newest first)
         allAssets.sort((a, b) => (b.creationTime || 0) - (a.creationTime || 0));
 
         setMediaAssets(allAssets);
         setEndCursor(undefined);
-        setHasMore(false); // Album-based load doesn't support pagination for now
+        setHasMore(false);
       } else if (cursor) {
-        // iOS or load more (Android fallback)
         const result = await MediaLibrary.getAssetsAsync({
           first: 30,
           after: cursor,
@@ -673,7 +892,6 @@ export default function AttachmentsScreen() {
         setEndCursor(result.endCursor);
         setHasMore(result.hasNextPage);
       } else {
-        // iOS: single library fetch
         const result = await MediaLibrary.getAssetsAsync({
           first: 30,
           mediaType: ["photo", "video"],
@@ -697,6 +915,7 @@ export default function AttachmentsScreen() {
   }, [hasMore, isLoading, endCursor]);
 
   const handleSelectMedia = useCallback((asset: MediaLibrary.Asset) => {
+    if (isUploading) return;
     setSelectedMedia(prev => {
       const existingIndex = prev.findIndex(m => m.id === asset.id);
       if (existingIndex !== -1) {
@@ -714,34 +933,47 @@ export default function AttachmentsScreen() {
         }];
       }
     });
-  }, []);
+  }, [isUploading]);
 
   const handleRemoveMedia = useCallback((id: string) => {
+    if (isUploading) return;
     setSelectedMedia(prev => {
       const newSelection = prev.filter(m => m.id !== id);
       return newSelection.map((item, index) => ({ ...item, order: index + 1 }));
     });
-  }, []);
+  }, [isUploading]);
 
   const handlePreviewMedia = useCallback((asset: MediaLibrary.Asset) => {
+    if (isUploading) return;
     setPreviewAsset(asset);
     setShowPreviewModal(true);
-  }, []);
+  }, [isUploading]);
 
   const handleOpenCarousel = useCallback((index: number) => {
+    if (isUploading) return;
     setCarouselInitialIndex(index);
     setShowCarouselModal(true);
-  }, []);
+  }, [isUploading]);
 
   const getSelectedOrder = useCallback((id: string): number | null => {
     const item = selectedMedia.find(m => m.id === id);
     return item ? item.order : null;
   }, [selectedMedia]);
 
+  // Reset upload state
+  const resetUploadState = useCallback(() => {
+    setIsUploading(false);
+    setUploadProgress({});
+    setOverallProgress(0);
+    setCurrentUploadIndex(0);
+    setUploadPhase('idle');
+  }, []);
+
   // Rich text toggle
   const handleToggleRichText = useCallback(() => {
     if (Platform.OS === 'web') return;
     if (isSwitchingRef.current) return;
+    if (isUploading) return;
 
     isSwitchingRef.current = true;
     const nextState = !showRichTextToolbar;
@@ -783,7 +1015,7 @@ export default function AttachmentsScreen() {
         isSwitchingRef.current = false;
       }, 100);
     }
-  }, [showRichTextToolbar, caption, isKeyboardVisible]);
+  }, [showRichTextToolbar, caption, isKeyboardVisible, isUploading]);
 
   // Color picker handlers
   const handleColorSelect = useCallback((color: string) => {
@@ -839,16 +1071,34 @@ export default function AttachmentsScreen() {
     }
   }, []);
 
-  // Send media
+  // Send media with progress tracking
   const handleSendMedia = async () => {
-    if (selectedMedia.length === 0 || isSending) return;
+    if (selectedMedia.length === 0 || isSending || isUploading) return;
+    
+    // Dismiss keyboard
+    Keyboard.dismiss();
+    
+    // Initialize upload state
+    setIsUploading(true);
     setIsSending(true);
+    setUploadPhase('uploading');
+    setOverallProgress(0);
+    setCurrentUploadIndex(0);
+
+    // Initialize progress for all media
+    const initialProgress: UploadProgress = {};
+    selectedMedia.forEach(media => {
+      initialProgress[media.id] = { progress: 0, status: 'pending' };
+    });
+    setUploadProgress(initialProgress);
 
     try {
       const token = await AuthStorage.getToken();
       const formData = new FormData();
+      const totalFiles = selectedMedia.length;
 
-      selectedMedia.forEach((media) => {
+      // Prepare form data
+      selectedMedia.forEach((media, index) => {
         const uri = Platform.OS === "ios" ? media.uri.replace("file://", "") : media.uri;
         const mimeType = getMimeType(media.filename, media.mediaType);
 
@@ -860,6 +1110,7 @@ export default function AttachmentsScreen() {
         });
       });
 
+      // Upload with progress tracking
       const uploadResponse = await axios.post(
         `${API_URL}/api/vm-media/upload-multipart`,
         formData,
@@ -869,12 +1120,54 @@ export default function AttachmentsScreen() {
             "Content-Type": "multipart/form-data",
           },
           transformRequest: (data) => data,
+          onUploadProgress: (progressEvent) => {
+            if (progressEvent.total) {
+              const percentComplete = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+              setOverallProgress(percentComplete * 0.7); // 70% for upload
+              
+              // Update individual file progress (simulated based on overall)
+              const progressPerFile = 100 / totalFiles;
+              const currentFileIndex = Math.min(
+                Math.floor(percentComplete / progressPerFile),
+                totalFiles - 1
+              );
+              
+              setCurrentUploadIndex(currentFileIndex);
+              
+              setUploadProgress(prev => {
+                const updated = { ...prev };
+                selectedMedia.forEach((media, idx) => {
+                  if (idx < currentFileIndex) {
+                    updated[media.id] = { progress: 100, status: 'success' };
+                  } else if (idx === currentFileIndex) {
+                    const fileProgress = ((percentComplete - (idx * progressPerFile)) / progressPerFile) * 100;
+                    updated[media.id] = { progress: Math.min(fileProgress, 100), status: 'uploading' };
+                  } else {
+                    updated[media.id] = { progress: 0, status: 'pending' };
+                  }
+                });
+                return updated;
+              });
+            }
+          },
+          timeout: 300000, // 5 minutes timeout for large files
         }
       );
 
       if (!uploadResponse.data.success) {
         throw new Error("Gallery upload failed");
       }
+
+      // Mark all as uploaded, move to processing
+      setUploadPhase('processing');
+      setOverallProgress(75);
+      setUploadProgress(prev => {
+        const updated = { ...prev };
+        selectedMedia.forEach(media => {
+          updated[media.id] = { progress: 100, status: 'uploading' };
+        });
+        return updated;
+      });
 
       const tempFolderId = uploadResponse.data.tempFolderId;
       const uploadedFiles = uploadResponse.data.uploadedFiles;
@@ -889,6 +1182,8 @@ export default function AttachmentsScreen() {
         size: f.size,
       }));
 
+      setOverallProgress(85);
+
       const moveResponse = await axios.post(
         `${API_URL}/api/vm-media/move-to-chat`,
         {
@@ -902,6 +1197,17 @@ export default function AttachmentsScreen() {
       );
 
       if (moveResponse.data.success) {
+        // Mark all as success
+        setUploadPhase('complete');
+        setOverallProgress(100);
+        setUploadProgress(prev => {
+          const updated = { ...prev };
+          selectedMedia.forEach(media => {
+            updated[media.id] = { progress: 100, status: 'success' };
+          });
+          return updated;
+        });
+
         socketSendMessage(roomId, {
           id: moveResponse.data.messageId,
           messageText: moveResponse.data.messageText || "",
@@ -912,15 +1218,52 @@ export default function AttachmentsScreen() {
           tableId: 0,
           replyMessageId: 0,
         });
-        router.back();
+
+        // Small delay to show success state before navigating
+        setTimeout(() => {
+          router.back();
+        }, 800);
+      } else {
+        throw new Error("Failed to process media");
       }
     } catch (error: any) {
       console.error("Error sending gallery media:", error);
-      Alert.alert("Error", `Failed to send media: ${error?.message || "Check connection"}`);
+      
+      // Mark all as error
+      setUploadPhase('error');
+      setUploadProgress(prev => {
+        const updated = { ...prev };
+        selectedMedia.forEach(media => {
+          if (updated[media.id]?.status !== 'success') {
+            updated[media.id] = { progress: 0, status: 'error' };
+          }
+        });
+        return updated;
+      });
+
+      // Show error alert
+      Alert.alert(
+        "Upload Failed",
+        `Failed to send media: ${error?.message || "Please check your connection and try again"}`,
+        [
+          {
+            text: "OK",
+            onPress: () => {
+              // Reset upload state to allow retry
+              resetUploadState();
+            }
+          }
+        ]
+      );
     } finally {
       setIsSending(false);
     }
   };
+
+  // Retry upload
+  const handleRetry = useCallback(() => {
+    resetUploadState();
+  }, [resetUploadState]);
 
   // Camera send handler
   const handleCameraSend = useCallback(async (
@@ -1000,8 +1343,9 @@ export default function AttachmentsScreen() {
   }, []);
 
   const handleCameraPress = useCallback(() => {
+    if (isUploading) return;
     setShowCamera(true);
-  }, []);
+  }, [isUploading]);
 
   // Prepare gallery data
   const galleryData: GalleryItem[] = useMemo(() => {
@@ -1108,7 +1452,7 @@ export default function AttachmentsScreen() {
   const maxInputHeight = 120;
   const shouldShowToolbar = showRichTextToolbar && Platform.OS !== 'web' && RichToolbar;
 
-  // Render selected media thumbnails bar
+  // Render selected media thumbnails bar with upload progress
   const renderSelectedMediaBar = () => (
     <View className="border-b border-gray-200 bg-gray-50">
       <FlatList
@@ -1122,230 +1466,283 @@ export default function AttachmentsScreen() {
             item={item}
             onPress={() => handleOpenCarousel(index)}
             onRemove={() => handleRemoveMedia(item.id)}
+            uploadState={uploadProgress[item.id]}
+            isUploading={isUploading}
           />
         )}
       />
     </View>
   );
 
+  // Render overall progress bar
+  const renderProgressBar = () => {
+    if (!isUploading || uploadPhase === 'idle') return null;
+
+    return (
+      <OverallProgressBar
+        progress={overallProgress}
+        currentFile={currentUploadIndex + 1}
+        totalFiles={selectedMedia.length}
+        status={uploadPhase === 'complete' ? 'complete' : uploadPhase === 'error' ? 'error' : uploadPhase}
+      />
+    );
+  };
+
   // Render input bar
-  const renderInputBar = () => (
-    <View className="pb-2">
-      {/* Selected media thumbnails */}
-      {renderSelectedMediaBar()}
+  const renderInputBar = () => {
+    // Hide input controls when uploading (but show thumbnails and progress)
+    if (isUploading) {
+      return (
+        <View className="pb-2">
+          {/* Selected media thumbnails with progress */}
+          {renderSelectedMediaBar()}
+          
+          {/* Overall progress bar */}
+          {renderProgressBar()}
 
-      {/* Input row */}
-      <View className="flex-row items-end px-3 pt-2.5 gap-2">
-        {/* Format toggle button */}
-        {Platform.OS !== 'web' && RichEditor && (
-          <TouchableOpacity
-            onPress={handleToggleRichText}
-            className={`w-10 h-11 rounded-full items-center justify-center ${
-              showRichTextToolbar ? 'bg-blue-100' : 'bg-gray-100'
-            }`}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <Ionicons
-              name="text"
-              size={20}
-              color={showRichTextToolbar ? '#2AABEE' : '#666666'}
-            />
-          </TouchableOpacity>
-        )}
-
-        {/* Input container */}
-        <View className="flex-1 bg-gray-50 rounded-3xl border border-gray-200 overflow-hidden min-h-[44px]">
-          {showRichTextToolbar && Platform.OS !== 'web' && RichEditor ? (
-            <View style={{ minHeight: 44, maxHeight: maxInputHeight }}>
-              <RichEditor
-                key={`editor-${editorKeyRef.current}`}
-                ref={richTextRef}
-                onChange={setCaption}
-                placeholder="Add a caption..."
-                initialContentHTML=""
-                initialHeight={44}
-                androidHardwareAccelerationDisabled={true}
-                androidLayerType="software"
-                pasteAsPlainText={true}
-                onPaste={handlePaste}
-                editorStyle={{
-                  backgroundColor: "#F9FAFB",
-                  placeholderColor: "#9CA3AF",
-                  contentCSSText: `
-                    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-                    font-size: 16px;
-                    line-height: 22px;
-                    color: #1F2937;
-                    padding: 10px 14px;
-                    min-height: 44px;
-                    max-height: ${maxInputHeight}px;
-                  `,
-                }}
-                style={{
-                  backgroundColor: '#F9FAFB',
-                  minHeight: 44,
-                  maxHeight: maxInputHeight,
-                }}
-              />
+          {/* Error retry button */}
+          {uploadPhase === 'error' && (
+            <View className="px-4 py-3">
+              <TouchableOpacity
+                onPress={handleRetry}
+                className="flex-row items-center justify-center py-3 bg-blue-500 rounded-xl"
+              >
+                <Ionicons name="refresh" size={20} color="#fff" />
+                <Text className="text-white font-semibold ml-2">Try Again</Text>
+              </TouchableOpacity>
             </View>
-          ) : (
-            <TextInput
-              ref={inputRef}
-              className="px-4 py-2.5 text-base text-gray-800"
-              style={{ height: inputHeight, maxHeight: maxInputHeight, textAlignVertical: 'center' }}
-              placeholder="Add a caption..."
-              placeholderTextColor="#999"
-              value={caption}
-              onChangeText={setCaption}
-              multiline
-              maxLength={500}
-              onContentSizeChange={(event) => {
-                const contentHeight = event.nativeEvent?.contentSize?.height;
-                if (!contentHeight) return;
+          )}
 
-                if (heightUpdateTimeoutRef.current) {
-                  clearTimeout(heightUpdateTimeoutRef.current);
-                }
-
-                heightUpdateTimeoutRef.current = setTimeout(() => {
-                  const newHeight = Math.min(Math.max(44, Math.ceil(contentHeight)), maxInputHeight);
-                  if (Math.abs(newHeight - inputHeight) >= 2) {
-                    setInputHeight(newHeight);
-                  }
-                }, 50);
-              }}
-            />
+          {/* Cancel button (only during upload, not on error) */}
+          {uploadPhase !== 'error' && uploadPhase !== 'complete' && (
+            <View className="px-4 py-2">
+              <Text className="text-center text-gray-500 text-sm">
+                Please wait while uploading...
+              </Text>
+            </View>
           )}
         </View>
+      );
+    }
 
-        {/* Send button */}
-        <TouchableOpacity
-          onPress={handleSendMedia}
-          disabled={isSending || selectedMedia.length === 0}
-          className={`w-11 h-11 rounded-full items-center justify-center ${
-            isSending || selectedMedia.length === 0 ? 'bg-gray-300' : 'bg-blue-500'
-          }`}
-        >
-          {isSending ? (
-            <ActivityIndicator size="small" color="#fff" />
-          ) : (
-            <Ionicons name="send" size={20} color="#fff" />
+    return (
+      <View className="pb-2">
+        {/* Selected media thumbnails */}
+        {renderSelectedMediaBar()}
+
+        {/* Input row */}
+        <View className="flex-row items-end px-3 pt-2.5 gap-2">
+          {/* Format toggle button */}
+          {Platform.OS !== 'web' && RichEditor && (
+            <TouchableOpacity
+              onPress={handleToggleRichText}
+              className={`w-10 h-11 rounded-full items-center justify-center ${
+                showRichTextToolbar ? 'bg-blue-100' : 'bg-gray-100'
+              }`}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Ionicons
+                name="text"
+                size={20}
+                color={showRichTextToolbar ? '#2AABEE' : '#666666'}
+              />
+            </TouchableOpacity>
           )}
-        </TouchableOpacity>
-      </View>
 
-      {/* Rich text toolbar */}
-      <AnimatedToolbar visible={shouldShowToolbar}>
-        <ScrollView 
-          horizontal 
-          showsHorizontalScrollIndicator={false}
-          keyboardShouldPersistTaps="always"
-          contentContainerStyle={{ 
-            paddingHorizontal: 8, 
-            paddingVertical: 4,
-            alignItems: 'center',
-            paddingRight: 20,
+          {/* Input container */}
+          <View className="flex-1 bg-gray-50 rounded-3xl border border-gray-200 overflow-hidden min-h-[44px]">
+            {showRichTextToolbar && Platform.OS !== 'web' && RichEditor ? (
+              <View style={{ minHeight: 44, maxHeight: maxInputHeight }}>
+                <RichEditor
+                  key={`editor-${editorKeyRef.current}`}
+                  ref={richTextRef}
+                  onChange={setCaption}
+                  placeholder="Add a caption..."
+                  initialContentHTML=""
+                  initialHeight={44}
+                  androidHardwareAccelerationDisabled={true}
+                  androidLayerType="software"
+                  pasteAsPlainText={true}
+                  onPaste={handlePaste}
+                  editorStyle={{
+                    backgroundColor: "#F9FAFB",
+                    placeholderColor: "#9CA3AF",
+                    contentCSSText: `
+                      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+                      font-size: 16px;
+                      line-height: 22px;
+                      color: #1F2937;
+                      padding: 10px 14px;
+                      min-height: 44px;
+                      max-height: ${maxInputHeight}px;
+                    `,
+                  }}
+                  style={{
+                    backgroundColor: '#F9FAFB',
+                    minHeight: 44,
+                    maxHeight: maxInputHeight,
+                  }}
+                />
+              </View>
+            ) : (
+              <TextInput
+                ref={inputRef}
+                className="px-4 py-2.5 text-base text-gray-800"
+                style={{ height: inputHeight, maxHeight: maxInputHeight, textAlignVertical: 'center' }}
+                placeholder="Add a caption..."
+                placeholderTextColor="#999"
+                value={caption}
+                onChangeText={setCaption}
+                multiline
+                maxLength={500}
+                onContentSizeChange={(event) => {
+                  const contentHeight = event.nativeEvent?.contentSize?.height;
+                  if (!contentHeight) return;
+
+                  if (heightUpdateTimeoutRef.current) {
+                    clearTimeout(heightUpdateTimeoutRef.current);
+                  }
+
+                  heightUpdateTimeoutRef.current = setTimeout(() => {
+                    const newHeight = Math.min(Math.max(44, Math.ceil(contentHeight)), maxInputHeight);
+                    if (Math.abs(newHeight - inputHeight) >= 2) {
+                      setInputHeight(newHeight);
+                    }
+                  }, 50);
+                }}
+              />
+            )}
+          </View>
+
+          {/* Send button */}
+          <TouchableOpacity
+            onPress={handleSendMedia}
+            disabled={isSending || selectedMedia.length === 0}
+            className={`w-11 h-11 rounded-full items-center justify-center ${
+              isSending || selectedMedia.length === 0 ? 'bg-gray-300' : 'bg-blue-500'
+            }`}
+          >
+            {isSending ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Ionicons name="send" size={20} color="#fff" />
+            )}
+          </TouchableOpacity>
+        </View>
+
+        {/* Rich text toolbar */}
+        <AnimatedToolbar visible={shouldShowToolbar}>
+          <ScrollView 
+            horizontal 
+            showsHorizontalScrollIndicator={false}
+            keyboardShouldPersistTaps="always"
+            contentContainerStyle={{ 
+              paddingHorizontal: 8, 
+              paddingVertical: 4,
+              alignItems: 'center',
+              paddingRight: 20,
+            }}
+          >
+            {/* Bold */}
+            <ToolbarButton onPress={handleBold} isActive={formatActive.bold} activeClass="bg-blue-100">
+              <Text className={`text-lg font-bold ${formatActive.bold ? 'text-blue-600' : 'text-gray-600'}`}>B</Text>
+            </ToolbarButton>
+            
+            {/* Italic */}
+            <ToolbarButton onPress={handleItalic} isActive={formatActive.italic} activeClass="bg-blue-100">
+              <Text className={`text-lg italic ${formatActive.italic ? 'text-blue-600' : 'text-gray-600'}`}>I</Text>
+            </ToolbarButton>
+            
+            {/* Underline */}
+            <ToolbarButton onPress={handleUnderline} isActive={formatActive.underline} activeClass="bg-blue-100">
+              <Text className={`text-lg ${formatActive.underline ? 'text-blue-600' : 'text-gray-600'}`} style={{ textDecorationLine: 'underline' }}>U</Text>
+            </ToolbarButton>
+            
+            {/* Strikethrough */}
+            <ToolbarButton onPress={() => richTextRef.current?.sendAction(actions.setStrikethrough, 'result')}>
+              <Text className="text-lg text-gray-600" style={{ textDecorationLine: 'line-through' }}>S</Text>
+            </ToolbarButton>
+
+            <ToolbarDivider />
+
+            {/* Text Color */}
+            <ToolbarButton 
+              onPress={() => toggleColorPicker('text')} 
+              isActive={showColorPicker === 'text'}
+              activeClass="bg-blue-100"
+            >
+              <ColorIndicatorIcon type="text" color={currentTextColor} />
+            </ToolbarButton>
+
+            {/* Background Color */}
+            <ToolbarButton 
+              onPress={() => toggleColorPicker('background')} 
+              isActive={showColorPicker === 'background'}
+              activeClass="bg-blue-100"
+            >
+              <ColorIndicatorIcon type="background" color={currentBgColor} />
+            </ToolbarButton>
+
+            <ToolbarDivider />
+
+            {/* Link */}
+            <ToolbarButton onPress={toggleLinkInput} isActive={showLinkInput} activeClass="bg-blue-100">
+              <Ionicons name="link" size={22} color={showLinkInput ? '#2AABEE' : '#666'} />
+            </ToolbarButton>
+
+            {/* Bullet List */}
+            <ToolbarButton onPress={() => richTextRef.current?.sendAction(actions.insertBulletsList, 'result')}>
+              <BulletListIcon color="#666" />
+            </ToolbarButton>
+
+            {/* Number List */}
+            <ToolbarButton onPress={() => richTextRef.current?.sendAction(actions.insertOrderedList, 'result')}>
+              <NumberListIcon color="#666" />
+            </ToolbarButton>
+
+            <ToolbarDivider />
+
+            {/* Align Left */}
+            <ToolbarButton onPress={() => richTextRef.current?.sendAction(actions.alignLeft, 'result')}>
+              <AlignLeftIcon color="#666" />
+            </ToolbarButton>
+
+            {/* Align Center */}
+            <ToolbarButton onPress={() => richTextRef.current?.sendAction(actions.alignCenter, 'result')}>
+              <AlignCenterIcon color="#666" />
+            </ToolbarButton>
+
+            {/* Align Right */}
+            <ToolbarButton onPress={() => richTextRef.current?.sendAction(actions.alignRight, 'result')}>
+              <AlignRightIcon color="#666" />
+            </ToolbarButton>
+          </ScrollView>
+        </AnimatedToolbar>
+
+        {/* Inline Color Picker */}
+        <InlineColorPicker
+          visible={showColorPicker !== null}
+          type={showColorPicker}
+          selectedColor={showColorPicker === 'text' ? currentTextColor : currentBgColor}
+          onSelect={handleColorSelect}
+          onClose={() => {
+            setShowColorPicker(null);
+            setTimeout(() => richTextRef.current?.focusContentEditor(), 50);
           }}
-        >
-          {/* Bold */}
-          <ToolbarButton onPress={handleBold} isActive={formatActive.bold} activeClass="bg-blue-100">
-            <Text className={`text-lg font-bold ${formatActive.bold ? 'text-blue-600' : 'text-gray-600'}`}>B</Text>
-          </ToolbarButton>
-          
-          {/* Italic */}
-          <ToolbarButton onPress={handleItalic} isActive={formatActive.italic} activeClass="bg-blue-100">
-            <Text className={`text-lg italic ${formatActive.italic ? 'text-blue-600' : 'text-gray-600'}`}>I</Text>
-          </ToolbarButton>
-          
-          {/* Underline */}
-          <ToolbarButton onPress={handleUnderline} isActive={formatActive.underline} activeClass="bg-blue-100">
-            <Text className={`text-lg ${formatActive.underline ? 'text-blue-600' : 'text-gray-600'}`} style={{ textDecorationLine: 'underline' }}>U</Text>
-          </ToolbarButton>
-          
-          {/* Strikethrough */}
-          <ToolbarButton onPress={() => richTextRef.current?.sendAction(actions.setStrikethrough, 'result')}>
-            <Text className="text-lg text-gray-600" style={{ textDecorationLine: 'line-through' }}>S</Text>
-          </ToolbarButton>
+          selectedBorderClass="border-blue-500"
+        />
 
-          <ToolbarDivider />
-
-          {/* Text Color */}
-          <ToolbarButton 
-            onPress={() => toggleColorPicker('text')} 
-            isActive={showColorPicker === 'text'}
-            activeClass="bg-blue-100"
-          >
-            <ColorIndicatorIcon type="text" color={currentTextColor} />
-          </ToolbarButton>
-
-          {/* Background Color */}
-          <ToolbarButton 
-            onPress={() => toggleColorPicker('background')} 
-            isActive={showColorPicker === 'background'}
-            activeClass="bg-blue-100"
-          >
-            <ColorIndicatorIcon type="background" color={currentBgColor} />
-          </ToolbarButton>
-
-          <ToolbarDivider />
-
-          {/* Link */}
-          <ToolbarButton onPress={toggleLinkInput} isActive={showLinkInput} activeClass="bg-blue-100">
-            <Ionicons name="link" size={22} color={showLinkInput ? '#2AABEE' : '#666'} />
-          </ToolbarButton>
-
-          {/* Bullet List */}
-          <ToolbarButton onPress={() => richTextRef.current?.sendAction(actions.insertBulletsList, 'result')}>
-            <BulletListIcon color="#666" />
-          </ToolbarButton>
-
-          {/* Number List */}
-          <ToolbarButton onPress={() => richTextRef.current?.sendAction(actions.insertOrderedList, 'result')}>
-            <NumberListIcon color="#666" />
-          </ToolbarButton>
-
-          <ToolbarDivider />
-
-          {/* Align Left */}
-          <ToolbarButton onPress={() => richTextRef.current?.sendAction(actions.alignLeft, 'result')}>
-            <AlignLeftIcon color="#666" />
-          </ToolbarButton>
-
-          {/* Align Center */}
-          <ToolbarButton onPress={() => richTextRef.current?.sendAction(actions.alignCenter, 'result')}>
-            <AlignCenterIcon color="#666" />
-          </ToolbarButton>
-
-          {/* Align Right */}
-          <ToolbarButton onPress={() => richTextRef.current?.sendAction(actions.alignRight, 'result')}>
-            <AlignRightIcon color="#666" />
-          </ToolbarButton>
-        </ScrollView>
-      </AnimatedToolbar>
-
-      {/* Inline Color Picker - ONLY ONE, no Modal version */}
-      <InlineColorPicker
-        visible={showColorPicker !== null}
-        type={showColorPicker}
-        selectedColor={showColorPicker === 'text' ? currentTextColor : currentBgColor}
-        onSelect={handleColorSelect}
-        onClose={() => {
-          setShowColorPicker(null);
-          setTimeout(() => richTextRef.current?.focusContentEditor(), 50);
-        }}
-        selectedBorderClass="border-blue-500"
-      />
-
-      {/* Inline Link Input */}
-      <InlineLinkInput
-        visible={showLinkInput}
-        onInsert={handleInsertLink}
-        onClose={() => setShowLinkInput(false)}
-        editorRef={richTextRef}
-        accent="blue"
-      />
-    </View>
-  );
+        {/* Inline Link Input */}
+        <InlineLinkInput
+          visible={showLinkInput}
+          onInsert={handleInsertLink}
+          onClose={() => setShowLinkInput(false)}
+          editorRef={richTextRef}
+          accent="blue"
+        />
+      </View>
+    );
+  };
 
   // Show camera screen if active
   if (showCamera) {
@@ -1376,7 +1773,7 @@ export default function AttachmentsScreen() {
             renderTabBar={renderTabBar}
             lazy={true}
             lazyPreloadDistance={0}
-            swipeEnabled={true}
+            swipeEnabled={!isUploading}
           />
         </View>
 
@@ -1388,9 +1785,9 @@ export default function AttachmentsScreen() {
         )}
       </KeyboardAvoidingView>
 
-      {/* Media Preview Modal */}
+      {/* Media Preview Modal - disabled during upload */}
       <MediaPreviewModal
-        visible={showPreviewModal}
+        visible={showPreviewModal && !isUploading}
         asset={previewAsset}
         onClose={() => {
           setShowPreviewModal(false);
@@ -1405,9 +1802,9 @@ export default function AttachmentsScreen() {
         selectedOrder={previewAsset ? getSelectedOrder(previewAsset.id) : null}
       />
 
-      {/* Selected Media Carousel Modal */}
+      {/* Selected Media Carousel Modal - disabled during upload */}
       <SelectedMediaCarouselModal
-        visible={showCarouselModal}
+        visible={showCarouselModal && !isUploading}
         selectedMedia={selectedMedia}
         initialIndex={carouselInitialIndex}
         onClose={() => setShowCarouselModal(false)}

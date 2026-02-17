@@ -49,7 +49,6 @@ import MediaViewerModal from "@/components/chat/MediaViewerModal";
 import ChatMessageOptions from "@/components/chat/ChatMessageOptions";
 import MessageInput from "@/components/chat/MessageInput";
 import AudioRecorder from "@/components/chat/AudioRecorder";
-import AudioMessagePlayer from "@/components/chat/AudioMessagePlayer";
 import MediaGrid from "@/components/chat/MediaGrid";
 import { clearRoomNotifications } from "@/utils/chatNotificationHandler";
 import { getScheduledMessages } from "@/api/chat";
@@ -2039,8 +2038,10 @@ const TelegramHeader = React.memo(({
         </View>
 
         <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
-          keyboardVerticalOffset={Platform.OS === "ios" ? insets.top : 0}
+          // Use padding behavior only on iOS; let Android rely on adjustResize
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          // Offset by bottom inset on iOS so the input consistently sits above the keyboard
+          keyboardVerticalOffset={Platform.OS === "ios" ? insets.bottom : 0}
           style={{ flex: 0 }}
         >
           <View style={{ paddingBottom: insets.bottom }}>
