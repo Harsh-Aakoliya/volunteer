@@ -47,6 +47,7 @@ import VideoCallNotification from "@/components/chat/VideoCallNotification";
 import GlobalPollModal from "@/components/chat/GlobalPollModal";
 import MediaViewerModal from "@/components/chat/MediaViewerModal";
 import ChatMessageOptions from "@/components/chat/ChatMessageOptions";
+import EditMessageModal from "@/components/chat/EditMessageModal";
 import MessageInput from "@/components/chat/MessageInput";
 import AudioRecorder from "@/components/chat/AudioRecorder";
 import MediaGrid from "@/components/chat/MediaGrid";
@@ -107,16 +108,25 @@ const StyledTextMessage = React.memo(({
   // Check if HTML
   const isHTML = /<[a-z][\s\S]*>/i.test(cleanContent);
   
+  // Match MessageInput editor: 16px, weight 400, line-height 22, color #1F2937
+  const messageTextColor = '#1F2937';
+
   if (!isHTML) {
     return (
-      <Text className="text-base leading-[22px] text-black" style={{ fontWeight: '300' }}>
+      <Text
+        style={{
+          fontSize: 16,
+          lineHeight: 22,
+          color: messageTextColor,
+          fontFamily: Platform.OS === 'ios' ? 'System' : 'sans-serif',
+          fontWeight: '400',
+        }}
+      >
         {cleanContent}
       </Text>
     );
   }
 
-  // Define defaults
-  const defaultTextColor = '#000000';
   const linkColor = isOwnMessage ? '#0000FF' : '#0088CC';
 
   return (
@@ -124,39 +134,32 @@ const StyledTextMessage = React.memo(({
       <RenderHtml
         contentWidth={contentWidth}
         source={{ html: cleanContent }}
-        systemFonts={systemFonts}
         
-        // 1. Base style for root elements
+        // 1. Base style – match MessageInput editor (16px, weight 400, line-height 22, #1F2937)
         baseStyle={{
           fontSize: 16,
           lineHeight: 22,
-          color: defaultTextColor,
-          fontFamily: Platform.OS === 'ios' ? 'System' : 'sans-serif',
-          fontWeight: '300',
+          color: messageTextColor,
+          fontFamily: Platform.OS === 'ios' ? 'System' : '-apple-system',
         }}
         
-        // 2. Specific Tag Styling
+        // 2. Specific Tag Styling (bold/italic same as editor)
         tagsStyles={{
           body: { margin: 0, padding: 0 },
           p: { marginTop: 0, marginBottom: 4 },
           div: { marginTop: 0, marginBottom: 0 },
           
-          // Bold – enough contrast with normal (300) but not overwhelming
           b: { fontWeight: '700' },
           strong: { fontWeight: '700' },
           i: { fontStyle: 'italic' },
           em: { fontStyle: 'italic' },
           
-          // Links
           a: { color: linkColor, textDecorationLine: 'underline' },
           
-          // Lists
           ul: { paddingLeft: 20, marginTop: 4, marginBottom: 4 },
           ol: { paddingLeft: 20, marginTop: 4, marginBottom: 4 },
           li: { marginBottom: 2 },
 
-          // CRITICAL FOR BACKGROUND COLOR:
-          // Ensure span behaves like text so background color wraps tightly
           span: { }, 
         }}
         
@@ -543,9 +546,11 @@ export default function ChatRoomScreen() {
   const { initiateCall } = useVideoCall();
 
   
-  // Socket context
+  // Socket context (initialize used when opening room from notification before socket is ready)
   const {
     isConnected,
+    isInitialized,
+    initialize: initializeSocket,
     user: socketUser,
     joinRoom,
     leaveRoom,
@@ -623,6 +628,10 @@ export default function ChatRoomScreen() {
   const [selectedMediaId, setSelectedMediaId] = useState<number | null>(null);
   const [selectedMediaFiles, setSelectedMediaFiles] = useState<any[]>([]);
   const [selectedMediaIndex, setSelectedMediaIndex] = useState(0);
+
+  // Edit message from options bar (modal lives here so it stays visible when selection is cleared)
+  const [messageToEditForModal, setMessageToEditForModal] = useState<Message | null>(null);
+  const [showEditModalFromOptions, setShowEditModalFromOptions] = useState(false);
 
   // ==================== PREPARED LIST DATA ====================
 
@@ -1168,6 +1177,11 @@ const handleDeselectMessage = useCallback((message: Message) => {
 
   useFocusEffect(
     useCallback(() => {
+      const rId = Array.isArray(roomId) ? roomId[0] : roomId;
+      // When opening room directly (e.g. from notification tap), socket may not be initialized yet
+      if (rId && (!isInitialized || !isConnected)) {
+        initializeSocket();
+      }
       if (roomId && !hasFocusedOnce.current) {
         hasFocusedOnce.current = true;
         loadRoomDetails();
@@ -1183,7 +1197,7 @@ const handleDeselectMessage = useCallback((message: Message) => {
         setActivePollId(null);
         setShowPollModal(false);
       };
-    }, [roomId])
+    }, [roomId, isInitialized, isConnected, initializeSocket, loadRoomDetails])
   );
 
   // Mark all messages as read whenever screen gains focus
@@ -1520,6 +1534,12 @@ const handleDeselectMessage = useCallback((message: Message) => {
   const onMessageEditedFromOptions = (editedMessage: Message) => {
     updateMessageFields(editedMessage.id, editedMessage);
   };
+
+  const handleEditPressFromOptions = useCallback((message: Message) => {
+    setMessageToEditForModal(message);
+    setShowEditModalFromOptions(true);
+    setSelectedMessages([]);
+  }, []);
 
   // Mark all messages in this room as read for current user
   const markAllMessagesAsReadInRoom = useCallback(async () => {
@@ -1941,6 +1961,7 @@ const TelegramHeader = React.memo(({
           roomMembers={roomMembers}
           currentUser={currentUser}
           onMessageEdited={onMessageEditedFromOptions}
+          onEditPress={handleEditPressFromOptions}
         />
       ) : (
         <TelegramHeader
@@ -2134,6 +2155,23 @@ const TelegramHeader = React.memo(({
         onCancel={() => {
           setShowAudioRecorder(false);
           setIsRecordingAudio(false);
+        }}
+      />
+
+      <EditMessageModal
+        visible={showEditModalFromOptions && !!messageToEditForModal}
+        onClose={() => {
+          setShowEditModalFromOptions(false);
+          setMessageToEditForModal(null);
+        }}
+        message={messageToEditForModal}
+        roomId={Array.isArray(roomId) ? roomId[0] : roomId ?? ''}
+        roomMembers={roomMembers}
+        currentUser={currentUser}
+        onMessageEdited={(editedMessage) => {
+          onMessageEditedFromOptions(editedMessage);
+          setShowEditModalFromOptions(false);
+          setMessageToEditForModal(null);
         }}
       />
     </View>

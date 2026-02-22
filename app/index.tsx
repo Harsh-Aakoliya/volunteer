@@ -14,10 +14,10 @@ import useNetworkStatus from '@/hooks/userNetworkStatus';
 import SplashScreen from '@/components/SplashScreen';
 import React from 'react';
 const DEV_IP = "http://10.219.135.242:8080";
-const EXTERNAL_IP = "http://103.47.172.58:50160";
-const INTERNAL_IP = "http://192.168.2.134:3000";
+const EXTERNAL_IP = "";
+const INTERNAL_IP = "";
 
-export const getDevModeStatus = () => true;
+export const getDevModeStatus = () => false;
 export const getDefaultDevIP = () => DEV_IP;
 
 const isWeb = Platform.OS === ('web' as any);

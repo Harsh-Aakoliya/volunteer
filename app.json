@@ -2,7 +2,7 @@
     "expo": {
       "name": "Sevak",
       "slug": "Sevak",
-      "version": "1.0.16",
+      "version": "1.0.17",
       "userInterfaceStyle": "automatic",
       "icon": "./assets/images/sevakapplogo.png",
       "newArchEnabled": true,

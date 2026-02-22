@@ -472,13 +472,21 @@ export const sendChatNotifications = async (message, senderInfo, roomInfo, io, s
         body = `${senderInfo.userName || 'Someone'}: ${messageContent}`;
       }
 
-      // Notification data for app handling
-      // IMPORTANT: All values must be strings for FCM (no null/undefined)
+      // Notification data for app handling + message payload for local storage
+      // IMPORTANT: All values must be strings for FCM (no null/undefined). Total payload ~4KB max.
       const safeString = (val) => {
         if (val === null || val === undefined) return '';
         return String(val);
       };
-      
+      // Truncate messageText for FCM (strip HTML first); max ~1500 chars to stay under 4KB
+      let messageTextForPayload = '';
+      if (message.messageText) {
+        messageTextForPayload = stripHtmlTags(message.messageText);
+        if (messageTextForPayload.length > 1500) {
+          messageTextForPayload = messageTextForPayload.substring(0, 1500);
+        }
+      }
+
       const notificationDataPayload = {
         type: 'chat_message',
         roomId: safeString(roomInfo.roomId),
@@ -489,7 +497,16 @@ export const sendChatNotifications = async (message, senderInfo, roomInfo, io, s
         messageType: safeString(message.messageType || 'text'),
         isReply: safeString(Boolean(userData.isReply)),
         canSendMessage: safeString(Boolean(userData.canSendMessage)),
-        timestamp: safeString(message.createdAt || new Date().toISOString())
+        timestamp: safeString(message.createdAt || new Date().toISOString()),
+        // Message payload for local storage so tap can show message immediately
+        messageText: messageTextForPayload,
+        replyMessageId: safeString(message.replyMessageId),
+        replyMessageText: message.replyMessageText ? safeString(stripHtmlTags(String(message.replyMessageText)).substring(0, 200)) : '',
+        replySenderName: safeString(message.replySenderName),
+        replyMessageType: safeString(message.replyMessageType),
+        mediaFilesId: safeString(message.mediaFilesId),
+        pollId: safeString(message.pollId),
+        tableId: safeString(message.tableId),
       };
 
       console.log(`📤 Sending notification to user ${userId} with payload:`, notificationDataPayload);

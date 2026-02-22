@@ -2,7 +2,7 @@
 import * as Notifications from "expo-notifications";
 import { router } from "expo-router";
 import { AuthStorage } from "@/utils/authStorage";
-import { handleChatNotificationTap } from "./chatNotificationHandler";
+import { handleChatNotificationTap, storeMessageFromNotificationData } from "./chatNotificationHandler";
 
 export interface NotificationData {
   type: 'chat' | 'chat_message';
@@ -40,7 +40,10 @@ export class NotificationHandler {
     // Handle notification received while app is in foreground
     const foregroundSubscription = Notifications.addNotificationReceivedListener(notification => {
       console.log('Notification received in foreground:', notification);
-      // You can show custom alert or handle differently
+      const data = notification.request.content.data as NotificationData;
+      if (data?.type === 'chat_message' && data?.roomId) {
+        storeMessageFromNotificationData(data);
+      }
       this.showInAppNotification(notification);
     });
 
