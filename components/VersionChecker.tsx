@@ -187,11 +187,7 @@ export function VersionChecker({ onUpdateCheckComplete }: VersionCheckerProps) {
               <Text className="text-sm text-gray-600 mb-4">
                 {Math.round(downloadProgress * 100)}% Complete
               </Text>
-
-              {/* <Text className="text-xs text-gray-500 mb-2">
-                A notification shows download progress. You can minimize the app.
-              </Text> */}
-
+              
               <ActivityIndicator size="large" color="#3B82F6" />
             </View>
           ) : (

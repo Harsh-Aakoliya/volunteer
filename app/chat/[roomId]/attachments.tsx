@@ -6,7 +6,6 @@ import {
   Text,
   TouchableOpacity,
   Image,
-  TextInput,
   ActivityIndicator,
   Dimensions,
   Platform,
@@ -17,8 +16,6 @@ import {
   KeyboardAvoidingView,
   useWindowDimensions,
   Modal,
-  ScrollView,
-  LayoutAnimation,
   Animated,
   Easing,
 } from "react-native";
@@ -36,25 +33,7 @@ import PollContent from "@/components/chat/PollContent";
 import CameraScreen from "@/components/chat/CameraScreen";
 import { Video, ResizeMode } from "expo-av";
 
-import {
-  RichEditor,
-  RichToolbar,
-  actions,
-  cleanHtml,
-  stripHtml,
-  isHtmlContent,
-  AlignLeftIcon,
-  AlignCenterIcon,
-  AlignRightIcon,
-  BulletListIcon,
-  NumberListIcon,
-  ColorIndicatorIcon,
-  InlineColorPicker,
-  InlineLinkInput,
-  AnimatedToolbar,
-  ToolbarButton,
-  ToolbarDivider,
-} from "@/components/chat/message";
+import MessageInput from "@/components/chat/MessageInput";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 const NUM_COLUMNS = 3;
@@ -765,22 +744,6 @@ export default function AttachmentsScreen() {
   const [showCarouselModal, setShowCarouselModal] = useState(false);
   const [carouselInitialIndex, setCarouselInitialIndex] = useState(0);
 
-  // Rich text state
-  const [showRichTextToolbar, setShowRichTextToolbar] = useState(false);
-  const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
-  const [showColorPicker, setShowColorPicker] = useState<'text' | 'background' | null>(null);
-  const [showLinkInput, setShowLinkInput] = useState(false);
-  const [inputHeight, setInputHeight] = useState(44);
-  const [currentTextColor, setCurrentTextColor] = useState('#000000');
-  const [currentBgColor, setCurrentBgColor] = useState('#FFFFFF');
-  const [formatActive, setFormatActive] = useState({ bold: false, italic: false, underline: false });
-
-  // Refs
-  const richTextRef = useRef<any>(null);
-  const inputRef = useRef<TextInput>(null);
-  const heightUpdateTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const isSwitchingRef = useRef(false);
-  const editorKeyRef = useRef(0);
 
   // Request permission and load media on mount
   useEffect(() => {
@@ -789,24 +752,6 @@ export default function AttachmentsScreen() {
     }
   }, [hasPermission]);
 
-  // Keyboard listeners
-  useEffect(() => {
-    const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
-    const hideEvent = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
-
-    const keyboardShowListener = Keyboard.addListener(showEvent, () => {
-      setIsKeyboardVisible(true);
-    });
-
-    const keyboardHideListener = Keyboard.addListener(hideEvent, () => {
-      setIsKeyboardVisible(false);
-    });
-
-    return () => {
-      keyboardShowListener?.remove();
-      keyboardHideListener?.remove();
-    };
-  }, []);
 
   const requestPermissionAndLoadMedia = async () => {
     try {
@@ -969,113 +914,11 @@ export default function AttachmentsScreen() {
     setUploadPhase('idle');
   }, []);
 
-  // Rich text toggle
-  const handleToggleRichText = useCallback(() => {
-    if (Platform.OS === 'web') return;
-    if (isSwitchingRef.current) return;
-    if (isUploading) return;
-
-    isSwitchingRef.current = true;
-    const nextState = !showRichTextToolbar;
-    const shouldFocusAfter = isKeyboardVisible;
-
-    setShowColorPicker(null);
-    setShowLinkInput(false);
-
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setShowRichTextToolbar(nextState);
-
-    if (nextState) {
-      const htmlContent = caption ? caption.replace(/\n/g, '<br>') : '';
-      const finalHtml = htmlContent ? `<div>${htmlContent}</div>` : '';
-
-      setTimeout(() => {
-        if (richTextRef.current) {
-          richTextRef.current.setContentHTML(finalHtml);
-          if (shouldFocusAfter) {
-            setTimeout(() => {
-              richTextRef.current?.focusContentEditor();
-              isSwitchingRef.current = false;
-            }, 150);
-          } else {
-            isSwitchingRef.current = false;
-          }
-        } else {
-          isSwitchingRef.current = false;
-        }
-      }, 50);
-    } else {
-      const plainText = stripHtml(caption);
-      setCaption(plainText);
-
-      setTimeout(() => {
-        if (shouldFocusAfter && inputRef.current) {
-          inputRef.current.focus();
-        }
-        isSwitchingRef.current = false;
-      }, 100);
-    }
-  }, [showRichTextToolbar, caption, isKeyboardVisible, isUploading]);
-
-  // Color picker handlers
-  const handleColorSelect = useCallback((color: string) => {
-    if (showColorPicker === 'text') {
-      richTextRef.current?.setForeColor(color);
-      setCurrentTextColor(color);
-    } else if (showColorPicker === 'background') {
-      richTextRef.current?.setHiliteColor(color);
-      setCurrentBgColor(color);
-    }
-    setShowColorPicker(null);
-    
-    setTimeout(() => {
-      richTextRef.current?.focusContentEditor();
-    }, 50);
-  }, [showColorPicker]);
-
-  const toggleColorPicker = useCallback((type: 'text' | 'background') => {
-    setShowLinkInput(false);
-    setShowColorPicker(prev => prev === type ? null : type);
-  }, []);
-
-  const toggleLinkInput = useCallback(() => {
-    setShowColorPicker(null);
-    setShowLinkInput(prev => !prev);
-  }, []);
-
-  const handleInsertLink = useCallback((url: string, text: string) => {
-    if (showRichTextToolbar && richTextRef.current) {
-      richTextRef.current?.insertLink(text, url);
-    } else {
-      setCaption(prev => prev + ` ${url} `);
-    }
-  }, [showRichTextToolbar]);
-
-  const handleBold = useCallback(() => {
-    richTextRef.current?.sendAction(actions.setBold, 'result');
-    setFormatActive(prev => ({ ...prev, bold: !prev.bold }));
-  }, []);
-  const handleItalic = useCallback(() => {
-    richTextRef.current?.sendAction(actions.setItalic, 'result');
-    setFormatActive(prev => ({ ...prev, italic: !prev.italic }));
-  }, []);
-  const handleUnderline = useCallback(() => {
-    richTextRef.current?.sendAction(actions.setUnderline, 'result');
-    setFormatActive(prev => ({ ...prev, underline: !prev.underline }));
-  }, []);
-
-  const handlePaste = useCallback((data: string) => {
-    if (!data || !richTextRef.current) return;
-    if (isHtmlContent(data)) {
-      richTextRef.current.insertHTML(data);
-    }
-  }, []);
 
   // Send media with progress tracking
-  const handleSendMedia = async () => {
+  const handleSendMedia = async (captionText: string = '') => {
     if (selectedMedia.length === 0 || isSending || isUploading) return;
     
-    // Dismiss keyboard
     Keyboard.dismiss();
     
     // Initialize upload state
@@ -1172,7 +1015,7 @@ export default function AttachmentsScreen() {
       const tempFolderId = uploadResponse.data.tempFolderId;
       const uploadedFiles = uploadResponse.data.uploadedFiles;
 
-      const cleanedCaption = showRichTextToolbar ? cleanHtml(caption) : caption.trim();
+      const cleanedCaption = captionText;
 
       const filesWithCaptions = uploadedFiles.map((f: any) => ({
         fileName: f.fileName,
@@ -1449,8 +1292,6 @@ export default function AttachmentsScreen() {
     />
   ), []);
 
-  const maxInputHeight = 120;
-  const shouldShowToolbar = showRichTextToolbar && Platform.OS !== 'web' && RichToolbar;
 
   // Render selected media thumbnails bar with upload progress
   const renderSelectedMediaBar = () => (
@@ -1527,218 +1368,18 @@ export default function AttachmentsScreen() {
 
     return (
       <View className="pb-2">
-        {/* Selected media thumbnails */}
         {renderSelectedMediaBar()}
-
-        {/* Input row */}
-        <View className="flex-row items-end px-3 pt-2.5 gap-2">
-          {/* Format toggle button */}
-          {Platform.OS !== 'web' && RichEditor && (
-            <TouchableOpacity
-              onPress={handleToggleRichText}
-              className={`w-10 h-11 rounded-full items-center justify-center ${
-                showRichTextToolbar ? 'bg-blue-100' : 'bg-gray-100'
-              }`}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <Ionicons
-                name="text"
-                size={20}
-                color={showRichTextToolbar ? '#2AABEE' : '#666666'}
-              />
-            </TouchableOpacity>
-          )}
-
-          {/* Input container */}
-          <View className="flex-1 bg-gray-50 rounded-3xl border border-gray-200 overflow-hidden min-h-[44px]">
-            {showRichTextToolbar && Platform.OS !== 'web' && RichEditor ? (
-              <View style={{ minHeight: 44, maxHeight: maxInputHeight }}>
-                <RichEditor
-                  key={`editor-${editorKeyRef.current}`}
-                  ref={richTextRef}
-                  onChange={setCaption}
-                  placeholder="Add a caption..."
-                  initialContentHTML=""
-                  initialHeight={44}
-                  androidHardwareAccelerationDisabled={true}
-                  androidLayerType="software"
-                  pasteAsPlainText={true}
-                  onPaste={handlePaste}
-                  editorStyle={{
-                    backgroundColor: "#F9FAFB",
-                    placeholderColor: "#9CA3AF",
-                    contentCSSText: `
-                      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-                      font-size: 16px;
-                      line-height: 22px;
-                      color: #1F2937;
-                      padding: 10px 14px;
-                      min-height: 44px;
-                      max-height: ${maxInputHeight}px;
-                    `,
-                  }}
-                  style={{
-                    backgroundColor: '#F9FAFB',
-                    minHeight: 44,
-                    maxHeight: maxInputHeight,
-                  }}
-                />
-              </View>
-            ) : (
-              <TextInput
-                ref={inputRef}
-                className="px-4 py-2.5 text-base text-gray-800"
-                style={{ height: inputHeight, maxHeight: maxInputHeight, textAlignVertical: 'center' }}
-                placeholder="Add a caption..."
-                placeholderTextColor="#999"
-                value={caption}
-                onChangeText={setCaption}
-                multiline
-                maxLength={500}
-                onContentSizeChange={(event) => {
-                  const contentHeight = event.nativeEvent?.contentSize?.height;
-                  if (!contentHeight) return;
-
-                  if (heightUpdateTimeoutRef.current) {
-                    clearTimeout(heightUpdateTimeoutRef.current);
-                  }
-
-                  heightUpdateTimeoutRef.current = setTimeout(() => {
-                    const newHeight = Math.min(Math.max(44, Math.ceil(contentHeight)), maxInputHeight);
-                    if (Math.abs(newHeight - inputHeight) >= 2) {
-                      setInputHeight(newHeight);
-                    }
-                  }, 50);
-                }}
-              />
-            )}
-          </View>
-
-          {/* Send button */}
-          <TouchableOpacity
-            onPress={handleSendMedia}
-            disabled={isSending || selectedMedia.length === 0}
-            className={`w-11 h-11 rounded-full items-center justify-center ${
-              isSending || selectedMedia.length === 0 ? 'bg-gray-300' : 'bg-blue-500'
-            }`}
-          >
-            {isSending ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
-              <Ionicons name="send" size={20} color="#fff" />
-            )}
-          </TouchableOpacity>
-        </View>
-
-        {/* Rich text toolbar */}
-        <AnimatedToolbar visible={shouldShowToolbar}>
-          <ScrollView 
-            horizontal 
-            showsHorizontalScrollIndicator={false}
-            keyboardShouldPersistTaps="always"
-            contentContainerStyle={{ 
-              paddingHorizontal: 8, 
-              paddingVertical: 4,
-              alignItems: 'center',
-              paddingRight: 20,
-            }}
-          >
-            {/* Bold */}
-            <ToolbarButton onPress={handleBold} isActive={formatActive.bold} activeClass="bg-blue-100">
-              <Text className={`text-lg font-bold ${formatActive.bold ? 'text-blue-600' : 'text-gray-600'}`}>B</Text>
-            </ToolbarButton>
-            
-            {/* Italic */}
-            <ToolbarButton onPress={handleItalic} isActive={formatActive.italic} activeClass="bg-blue-100">
-              <Text className={`text-lg italic ${formatActive.italic ? 'text-blue-600' : 'text-gray-600'}`}>I</Text>
-            </ToolbarButton>
-            
-            {/* Underline */}
-            <ToolbarButton onPress={handleUnderline} isActive={formatActive.underline} activeClass="bg-blue-100">
-              <Text className={`text-lg ${formatActive.underline ? 'text-blue-600' : 'text-gray-600'}`} style={{ textDecorationLine: 'underline' }}>U</Text>
-            </ToolbarButton>
-            
-            {/* Strikethrough */}
-            <ToolbarButton onPress={() => richTextRef.current?.sendAction(actions.setStrikethrough, 'result')}>
-              <Text className="text-lg text-gray-600" style={{ textDecorationLine: 'line-through' }}>S</Text>
-            </ToolbarButton>
-
-            <ToolbarDivider />
-
-            {/* Text Color */}
-            <ToolbarButton 
-              onPress={() => toggleColorPicker('text')} 
-              isActive={showColorPicker === 'text'}
-              activeClass="bg-blue-100"
-            >
-              <ColorIndicatorIcon type="text" color={currentTextColor} />
-            </ToolbarButton>
-
-            {/* Background Color */}
-            <ToolbarButton 
-              onPress={() => toggleColorPicker('background')} 
-              isActive={showColorPicker === 'background'}
-              activeClass="bg-blue-100"
-            >
-              <ColorIndicatorIcon type="background" color={currentBgColor} />
-            </ToolbarButton>
-
-            <ToolbarDivider />
-
-            {/* Link */}
-            <ToolbarButton onPress={toggleLinkInput} isActive={showLinkInput} activeClass="bg-blue-100">
-              <Ionicons name="link" size={22} color={showLinkInput ? '#2AABEE' : '#666'} />
-            </ToolbarButton>
-
-            {/* Bullet List */}
-            <ToolbarButton onPress={() => richTextRef.current?.sendAction(actions.insertBulletsList, 'result')}>
-              <BulletListIcon color="#666" />
-            </ToolbarButton>
-
-            {/* Number List */}
-            <ToolbarButton onPress={() => richTextRef.current?.sendAction(actions.insertOrderedList, 'result')}>
-              <NumberListIcon color="#666" />
-            </ToolbarButton>
-
-            <ToolbarDivider />
-
-            {/* Align Left */}
-            <ToolbarButton onPress={() => richTextRef.current?.sendAction(actions.alignLeft, 'result')}>
-              <AlignLeftIcon color="#666" />
-            </ToolbarButton>
-
-            {/* Align Center */}
-            <ToolbarButton onPress={() => richTextRef.current?.sendAction(actions.alignCenter, 'result')}>
-              <AlignCenterIcon color="#666" />
-            </ToolbarButton>
-
-            {/* Align Right */}
-            <ToolbarButton onPress={() => richTextRef.current?.sendAction(actions.alignRight, 'result')}>
-              <AlignRightIcon color="#666" />
-            </ToolbarButton>
-          </ScrollView>
-        </AnimatedToolbar>
-
-        {/* Inline Color Picker */}
-        <InlineColorPicker
-          visible={showColorPicker !== null}
-          type={showColorPicker}
-          selectedColor={showColorPicker === 'text' ? currentTextColor : currentBgColor}
-          onSelect={handleColorSelect}
-          onClose={() => {
-            setShowColorPicker(null);
-            setTimeout(() => richTextRef.current?.focusContentEditor(), 50);
-          }}
-          selectedBorderClass="border-blue-500"
-        />
-
-        {/* Inline Link Input */}
-        <InlineLinkInput
-          visible={showLinkInput}
-          onInsert={handleInsertLink}
-          onClose={() => setShowLinkInput(false)}
-          editorRef={richTextRef}
-          accent="blue"
+        <MessageInput
+          messageText={caption}
+          onChangeText={setCaption}
+          onSend={(text) => handleSendMedia(text)}
+          placeholder="Add a caption..."
+          sending={isSending}
+          showAttachmentButton={false}
+          showAudioButton={false}
+          showScheduleOption={false}
+          allowEmptySend={true}
+          containerClassName="bg-white w-full pb-1"
         />
       </View>
     );

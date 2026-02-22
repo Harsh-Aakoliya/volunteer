@@ -12,8 +12,7 @@ import CustomButton from '@/components/ui/CustomButton';
 import { API_URL, setApiUrl, updateDevIP } from "@/constants/api";
 import useNetworkStatus from '@/hooks/userNetworkStatus';
 import SplashScreen from '@/components/SplashScreen';
-import * as React from 'react';
-
+import React from 'react';
 const DEV_IP = "http://10.219.135.242:8080";
 const EXTERNAL_IP = "http://103.47.172.58:50160";
 const INTERNAL_IP = "http://192.168.2.134:3000";
@@ -406,6 +405,5 @@ export default function Index() {
       </View>
     );
   }
-
   return <SplashScreen />;
 }

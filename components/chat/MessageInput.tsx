@@ -52,6 +52,20 @@ interface MessageInputProps {
   onAttachmentPress?: () => void;
   isAttachmentSheetOpen?: boolean;
   onSendAudio?: (audioUri: string) => void | Promise<void>;
+  /** Hide the paperclip attachment button (default true) */
+  showAttachmentButton?: boolean;
+  /** Hide mic / audio recording and show send icon instead (default true when onSendAudio provided) */
+  showAudioButton?: boolean;
+  /** Pre-fill the editor with this HTML on mount */
+  initialContent?: string;
+  /** Ionicons name for the send button (default 'send') */
+  sendIconName?: string;
+  /** Allow long-press to schedule (default true) */
+  showScheduleOption?: boolean;
+  /** Outer container nativewind class (default 'bg-[#E5DDD5] w-full pb-1') */
+  containerClassName?: string;
+  /** Allow sending even when input is empty (useful for caption-only media modes) */
+  allowEmptySend?: boolean;
 }
 
 // ---------- HELPER (link detection for preview) ----------
@@ -74,6 +88,13 @@ export default function MessageInput({
   onAttachmentPress,
   isAttachmentSheetOpen = false,
   onSendAudio,
+  showAttachmentButton = true,
+  showAudioButton,
+  initialContent,
+  sendIconName = 'send',
+  showScheduleOption = true,
+  containerClassName = 'bg-[#E5DDD5] w-full pb-1',
+  allowEmptySend = false,
 }: MessageInputProps) {
 
   // Refs
@@ -117,9 +138,22 @@ export default function MessageInput({
   const [previewPosition, setPreviewPosition] = useState(0);
   const [sendingAudio, setSendingAudio] = useState(false);
 
+  const isAudioAvailable = !!onSendAudio && (showAudioButton ?? true);
+
+  // Set initial content when editor mounts (for edit mode)
+  useEffect(() => {
+    if (!initialContent) return;
+    const t = setTimeout(() => {
+      richTextRef.current?.setContentHTML(initialContent);
+    }, 200);
+    return () => clearTimeout(t);
+    // Only run once on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Audio permissions and mode
   useEffect(() => {
-    if (!onSendAudio || Platform.OS === 'web') return;
+    if (!isAudioAvailable || Platform.OS === 'web') return;
     const setup = async () => {
       try {
         await Audio.requestPermissionsAsync();
@@ -138,7 +172,7 @@ export default function MessageInput({
       if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
       if (previewSoundRef.current) previewSoundRef.current.unloadAsync();
     };
-  }, [onSendAudio]);
+  }, [isAudioAvailable]);
 
   const formatRecordingTime = (seconds: number) => {
     const m = Math.floor(seconds / 60);
@@ -437,19 +471,21 @@ export default function MessageInput({
 
   // Send handler
   const handleSendPress = useCallback(() => {
-    if (isEmpty) {
+    if (isEmpty && !allowEmptySend) {
       if (replyToMessage) return;
-      richTextRef.current?.blurContentEditor();
-      inputRef.current?.blur();
-      setTimeout(() => {
-        onAttachmentPress?.();
-      }, 100);
+      if (showAttachmentButton && onAttachmentPress) {
+        richTextRef.current?.blurContentEditor();
+        inputRef.current?.blur();
+        setTimeout(() => {
+          onAttachmentPress?.();
+        }, 100);
+      }
       return;
     }
-    const contentToSend = cleanHtml(messageText);
+    const contentToSend = isEmpty ? '' : cleanHtml(messageText);
     onSend(contentToSend, 'text', 0, 0, 0);
     resetAfterSend();
-  }, [isEmpty, replyToMessage, messageText, onSend, onAttachmentPress, resetAfterSend]);
+  }, [isEmpty, replyToMessage, messageText, onSend, onAttachmentPress, resetAfterSend, showAttachmentButton, allowEmptySend]);
 
   const handleScheduleSend = useCallback((scheduledAt: string) => {
     if (isEmpty) return;
@@ -472,7 +508,7 @@ export default function MessageInput({
   const shouldShowToolbar = showRichTextToolbar && Platform.OS !== 'web' && RichToolbar && recordingMode === 'idle';
 
   return (
-    <View className="bg-[#E5DDD5] w-full pb-1">
+    <View className={containerClassName}>
       {/* Link Previews */}
       {linkPreviews.length > 0 && (
         <View className="px-3 pt-2 pb-1">
@@ -485,7 +521,7 @@ export default function MessageInput({
       )}
 
       {/* Main Input Area */}
-      {recordingMode !== 'idle' && onSendAudio ? (
+      {recordingMode !== 'idle' && isAudioAvailable ? (
         // ... Recording View (unchanged) ...
         <View className="px-3 py-2 bg-white">
           <View className="flex-row items-center mb-3">
@@ -655,7 +691,7 @@ export default function MessageInput({
                 <View className="flex-row items-center justify-end pr-1">
                   {!showRichTextToolbar && Platform.OS !== 'web' && (
                     <>
-                      {isEmpty && (
+                      {isEmpty && showAttachmentButton && onAttachmentPress && (
                         <TouchableOpacity onPress={onAttachmentPress} className="p-1">
                           <Ionicons name="attach" size={24} color="#4B5563" />
                         </TouchableOpacity>
@@ -677,8 +713,8 @@ export default function MessageInput({
 
             {/* Right: Send / Mic Button */}
             <Pressable
-              onPress={isEmpty ? (onSendAudio ? handleStartRecording : onAttachmentPress) : handleSendPress}
-              onLongPress={!isEmpty ? handleLongPressSend : undefined}
+              onPress={isEmpty ? (isAudioAvailable ? handleStartRecording : handleSendPress) : handleSendPress}
+              onLongPress={!isEmpty && showScheduleOption ? handleLongPressSend : undefined}
               delayLongPress={400}
               disabled={sending}
               className="min-h-[50px] min-w-[50px] rounded-full bg-green-600 items-center justify-center mb-0"
@@ -692,14 +728,10 @@ export default function MessageInput({
             >
               {sending ? (
                 <ActivityIndicator color="#fff" size="small" />
-              ) : isEmpty ? (
-                onSendAudio ? (
-                  <Ionicons name="mic" size={24} color="#fff" />
-                ) : (
-                  <Ionicons name="mic" size={24} color="#fff" />
-                )
+              ) : isEmpty && isAudioAvailable ? (
+                <Ionicons name="mic" size={24} color="#fff" />
               ) : (
-                <Ionicons name="send" size={22} color="#fff" style={{ marginLeft: 2 }} />
+                <Ionicons name={(sendIconName as any)} size={22} color="#fff" style={{ marginLeft: 2 }} />
               )}
             </Pressable>
           </View>

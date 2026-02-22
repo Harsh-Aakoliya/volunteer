@@ -6,7 +6,6 @@ const authController={
 // ==================== LOGIN ====================
 async login(req, res){
   let { mobileNumber, password } = req.body;
-  mobileNumber="7600712456";
   console.log("Login attempt:", mobileNumber, password);
 
   try {

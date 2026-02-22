@@ -8,7 +8,6 @@ import {
   ActivityIndicator,
   Dimensions,
   Image,
-  TextInput,
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -16,6 +15,7 @@ import { CameraView, CameraType, useCameraPermissions } from 'expo-camera';
 import { Video, ResizeMode } from 'expo-av';
 import { Ionicons } from '@expo/vector-icons';
 import * as FileSystem from 'expo-file-system';
+import MessageInput from '@/components/chat/MessageInput';
 
 interface CameraScreenProps {
   roomId: string;
@@ -164,28 +164,25 @@ export default function CameraScreen({ roomId, userId, onSend, onClose }: Camera
   }, []);
 
   // --- SEND LOGIC ---
-  const handleSend = useCallback(async () => {
+  const handleSend = useCallback(async (captionText: string = '') => {
     if (!capturedMedia || isSending) return;
 
     setIsSending(true);
     try {
         const duration = capturedMedia.type === 'video' ? capturedMedia.duration : undefined;
         
-        // We pass the URI directly. 
-        // DO NOT READ THE FILE HERE OR IN THE PARENT.
-        await onSend(capturedMedia.uri, capturedMedia.type, duration, caption);
+        await onSend(capturedMedia.uri, capturedMedia.type, duration, captionText);
         
-        // Success cleanup
         setCapturedMedia(null);
         setCaption('');
-        onClose(); // Optional: Close camera after send
+        onClose();
     } catch (error: any) {
       console.error('Send error:', error);
       Alert.alert('Upload Failed', 'Could not send media.');
     } finally {
         setIsSending(false);
     }
-  }, [capturedMedia, isSending, caption, onSend, onClose]);
+  }, [capturedMedia, isSending, onSend, onClose]);
 
   // --- RENDER ---
   if (!permission) return <View style={styles.container} />;
@@ -230,18 +227,18 @@ export default function CameraScreen({ roomId, userId, onSend, onClose }: Camera
             )}
         </View>
 
-        <View style={styles.captionArea}>
-            <TextInput
-              style={styles.input}
-              placeholder="Add caption..."
-              placeholderTextColor="#999"
-              value={caption}
-              onChangeText={setCaption}
-            />
-            <TouchableOpacity onPress={handleSend} disabled={isSending} style={styles.sendBtn}>
-                {isSending ? <ActivityIndicator color="#fff"/> : <Ionicons name="send" size={20} color="#fff" />}
-            </TouchableOpacity>
-        </View>
+        <MessageInput
+          messageText={caption}
+          onChangeText={setCaption}
+          onSend={(text) => handleSend(text)}
+          placeholder="Add caption..."
+          sending={isSending}
+          showAttachmentButton={false}
+          showAudioButton={false}
+          showScheduleOption={false}
+          allowEmptySend={true}
+          containerClassName="bg-black w-full pb-1"
+        />
       </SafeAreaView>
     );
   }
@@ -312,9 +309,6 @@ const styles = StyleSheet.create({
   previewHeader: { padding: 16, backgroundColor: 'black' },
   mediaPreview: { flex: 1, justifyContent: 'center' },
   previewImage: { width: '100%', height: '100%' },
-  captionArea: { flexDirection: 'row', padding: 16, alignItems: 'center', gap: 10 },
-  input: { flex: 1, backgroundColor: '#333', color: 'white', borderRadius: 20, padding: 10 },
-  sendBtn: { backgroundColor: '#1DAB61', padding: 12, borderRadius: 25 },
   closeBtn: { alignSelf: 'flex-end', padding: 16, backgroundColor: 'rgba(0,0,0,0.3)', borderRadius: 20, margin: 10 },
   timerPill: { alignSelf: 'center', flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,0,0,0.5)', padding: 8, borderRadius: 12 },
   redDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: 'white', marginRight: 6 },

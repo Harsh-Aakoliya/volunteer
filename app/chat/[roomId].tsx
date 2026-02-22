@@ -109,7 +109,7 @@ const StyledTextMessage = React.memo(({
   
   if (!isHTML) {
     return (
-      <Text className="text-base leading-[22px] text-black">
+      <Text className="text-base leading-[22px] text-black" style={{ fontWeight: '300' }}>
         {cleanContent}
       </Text>
     );
@@ -132,6 +132,7 @@ const StyledTextMessage = React.memo(({
           lineHeight: 22,
           color: defaultTextColor,
           fontFamily: Platform.OS === 'ios' ? 'System' : 'sans-serif',
+          fontWeight: '300',
         }}
         
         // 2. Specific Tag Styling
@@ -140,7 +141,7 @@ const StyledTextMessage = React.memo(({
           p: { marginTop: 0, marginBottom: 4 },
           div: { marginTop: 0, marginBottom: 0 },
           
-          // Bold/Italic
+          // Bold – enough contrast with normal (300) but not overwhelming
           b: { fontWeight: '700' },
           strong: { fontWeight: '700' },
           i: { fontStyle: 'italic' },
