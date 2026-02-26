@@ -1,11 +1,10 @@
 import * as React from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Alert,
   Modal,
   Pressable,
   ScrollView,
-  StyleSheet,
   Text,
   TouchableOpacity,
   View,
@@ -13,16 +12,26 @@ import {
 import { DrawerContentComponentProps } from "@react-navigation/drawer";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { fetchUserProfile, logout } from "@/api/user";
+import { logout } from "@/api/user";
 import UserProfile from "@/components/UserProfile";
 import ChangePassword from "@/components/ChangePassword";
 import { AuthStorage } from "@/utils/authStorage";
+
+function getInitials(name?: string): string {
+  if (!name || !name.trim()) return "?";
+  const parts = name.trim().split(/\s+/);
+  if (parts.length >= 2) {
+    return (parts[0][0] + parts[1][0]).toUpperCase();
+  }
+  return parts[0][0].toUpperCase();
+}
 
 export const CustomDrawer = (props: DrawerContentComponentProps) => {
   const router = useRouter();
   const [userProfile, setUserProfile] = useState<any>(null);
   const [showProfileSheet, setShowProfileSheet] = useState(false);
   const [showChangePasswordSheet, setShowChangePasswordSheet] = useState(false);
+
   useEffect(() => {
     loadUserProfile();
   }, []);
@@ -33,9 +42,13 @@ export const CustomDrawer = (props: DrawerContentComponentProps) => {
       setUserProfile(profileData);
     } catch (error) {
       console.error("Error loading user profile:", error);
-    } finally {
     }
   };
+
+  const initials = useMemo(
+    () => getInitials(userProfile?.sevakname),
+    [userProfile?.sevakname]
+  );
 
   const handleLogout = () => {
     Alert.alert("Logout", "Are you sure you want to logout?", [
@@ -52,92 +65,149 @@ export const CustomDrawer = (props: DrawerContentComponentProps) => {
     ]);
   };
 
-  const handleProfilePress = () => {
-    setShowProfileSheet(true);
-  };
-
-  const handleChangePasswordPress = () => {
-    setShowChangePasswordSheet(true);
-  };
-
   const closeSheets = () => {
     setShowProfileSheet(false);
     setShowChangePasswordSheet(false);
   };
 
-  const renderSheetHeader = (title: string, onClose: () => void) => (
-    <View style={styles.sheetHeader}>
-      <Text style={styles.sheetTitle}>{title}</Text>
-      <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-        <Ionicons name="close" size={22} color="#111827" />
-      </TouchableOpacity>
-    </View>
-  );
+  const menuItems = [
+    {
+      icon: "person-outline" as const,
+      label: "Profile",
+      onPress: () => setShowProfileSheet(true),
+    },
+    {
+      icon: "lock-closed-outline" as const,
+      label: "Change Password",
+      onPress: () => setShowChangePasswordSheet(true),
+    },
+  ];
 
   return (
-    <View style={styles.container}>
-      <ScrollView style={{ flex: 1 }}>
-        <View style={styles.userSection}>
-          <View style={styles.userInfo}>
-            <View style={styles.userDetails}>
-              <Text style={styles.fullName} numberOfLines={1}>
-                {userProfile?.sevakname || "User Name"}
-              </Text>
-              <Text style={styles.mobileNumber} numberOfLines={1}>
-                {userProfile?.mobileno || "No mobile number"}
-              </Text>
-            </View>
+    <View className="flex-1 bg-white">
+      <ScrollView className="flex-1">
+        {/* ── Avatar + Name + Mobile ── */}
+        <View className="items-center pt-12 pb-6 px-5">
+          {/* Initials circle */}
+          <View className="w-20 h-20 rounded-full border-[2.5px] border-blue-500 items-center justify-center bg-blue-50 mb-3">
+            <Text className="text-2xl font-bold text-blue-500">
+              {initials}
+            </Text>
           </View>
+
+          <Text
+            className="text-[17px] font-bold text-gray-900 text-center"
+            numberOfLines={1}
+          >
+            {userProfile?.sevakname || "User Name"}
+          </Text>
+
+          <Text
+            className="text-[13px] text-gray-500 mt-0.5 text-center"
+            numberOfLines={1}
+          >
+            {userProfile?.mobileno || "No mobile number"}
+          </Text>
         </View>
 
-        <View style={styles.divider} />
+        {/* Divider */}
+        <View className="h-[1px] bg-gray-200 mx-4" />
 
-        <TouchableOpacity style={styles.menuItem} onPress={handleProfilePress}>
-          <Ionicons name="person" size={20} color="#3b82f6" />
-          <Text style={styles.menuText}>Profile</Text>
-        </TouchableOpacity>
+        {/* ── Menu items ── */}
+        <View className="mt-1">
+          {menuItems.map((item, idx) => (
+            <TouchableOpacity
+              key={item.label}
+              onPress={item.onPress}
+              activeOpacity={0.6}
+              className="flex-row items-center px-5 py-4"
+            >
+              <View className="w-9 h-9 rounded-full bg-blue-50 items-center justify-center mr-3.5">
+                <Ionicons name={item.icon} size={19} color="#3b82f6" />
+              </View>
+              <Text className="text-[15px] font-medium text-gray-800 flex-1">
+                {item.label}
+              </Text>
+              <Ionicons name="chevron-forward" size={18} color="#d1d5db" />
+            </TouchableOpacity>
+          ))}
+        </View>
 
-        <TouchableOpacity style={styles.menuItem} onPress={handleChangePasswordPress}>
-          <Ionicons name="key" size={20} color="#3b82f6" />
-          <Text style={styles.menuText}>Change Password</Text>
-        </TouchableOpacity>
+        <View className="h-[1px] bg-gray-200 mx-4" />
 
-        <View style={styles.divider} />
-
-        <TouchableOpacity style={styles.menuItem} onPress={handleLogout}>
-          <Ionicons name="log-out" size={20} color="#3b82f6" />
-          <Text style={styles.menuText}>Logout</Text>
+        {/* ── Logout ── */}
+        <TouchableOpacity
+          onPress={handleLogout}
+          activeOpacity={0.6}
+          className="flex-row items-center px-5 py-4 mt-1"
+        >
+          <View className="w-9 h-9 rounded-full bg-red-50 items-center justify-center mr-3.5">
+            <Ionicons name="log-out-outline" size={19} color="#ef4444" />
+          </View>
+          <Text className="text-[15px] font-medium text-red-500 flex-1">
+            Logout
+          </Text>
         </TouchableOpacity>
       </ScrollView>
 
-      {/* Profile Bottom Sheet */}
+      {/* ── Bottom: app version or branding ── */}
+      <View className="items-center pb-6 pt-2">
+        <Text className="text-[11px] text-gray-300">v1.0.0</Text>
+      </View>
+
+      {/* ── Profile Bottom Sheet ── */}
       <Modal
         visible={showProfileSheet}
         transparent
         animationType="slide"
         onRequestClose={() => setShowProfileSheet(false)}
       >
-        <Pressable style={styles.modalOverlay} onPress={closeSheets}>
-          <Pressable style={styles.modalContainer} onPress={() => {}}>
-            {renderSheetHeader("Profile", () => setShowProfileSheet(false))}
-            <View style={{ flex: 1 }}>
+        <Pressable className="flex-1 bg-black/50 justify-end" onPress={closeSheets}>
+          <Pressable
+            className="bg-white rounded-t-3xl flex-1 pb-4"
+            onPress={() => {}}
+          >
+            {/* Sheet header */}
+            <View className="flex-row items-center justify-between px-5 py-4 border-b border-gray-200">
+              <Text className="text-lg font-bold text-gray-900">Profile</Text>
+              <TouchableOpacity
+                onPress={() => setShowProfileSheet(false)}
+                className="w-8 h-8 rounded-full bg-gray-100 items-center justify-center"
+              >
+                <Ionicons name="close" size={20} color="#111827" />
+              </TouchableOpacity>
+            </View>
+            <View className="flex-1">
               <UserProfile user={userProfile || {}} />
             </View>
           </Pressable>
         </Pressable>
       </Modal>
 
-      {/* Change Password Bottom Sheet */}
+      {/* ── Change Password Bottom Sheet ── */}
       <Modal
         visible={showChangePasswordSheet}
         transparent
         animationType="slide"
         onRequestClose={() => setShowChangePasswordSheet(false)}
       >
-        <Pressable style={styles.modalOverlay} onPress={closeSheets}>
-          <Pressable style={styles.modalContainer} onPress={() => {}}>
-            {renderSheetHeader("Change Password", () => setShowChangePasswordSheet(false))}
-            <View style={{ flex: 1 }}>
+        <Pressable className="flex-1 bg-black/50 justify-end" onPress={closeSheets}>
+          <Pressable
+            className="bg-white rounded-t-3xl flex-1 pb-4"
+            onPress={() => {}}
+          >
+            <View className="flex-row items-center justify-between px-5 py-4 border-b border-gray-200">
+              <Text className="text-lg font-bold text-gray-900">
+                Change Password
+              </Text>
+              <TouchableOpacity
+                onPress={() => setShowChangePasswordSheet(false)}
+                className="w-8 h-8 rounded-full bg-gray-100 items-center justify-center"
+              >
+                <Ionicons name="close" size={20} color="#111827" />
+              </TouchableOpacity>
+            </View>
+            <View className="flex-1">
               <ChangePassword />
             </View>
           </Pressable>
@@ -146,86 +216,3 @@ export const CustomDrawer = (props: DrawerContentComponentProps) => {
     </View>
   );
 };
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#fff",
-  },
-  userSection: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    padding: 30,
-    paddingLeft: 20,
-    backgroundColor: "#3b82f6",
-  },
-  userInfo: {
-    flexDirection: "row",
-    alignItems: "center",
-    flex: 1,
-  },
-  userDetails: {
-    flex: 1,
-  },
-  fullName: {
-    fontSize: 18,
-    fontWeight: "bold",
-    color: "#fff",
-    marginBottom: 4,
-  },
-  mobileNumber: {
-    fontSize: 14,
-    color: "rgba(255, 255, 255, 0.9)",
-  },
-  divider: {
-    height: 1,
-    backgroundColor: "#e0e0e0",
-    marginHorizontal: 16,
-  },
-  menuItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 15,
-    paddingHorizontal: 20,
-  },
-  menuText: {
-    fontSize: 16,
-    marginLeft: 15,
-    color: "#333",
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
-    justifyContent: "flex-end",
-  },
-  modalContainer: {
-    backgroundColor: "#fff",
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    flex: 1,
-    paddingBottom: 16,
-  },
-  sheetHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "#e5e7eb",
-  },
-  sheetTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#111827",
-  },
-  closeButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: "#f3f4f6",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-});

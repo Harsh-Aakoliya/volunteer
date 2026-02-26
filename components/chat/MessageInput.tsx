@@ -13,9 +13,15 @@ import {
   Alert,
   Modal,
   TouchableWithoutFeedback,
+  Animated,
+  Easing,
 } from 'react-native';
 import { Audio } from 'expo-av';
 import { Ionicons } from '@expo/vector-icons';
+import {
+  ExpoSpeechRecognitionModule,
+  useSpeechRecognitionEvent,
+} from 'expo-speech-recognition';
 import { getReplyPreviewText } from '@/utils/messageHelpers';
 import DateTimePicker from '@/components/chat/DateTimePicker';
 import {
@@ -25,16 +31,10 @@ import {
   cleanHtml,
   stripHtml,
   isHtmlContent,
-  AlignLeftIcon,
-  AlignCenterIcon,
-  AlignRightIcon,
-  BulletListIcon,
-  NumberListIcon,
   ColorIndicatorIcon,
   InlineColorPicker,
   InlineLinkInput,
   ToolbarButton,
-  ToolbarDivider,
   LinkPreview,
 } from '@/components/chat/message';
 
@@ -52,20 +52,15 @@ interface MessageInputProps {
   onAttachmentPress?: () => void;
   isAttachmentSheetOpen?: boolean;
   onSendAudio?: (audioUri: string) => void | Promise<void>;
-  /** Hide the paperclip attachment button (default true) */
   showAttachmentButton?: boolean;
-  /** Hide mic / audio recording and show send icon instead (default true when onSendAudio provided) */
   showAudioButton?: boolean;
-  /** Pre-fill the editor with this HTML on mount */
   initialContent?: string;
-  /** Ionicons name for the send button (default 'send') */
   sendIconName?: string;
-  /** Allow long-press to schedule (default true) */
   showScheduleOption?: boolean;
-  /** Outer container nativewind class (default 'bg-[#E5DDD5] w-full pb-1') */
   containerClassName?: string;
-  /** Allow sending even when input is empty (useful for caption-only media modes) */
   allowEmptySend?: boolean;
+  /** Speech recognition language (default 'en-US') */
+  speechLanguage?: string;
 }
 
 // ---------- HELPER (link detection for preview) ----------
@@ -73,6 +68,194 @@ const extractLinks = (text: string): string[] => {
   const plainText = stripHtml(text);
   const urlRegex = /(https?:\/\/[^\s]+)/g;
   return plainText.match(urlRegex) || [];
+};
+
+// ---------- PULSING MIC COMPONENT ----------
+const PulsingMicButton = ({ 
+  onPress, 
+  isListening,
+  disabled 
+}: { 
+  onPress: () => void; 
+  isListening: boolean;
+  disabled?: boolean;
+}) => {
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const opacityAnim = useRef(new Animated.Value(0.6)).current;
+
+  useEffect(() => {
+    if (isListening) {
+      const pulseAnimation = Animated.loop(
+        Animated.sequence([
+          Animated.parallel([
+            Animated.timing(pulseAnim, {
+              toValue: 1.3,
+              duration: 800,
+              easing: Easing.ease,
+              useNativeDriver: true,
+            }),
+            Animated.timing(opacityAnim, {
+              toValue: 0,
+              duration: 800,
+              easing: Easing.ease,
+              useNativeDriver: true,
+            }),
+          ]),
+          Animated.parallel([
+            Animated.timing(pulseAnim, {
+              toValue: 1,
+              duration: 0,
+              useNativeDriver: true,
+            }),
+            Animated.timing(opacityAnim, {
+              toValue: 0.6,
+              duration: 0,
+              useNativeDriver: true,
+            }),
+          ]),
+        ])
+      );
+      pulseAnimation.start();
+      return () => pulseAnimation.stop();
+    } else {
+      pulseAnim.setValue(1);
+      opacityAnim.setValue(0.6);
+    }
+  }, [isListening, pulseAnim, opacityAnim]);
+
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      className="min-h-[50px] min-w-[50px] items-center justify-center mb-0"
+    >
+      {isListening && (
+        <Animated.View
+          style={{
+            position: 'absolute',
+            width: 50,
+            height: 50,
+            borderRadius: 25,
+            backgroundColor: '#dc2626',
+            transform: [{ scale: pulseAnim }],
+            opacity: opacityAnim,
+          }}
+        />
+      )}
+      <View
+        className={`min-h-[50px] min-w-[50px] rounded-full items-center justify-center ${
+          isListening ? 'bg-red-600' : 'bg-green-600'
+        }`}
+        style={{
+          shadowColor: isListening ? '#dc2626' : '#000',
+          shadowOffset: { width: 0, height: 1 },
+          shadowOpacity: 0.2,
+          shadowRadius: 3,
+          elevation: 3,
+        }}
+      >
+        <Ionicons 
+          name="mic" 
+          size={24} 
+          color="#fff" 
+        />
+      </View>
+    </Pressable>
+  );
+};
+
+// ---------- SPEECH-TO-TEXT INDICATOR ----------
+const SpeechToTextIndicator = ({ 
+  isListening, 
+  partialResult,
+  onStop 
+}: { 
+  isListening: boolean; 
+  partialResult: string;
+  onStop: () => void;
+}) => {
+  const waveAnim1 = useRef(new Animated.Value(0.3)).current;
+  const waveAnim2 = useRef(new Animated.Value(0.3)).current;
+  const waveAnim3 = useRef(new Animated.Value(0.3)).current;
+  const waveAnim4 = useRef(new Animated.Value(0.3)).current;
+
+  useEffect(() => {
+    if (isListening) {
+      const createWaveAnimation = (anim: Animated.Value, delay: number) => {
+        return Animated.loop(
+          Animated.sequence([
+            Animated.delay(delay),
+            Animated.timing(anim, {
+              toValue: 1,
+              duration: 300,
+              useNativeDriver: true,
+            }),
+            Animated.timing(anim, {
+              toValue: 0.3,
+              duration: 300,
+              useNativeDriver: true,
+            }),
+          ])
+        );
+      };
+
+      const animations = [
+        createWaveAnimation(waveAnim1, 0),
+        createWaveAnimation(waveAnim2, 100),
+        createWaveAnimation(waveAnim3, 200),
+        createWaveAnimation(waveAnim4, 300),
+      ];
+
+      animations.forEach(anim => anim.start());
+
+      return () => animations.forEach(anim => anim.stop());
+    }
+  }, [isListening, waveAnim1, waveAnim2, waveAnim3, waveAnim4]);
+
+  if (!isListening) return null;
+
+  return (
+    <View className="bg-red-50 border-t border-red-200 px-4 py-3">
+      <View className="flex-row items-center justify-between">
+        <View className="flex-row items-center flex-1">
+          {/* Sound wave animation */}
+          <View className="flex-row items-center mr-3 h-6">
+            {[waveAnim1, waveAnim2, waveAnim3, waveAnim4].map((anim, index) => (
+              <Animated.View
+                key={index}
+                style={{
+                  width: 3,
+                  height: 20,
+                  backgroundColor: '#dc2626',
+                  marginHorizontal: 2,
+                  borderRadius: 2,
+                  transform: [{ scaleY: anim }],
+                }}
+              />
+            ))}
+          </View>
+          
+          <View className="flex-1">
+            <Text className="text-red-600 font-semibold text-sm">Listening...</Text>
+            {partialResult ? (
+              <Text className="text-gray-600 text-xs mt-0.5" numberOfLines={1}>
+                "{partialResult}"
+              </Text>
+            ) : (
+              <Text className="text-gray-400 text-xs mt-0.5">Speak now</Text>
+            )}
+          </View>
+        </View>
+
+        <TouchableOpacity
+          onPress={onStop}
+          className="bg-red-600 rounded-full px-4 py-2"
+        >
+          <Text className="text-white font-medium text-sm">Stop</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
 };
 
 // ---------- MAIN COMPONENT ----------
@@ -95,6 +278,7 @@ export default function MessageInput({
   showScheduleOption = true,
   containerClassName = 'bg-[#E5DDD5] w-full pb-1',
   allowEmptySend = false,
+  speechLanguage = 'en-US',
 }: MessageInputProps) {
 
   // Refs
@@ -105,6 +289,7 @@ export default function MessageInput({
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const previewSoundRef = useRef<Audio.Sound | null>(null);
   const heightUpdateTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const textBeforeSpeechRef = useRef('');
 
   // State
   const [showRichTextToolbar, setShowRichTextToolbar] = useState(false);
@@ -138,7 +323,170 @@ export default function MessageInput({
   const [previewPosition, setPreviewPosition] = useState(0);
   const [sendingAudio, setSendingAudio] = useState(false);
 
+  // Speech-to-text state
+  const [speechToTextActive, setSpeechToTextActive] = useState(false);
+  const [partialSpeechResult, setPartialSpeechResult] = useState('');
+  const [speechAvailable, setSpeechAvailable] = useState(false);
+
   const isAudioAvailable = !!onSendAudio && (showAudioButton ?? true);
+
+  // Check if speech recognition is available
+  useEffect(() => {
+    if (Platform.OS === 'web') {
+      setSpeechAvailable(false);
+      return;
+    }
+
+    try {
+      setSpeechAvailable(ExpoSpeechRecognitionModule.isRecognitionAvailable());
+    } catch {
+      setSpeechAvailable(false);
+    }
+  }, []);
+
+  // Setup Speech Recognition listeners
+  useSpeechRecognitionEvent('start', () => {
+    if (Platform.OS === 'web') return;
+    setSpeechToTextActive(true);
+  });
+
+  useSpeechRecognitionEvent('end', () => {
+    if (Platform.OS === 'web') return;
+    setSpeechToTextActive(false);
+    setPartialSpeechResult('');
+  });
+
+  useSpeechRecognitionEvent('error', (event: any) => {
+    if (Platform.OS === 'web') return;
+    console.error('Speech error:', event?.error, event?.message);
+    setSpeechToTextActive(false);
+    setPartialSpeechResult('');
+
+    if (event?.error === 'no-speech') return;
+    if (event?.error === 'audio-capture' || event?.error === 'not-allowed') {
+      Alert.alert(
+        'Microphone Error',
+        'Could not access microphone. Please check permissions.'
+      );
+      return;
+    }
+    Alert.alert('Speech Recognition', 'An error occurred. Please try again.');
+  });
+
+  useSpeechRecognitionEvent('result', (event: any) => {
+    if (Platform.OS === 'web') return;
+
+    // The library supports both a native-style results array and a Web Speech API style nested array.
+    const ri = typeof event?.resultIndex === 'number' ? event.resultIndex : 0;
+    let transcript = '';
+
+    if (Array.isArray(event?.results)) {
+      const maybeNested = event.results?.[ri];
+      if (Array.isArray(maybeNested)) {
+        transcript = maybeNested?.[0]?.transcript || '';
+      } else {
+        transcript = event.results?.[0]?.transcript || '';
+      }
+    }
+
+    const isFinal =
+      !!event?.isFinal ||
+      !!event?.results?.[ri]?.[0]?.isFinal ||
+      !!event?.results?.[0]?.isFinal;
+
+    if (!transcript) return;
+
+    if (isFinal) {
+      const existingText = textBeforeSpeechRef.current;
+      const newContent = existingText ? `${existingText} ${transcript}` : transcript;
+
+      onChangeText(newContent);
+      richTextRef.current?.setContentHTML(newContent);
+
+      textBeforeSpeechRef.current = newContent;
+      setPartialSpeechResult('');
+    } else {
+      setPartialSpeechResult(transcript);
+
+      const existingText = textBeforeSpeechRef.current;
+      const partialContent = existingText
+        ? `${existingText} ${transcript}`
+        : transcript;
+
+      richTextRef.current?.setContentHTML(partialContent);
+      onChangeText(partialContent);
+    }
+  });
+
+  // Start speech-to-text
+  const startSpeechToText = useCallback(async () => {
+    if (Platform.OS === 'web' || !speechAvailable) {
+      Alert.alert('Not Available', 'Speech recognition is not available on this device.');
+      return;
+    }
+
+    try {
+      // Request permissions
+      const result = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
+      
+      if (!result?.granted) {
+        Alert.alert('Permission Required', 'Please grant microphone permission to use speech recognition.');
+        return;
+      }
+
+      // Store current text before starting
+      textBeforeSpeechRef.current = stripHtml(messageText).trim();
+      
+      // Close any open UI elements
+      setShowRichTextToolbar(false);
+      setShowColorPicker(null);
+      setShowLinkInput(false);
+      
+      // Start recognition
+      ExpoSpeechRecognitionModule.start({
+        lang: speechLanguage,
+        interimResults: true,
+        continuous: true,
+        maxAlternatives: 1,
+      });
+      
+      setSpeechToTextActive(true);
+    } catch (e: any) {
+      console.error('Failed to start speech recognition:', e);
+      Alert.alert('Error', 'Could not start speech recognition. Please try again.');
+    }
+  }, [messageText, speechLanguage, speechAvailable]);
+
+  // Stop speech-to-text
+  const stopSpeechToText = useCallback(async () => {
+    try {
+      ExpoSpeechRecognitionModule.stop();
+      setSpeechToTextActive(false);
+      setPartialSpeechResult('');
+    } catch (e) {
+      console.error('Failed to stop speech recognition:', e);
+      setSpeechToTextActive(false);
+      setPartialSpeechResult('');
+    }
+  }, []);
+
+  // Handle long press on mic for speech-to-text
+  const handleLongPressMic = useCallback(async () => {
+    if (speechToTextActive) {
+      await stopSpeechToText();
+    } else {
+      await startSpeechToText();
+    }
+  }, [speechToTextActive, startSpeechToText, stopSpeechToText]);
+
+  // Handle tap on mic when speech-to-text is active
+  const handleMicPress = useCallback(async () => {
+    if (speechToTextActive) {
+      await stopSpeechToText();
+    } else if (isAudioAvailable) {
+      handleStartRecording();
+    }
+  }, [speechToTextActive, stopSpeechToText, isAudioAvailable]);
 
   // Set initial content when editor mounts (for edit mode)
   useEffect(() => {
@@ -147,8 +495,6 @@ export default function MessageInput({
       richTextRef.current?.setContentHTML(initialContent);
     }, 200);
     return () => clearTimeout(t);
-    // Only run once on mount
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Audio permissions and mode
@@ -182,6 +528,12 @@ export default function MessageInput({
 
   const handleStartRecording = useCallback(async () => {
     if (!onSendAudio) return;
+    
+    // Stop speech-to-text if active
+    if (speechToTextActive) {
+      await stopSpeechToText();
+    }
+    
     try {
       setShowRichTextToolbar(false);
       setShowColorPicker(null);
@@ -197,7 +549,7 @@ export default function MessageInput({
     } catch (e) {
       Alert.alert('Recording', 'Could not start recording. Please allow microphone access.');
     }
-  }, [onSendAudio]);
+  }, [onSendAudio, speechToTextActive, stopSpeechToText]);
 
   const handlePauseRecording = useCallback(async () => {
     if (recordingRef.current) {
@@ -383,46 +735,6 @@ export default function MessageInput({
     setShowLinkInput(prev => !prev);
   }, []);
 
-  // Format toggles
-  const handleBold = useCallback(() => {
-    richTextRef.current?.sendAction(actions.setBold, 'result');
-    setFormatActive(prev => ({ ...prev, bold: !prev.bold }));
-  }, []);
-  const handleItalic = useCallback(() => {
-    richTextRef.current?.sendAction(actions.setItalic, 'result');
-    setFormatActive(prev => ({ ...prev, italic: !prev.italic }));
-  }, []);
-  const handleUnderline = useCallback(() => {
-    richTextRef.current?.sendAction(actions.setUnderline, 'result');
-    setFormatActive(prev => ({ ...prev, underline: !prev.underline }));
-  }, []);
-  const handleStrike = useCallback(() => {
-    richTextRef.current?.sendAction(actions.setStrikethrough, 'result');
-    setFormatActive(prev => ({ ...prev, strike: !prev.strike }));
-  }, []);
-
-  // List & alignment
-  const handleBulletList = useCallback(() => {
-    richTextRef.current?.sendAction(actions.insertBulletsList, 'result');
-    setListAlignActive(prev => ({ ...prev, bullet: !prev.bullet, number: false }));
-  }, []);
-  const handleNumberList = useCallback(() => {
-    richTextRef.current?.sendAction(actions.insertOrderedList, 'result');
-    setListAlignActive(prev => ({ ...prev, number: !prev.number, bullet: false }));
-  }, []);
-  const handleAlignLeft = useCallback(() => {
-    richTextRef.current?.sendAction(actions.alignLeft, 'result');
-    setListAlignActive(prev => ({ ...prev, alignLeft: true, alignCenter: false, alignRight: false }));
-  }, []);
-  const handleAlignCenter = useCallback(() => {
-    richTextRef.current?.sendAction(actions.alignCenter, 'result');
-    setListAlignActive(prev => ({ ...prev, alignLeft: false, alignCenter: true, alignRight: false }));
-  }, []);
-  const handleAlignRight = useCallback(() => {
-    richTextRef.current?.sendAction(actions.alignRight, 'result');
-    setListAlignActive(prev => ({ ...prev, alignLeft: false, alignCenter: false, alignRight: true }));
-  }, []);
-
   const handlePaste = useCallback((data: string) => {
     if (!data || !richTextRef.current) return;
     if (isHtmlContent(data)) {
@@ -457,9 +769,7 @@ export default function MessageInput({
       alignRight: false,
     });
     setShowRichTextToolbar(false);
-    // Clear editor content without forcibly changing focus.
-    // Forcing focus here can cause the keyboard to briefly close and reopen
-    // on some devices, making the input jump behind the keyboard.
+    textBeforeSpeechRef.current = '';
     setTimeout(() => {
       if (richTextRef.current) {
         richTextRef.current.setContentHTML('');
@@ -470,7 +780,11 @@ export default function MessageInput({
   }, [onChangeText]);
 
   // Send handler
-  const handleSendPress = useCallback(() => {
+  const handleSendPress = useCallback(async () => {
+    if (speechToTextActive) {
+      await stopSpeechToText();
+    }
+    
     if (isEmpty && !allowEmptySend) {
       if (replyToMessage) return;
       if (showAttachmentButton && onAttachmentPress) {
@@ -485,7 +799,7 @@ export default function MessageInput({
     const contentToSend = isEmpty ? '' : cleanHtml(messageText);
     onSend(contentToSend, 'text', 0, 0, 0);
     resetAfterSend();
-  }, [isEmpty, replyToMessage, messageText, onSend, onAttachmentPress, resetAfterSend, showAttachmentButton, allowEmptySend]);
+  }, [isEmpty, replyToMessage, messageText, onSend, onAttachmentPress, resetAfterSend, showAttachmentButton, allowEmptySend, speechToTextActive, stopSpeechToText]);
 
   const handleScheduleSend = useCallback((scheduledAt: string) => {
     if (isEmpty) return;
@@ -505,12 +819,19 @@ export default function MessageInput({
 
   const maxInputHeight = (7 * 22) + 20;
 
-  const shouldShowToolbar = showRichTextToolbar && Platform.OS !== 'web' && RichToolbar && recordingMode === 'idle';
+  const shouldShowToolbar = showRichTextToolbar && Platform.OS !== 'web' && RichToolbar && recordingMode === 'idle' && !speechToTextActive;
 
   return (
     <View className={containerClassName}>
+      {/* Speech-to-Text Indicator */}
+      <SpeechToTextIndicator 
+        isListening={speechToTextActive}
+        partialResult={partialSpeechResult}
+        onStop={stopSpeechToText}
+      />
+
       {/* Link Previews */}
-      {linkPreviews.length > 0 && (
+      {linkPreviews.length > 0 && !speechToTextActive && (
         <View className="px-3 pt-2 pb-1">
           <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="always">
             {linkPreviews.map((url, index) => (
@@ -522,7 +843,7 @@ export default function MessageInput({
 
       {/* Main Input Area */}
       {recordingMode !== 'idle' && isAudioAvailable ? (
-        // ... Recording View (unchanged) ...
+        // Recording View
         <View className="px-3 py-2 bg-white">
           <View className="flex-row items-center mb-3">
             {recordingMode === 'recording' ? (
@@ -585,15 +906,10 @@ export default function MessageInput({
           </View>
         </View>
       ) : (
-        // ... Normal Input View ...
+        // Normal Input View
         <View className="px-2 pt-1">
-          {/* Container Row: White Bubble + Send Button */}
           <View className="flex-row items-end">
-
-            {/* White Bubble: Contains Reply & Input */}
             <View className="flex-1 bg-white rounded-[22px] border border-gray-200 overflow-hidden mr-2 min-h-[44px]">
-
-              {/* Reply Preview Section - Inside the bubble */}
               {replyToMessage && (
                 <View className="mt-2 mx-2 mb-1 p-2 bg-gray-100 rounded-lg border-l-[4px] border-green-600 flex-row items-start justify-between">
                   <View className="flex-1 mr-2">
@@ -604,7 +920,6 @@ export default function MessageInput({
                       {getReplyPreviewText(replyToMessage)}
                     </Text>
                   </View>
-
                   <TouchableOpacity
                     onPress={onCancelReply}
                     className="bg-gray-200 rounded-full p-0.5 mt-0.5"
@@ -615,11 +930,7 @@ export default function MessageInput({
                 </View>
               )}
 
-              {/* Text Input Row - Inside the bubble, below reply */}
-              <View
-                className="flex-row items-center px-1 pb-1"
-                style={{ maxHeight: maxInputHeight }}
-              >
+              <View className="flex-row items-center px-1 pb-1" style={{ maxHeight: maxInputHeight }}>
                 <View className="flex-1 justify-center" style={{ paddingVertical: 2, paddingLeft: 6 }}>
                   {Platform.OS !== 'web' && RichEditor ? (
                     <RichEditor
@@ -687,9 +998,8 @@ export default function MessageInput({
                   )}
                 </View>
 
-                {/* Inner Action Buttons: initially Attachment + Aa; when typing, only Aa */}
                 <View className="flex-row items-center justify-end pr-1">
-                  {!showRichTextToolbar && Platform.OS !== 'web' && (
+                  {!showRichTextToolbar && Platform.OS !== 'web' && !speechToTextActive && (
                     <>
                       {isEmpty && showAttachmentButton && onAttachmentPress && (
                         <TouchableOpacity onPress={onAttachmentPress} className="p-1">
@@ -712,33 +1022,66 @@ export default function MessageInput({
             </View>
 
             {/* Right: Send / Mic Button */}
-            <Pressable
-              onPress={isEmpty ? (isAudioAvailable ? handleStartRecording : handleSendPress) : handleSendPress}
-              onLongPress={!isEmpty && showScheduleOption ? handleLongPressSend : undefined}
-              delayLongPress={400}
-              disabled={sending}
-              className="min-h-[50px] min-w-[50px] rounded-full bg-green-600 items-center justify-center mb-0"
-              style={{
-                shadowColor: '#000',
-                shadowOffset: { width: 0, height: 1 },
-                shadowOpacity: 0.2,
-                shadowRadius: 3,
-                elevation: 3
-              }}
-            >
-              {sending ? (
-                <ActivityIndicator color="#fff" size="small" />
-              ) : isEmpty && isAudioAvailable ? (
-                <Ionicons name="mic" size={24} color="#fff" />
-              ) : (
-                <Ionicons name={(sendIconName as any)} size={22} color="#fff" style={{ marginLeft: 2 }} />
-              )}
-            </Pressable>
+            {isEmpty && isAudioAvailable && !speechToTextActive ? (
+              <Pressable
+                onPress={handleMicPress}
+                onLongPress={handleLongPressMic}
+                delayLongPress={500}
+                disabled={sending}
+                className="min-h-[50px] min-w-[50px] rounded-full bg-green-600 items-center justify-center mb-0"
+                style={{
+                  shadowColor: '#000',
+                  shadowOffset: { width: 0, height: 1 },
+                  shadowOpacity: 0.2,
+                  shadowRadius: 3,
+                  elevation: 3
+                }}
+              >
+                {sending ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <Ionicons name="mic" size={24} color="#fff" />
+                )}
+              </Pressable>
+            ) : speechToTextActive ? (
+              <PulsingMicButton 
+                onPress={stopSpeechToText}
+                isListening={true}
+                disabled={sending}
+              />
+            ) : (
+              <Pressable
+                onPress={handleSendPress}
+                onLongPress={!isEmpty && showScheduleOption ? handleLongPressSend : undefined}
+                delayLongPress={400}
+                disabled={sending}
+                className="min-h-[50px] min-w-[50px] rounded-full bg-green-600 items-center justify-center mb-0"
+                style={{
+                  shadowColor: '#000',
+                  shadowOffset: { width: 0, height: 1 },
+                  shadowOpacity: 0.2,
+                  shadowRadius: 3,
+                  elevation: 3
+                }}
+              >
+                {sending ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <Ionicons name={(sendIconName as any)} size={22} color="#fff" style={{ marginLeft: 2 }} />
+                )}
+              </Pressable>
+            )}
           </View>
+
+          {/* {isEmpty && isAudioAvailable && speechAvailable && !speechToTextActive && recordingMode === 'idle' && (
+            <Text className="text-xs text-gray-400 text-center mt-1 mb-1">
+              Tap mic to record • Hold to speak-to-text
+            </Text>
+          )} */}
         </View>
       )}
 
-      {/* Rich Text Toolbar - use pell's built-in toolbar so active styles follow cursor */}
+      {/* Rich Text Toolbar */}
       {shouldShowToolbar && (
         <View className="flex-row items-center bg-[#F3F4F6] border-t border-b border-gray-200 py-1">
           <View className="flex-1">
@@ -763,8 +1106,6 @@ export default function MessageInput({
             )}
           </View>
 
-
-          {/* Our own color pickers (text + background) */}
           <ToolbarButton onPress={() => toggleColorPicker('text')} isActive={showColorPicker === 'text'}>
             <ColorIndicatorIcon type="text" color={currentTextColor} />
           </ToolbarButton>
@@ -782,9 +1123,7 @@ export default function MessageInput({
         </View>
       )}
 
-
-      {/* Inline Color Picker & Link Input & Modal (unchanged) */}
-      {showColorPicker !== null && recordingMode === 'idle' && (
+      {showColorPicker !== null && recordingMode === 'idle' && !speechToTextActive && (
         <InlineColorPicker
           visible={true}
           type={showColorPicker}
@@ -797,7 +1136,7 @@ export default function MessageInput({
         />
       )}
 
-      {showLinkInput && recordingMode === 'idle' && (
+      {showLinkInput && recordingMode === 'idle' && !speechToTextActive && (
         <InlineLinkInput
           visible={true}
           onInsert={handleInsertLink}
@@ -806,6 +1145,7 @@ export default function MessageInput({
         />
       )}
 
+      {/* Schedule Modal */}
       <Modal
         visible={showScheduleModal}
         transparent

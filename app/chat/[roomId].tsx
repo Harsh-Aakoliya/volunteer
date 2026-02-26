@@ -55,7 +55,7 @@ import { clearRoomNotifications } from "@/utils/chatNotificationHandler";
 import { getScheduledMessages } from "@/api/chat";
 import { logout } from '@/api/auth';
 import { useSocket, useChatRoomSubscription } from '@/contexts/SocketContext';
-// import StyledTextMessage from "@/components/chat/StyledTextMessage";
+import ExpandableTextMessage from "@/components/chat/ExpandableTextMessage";
 import { 
   ChatMessage, 
   MessageEditedEvent, 
@@ -80,97 +80,7 @@ interface RoomDetails extends ChatRoom {
 type ChatListItem =
   | (Message & { itemType: 'message' })
   | { itemType: 'dateSeparator'; date: string; id: string };
-
-// ==================== MEMOIZED COMPONENTS ====================
-
-// Imports
-import { useWindowDimensions } from 'react-native';
-import { defaultSystemFonts } from 'react-native-render-html';
 import { Path, Svg } from 'react-native-svg';
-// Add 'sans-serif' for Android Bold/Italic support
-const systemFonts = [...defaultSystemFonts, 'sans-serif', 'sans-serif-medium'];
-
-const StyledTextMessage = React.memo(({ 
-  content, 
-  isOwnMessage 
-}: { 
-  content: string, 
-  isOwnMessage: boolean 
-}) => {
-  const { width } = useWindowDimensions();
-  const contentWidth = width * 0.75; 
-
-  const cleanContent = useMemo(() => {
-    if (!content) return "";
-    return content.trim();
-  }, [content]);
-
-  // Check if HTML
-  const isHTML = /<[a-z][\s\S]*>/i.test(cleanContent);
-  
-  // Match MessageInput editor: 16px, weight 400, line-height 22, color #1F2937
-  const messageTextColor = '#1F2937';
-
-  if (!isHTML) {
-    return (
-      <Text
-        style={{
-          fontSize: 16,
-          lineHeight: 22,
-          color: messageTextColor,
-          fontFamily: Platform.OS === 'ios' ? 'System' : 'sans-serif',
-          fontWeight: '400',
-        }}
-      >
-        {cleanContent}
-      </Text>
-    );
-  }
-
-  const linkColor = isOwnMessage ? '#0000FF' : '#0088CC';
-
-  return (
-    <View>
-      <RenderHtml
-        contentWidth={contentWidth}
-        source={{ html: cleanContent }}
-        
-        // 1. Base style – match MessageInput editor (16px, weight 400, line-height 22, #1F2937)
-        baseStyle={{
-          fontSize: 16,
-          lineHeight: 22,
-          color: messageTextColor,
-          fontFamily: Platform.OS === 'ios' ? 'System' : '-apple-system',
-        }}
-        
-        // 2. Specific Tag Styling (bold/italic same as editor)
-        tagsStyles={{
-          body: { margin: 0, padding: 0 },
-          p: { marginTop: 0, marginBottom: 4 },
-          div: { marginTop: 0, marginBottom: 0 },
-          
-          b: { fontWeight: '700' },
-          strong: { fontWeight: '700' },
-          i: { fontStyle: 'italic' },
-          em: { fontStyle: 'italic' },
-          
-          a: { color: linkColor, textDecorationLine: 'underline' },
-          
-          ul: { paddingLeft: 20, marginTop: 4, marginBottom: 4 },
-          ol: { paddingLeft: 20, marginTop: 4, marginBottom: 4 },
-          li: { marginBottom: 2 },
-
-          span: { }, 
-        }}
-        
-        // 3. Ensure inline styles (style="color: red; background-color: blue") take priority
-        defaultTextProps={{
-          textBreakStrategy: 'simple',
-        }}
-      />
-    </View>
-  );
-});
 
 const MessageItem = React.memo(({
   message,
@@ -221,22 +131,12 @@ const MessageItem = React.memo(({
   const panRef = useRef(null);
   const tapRef = useRef(null);
 
-  // Permission check for selection:
-  // - Admin can select any message
-  // - Can send message users can only select their own messages
-  // - Cannot send message users cannot select any message
   const canSelect = isGroupAdmin || (canSendMessage && isOwnMessage);
-
-  // Permission check for reply:
-  // - Admin can reply to any message
-  // - Can send message users can reply to any message
-  // - Cannot send message users cannot reply to any message
   const canReply = isGroupAdmin || canSendMessage;
 
   const handleLongPressStateChange = useCallback((event: any) => {
     if (event.nativeEvent.state === State.ACTIVE) {
       if (!canSelect) return;
-      
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       onStartSelection(message);
     }
@@ -244,7 +144,6 @@ const MessageItem = React.memo(({
 
   const handleTapStateChange = useCallback((event: any) => {
     if (event.nativeEvent.state === State.END) {
-      // Handle tap for selection toggle when in selection mode
       if (selectedMessagesCount > 0 && canSelect) {
         if (isSelected) {
           onDeselect(message);
@@ -254,9 +153,8 @@ const MessageItem = React.memo(({
         return;
       }
     }
-  }, [selectedMessagesCount, canSelect, isSelected, message, onSelect, onDeselect, onReplyPreviewClick]);
+  }, [selectedMessagesCount, canSelect, isSelected, message, onSelect, onDeselect]);
 
-  // Message status logic
   let messageStatus: "sending" | "sent" | "delivered" | "read" | "error" = "sent";
   if (typeof message.id === "number") {
     messageStatus = "delivered";
@@ -264,7 +162,6 @@ const MessageItem = React.memo(({
     messageStatus = "sending";
   }
 
-  // --- Dynamic border radius logic for WhatsApp-like tail ---
   const bubbleBorderRadius = useMemo(() => {
     const defaultRadius = 18;
     const pointyRadius = 4;
@@ -294,12 +191,11 @@ const MessageItem = React.memo(({
 
   return (
     <View>
-      {/* Highlight overlay behind the message (shown when scrolling to reply) */}
       {isHighlighted && (
         <View className="absolute inset-0 bg-black/15 -mx-4" />
       )}
 
-      {/* Reply indicator - right side (for left swipe) */}
+      {/* Reply indicator - right side */}
       <Animated.View
         className="absolute top-0 bottom-0 right-4 justify-center"
         style={{
@@ -315,7 +211,7 @@ const MessageItem = React.memo(({
         </View>
       </Animated.View>
 
-      {/* Reply indicator - left side (for right swipe) */}
+      {/* Reply indicator - left side */}
       <Animated.View
         className="absolute top-0 bottom-0 left-4 justify-center"
         style={{
@@ -358,7 +254,6 @@ const MessageItem = React.memo(({
                 simultaneousHandlers={[longPressRef, tapRef]}
               >
                 <Animated.View style={{ transform: [{ translateX: messageAnimation }] }}>
-                  {/* Inline MessageBubble content */}
                   <View>
                     {isSelected && <View className="absolute inset-0 bg-[#0088CC]/15 -mx-4" />}
 
@@ -376,6 +271,7 @@ const MessageItem = React.memo(({
                         }
                       ]}
                     >
+                      {/* Reply Preview */}
                       {message.replyMessageId && (
                         <TouchableOpacity
                           activeOpacity={0.7}
@@ -405,88 +301,91 @@ const MessageItem = React.memo(({
                         </TouchableOpacity>
                       )}
 
-                      {/* CONDITIONAL SENDER NAME DISPLAY */}
+                      {/* Sender Name */}
                       {showSenderName && (
                         <Text className="text-[13px] font-semibold text-[#0088CC] mb-1">
                           {message.senderName || "Unknown"}
                         </Text>
                       )}
 
-                        {message.messageType === "text" && (
-                          <StyledTextMessage 
-                            content={message.messageText} 
-                            isOwnMessage={isOwnMessage}
-                          />
-                        )}
-
-                        {message.messageType === "media" && (
-                          <View>
-                            <MediaGrid 
-                              messageId={message.id}
-                              onMediaPress={handleMediaGridPress}
-                              mediaFilesId={message.mediaFilesId || 0}
-                              isOwnMessage
-                            />
-                            {message.messageText && message.messageText.trim() !== "" && (
-                              <View className="mt-1">
-                                <StyledTextMessage
-                                  content={message.messageText}
-                                  isOwnMessage={isOwnMessage}
-                                />
-                              </View>
-                            )}
-                          </View>
-                        )}
-
-                        {message.messageType === "poll" && (
-                          <View>
-                            {typeof message.pollId === "number" && (
-                              <PollMessage
-                                pollId={message.pollId}
-                                currentUserId={currentUser?.userId || ""}
-                                onViewResults={(pollId) => {
-                                  router.push({
-                                    pathname: "/chat/poll-votes",
-                                    params: {
-                                      pollId: String(pollId),
-                                      totalMembers: String(totalMembers),
-                                      currentUserId: String(currentUser?.userId || ""),
-                                    },
-                                  });
-                                }}
-                              />
-                            )}
-                            {message.messageText && message.messageText.trim() !== "" && (
-                              <View className="mt-1">
-                                <StyledTextMessage
-                                  content={message.messageText}
-                                  isOwnMessage={isOwnMessage}
-                                />
-                              </View>
-                            )}
-                          </View>
-                        )}
-                      {/* {message.messageType === "poll" && message.pollId && (
-                        <PollMessage
-                          pollId={message.pollId}
-                          currentUserId={currentUser?.userId || ''}
+                      {/* TEXT MESSAGE - Now with Read More */}
+                      {message.messageType === "text" && (
+                        <ExpandableTextMessage 
+                          content={message.messageText} 
                           isOwnMessage={isOwnMessage}
-                          onViewResults={(pollId) => {
-                            console.log("view results for poll", pollId);
-                          }}
+                          maxLines={10}
                         />
-                      )} */}
+                      )}
+
+                      {/* MEDIA MESSAGE */}
+                      {message.messageType === "media" && (
+                        <View>
+                          <MediaGrid 
+                            messageId={message.id}
+                            onMediaPress={handleMediaGridPress}
+                            mediaFilesId={message.mediaFilesId || 0}
+                            isOwnMessage
+                          />
+                          {message.messageText && message.messageText.trim() !== "" && (
+                            <View className="mt-1">
+                              <ExpandableTextMessage
+                                content={message.messageText}
+                                isOwnMessage={isOwnMessage}
+                                maxLines={10}
+                              />
+                            </View>
+                          )}
+                        </View>
+                      )}
+
+                      {/* POLL MESSAGE */}
+                      {message.messageType === "poll" && (
+                        <View>
+                          {typeof message.pollId === "number" && (
+                            <PollMessage
+                              pollId={message.pollId}
+                              currentUserId={currentUser?.userId || ""}
+                              onViewResults={(pollId) => {
+                                router.push({
+                                  pathname: "/chat/poll-votes",
+                                  params: {
+                                    pollId: String(pollId),
+                                    totalMembers: String(totalMembers),
+                                    currentUserId: String(currentUser?.userId || ""),
+                                  },
+                                });
+                              }}
+                            />
+                          )}
+                          {message.messageText && message.messageText.trim() !== "" && (
+                            <View className="mt-1">
+                              <ExpandableTextMessage
+                                content={message.messageText}
+                                isOwnMessage={isOwnMessage}
+                                maxLines={10}
+                              />
+                            </View>
+                          )}
+                        </View>
+                      )}
+
+                      {/* TABLE MESSAGE */}
                       {message.messageType === "table" && (
                         <Text className="text-base leading-[22px] text-black">
                           shared table: {message.tableId}
                         </Text>
                       )}
+
+                      {/* ANNOUNCEMENT MESSAGE */}
                       {message.messageType === "announcement" && (
-                        <Text className="text-base leading-[22px] text-black">
-                          {message.messageText || "shared an announcement"}
-                        </Text>
+                        <ExpandableTextMessage
+                          content={message.messageText || "shared an announcement"}
+                          isOwnMessage={isOwnMessage}
+                          maxLines={10}
+                        />
                       )}
 
+                      {/* Timestamp and Status */}
                       <View className="flex-row items-center justify-end mt-1 gap-1">
                         {message.isEdited && (
                           <Text className="text-[11px] text-[#8E8E93] italic">edited</Text>

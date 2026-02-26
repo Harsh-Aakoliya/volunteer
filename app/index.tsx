@@ -13,11 +13,11 @@ import { API_URL, setApiUrl, updateDevIP } from "@/constants/api";
 import useNetworkStatus from '@/hooks/userNetworkStatus';
 import SplashScreen from '@/components/SplashScreen';
 import React from 'react';
-const DEV_IP = "http://10.219.135.242:8080";
+const DEV_IP = "http://10.145.92.242:8080";
 const EXTERNAL_IP = "";
 const INTERNAL_IP = "";
 
-export const getDevModeStatus = () => false;
+export const getDevModeStatus = () => true;
 export const getDefaultDevIP = () => DEV_IP;
 
 const isWeb = Platform.OS === ('web' as any);

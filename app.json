@@ -1,76 +1,77 @@
 {
-    "expo": {
-      "name": "Sevak",
-      "slug": "Sevak",
-      "version": "1.0.17",
-      "userInterfaceStyle": "automatic",
-      "icon": "./assets/images/sevakapplogo.png",
-      "newArchEnabled": true,
-      "splash": {
-        "image": "./assets/images/sevakapplogo.png",
-        "resizeMode": "contain",
-        "backgroundColor": "#3b82f6"
-      },
-      "web": {
-        "bundler": "metro",
-        "output": "static",
-        "favicon": "./assets/images/sevakapplogo.png"
-      },
-      "host": "lan",
-      "plugins": [
-        "expo-router",
-        "expo-font",
-        [
-          "expo-build-properties",
-          {
-            "android": {
-              "usesCleartextTraffic": true,
-              "networkSecurityConfig": {
-                "cleartextTrafficPermitted": true
-              },
-              "abiFilters": [
-                "armeabi-v7a",
-                "arm64-v8a"
-              ]
-            }
+  "expo": {
+    "name": "Sevak",
+    "slug": "Sevak",
+    "version": "1.0.17",
+    "userInterfaceStyle": "automatic",
+    "icon": "./assets/images/sevakapplogo.png",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/images/sevakapplogo.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#3b82f6"
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static",
+      "favicon": "./assets/images/sevakapplogo.png"
+    },
+    "host": "lan",
+    "plugins": [
+      "expo-router",
+      "expo-font",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true,
+            "networkSecurityConfig": {
+              "cleartextTrafficPermitted": true
+            },
+            "abiFilters": [
+              "armeabi-v7a",
+              "arm64-v8a"
+            ]
           }
-        ]
+        }
       ],
-      "experiments": {
-        "typedRoutes": true
+      "expo-speech-recognition"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "router": {
+        "origin": false
       },
-      "extra": {
-        "router": {
-          "origin": false
-        },
-        "eas": {
-          "projectId": "639317e2-9068-48c8-b1c4-dde98444a0db"
-        }
-      },
-      "owner": "harsh123890",
-      "android": {
-        "package": "com.harsh123890.Sevak",
-        "googleServicesFile": "./google-services.json",
-        "permissions": [
-          "INTERNET",
-          "ACCESS_NETWORK_STATE",
-          "WRITE_EXTERNAL_STORAGE",
-          "READ_EXTERNAL_STORAGE",
-          "MANAGE_EXTERNAL_STORAGE",
-          "REQUEST_INSTALL_PACKAGES",
-          "POST_NOTIFICATIONS",
-          "READ_PHONE_STATE",
-          "READ_PHONE_NUMBERS",
-          "CAMERA",
-          "RECORD_AUDIO"
-        ],
-        "adaptiveIcon": {
-          "foregroundImage": "./assets/images/sevakapplogo.png",
-          "backgroundColor": "#FFFFFF"
-        }
-      },
-      "ios": {
-        "bundleIdentifier": "com.harsh123890.Sevak"
+      "eas": {
+        "projectId": "639317e2-9068-48c8-b1c4-dde98444a0db"
       }
+    },
+    "owner": "harsh123890",
+    "android": {
+      "package": "com.harsh123890.Sevak",
+      "googleServicesFile": "./google-services.json",
+      "permissions": [
+        "INTERNET",
+        "ACCESS_NETWORK_STATE",
+        "WRITE_EXTERNAL_STORAGE",
+        "READ_EXTERNAL_STORAGE",
+        "MANAGE_EXTERNAL_STORAGE",
+        "REQUEST_INSTALL_PACKAGES",
+        "POST_NOTIFICATIONS",
+        "READ_PHONE_STATE",
+        "READ_PHONE_NUMBERS",
+        "CAMERA",
+        "RECORD_AUDIO"
+      ],
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/sevakapplogo.png",
+        "backgroundColor": "#FFFFFF"
+      }
+    },
+    "ios": {
+      "bundleIdentifier": "com.harsh123890.Sevak"
     }
   }
+}
