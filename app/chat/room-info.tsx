@@ -10,9 +10,7 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import axios from 'axios';
-import { API_URL } from '@/constants/api';
-import { AuthStorage } from '@/utils/authStorage';
+import { getRoomDetails } from "@/api/chat/rooms";
 import { useFocusEffect } from '@react-navigation/native';
 import { TabView, TabBar } from 'react-native-tab-view';
 import MembersTab from '@/components/chat/roomSettings/MembersTab';
@@ -63,16 +61,13 @@ export default function RoomInfo() {
     try {
       setIsLoading(true);
 
-      const token = await AuthStorage.getToken();
-      const response = await axios.get(`${API_URL}/api/chat/rooms/${roomId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const data = await getRoomDetails(roomId as string);
 
-      console.log("response.data", response.data);
+      console.log("room data", data);
 
-      setMembers(response.data.members || []);
-      setRoomName(response.data.roomName || '');
-      setMessages(response.data.messages || []);
+      setMembers(data.members || []);
+      setRoomName(data.roomName || '');
+      setMessages(data.messages || []);
 
     } catch (error) {
       console.error('Error loading room info:', error);

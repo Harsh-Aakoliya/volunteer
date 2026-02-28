@@ -1,10 +1,7 @@
-import React, { useCallback, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Dimensions,
-  LayoutChangeEvent,
-  Modal,
-  Pressable,
   RefreshControl,
   ScrollView,
   Text,
@@ -13,10 +10,10 @@ import {
 } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
 import { useLocalSearchParams, router } from "expo-router";
-import axios from "axios";
 import { Ionicons } from "@expo/vector-icons";
-import { API_URL } from "@/constants/api";
+import { getPollVotesDetails } from "@/api/chat/polls";
 import Svg, { Path } from "react-native-svg";
+import BottomSheet, { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
 
@@ -91,6 +88,7 @@ function getColor(index: number) {
 const Y_AXIS_W = 32;
 
 function computeYAxisTicks(totalMembers: number): number[] {
+  totalMembers = 50;
   if (totalMembers <= 0) return [2, 4, 6, 8, 10];
   if (totalMembers <= 10) return [2, 4, 6, 8, 10];
   if (totalMembers <= 50) return [10, 20, 30, 40, 50];
@@ -99,122 +97,15 @@ function computeYAxisTicks(totalMembers: number): number[] {
   return [step, step * 2, step * 3, step * 4, step * 5];
 }
 
-// ── Tooltip (shared by Bar & Pie) ──
-function VoteTooltip({
-  option,
-  anchorX,
-  anchorY,
-  onClose,
-}: {
-  option: PollVotesOption;
-  anchorX: number;
-  anchorY: number;
-  onClose: () => void;
-}) {
-  const TOOLTIP_W = 260;
-  const ARROW_SIZE = 10;
-
-  const tooltipLeft = Math.min(
-    Math.max(anchorX - TOOLTIP_W / 2, 8),
-    SCREEN_WIDTH - TOOLTIP_W - 8
-  );
-  const arrowLeft = Math.min(
-    Math.max(anchorX - tooltipLeft - ARROW_SIZE, 8),
-    TOOLTIP_W - ARROW_SIZE * 2 - 8
-  );
-
-  const [tooltipH, setTooltipH] = useState(200);
-  const tooltipTop = Math.max(anchorY - tooltipH - ARROW_SIZE, 8);
-
-  return (
-    <Modal transparent visible animationType="fade" onRequestClose={onClose}>
-      <Pressable onPress={onClose} className="flex-1 bg-black/30">
-        <Pressable
-          onPress={(e) => e.stopPropagation()}
-          onLayout={(e: LayoutChangeEvent) =>
-            setTooltipH(e.nativeEvent.layout.height)
-          }
-          style={{
-            position: "absolute",
-            top: tooltipTop,
-            left: tooltipLeft,
-            width: TOOLTIP_W,
-            maxHeight: 360,
-          }}
-          className="bg-slate-800 rounded-2xl py-3.5 px-4 shadow-xl"
-        >
-          <View
-            style={{
-              position: "absolute",
-              bottom: -ARROW_SIZE,
-              left: arrowLeft,
-              width: 0,
-              height: 0,
-              borderLeftWidth: ARROW_SIZE,
-              borderRightWidth: ARROW_SIZE,
-              borderTopWidth: ARROW_SIZE,
-              borderLeftColor: "transparent",
-              borderRightColor: "transparent",
-              borderTopColor: "#1e293b",
-            }}
-          />
-
-          <Text
-            className="text-white font-bold text-[15px] mb-0.5"
-            numberOfLines={2}
-          >
-            {option.text}
-          </Text>
-          <Text className="text-slate-400 text-[13px] font-semibold mb-2.5">
-            {option.voteCount} vote{option.voteCount !== 1 ? "s" : ""}
-          </Text>
-
-          {option.voters.length === 0 ? (
-            <Text className="text-slate-400 text-[13px]">No votes yet</Text>
-          ) : (
-            <ScrollView
-              style={{ maxHeight: 230 }}
-              showsVerticalScrollIndicator
-              nestedScrollEnabled
-            >
-              {option.voters.map((v, i) => (
-                <View
-                  key={`${v.userId}-${i}`}
-                  style={{
-                    borderBottomWidth:
-                      i < option.voters.length - 1 ? 0.5 : 0,
-                    borderBottomColor: "#334155",
-                  }}
-                  className="py-1.5"
-                >
-                  <Text
-                    className="text-slate-100 text-[13px] font-semibold"
-                    numberOfLines={1}
-                  >
-                    {v.fullName || v.userId}
-                  </Text>
-                  {!!formatVotedAt(v.votedAt) && (
-                    <Text className="text-slate-500 text-[11px] mt-0.5">
-                      {formatVotedAt(v.votedAt)}
-                    </Text>
-                  )}
-                </View>
-              ))}
-            </ScrollView>
-          )}
-        </Pressable>
-      </Pressable>
-    </Modal>
-  );
-}
-
 // ── Bar Chart ──
 function BarChart({
   options,
   totalMembers,
+  onOptionSelect,
 }: {
   options: PollVotesOption[];
   totalMembers: number;
+  onOptionSelect?: (option: PollVotesOption) => void;
 }) {
   const yTicks = computeYAxisTicks(totalMembers);
   const maxY = yTicks[yTicks.length - 1];
@@ -225,38 +116,17 @@ function BarChart({
   const LABEL_H = 28;
   const scrollContentWidth = BAR_AREA_WIDTH * options.length;
 
-  const [tooltip, setTooltip] = useState<{
-    option: PollVotesOption;
-    anchorX: number;
-    anchorY: number;
-  } | null>(null);
-
-  const chartRef = useRef<View>(null);
   const scrollOffsetRef = useRef(0);
 
   const handleBarPress = useCallback(
-    (opt: PollVotesOption, idx: number, barH: number) => {
-      chartRef.current?.measureInWindow((x, y) => {
-        const barCenterX =
-          x + (idx + 0.5) * BAR_AREA_WIDTH - scrollOffsetRef.current;
-        const barTopY = y + (CHART_HEIGHT - barH) - 16;
-        setTooltip({ option: opt, anchorX: barCenterX, anchorY: barTopY });
-      });
+    (opt: PollVotesOption) => {
+      onOptionSelect?.(opt);
     },
-    [BAR_AREA_WIDTH]
+    [onOptionSelect]
   );
 
   return (
     <View>
-      {tooltip && (
-        <VoteTooltip
-          option={tooltip.option}
-          anchorX={tooltip.anchorX}
-          anchorY={tooltip.anchorY}
-          onClose={() => setTooltip(null)}
-        />
-      )}
-
       <View className="flex-row">
         {/* Y-axis */}
         <View
@@ -316,7 +186,7 @@ function BarChart({
               height: CHART_HEIGHT + LABEL_H,
             }}
           >
-            <View ref={chartRef}>
+            <View>
               {/* Bars */}
               <View
                 className="flex-row items-end"
@@ -332,17 +202,12 @@ function BarChart({
                       style={{ width: BAR_AREA_WIDTH }}
                       className="items-center justify-end"
                     >
-                      <Text
-                        className="text-[11px] font-bold text-gray-600 mb-0.5"
-                        style={{
-                          opacity: tooltip?.option.id === opt.id ? 0 : 1,
-                        }}
-                      >
+                      <Text className="text-[11px] font-bold text-gray-600 mb-0.5">
                         {opt.voteCount}
                       </Text>
                       <TouchableOpacity
                         activeOpacity={0.75}
-                        onPress={() => handleBarPress(opt, idx, clampedH)}
+                        onPress={() => handleBarPress(opt)}
                         style={{
                           width: BAR_WIDTH,
                           height: clampedH,
@@ -391,22 +256,16 @@ function BarChart({
 function PieChartView({
   options,
   totalVotes,
+  onOptionSelect,
 }: {
   options: PollVotesOption[];
   totalVotes: number;
+  onOptionSelect?: (option: PollVotesOption) => void;
 }) {
-  const [tooltip, setTooltip] = useState<{
-    option: PollVotesOption;
-    anchorX: number;
-    anchorY: number;
-  } | null>(null);
-
   const PIE_SIZE = Math.min(SCREEN_WIDTH - 80, 220);
   const CENTER = PIE_SIZE / 2;
   const RADIUS = CENTER - 2;
   const INNER_RADIUS = CENTER * 0.32;
-
-  const pieRef = useRef<View>(null);
 
   const slices = useMemo(() => {
     if (totalVotes === 0) return [];
@@ -463,30 +322,14 @@ function PieChartView({
   );
 
   const handleSlicePress = useCallback(
-    (option: PollVotesOption, startDeg: number, sweepDeg: number) => {
-      pieRef.current?.measureInWindow((x, y) => {
-        const midDeg = startDeg + sweepDeg / 2;
-        const midRad = (midDeg * Math.PI) / 180;
-        const edgeR = (RADIUS + INNER_RADIUS) / 2;
-        const anchorX = x + CENTER + Math.cos(midRad) * edgeR;
-        const anchorY = y + CENTER + Math.sin(midRad) * edgeR;
-        setTooltip({ option, anchorX, anchorY });
-      });
+    (option: PollVotesOption) => {
+      onOptionSelect?.(option);
     },
-    [CENTER, RADIUS, INNER_RADIUS]
+    [onOptionSelect]
   );
 
   return (
     <View className="items-center">
-      {tooltip && (
-        <VoteTooltip
-          option={tooltip.option}
-          anchorX={tooltip.anchorX}
-          anchorY={tooltip.anchorY}
-          onClose={() => setTooltip(null)}
-        />
-      )}
-
       {totalVotes === 0 ? (
         <View
           style={{ width: PIE_SIZE, height: PIE_SIZE, borderRadius: CENTER }}
@@ -495,19 +338,14 @@ function PieChartView({
           <Text className="text-gray-400 text-sm">No votes</Text>
         </View>
       ) : (
-        <View
-          ref={pieRef}
-          style={{ width: PIE_SIZE, height: PIE_SIZE }}
-        >
+        <View style={{ width: PIE_SIZE, height: PIE_SIZE }}>
           <Svg width={PIE_SIZE} height={PIE_SIZE}>
             {slices.map((s) => (
               <Path
                 key={s.option.id}
                 d={describeArc(s.startDeg, s.sweepDeg)}
                 fill={getColor(s.index)}
-                onPress={() =>
-                  handleSlicePress(s.option, s.startDeg, s.sweepDeg)
-                }
+                onPress={() => handleSlicePress(s.option)}
               />
             ))}
           </Svg>
@@ -544,11 +382,7 @@ function PieChartView({
               key={opt.id}
               activeOpacity={0.7}
               onPress={() => {
-                if (opt.voteCount > 0) {
-                  const slice = slices.find((s) => s.option.id === opt.id);
-                  if (slice)
-                    handleSlicePress(opt, slice.startDeg, slice.sweepDeg);
-                }
+                if (opt.voteCount > 0) handleSlicePress(opt);
               }}
               style={{ backgroundColor: getColor(idx) + "15" }}
               className="flex-row items-center px-2.5 py-1 rounded-full"
@@ -626,14 +460,17 @@ export default function PollVotesScreen() {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [showAll, setShowAll] = useState<Record<string, boolean>>({});
   const [showStats, setShowStats] = useState(false);
+  const [selectedOptionInStats, setSelectedOptionInStats] =
+    useState<PollVotesOption | null>(null);
+  const [showAllForSelected, setShowAllForSelected] = useState(false);
+
+  const bottomSheetRef = useRef<BottomSheet>(null);
+  const snapPoints = useMemo(() => ["50%", "90%"], []);
 
   const fetchData = useCallback(async () => {
     if (!Number.isFinite(pollIdNum)) return;
-    const response = await axios.get(
-      `${API_URL}/api/poll/${pollIdNum}/votes-details`,
-      { params: { userId: currentUserId || "" } }
-    );
-    setData(response.data);
+    const data = await getPollVotesDetails(pollIdNum, currentUserId || "");
+    setData(data);
   }, [pollIdNum, currentUserId]);
 
   const initialLoad = useCallback(async () => {
@@ -664,6 +501,23 @@ export default function PollVotesScreen() {
     () => (data ? data.options.reduce((s, o) => s + o.voteCount, 0) : 0),
     [data]
   );
+
+  const handleStatsOptionSelect = useCallback((option: PollVotesOption) => {
+    setSelectedOptionInStats(option);
+    setShowAllForSelected(false);
+  }, []);
+
+  useEffect(() => {
+    if (selectedOptionInStats) {
+      bottomSheetRef.current?.snapToIndex(0);
+    }
+  }, [selectedOptionInStats]);
+
+  const handleSheetChange = useCallback((index: number) => {
+    if (index === -1) {
+      setSelectedOptionInStats(null);
+    }
+  }, []);
 
   if (loading) {
     return (
@@ -748,15 +602,19 @@ export default function PollVotesScreen() {
         <View className="mt-4">
           {showStats ? (
             /* ── STATISTICS VIEW ── */
-            <View>
+            <View style={{ marginLeft: -8 }}>
               {/* Color Legend aligned with chart body */}
               <ColorLegend options={data.options} />
 
               {/* Bar Chart */}
-              <View className="bg-gray-50 rounded-2xl p-3.5 mb-4 border border-gray-100">
+              <View
+                className="bg-gray-50 rounded-2xl mb-4 border border-gray-100"
+                style={{ paddingLeft: 8, paddingRight: 14, paddingTop: 14, paddingBottom: 14 }}
+              >
                 <BarChart
                   options={data.options}
                   totalMembers={totalMembersNum}
+                  onOptionSelect={handleStatsOptionSelect}
                 />
               </View>
 
@@ -765,6 +623,7 @@ export default function PollVotesScreen() {
                 <PieChartView
                   options={data.options}
                   totalVotes={totalVotes}
+                  onOptionSelect={handleStatsOptionSelect}
                 />
               </View>
             </View>
@@ -875,6 +734,81 @@ export default function PollVotesScreen() {
           )}
         </View>
       </ScrollView>
+
+      {/* Bottom sheet: voters for selected option (bar/pie tap) */}
+      <BottomSheet
+        ref={bottomSheetRef}
+        index={-1}
+        snapPoints={snapPoints}
+        enablePanDownToClose
+        onChange={handleSheetChange}
+        handleIndicatorStyle={{ backgroundColor: "#d1d5db", width: 36, height: 4 }}
+        backgroundStyle={{ backgroundColor: "#fff" }}
+      >
+        {selectedOptionInStats && (
+          <View className="flex-1 px-4 pb-6">
+            <View
+              className="flex-row items-center rounded-xl py-3 px-3 mb-3"
+              style={{
+                borderLeftWidth: 4,
+                borderLeftColor: getColor(
+                  data.options.findIndex((o) => o.id === selectedOptionInStats.id)
+                ),
+                backgroundColor: "#f9fafb",
+              }}
+            >
+              <View className="flex-1 mr-2">
+                <Text className="text-[16px] font-semibold text-gray-900" numberOfLines={2}>
+                  {selectedOptionInStats.text}
+                </Text>
+                <Text className="text-[13px] text-gray-500 mt-0.5">
+                  {selectedOptionInStats.voteCount} vote{selectedOptionInStats.voteCount !== 1 ? "s" : ""}
+                </Text>
+              </View>
+            </View>
+            <Text className="text-[14px] font-semibold text-gray-700 mb-2">Voters</Text>
+            <BottomSheetScrollView
+              contentContainerStyle={{ paddingBottom: 24 }}
+              showsVerticalScrollIndicator={false}
+            >
+              {selectedOptionInStats.voters.length === 0 ? (
+                <Text className="text-sm text-gray-500">No votes yet</Text>
+              ) : (
+                <View className="gap-2">
+                  {(showAllForSelected
+                    ? selectedOptionInStats.voters
+                    : selectedOptionInStats.voters.slice(0, 4)
+                  ).map((v) => (
+                    <View
+                      key={`${selectedOptionInStats.id}-${v.userId}`}
+                      className="py-2.5 border-b border-gray-100"
+                    >
+                      <Text className="text-[14px] font-semibold text-gray-900">
+                        {v.fullName || v.userId}
+                      </Text>
+                      {!!formatVotedAt(v.votedAt) && (
+                        <Text className="text-[12px] text-gray-500 mt-0.5">
+                          {formatVotedAt(v.votedAt)}
+                        </Text>
+                      )}
+                    </View>
+                  ))}
+                  {selectedOptionInStats.voters.length > 4 && (
+                    <TouchableOpacity
+                      onPress={() => setShowAllForSelected((p) => !p)}
+                      className="py-3"
+                    >
+                      <Text className="text-[14px] font-semibold text-sky-600">
+                        {showAllForSelected ? "Show less" : "View more"}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              )}
+            </BottomSheetScrollView>
+          </View>
+        )}
+      </BottomSheet>
     </View>
   );
 }

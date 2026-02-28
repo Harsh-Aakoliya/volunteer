@@ -12,7 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import { Video, ResizeMode } from 'expo-av';
 import { API_URL } from '@/constants/api';
-import { AuthStorage } from '@/utils/authStorage';
+import { getMediaFiles } from "@/api/chat/media";
 import AudioMessagePlayer from '@/components/chat/AudioMessagePlayer';
 
 interface MediaFile {
@@ -136,12 +136,7 @@ const MediaGrid: React.FC<MediaGridProps> = ({
       try {
         setLoading(true);
         setError(false);
-        const token = await AuthStorage.getToken();
-        const res = await fetch(`${API_URL}/api/vm-media/media/${mediaFilesId}`, {
-          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        });
-        if (!res.ok) throw new Error('Failed to load media');
-        const data = await res.json();
+        const data = await getMediaFiles(mediaFilesId);
         if (data.success && data.media?.files) {
           const files: MediaFile[] = data.media.files.map((f: any) => ({
             id: f.id || Math.random(),

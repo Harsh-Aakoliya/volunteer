@@ -8,8 +8,7 @@ import {
   Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import axios from 'axios';
-import { API_URL } from '@/constants/api';
+import { getPoll, votePoll } from "@/api/chat/polls";
 import { useWindowDimensions } from 'react-native';
 
 type PollOption = {
@@ -77,8 +76,8 @@ const PollMessage = ({ pollId, currentUserId, onViewResults, readOnly = false }:
       // If we already have this poll in cache, use it instead of refetching
       const cached = pollCache.get(pollId);
       const data = cached ?? (await (async () => {
-        const response = await axios.get(`${API_URL}/api/poll/${pollId}`);
-        const fresh = response.data.polldata as PollData;
+        const responseData = await getPoll(pollId);
+        const fresh = responseData.polldata as PollData;
         pollCache.set(pollId, fresh);
         return fresh;
       })());
@@ -154,12 +153,9 @@ const PollMessage = ({ pollId, currentUserId, onViewResults, readOnly = false }:
         }
       }
       
-      const response = await axios.post(`${API_URL}/api/poll/${pollId}/vote`, {
-        userId: currentUserId,
-        selectedOptions: optionsToSubmit
-      });
+      const responseData = await votePoll(pollId, currentUserId, optionsToSubmit);
       
-      const updatedPoll = response.data.poll as PollData;
+      const updatedPoll = responseData.poll as PollData;
       if (typeof updatedPoll.options === 'string') {
         updatedPoll.options = JSON.parse(updatedPoll.options);
       }

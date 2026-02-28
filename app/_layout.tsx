@@ -68,7 +68,7 @@ function AppContent() {
 
   return (
     <>
-      <Stack screenOptions={{ headerShown: false, statusBarStyle: "light", statusBarBackgroundColor: "#3b82f6" }} />
+      <Stack screenOptions={{ headerShown: false, statusBarStyle: "dark", statusBarBackgroundColor: "#F5F5F5" }} />
       {/* {Platform.OS !== 'web' && <OfflinePopup isVisible={!isConnected} />} */}
       {/* Global video call notification overlay */}
       {/* <GlobalVideoCallNotification /> */}
@@ -78,12 +78,12 @@ function AppContent() {
 
 export default function RootLayout() {
   return (
-    // <GestureHandlerRootView style={{ flex: 1 }}>
+    <GestureHandlerRootView style={{ flex: 1 }}>
       <SocketProvider>
         <VideoCallProvider>
           <AppContent />
         </VideoCallProvider>
       </SocketProvider>
-    // </GestureHandlerRootView>
+    </GestureHandlerRootView>
   );
 }

@@ -23,9 +23,7 @@ import { BackHandler } from "react-native";
 import * as MediaLibrary from "expo-media-library";
 import { Ionicons } from "@expo/vector-icons";
 import Svg, { Path, Line, Circle as SvgCircle } from "react-native-svg";
-import axios from "axios";
-import { API_URL } from "@/constants/api";
-import { AuthStorage } from "@/utils/authStorage";
+import { uploadMultipart, moveToChat, moveToChatCamera } from "@/api/chat/media";
 import { useSocket } from "@/contexts/SocketContext";
 import { router, useLocalSearchParams } from "expo-router";
 import { TabView, TabBar } from "react-native-tab-view";
@@ -936,7 +934,6 @@ export default function AttachmentsScreen() {
     setUploadProgress(initialProgress);
 
     try {
-      const token = await AuthStorage.getToken();
       const formData = new FormData();
       const totalFiles = selectedMedia.length;
 
@@ -954,16 +951,7 @@ export default function AttachmentsScreen() {
       });
 
       // Upload with progress tracking
-      const uploadResponse = await axios.post(
-        `${API_URL}/api/vm-media/upload-multipart`,
-        formData,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "multipart/form-data",
-          },
-          transformRequest: (data) => data,
-          onUploadProgress: (progressEvent) => {
+      const uploadResponse_data = await uploadMultipart(formData, (progressEvent) => {
             if (progressEvent.total) {
               const percentComplete = Math.round((progressEvent.loaded * 100) / progressEvent.total);
               setOverallProgress(percentComplete * 0.7); // 70% for upload
@@ -992,12 +980,9 @@ export default function AttachmentsScreen() {
                 return updated;
               });
             }
-          },
-          timeout: 300000, // 5 minutes timeout for large files
-        }
-      );
+      }, 300000);
 
-      if (!uploadResponse.data.success) {
+      if (!uploadResponse_data.success) {
         throw new Error("Gallery upload failed");
       }
 
@@ -1012,8 +997,8 @@ export default function AttachmentsScreen() {
         return updated;
       });
 
-      const tempFolderId = uploadResponse.data.tempFolderId;
-      const uploadedFiles = uploadResponse.data.uploadedFiles;
+      const tempFolderId = uploadResponse_data.tempFolderId;
+      const uploadedFiles = uploadResponse_data.uploadedFiles;
 
       const cleanedCaption = captionText;
 
@@ -1027,19 +1012,15 @@ export default function AttachmentsScreen() {
 
       setOverallProgress(85);
 
-      const moveResponse = await axios.post(
-        `${API_URL}/api/vm-media/move-to-chat`,
-        {
+      const moveResponse_data = await moveToChat({
           tempFolderId,
           roomId,
           senderId: userId,
           filesWithCaptions,
           caption: cleanedCaption,
-        },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+        });
 
-      if (moveResponse.data.success) {
+      if (moveResponse_data.success) {
         // Mark all as success
         setUploadPhase('complete');
         setOverallProgress(100);
@@ -1052,11 +1033,11 @@ export default function AttachmentsScreen() {
         });
 
         socketSendMessage(roomId, {
-          id: moveResponse.data.messageId,
-          messageText: moveResponse.data.messageText || "",
-          createdAt: moveResponse.data.createdAt || new Date().toISOString(),
+          id: moveResponse_data.messageId,
+          messageText: moveResponse_data.messageText || "",
+          createdAt: moveResponse_data.createdAt || new Date().toISOString(),
           messageType: "media",
-          mediaFilesId: moveResponse.data.mediaId,
+          mediaFilesId: moveResponse_data.mediaId,
           pollId: 0,
           tableId: 0,
           replyMessageId: 0,
@@ -1119,7 +1100,6 @@ export default function AttachmentsScreen() {
     setIsSending(true);
 
     try {
-      const token = await AuthStorage.getToken();
       const filename = uri.split('/').pop() || `camera_${Date.now()}.${mediaType === 'photo' ? 'jpg' : 'mp4'}`;
       const mimeType = getMimeType(filename, mediaType);
 
@@ -1137,26 +1117,15 @@ export default function AttachmentsScreen() {
       if (cameraCaption) formData.append("caption", cameraCaption);
       if (duration) formData.append("duration", String(duration));
 
-      const response = await axios.post(
-        `${API_URL}/api/vm-media/move-to-chat-camera`,
-        formData,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "multipart/form-data",
-          },
-          transformRequest: (data) => data,
-          timeout: 120000,
-        }
-      );
+      const responseData = await moveToChatCamera(formData, 120000);
 
-      if (response.data.success) {
+      if (responseData.success) {
         socketSendMessage(roomId, {
-          id: response.data.messageId,
-          messageText: response.data.messageText || "",
-          createdAt: response.data.createdAt || new Date().toISOString(),
+          id: responseData.messageId,
+          messageText: responseData.messageText || "",
+          createdAt: responseData.createdAt || new Date().toISOString(),
           messageType: "media",
-          mediaFilesId: response.data.mediaId,
+          mediaFilesId: responseData.mediaId,
           pollId: 0,
           tableId: 0,
           replyMessageId: 0,
@@ -1167,7 +1136,7 @@ export default function AttachmentsScreen() {
           router.back();
         }, 300);
       } else {
-        throw new Error(response.data.error || "Upload failed");
+        throw new Error(responseData.error || "Upload failed");
       }
     } catch (error: any) {
       console.error("Error sending camera media:", error);

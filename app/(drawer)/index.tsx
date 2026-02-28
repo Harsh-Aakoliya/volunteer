@@ -291,7 +291,7 @@ const RoomItem = memo(({ room, currentUserId, onPress, onLongPress }: RoomItemPr
         style={{
           paddingVertical: 10,
           paddingHorizontal: 16,
-          backgroundColor: hasUnread ? "#E3F2FD" : "#FFFFFF",
+          backgroundColor: hasUnread ? "#E3F2FD" : "#F5F5F5",
         }}
         activeOpacity={0.7}
         onPress={() => room.roomId && onPress(room.roomId)}
@@ -536,7 +536,7 @@ const Header = memo(
 
     return (
       <LinearGradient
-        colors={["#42A5F5", "#1E88E5"]}
+        colors={["#F5F5F5", "#F5F5F5"]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={{
@@ -554,7 +554,7 @@ const Header = memo(
       >
         {/* Menu Button */}
         <TouchableOpacity onPress={onMenuPress} style={{ padding: 4 }}>
-          <Ionicons name="menu" size={26} color="#FFFFFF" />
+          <Ionicons name="menu" size={26} color="#000000" />
         </TouchableOpacity>
 
         {/* Title */}
@@ -563,7 +563,7 @@ const Header = memo(
             style={{
               fontSize: 20,
               fontWeight: "700",
-              color: "#FFFFFF",
+              color: "#000000",
               letterSpacing: 0.5,
             }}
           >
@@ -580,7 +580,7 @@ const Header = memo(
 
         {/* Search Button */}
         <TouchableOpacity onPress={onSearchPress} style={{ padding: 4 }}>
-          <Ionicons name="search" size={24} color="#FFFFFF" />
+          <Ionicons name="search" size={24} color="#000000" />
         </TouchableOpacity>
       </LinearGradient>
     );
@@ -911,10 +911,10 @@ export default function ChatRoomsList() {
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: "#FFFFFF" }}>
+    <View style={{ flex: 1, backgroundColor: "#F5F5F5" }}>
       <StatusBar
-        barStyle={isSearchMode ? "dark-content" : "light-content"}
-        backgroundColor={isSearchMode ? "#FFFFFF" : "#42A5F5"}
+        barStyle={isSearchMode ? "dark-content" : "dark-content"}
+        backgroundColor={isSearchMode ? "#FFFFFF" : "#F5F5F5"}
       />
 
       {/* Header */}

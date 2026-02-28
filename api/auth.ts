@@ -6,85 +6,68 @@ import { AuthStorage } from "@/utils/authStorage";
 import { router } from "expo-router";
 import * as Notifications from "expo-notifications";
 import Constants from "expo-constants";
-import { setUserOfflineGlobal, resetOnlineStatusState } from '@/hooks/useOnlineStatus';
-import socketManager from '@/utils/socketManager';
-
-// ==================== HELPER FUNCTIONS ====================
-
-// Helper function to check internet connectivity
-const checkInternetConnectivity = async (): Promise<boolean> => {
-  try {
-    const response = await fetch("https://www.google.com", { method: "HEAD" });
-    return response.ok;
-  } catch (error) {
-    console.error("Internet connectivity check failed:", error);
-    return false;
-  }
-};
+import {
+  setUserOfflineGlobal,
+  resetOnlineStatusState,
+} from "@/hooks/useOnlineStatus";
+import { api, publicApi, apiUrl, checkInternetConnectivity } from "@/api/apiClient";
 
 // ==================== NOTIFICATION FUNCTIONS ====================
 
 const generateAndStoreNotificationToken = async (userId: string) => {
   try {
-    const isConnected = await checkInternetConnectivity() || Platform.OS === "web";
+    const isConnected =
+      (await checkInternetConnectivity()) || Platform.OS === "web";
     if (!isConnected) {
-      console.log('No internet connection available for notification token generation');
+      console.log(
+        "No internet connection available for notification token generation"
+      );
       return;
     }
 
     const { status } = await Notifications.requestPermissionsAsync();
-    if (status !== 'granted') {
-      console.log('Notification permission not granted');
+    if (status !== "granted") {
+      console.log("Notification permission not granted");
       return;
     }
 
     const { data: rawFcm } = await Notifications.getDevicePushTokenAsync();
     console.log("FCM token:", rawFcm);
 
-    const token = await AuthStorage.getToken();
-    if (token) {
-      const response = await axios.post(`${API_URL}/api/notifications/store-token`, {
+    try {
+      await api.post(apiUrl("/api/notifications/store-token"), {
         userId,
         token: rawFcm,
-        tokenType: 'fcm',
+        tokenType: "fcm",
         deviceInfo: {
-          platform: Constants.platform?.ios ? 'ios' : 'android',
+          platform: Constants.platform?.ios ? "ios" : "android",
           deviceId: Constants.deviceId,
-          appVersion: Constants.expoConfig?.version
-        }
-      }, {
-        headers: { Authorization: `Bearer ${token}` }
+          appVersion: Constants.expoConfig?.version,
+        },
       });
-
-      console.log('Token stored successfully:', response.data);
-    } else {
-      console.log('No storeage token found so not storing notification token');
+      console.log("Token stored successfully");
+    } catch (error) {
+      console.error("Error storing notification token via API:", error);
     }
   } catch (error) {
-    console.error('Error generating/storing notification token:', error);
+    console.error("Error generating/storing notification token:", error);
   }
 };
 
 const removeNotificationToken = async (userId: string) => {
   try {
-    const token = await AuthStorage.getToken();
-    if (token) {
-      await axios.post(`${API_URL}/api/notifications/delete-token`, {
-        userId,
-        tokenType: 'fcm'
-      }, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      console.log('Notification token removed successfully');
-    }
+    await api.post(apiUrl("/api/notifications/delete-token"), {
+      userId,
+      tokenType: "fcm",
+    });
+    console.log("Notification token removed successfully");
   } catch (error) {
-    console.error('Error removing notification token:', error);
+    console.error("Error removing notification token:", error);
   }
 };
 
 // ==================== AUTH CHECK FUNCTIONS ====================
 
-// Check if user is already authenticated
 export const checkAuthStatus = async (): Promise<{
   isAuthenticated: boolean;
   token: string | null;
@@ -94,26 +77,14 @@ export const checkAuthStatus = async (): Promise<{
     const token = await AuthStorage.getToken();
     const user = await AuthStorage.getUser();
 
-    if (token && (user)) {
-      return {
-        isAuthenticated: true,
-        token,
-        user: user,
-      };
+    if (token && user) {
+      return { isAuthenticated: true, token, user };
     }
 
-    return {
-      isAuthenticated: false,
-      token: null,
-      user: null,
-    };
+    return { isAuthenticated: false, token: null, user: null };
   } catch (error) {
     console.error("Error checking auth status:", error);
-    return {
-      isAuthenticated: false,
-      token: null,
-      user: null,
-    };
+    return { isAuthenticated: false, token: null, user: null };
   }
 };
 
@@ -130,28 +101,12 @@ export const checkMobileExists = async (
   mobileNumber: string
 ): Promise<CheckMobileResponse> => {
   try {
-    // Check internet connectivity first
-    const isConnected = await checkInternetConnectivity() || Platform.OS === "web";
-    if (!isConnected) {
-      throw new Error("NO_INTERNET");
-    }
+    const response = await publicApi.post(
+      apiUrl("/api/auth/check-mobile"),
+      { mobileNumber }
+    );
 
-    const response = await fetch(`${API_URL}/api/auth/check-mobile`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ mobileNumber }),
-    });
-    // console.log("response in check mobile exists", await response.json());
-
-    if (!response.ok) {
-      // console.log("response in check mobile exists", await response.json());
-      const errorData = await response.json();
-      throw new Error(errorData.message || "SERVER_ERROR");
-    }
-
-    const data = await response.json();
+    const data = response.data;
     return {
       exists: data.exists ?? false,
       isPasswordSet: data.isPasswordSet ?? data.ispasswordSet ?? false,
@@ -165,8 +120,9 @@ export const checkMobileExists = async (
       throw new Error("No internet connection. Please check your network.");
     }
 
-    if (error.message === "SERVER_ERROR") {
-      throw new Error("Server error. Please try again later.");
+    if (error.response) {
+      const errorData = error.response.data;
+      throw new Error(errorData?.message || "Server error. Please try again later.");
     }
 
     throw new Error("Failed to verify mobile number. Please try again.");
@@ -188,22 +144,12 @@ export const login = async (
 ): Promise<LoginResponse> => {
   console.log("login", mobileNumber, password);
   try {
-    // Check internet connectivity first (skip on web)
-    if (Platform.OS !== "web") {
-      const isConnected = await checkInternetConnectivity();
-      if (!isConnected) {
-        return {
-          success: false,
-          message: "No internet connection. Please check your network.",
-        };
-      }
-      
-    }
-    if(Platform.OS === "web") {
+    if (Platform.OS === "web") {
       setApiUrl("http://localhost:8080" as any);
       console.log("API_URL", API_URL);
     }
-    const response = await axios.post(`${API_URL}/api/auth/login`, {
+
+    const response = await publicApi.post(apiUrl("/api/auth/login"), {
       mobileNumber,
       password,
     });
@@ -211,7 +157,6 @@ export const login = async (
     if (response.data.success) {
       const { token, sevak } = response.data;
 
-      // Store authentication data
       await AuthStorage.storeToken(token);
       await AuthStorage.storeUser({
         userId: sevak.seid,
@@ -219,45 +164,43 @@ export const login = async (
         name: sevak.sevakname,
         fullName: sevak.sevakname,
         role: sevak.usertype,
-        ...sevak
+        ...sevak,
       });
-      console.log("after storing",await AuthStorage.getUser());
 
-      if(Platform.OS !== "web") {
-        // Generate notification token after successful login
+      if (Platform.OS !== "web") {
         generateAndStoreNotificationToken(sevak.seid).catch((error) => {
           console.error("Error generating notification token:", error);
         });
       }
-      return {
-        success: true,
-        token,
-        sevak,
-      };
+      return { success: true, token, sevak };
     } else {
-      console.log("response in login", response.data);
       return {
         success: false,
         message: response.data.message || "Login failed. Please try again.",
       };
     }
   } catch (error: any) {
-    // console.error("Login error:", error);
+    if (error.message === "NO_INTERNET") {
+      return {
+        success: false,
+        message: "No internet connection. Please check your network.",
+      };
+    }
 
     if (error.response) {
-      // Server responded with error
       return {
         success: false,
-        message: error.response.data?.message || "Invalid credentials. Please try again.",
+        message:
+          error.response.data?.message ||
+          "Invalid credentials. Please try again.",
       };
     } else if (error.request) {
-      // No response received
       return {
         success: false,
-        message: "Unable to connect to server. Please check your internet connection.",
+        message:
+          "Unable to connect to server. Please check your internet connection.",
       };
     } else {
-      // Other error
       return {
         success: false,
         message: "Something went wrong. Please try again.",
@@ -280,26 +223,14 @@ export const setPasswordToBackend = async (
   password: string
 ): Promise<SetPasswordResponse> => {
   try {
-    // Check internet connectivity first
-    const isConnected = await checkInternetConnectivity() || Platform.OS === "web";
-    if (!isConnected) {
-      return {
-        success: false,
-        message: "No internet connection. Please check your network.",
-      };
-    }
-
-    const response = await axios.post(`${API_URL}/api/auth/set-password`, {
+    const response = await publicApi.post(apiUrl("/api/auth/set-password"), {
       mobileNumber,
       password,
     });
 
-    console.log("Response in set password:", response.data);
-
     if (response.data.success) {
       const { token, sevak } = response.data;
 
-      // Store authentication data
       await AuthStorage.storeToken(token);
       await AuthStorage.storeUser({
         userId: sevak.seid,
@@ -307,38 +238,43 @@ export const setPasswordToBackend = async (
         name: sevak.sevakname,
         fullName: sevak.sevakname,
         role: sevak.usertype,
-        ...sevak
+        ...sevak,
       });
 
-
-      // Generate notification token after successful password set
       generateAndStoreNotificationToken(sevak.seid).catch((error) => {
         console.error("Error generating notification token:", error);
       });
 
-      return {
-        success: true,
-        token,
-        sevak,
-      };
+      return { success: true, token, sevak };
     } else {
       return {
         success: false,
-        message: response.data.message || "Failed to set password. Please try again.",
+        message:
+          response.data.message || "Failed to set password. Please try again.",
       };
     }
   } catch (error: any) {
     console.error("Set password error:", error);
 
+    if (error.message === "NO_INTERNET") {
+      return {
+        success: false,
+        message: "No internet connection. Please check your network.",
+      };
+    }
+
     if (error.response) {
       return {
         success: false,
-        message: error.response.data?.message || "Failed to set password. Please try again.",
+        message:
+          error.response.data?.message ||
+          "Failed to set password. Please try again.",
       };
     } else if (error.request) {
       return {
         success: false,
-        message: "Unable to connect to server. Please check your internet connection.",
+        message:
+          "Unable to connect to server. Please check your internet connection.",
       };
     } else {
       return {
@@ -350,31 +286,34 @@ export const setPasswordToBackend = async (
 };
 
 // ==================== CHANGE PASSWORD FUNCTION ====================
+
 export const changePassword = async (
   mobileNumber: string,
   currentPassword: string,
   newPassword: string
 ): Promise<{ success: boolean; message?: string }> => {
   try {
-    const token = await AuthStorage.getToken();
-    const response = await axios.post(
-      `${API_URL}/api/auth/change-password`,
-      { mobileNumber, currentPassword, newPassword },
-      { headers: { Authorization: token ? `Bearer ${token}` : "" } }
-    );
-
+    const response = await api.post(apiUrl("/api/auth/change-password"), {
+      mobileNumber,
+      currentPassword,
+      newPassword,
+    });
     return response.data;
   } catch (error: any) {
     if (error.response) {
       return {
         success: false,
-        message: error.response.data?.message || "Failed to change password. Please try again.",
+        message:
+          error.response.data?.message ||
+          "Failed to change password. Please try again.",
       };
     }
-    return { success: false, message: "Unable to change password. Please try again." };
+    return {
+      success: false,
+      message: "Unable to change password. Please try again.",
+    };
   }
 };
-
 
 // ==================== LOGOUT FUNCTION ====================
 
@@ -393,12 +332,11 @@ export const logout = async () => {
       await removeNotificationToken(userData.userId);
     }
 
-    // Disconnect socket and reset state
     resetOnlineStatusState();
     await AuthStorage.clear();
     router.replace({
       pathname: "/(auth)/login",
-      params: { from: "logout" }
+      params: { from: "logout" },
     });
 
     console.log("Logout successful");
@@ -408,7 +346,7 @@ export const logout = async () => {
     resetOnlineStatusState();
     router.replace({
       pathname: "/(auth)/login",
-      params: { from: "logout" }
+      params: { from: "logout" },
     });
   }
 };
@@ -424,16 +362,19 @@ export const handleAppStartNotificationToken = async () => {
       const isConnected = await checkInternetConnectivity();
       if (isConnected) {
         generateAndStoreNotificationToken(userData.userId).catch((error) => {
-          console.error("Error handling notification token on app start:", error);
+          console.error(
+            "Error handling notification token on app start:",
+            error
+          );
         });
-      } else {
-        console.log("No internet connection available for notification token generation on app start");
       }
     }
   } catch (error) {
-    console.error("Error checking login status for notification token:", error);
+    console.error(
+      "Error checking login status for notification token:",
+      error
+    );
   }
 };
 
-// Export the connectivity check function
 export { checkInternetConnectivity };

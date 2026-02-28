@@ -42,11 +42,18 @@ import {
 interface MessageInputProps {
   messageText: string;
   onChangeText: (text: string) => void;
-  onSend: (text: string, messageType: string, mediafilesId: number, tableId: number, pollId: number, scheduledAt?: string) => void;
+  onSend: (
+    text: string,
+    messageType: string,
+    mediafilesId: number,
+    tableId: number,
+    pollId: number,
+    scheduledAt?: string
+  ) => void;
   placeholder?: string;
   sending?: boolean;
   disabled?: boolean;
-  currentUser?: { userId: string; fullName: string | null; } | null;
+  currentUser?: { userId: string; fullName: string | null } | null;
   replyToMessage?: any | null;
   onCancelReply?: () => void;
   onAttachmentPress?: () => void;
@@ -63,6 +70,19 @@ interface MessageInputProps {
   speechLanguage?: string;
 }
 
+// ---------- LANGUAGE OPTIONS ----------
+interface LanguageOption {
+  code: string;
+  label: string;
+  shortLabel: string;
+}
+
+const SPEECH_LANGUAGES: LanguageOption[] = [
+  { code: 'en-US', label: 'English', shortLabel: 'ENG' },
+  { code: 'hi-IN', label: 'Hindi', shortLabel: 'हिन्दी' },
+  { code: 'gu-IN', label: 'Gujarati', shortLabel: 'ગુજરાતી' },
+];
+
 // ---------- HELPER (link detection for preview) ----------
 const extractLinks = (text: string): string[] => {
   const plainText = stripHtml(text);
@@ -71,12 +91,12 @@ const extractLinks = (text: string): string[] => {
 };
 
 // ---------- PULSING MIC COMPONENT ----------
-const PulsingMicButton = ({ 
-  onPress, 
+const PulsingMicButton = ({
+  onPress,
   isListening,
-  disabled 
-}: { 
-  onPress: () => void; 
+  disabled,
+}: {
+  onPress: () => void;
   isListening: boolean;
   disabled?: boolean;
 }) => {
@@ -136,43 +156,104 @@ const PulsingMicButton = ({
             width: 50,
             height: 50,
             borderRadius: 25,
-            backgroundColor: '#dc2626',
+            backgroundColor: '#16a34a',
             transform: [{ scale: pulseAnim }],
             opacity: opacityAnim,
           }}
         />
       )}
       <View
-        className={`min-h-[50px] min-w-[50px] rounded-full items-center justify-center ${
-          isListening ? 'bg-red-600' : 'bg-green-600'
-        }`}
+        className="min-h-[50px] min-w-[50px] rounded-full items-center justify-center bg-green-600"
         style={{
-          shadowColor: isListening ? '#dc2626' : '#000',
+          shadowColor: '#16a34a',
           shadowOffset: { width: 0, height: 1 },
           shadowOpacity: 0.2,
           shadowRadius: 3,
           elevation: 3,
         }}
       >
-        <Ionicons 
-          name="mic" 
-          size={24} 
-          color="#fff" 
-        />
+        <Ionicons name={isListening ? 'stop' : 'mic'} size={24} color="#fff" />
       </View>
     </Pressable>
   );
 };
 
+// ---------- LANGUAGE PILL BUTTON ----------
+const LanguagePill = ({
+  lang,
+  isSelected,
+  onPress,
+}: {
+  lang: LanguageOption;
+  isSelected: boolean;
+  onPress: () => void;
+}) => {
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+
+  const handlePress = useCallback(() => {
+    Animated.sequence([
+      Animated.timing(scaleAnim, {
+        toValue: 0.9,
+        duration: 80,
+        useNativeDriver: true,
+      }),
+      Animated.timing(scaleAnim, {
+        toValue: 1,
+        duration: 80,
+        useNativeDriver: true,
+      }),
+    ]).start();
+    onPress();
+  }, [onPress, scaleAnim]);
+
+  return (
+    <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
+      <TouchableOpacity
+        onPress={handlePress}
+        activeOpacity={0.7}
+        style={{
+          paddingHorizontal: 10,
+          paddingVertical: 4,
+          borderRadius: 16,
+          marginHorizontal: 2,
+          backgroundColor: isSelected ? '#16a34a' : '#FFFFFF',
+          borderWidth: 1.5,
+          borderColor: isSelected ? '#16a34a' : '#E5E7EB',
+          shadowColor: isSelected ? '#16a34a' : '#000',
+          shadowOffset: { width: 0, height: 1 },
+          shadowOpacity: isSelected ? 0.3 : 0.08,
+          shadowRadius: 2,
+          elevation: isSelected ? 3 : 1,
+        }}
+      >
+        <Text
+          style={{
+            fontSize: 11,
+            fontWeight: '700',
+            color: isSelected ? '#FFFFFF' : '#16a34a',
+            letterSpacing: 0.3,
+          }}
+        >
+          {lang.shortLabel}
+        </Text>
+      </TouchableOpacity>
+    </Animated.View>
+  );
+};
+
 // ---------- SPEECH-TO-TEXT INDICATOR ----------
-const SpeechToTextIndicator = ({ 
-  isListening, 
+const SpeechToTextIndicator = ({
+  isListening,
   partialResult,
-  onStop 
-}: { 
-  isListening: boolean; 
+  onStop,
+  selectedLanguage,
+  onLanguageChange,
+}: {
+  isListening: boolean;
   partialResult: string;
   onStop: () => void;
+  selectedLanguage: string;
+  onLanguageChange: (langCode: string) => void;
 }) => {
   const waveAnim1 = useRef(new Animated.Value(0.3)).current;
   const waveAnim2 = useRef(new Animated.Value(0.3)).current;
@@ -206,16 +287,17 @@ const SpeechToTextIndicator = ({
         createWaveAnimation(waveAnim4, 300),
       ];
 
-      animations.forEach(anim => anim.start());
+      animations.forEach((anim) => anim.start());
 
-      return () => animations.forEach(anim => anim.stop());
+      return () => animations.forEach((anim) => anim.stop());
     }
   }, [isListening, waveAnim1, waveAnim2, waveAnim3, waveAnim4]);
 
   if (!isListening) return null;
 
   return (
-    <View className="bg-red-50 border-t border-red-200 px-4 py-3">
+    <View className="bg-green-50 border-t border-green-200 px-4 py-3">
+      {/* Listening + wave + inline language pills */}
       <View className="flex-row items-center justify-between">
         <View className="flex-row items-center flex-1">
           {/* Sound wave animation */}
@@ -226,7 +308,7 @@ const SpeechToTextIndicator = ({
                 style={{
                   width: 3,
                   height: 20,
-                  backgroundColor: '#dc2626',
+                  backgroundColor: '#16a34a',
                   marginHorizontal: 2,
                   borderRadius: 2,
                   transform: [{ scaleY: anim }],
@@ -234,11 +316,16 @@ const SpeechToTextIndicator = ({
               />
             ))}
           </View>
-          
+
           <View className="flex-1">
-            <Text className="text-red-600 font-semibold text-sm">Listening...</Text>
+            <Text className="text-green-700 font-semibold text-sm">
+              Listening...
+            </Text>
             {partialResult ? (
-              <Text className="text-gray-600 text-xs mt-0.5" numberOfLines={1}>
+              <Text
+                className="text-gray-600 text-xs mt-0.5"
+                numberOfLines={1}
+              >
                 "{partialResult}"
               </Text>
             ) : (
@@ -247,12 +334,17 @@ const SpeechToTextIndicator = ({
           </View>
         </View>
 
-        <TouchableOpacity
-          onPress={onStop}
-          className="bg-red-600 rounded-full px-4 py-2"
-        >
-          <Text className="text-white font-medium text-sm">Stop</Text>
-        </TouchableOpacity>
+        {/* Compact language pills to the right */}
+        <View className="flex-row items-center ml-3">
+          {SPEECH_LANGUAGES.map((lang) => (
+            <LanguagePill
+              key={lang.code}
+              lang={lang}
+              isSelected={selectedLanguage === lang.code}
+              onPress={() => onLanguageChange(lang.code)}
+            />
+          ))}
+        </View>
       </View>
     </View>
   );
@@ -280,7 +372,6 @@ export default function MessageInput({
   allowEmptySend = false,
   speechLanguage = 'en-US',
 }: MessageInputProps) {
-
   // Refs
   const inputRef = useRef<TextInput>(null);
   const richTextRef = useRef<any>(null);
@@ -288,13 +379,18 @@ export default function MessageInput({
   const recordingRef = useRef<Audio.Recording | null>(null);
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const previewSoundRef = useRef<Audio.Sound | null>(null);
-  const heightUpdateTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const heightUpdateTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null
+  );
   const textBeforeSpeechRef = useRef('');
+  const ignoreNextSpeechEndRef = useRef(false);
 
   // State
   const [showRichTextToolbar, setShowRichTextToolbar] = useState(false);
   const [inputHeight, setInputHeight] = useState(40);
-  const [showColorPicker, setShowColorPicker] = useState<'text' | 'background' | null>(null);
+  const [showColorPicker, setShowColorPicker] = useState<
+    'text' | 'background' | null
+  >(null);
   const [showLinkInput, setShowLinkInput] = useState(false);
   const [linkPreviews, setLinkPreviews] = useState<string[]>([]);
   const [currentTextColor, setCurrentTextColor] = useState('#000000');
@@ -302,10 +398,19 @@ export default function MessageInput({
 
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [showCustomTimePicker, setShowCustomTimePicker] = useState(false);
-  const [customScheduleDate, setCustomScheduleDate] = useState<Date | null>(null);
-  const [customScheduleTime, setCustomScheduleTime] = useState<string | null>(null);
+  const [customScheduleDate, setCustomScheduleDate] = useState<Date | null>(
+    null
+  );
+  const [customScheduleTime, setCustomScheduleTime] = useState<string | null>(
+    null
+  );
 
-  const [formatActive, setFormatActive] = useState({ bold: false, italic: false, underline: false, strike: false });
+  const [formatActive, setFormatActive] = useState({
+    bold: false,
+    italic: false,
+    underline: false,
+    strike: false,
+  });
   const [listAlignActive, setListAlignActive] = useState({
     bullet: false,
     number: false,
@@ -315,7 +420,9 @@ export default function MessageInput({
   });
 
   // Audio recording state
-  const [recordingMode, setRecordingMode] = useState<'idle' | 'recording' | 'paused'>('idle');
+  const [recordingMode, setRecordingMode] = useState<
+    'idle' | 'recording' | 'paused'
+  >('idle');
   const [recordingDuration, setRecordingDuration] = useState(0);
   const [recordedUri, setRecordedUri] = useState<string | null>(null);
   const [previewPlaying, setPreviewPlaying] = useState(false);
@@ -327,6 +434,9 @@ export default function MessageInput({
   const [speechToTextActive, setSpeechToTextActive] = useState(false);
   const [partialSpeechResult, setPartialSpeechResult] = useState('');
   const [speechAvailable, setSpeechAvailable] = useState(false);
+  const [activeSpeechLang, setActiveSpeechLang] = useState<string>(
+    speechLanguage
+  );
 
   const isAudioAvailable = !!onSendAudio && (showAudioButton ?? true);
 
@@ -338,7 +448,9 @@ export default function MessageInput({
     }
 
     try {
-      setSpeechAvailable(ExpoSpeechRecognitionModule.isRecognitionAvailable());
+      setSpeechAvailable(
+        ExpoSpeechRecognitionModule.isRecognitionAvailable()
+      );
     } catch {
       setSpeechAvailable(false);
     }
@@ -352,6 +464,10 @@ export default function MessageInput({
 
   useSpeechRecognitionEvent('end', () => {
     if (Platform.OS === 'web') return;
+    if (ignoreNextSpeechEndRef.current) {
+      ignoreNextSpeechEndRef.current = false;
+      return;
+    }
     setSpeechToTextActive(false);
     setPartialSpeechResult('');
   });
@@ -363,7 +479,10 @@ export default function MessageInput({
     setPartialSpeechResult('');
 
     if (event?.error === 'no-speech') return;
-    if (event?.error === 'audio-capture' || event?.error === 'not-allowed') {
+    if (
+      event?.error === 'audio-capture' ||
+      event?.error === 'not-allowed'
+    ) {
       Alert.alert(
         'Microphone Error',
         'Could not access microphone. Please check permissions.'
@@ -376,8 +495,8 @@ export default function MessageInput({
   useSpeechRecognitionEvent('result', (event: any) => {
     if (Platform.OS === 'web') return;
 
-    // The library supports both a native-style results array and a Web Speech API style nested array.
-    const ri = typeof event?.resultIndex === 'number' ? event.resultIndex : 0;
+    const ri =
+      typeof event?.resultIndex === 'number' ? event.resultIndex : 0;
     let transcript = '';
 
     if (Array.isArray(event?.results)) {
@@ -398,7 +517,9 @@ export default function MessageInput({
 
     if (isFinal) {
       const existingText = textBeforeSpeechRef.current;
-      const newContent = existingText ? `${existingText} ${transcript}` : transcript;
+      const newContent = existingText
+        ? `${existingText} ${transcript}`
+        : transcript;
 
       onChangeText(newContent);
       richTextRef.current?.setContentHTML(newContent);
@@ -419,43 +540,57 @@ export default function MessageInput({
   });
 
   // Start speech-to-text
-  const startSpeechToText = useCallback(async () => {
-    if (Platform.OS === 'web' || !speechAvailable) {
-      Alert.alert('Not Available', 'Speech recognition is not available on this device.');
-      return;
-    }
-
-    try {
-      // Request permissions
-      const result = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
-      
-      if (!result?.granted) {
-        Alert.alert('Permission Required', 'Please grant microphone permission to use speech recognition.');
+  const startSpeechToText = useCallback(
+    async (langOverride?: string) => {
+      if (Platform.OS === 'web' || !speechAvailable) {
+        Alert.alert(
+          'Not Available',
+          'Speech recognition is not available on this device.'
+        );
         return;
       }
 
-      // Store current text before starting
-      textBeforeSpeechRef.current = stripHtml(messageText).trim();
-      
-      // Close any open UI elements
-      setShowRichTextToolbar(false);
-      setShowColorPicker(null);
-      setShowLinkInput(false);
-      
-      // Start recognition
-      ExpoSpeechRecognitionModule.start({
-        lang: speechLanguage,
-        interimResults: true,
-        continuous: true,
-        maxAlternatives: 1,
-      });
-      
-      setSpeechToTextActive(true);
-    } catch (e: any) {
-      console.error('Failed to start speech recognition:', e);
-      Alert.alert('Error', 'Could not start speech recognition. Please try again.');
-    }
-  }, [messageText, speechLanguage, speechAvailable]);
+      try {
+        const result =
+          await ExpoSpeechRecognitionModule.requestPermissionsAsync();
+
+        if (!result?.granted) {
+          Alert.alert(
+            'Permission Required',
+            'Please grant microphone permission to use speech recognition.'
+          );
+          return;
+        }
+
+        // Store current text before starting
+        textBeforeSpeechRef.current = stripHtml(messageText).trim();
+
+        // Close any open UI elements
+        setShowRichTextToolbar(false);
+        setShowColorPicker(null);
+        setShowLinkInput(false);
+
+        const langToUse = langOverride || activeSpeechLang;
+
+        // Start recognition with chosen language
+        ExpoSpeechRecognitionModule.start({
+          lang: langToUse,
+          interimResults: true,
+          continuous: true,
+          maxAlternatives: 1,
+        });
+
+        setSpeechToTextActive(true);
+      } catch (e: any) {
+        console.error('Failed to start speech recognition:', e);
+        Alert.alert(
+          'Error',
+          'Could not start speech recognition. Please try again.'
+        );
+      }
+    },
+    [messageText, activeSpeechLang, speechAvailable]
+  );
 
   // Stop speech-to-text
   const stopSpeechToText = useCallback(async () => {
@@ -469,6 +604,43 @@ export default function MessageInput({
       setPartialSpeechResult('');
     }
   }, []);
+
+  // Switch language while listening – stop current, change lang, restart
+  const handleSpeechLanguageChange = useCallback(
+    async (langCode: string) => {
+      if (langCode === activeSpeechLang && speechToTextActive) return;
+
+      setActiveSpeechLang(langCode);
+
+      if (speechToTextActive) {
+        // Stop current recognition, then restart with new language
+        try {
+          ignoreNextSpeechEndRef.current = true;
+          ExpoSpeechRecognitionModule.stop();
+        } catch (_) {}
+
+        // Small delay to let the engine fully stop before restarting
+        setTimeout(async () => {
+          try {
+            textBeforeSpeechRef.current = stripHtml(messageText).trim();
+
+            ExpoSpeechRecognitionModule.start({
+              lang: langCode,
+              interimResults: true,
+              continuous: true,
+              maxAlternatives: 1,
+            });
+            setSpeechToTextActive(true);
+            setPartialSpeechResult('');
+          } catch (e) {
+            console.error('Failed to restart speech recognition:', e);
+            setSpeechToTextActive(false);
+          }
+        }, 350);
+      }
+    },
+    [activeSpeechLang, speechToTextActive, messageText]
+  );
 
   // Handle long press on mic for speech-to-text
   const handleLongPressMic = useCallback(async () => {
@@ -528,17 +700,19 @@ export default function MessageInput({
 
   const handleStartRecording = useCallback(async () => {
     if (!onSendAudio) return;
-    
+
     // Stop speech-to-text if active
     if (speechToTextActive) {
       await stopSpeechToText();
     }
-    
+
     try {
       setShowRichTextToolbar(false);
       setShowColorPicker(null);
       setShowLinkInput(false);
-      const { recording } = await Audio.Recording.createAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
+      const { recording } = await Audio.Recording.createAsync(
+        Audio.RecordingOptionsPresets.HIGH_QUALITY
+      );
       recordingRef.current = recording;
       setRecordingMode('recording');
       setRecordingDuration(0);
@@ -547,7 +721,10 @@ export default function MessageInput({
         setRecordingDuration((prev) => prev + 1);
       }, 1000);
     } catch (e) {
-      Alert.alert('Recording', 'Could not start recording. Please allow microphone access.');
+      Alert.alert(
+        'Recording',
+        'Could not start recording. Please allow microphone access.'
+      );
     }
   }, [onSendAudio, speechToTextActive, stopSpeechToText]);
 
@@ -589,7 +766,7 @@ export default function MessageInput({
     if (recordingRef.current) {
       try {
         await recordingRef.current.stopAndUnloadAsync();
-      } catch (_) { }
+      } catch (_) {}
       recordingRef.current = null;
     }
     setRecordingMode('idle');
@@ -645,7 +822,7 @@ export default function MessageInput({
       try {
         await previewSoundRef.current.setPositionAsync(0);
         setPreviewPosition(0);
-      } catch (_) { }
+      } catch (_) {}
       await previewSoundRef.current.playAsync();
       setPreviewPlaying(true);
       return;
@@ -660,7 +837,10 @@ export default function MessageInput({
           const dur = (s.durationMillis ?? 0) / 1000;
           setPreviewPosition(pos);
           if (dur > 0) setPreviewDuration(dur);
-          if ((s as any).didJustFinishAndNotJustLooped ?? (s as any).didJustFinish) {
+          if (
+            (s as any).didJustFinishAndNotJustLooped ??
+            (s as any).didJustFinish
+          ) {
             setPreviewPosition(0);
             setPreviewPlaying(false);
           }
@@ -668,7 +848,7 @@ export default function MessageInput({
       );
       previewSoundRef.current = sound;
       setPreviewPlaying(true);
-    } catch (_) { }
+    } catch (_) {}
   }, [recordedUri]);
 
   const handlePausePreview = useCallback(async () => {
@@ -701,38 +881,44 @@ export default function MessageInput({
   }, []);
 
   // Color picker handlers
-  const handleColorSelect = useCallback((color: string) => {
-    if (showColorPicker === 'text') {
-      richTextRef.current?.setForeColor(color);
-      setCurrentTextColor(color);
-    } else if (showColorPicker === 'background') {
-      richTextRef.current?.setHiliteColor(color);
-      setCurrentBgColor(color);
-    }
-    setShowColorPicker(null);
+  const handleColorSelect = useCallback(
+    (color: string) => {
+      if (showColorPicker === 'text') {
+        richTextRef.current?.setForeColor(color);
+        setCurrentTextColor(color);
+      } else if (showColorPicker === 'background') {
+        richTextRef.current?.setHiliteColor(color);
+        setCurrentBgColor(color);
+      }
+      setShowColorPicker(null);
 
-    setTimeout(() => {
-      richTextRef.current?.focusContentEditor();
-    }, 50);
-  }, [showColorPicker]);
+      setTimeout(() => {
+        richTextRef.current?.focusContentEditor();
+      }, 50);
+    },
+    [showColorPicker]
+  );
 
   const toggleColorPicker = useCallback((type: 'text' | 'background') => {
     setShowLinkInput(false);
-    setShowColorPicker(prev => prev === type ? null : type);
+    setShowColorPicker((prev) => (prev === type ? null : type));
   }, []);
 
   // Link handlers
-  const handleInsertLink = useCallback((url: string, text: string) => {
-    if (richTextRef.current) {
-      richTextRef.current?.insertLink(text, url);
-    } else {
-      onChangeText(messageText + ` ${url} `);
-    }
-  }, [messageText, onChangeText]);
+  const handleInsertLink = useCallback(
+    (url: string, text: string) => {
+      if (richTextRef.current) {
+        richTextRef.current?.insertLink(text, url);
+      } else {
+        onChangeText(messageText + ` ${url} `);
+      }
+    },
+    [messageText, onChangeText]
+  );
 
   const toggleLinkInput = useCallback(() => {
     setShowColorPicker(null);
-    setShowLinkInput(prev => !prev);
+    setShowLinkInput((prev) => !prev);
   }, []);
 
   const handlePaste = useCallback((data: string) => {
@@ -742,10 +928,13 @@ export default function MessageInput({
     }
   }, []);
 
-  const handleRemoveLinkPreview = useCallback((url: string) => {
-    const newText = messageText.replace(url, '').trim();
-    onChangeText(newText);
-  }, [messageText, onChangeText]);
+  const handleRemoveLinkPreview = useCallback(
+    (url: string) => {
+      const newText = messageText.replace(url, '').trim();
+      onChangeText(newText);
+    },
+    [messageText, onChangeText]
+  );
 
   // Computed values
   const isEmpty = useMemo(() => {
@@ -760,7 +949,12 @@ export default function MessageInput({
     setShowLinkInput(false);
     setCurrentTextColor('#000000');
     setCurrentBgColor('#FFFFFF');
-    setFormatActive({ bold: false, italic: false, underline: false, strike: false });
+    setFormatActive({
+      bold: false,
+      italic: false,
+      underline: false,
+      strike: false,
+    });
     setListAlignActive({
       bullet: false,
       number: false,
@@ -784,7 +978,7 @@ export default function MessageInput({
     if (speechToTextActive) {
       await stopSpeechToText();
     }
-    
+
     if (isEmpty && !allowEmptySend) {
       if (replyToMessage) return;
       if (showAttachmentButton && onAttachmentPress) {
@@ -799,43 +993,72 @@ export default function MessageInput({
     const contentToSend = isEmpty ? '' : cleanHtml(messageText);
     onSend(contentToSend, 'text', 0, 0, 0);
     resetAfterSend();
-  }, [isEmpty, replyToMessage, messageText, onSend, onAttachmentPress, resetAfterSend, showAttachmentButton, allowEmptySend, speechToTextActive, stopSpeechToText]);
+  }, [
+    isEmpty,
+    replyToMessage,
+    messageText,
+    onSend,
+    onAttachmentPress,
+    resetAfterSend,
+    showAttachmentButton,
+    allowEmptySend,
+    speechToTextActive,
+    stopSpeechToText,
+  ]);
 
-  const handleScheduleSend = useCallback((scheduledAt: string) => {
-    if (isEmpty) return;
-    const contentToSend = cleanHtml(messageText);
-    onSend(contentToSend, 'text', 0, 0, 0, scheduledAt);
-    setShowScheduleModal(false);
-    setShowCustomTimePicker(false);
-    setCustomScheduleDate(null);
-    setCustomScheduleTime(null);
-    resetAfterSend();
-  }, [isEmpty, messageText, onSend, resetAfterSend]);
+  const handleScheduleSend = useCallback(
+    (scheduledAt: string) => {
+      if (isEmpty) return;
+      const contentToSend = cleanHtml(messageText);
+      onSend(contentToSend, 'text', 0, 0, 0, scheduledAt);
+      setShowScheduleModal(false);
+      setShowCustomTimePicker(false);
+      setCustomScheduleDate(null);
+      setCustomScheduleTime(null);
+      resetAfterSend();
+    },
+    [isEmpty, messageText, onSend, resetAfterSend]
+  );
 
   const handleLongPressSend = useCallback(() => {
     if (isEmpty) return;
     setShowScheduleModal(true);
   }, [isEmpty]);
 
-  const maxInputHeight = (7 * 22) + 20;
+  const maxInputHeight = 7 * 22 + 20;
 
-  const shouldShowToolbar = showRichTextToolbar && Platform.OS !== 'web' && RichToolbar && recordingMode === 'idle' && !speechToTextActive;
+  const shouldShowToolbar =
+    showRichTextToolbar &&
+    Platform.OS !== 'web' &&
+    RichToolbar &&
+    recordingMode === 'idle' &&
+    !speechToTextActive;
 
   return (
     <View className={containerClassName}>
       {/* Speech-to-Text Indicator */}
-      <SpeechToTextIndicator 
+      <SpeechToTextIndicator
         isListening={speechToTextActive}
         partialResult={partialSpeechResult}
         onStop={stopSpeechToText}
+        selectedLanguage={activeSpeechLang}
+        onLanguageChange={handleSpeechLanguageChange}
       />
 
       {/* Link Previews */}
       {linkPreviews.length > 0 && !speechToTextActive && (
         <View className="px-3 pt-2 pb-1">
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="always">
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            keyboardShouldPersistTaps="always"
+          >
             {linkPreviews.map((url, index) => (
-              <LinkPreview key={index} url={url} onRemove={() => handleRemoveLinkPreview(url)} />
+              <LinkPreview
+                key={index}
+                url={url}
+                onRemove={() => handleRemoveLinkPreview(url)}
+              />
             ))}
           </ScrollView>
         </View>
@@ -848,32 +1071,55 @@ export default function MessageInput({
           <View className="flex-row items-center mb-3">
             {recordingMode === 'recording' ? (
               <>
-                <Text className="text-base font-semibold text-gray-900 mr-2">{formatRecordingTime(recordingDuration)}</Text>
+                <Text className="text-base font-semibold text-gray-900 mr-2">
+                  {formatRecordingTime(recordingDuration)}
+                </Text>
                 <Text className="text-sm text-gray-500">Recording...</Text>
               </>
             ) : recordedUri ? (
               <>
                 <TouchableOpacity
-                  onPress={previewPlaying ? handlePausePreview : handlePlayPreview}
+                  onPress={
+                    previewPlaying ? handlePausePreview : handlePlayPreview
+                  }
                   className="w-10 h-10 rounded-full bg-gray-200 items-center justify-center mr-2"
                 >
-                  <Ionicons name={previewPlaying ? 'pause' : 'play'} size={22} color="#374151" />
+                  <Ionicons
+                    name={previewPlaying ? 'pause' : 'play'}
+                    size={22}
+                    color="#374151"
+                  />
                 </TouchableOpacity>
                 <View className="flex-1 h-1 bg-gray-200 rounded-full overflow-hidden mx-2">
                   <View
                     className="h-full bg-green-600 rounded-full"
-                    style={{ width: `${previewDuration > 0 ? (previewPosition / previewDuration) * 100 : 0}%` }}
+                    style={{
+                      width: `${
+                        previewDuration > 0
+                          ? (previewPosition / previewDuration) * 100
+                          : 0
+                      }%`,
+                    }}
                   />
                 </View>
-                <Text className="text-base font-semibold text-gray-900 ml-0" style={{ minWidth: 36 }}>
+                <Text
+                  className="text-base font-semibold text-gray-900 ml-0"
+                  style={{ minWidth: 36 }}
+                >
                   {previewPlaying
                     ? formatRecordingTime(Math.floor(previewPosition))
-                    : formatRecordingTime(previewDuration > 0 ? Math.floor(previewDuration) : recordingDuration)}
+                    : formatRecordingTime(
+                        previewDuration > 0
+                          ? Math.floor(previewDuration)
+                          : recordingDuration
+                      )}
                 </Text>
               </>
             ) : (
               <>
-                <Text className="text-base font-semibold text-gray-900 mr-2">{formatRecordingTime(recordingDuration)}</Text>
+                <Text className="text-base font-semibold text-gray-900 mr-2">
+                  {formatRecordingTime(recordingDuration)}
+                </Text>
                 <Text className="text-sm text-gray-500">Paused</Text>
               </>
             )}
@@ -883,11 +1129,17 @@ export default function MessageInput({
               <Ionicons name="trash-outline" size={24} color="#6b7280" />
             </TouchableOpacity>
             {recordingMode === 'recording' ? (
-              <TouchableOpacity onPress={handlePauseRecording} className="p-2">
+              <TouchableOpacity
+                onPress={handlePauseRecording}
+                className="p-2"
+              >
                 <Ionicons name="pause" size={28} color="#dc2626" />
               </TouchableOpacity>
             ) : (
-              <TouchableOpacity onPress={handleResumeRecording} className="p-2">
+              <TouchableOpacity
+                onPress={handleResumeRecording}
+                className="p-2"
+              >
                 <Ionicons name="mic" size={28} color="#dc2626" />
               </TouchableOpacity>
             )}
@@ -895,7 +1147,13 @@ export default function MessageInput({
               onPress={handleSendAudio}
               disabled={sendingAudio}
               className="w-10 h-10 rounded-full bg-green-600 items-center justify-center min-h-[40px]"
-              style={{ shadowColor: '#1DAB61', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3, shadowRadius: 4, elevation: 4 }}
+              style={{
+                shadowColor: '#1DAB61',
+                shadowOffset: { width: 0, height: 2 },
+                shadowOpacity: 0.3,
+                shadowRadius: 4,
+                elevation: 4,
+              }}
             >
               {sendingAudio ? (
                 <ActivityIndicator color="#fff" size="small" />
@@ -914,9 +1172,15 @@ export default function MessageInput({
                 <View className="mt-2 mx-2 mb-1 p-2 bg-gray-100 rounded-lg border-l-[4px] border-green-600 flex-row items-start justify-between">
                   <View className="flex-1 mr-2">
                     <Text className="text-green-600 text-xs font-bold mb-0.5">
-                      {replyToMessage.senderId === currentUser?.userId ? 'You' : replyToMessage.senderName}
+                      {replyToMessage.senderId === currentUser?.userId
+                        ? 'You'
+                        : replyToMessage.senderName}
                     </Text>
-                    <Text className="text-gray-600 text-xs" numberOfLines={2} ellipsizeMode="tail">
+                    <Text
+                      className="text-gray-600 text-xs"
+                      numberOfLines={2}
+                      ellipsizeMode="tail"
+                    >
                       {getReplyPreviewText(replyToMessage)}
                     </Text>
                   </View>
@@ -930,8 +1194,14 @@ export default function MessageInput({
                 </View>
               )}
 
-              <View className="flex-row items-center px-1 pb-1" style={{ maxHeight: maxInputHeight }}>
-                <View className="flex-1 justify-center" style={{ paddingVertical: 2, paddingLeft: 6 }}>
+              <View
+                className="flex-row items-center px-1 pb-1"
+                style={{ maxHeight: maxInputHeight }}
+              >
+                <View
+                  className="flex-1 justify-center"
+                  style={{ paddingVertical: 2, paddingLeft: 6 }}
+                >
                   {Platform.OS !== 'web' && RichEditor ? (
                     <RichEditor
                       key={`editor-${editorKeyRef.current}`}
@@ -945,6 +1215,7 @@ export default function MessageInput({
                       androidLayerType="software"
                       pasteAsPlainText={true}
                       onPaste={handlePaste}
+                      scrollEnabled={true}
                       showsVerticalScrollIndicator={false}
                       editorStyle={{
                         backgroundColor: 'transparent',
@@ -958,14 +1229,18 @@ export default function MessageInput({
                           padding: 8px 0px; 
                           min-height: 36px;
                           max-height: ${maxInputHeight - 20}px;
-                          overflow-y: auto;
+                          overflow-y: scroll;
                           overflow-x: hidden;
                           scrollbar-width: none;
                           -ms-overflow-style: none;
                           -webkit-overflow-scrolling: touch;
                         `,
                       }}
-                      style={{ backgroundColor: 'transparent', minHeight: 36, maxHeight: maxInputHeight - 20 }}
+                      style={{
+                        backgroundColor: 'transparent',
+                        minHeight: 36,
+                        maxHeight: maxInputHeight - 20,
+                      }}
                     />
                   ) : (
                     <TextInput
@@ -985,12 +1260,18 @@ export default function MessageInput({
                         paddingHorizontal: 4,
                       }}
                       onContentSizeChange={(event) => {
-                        const contentHeight = event.nativeEvent?.contentSize?.height;
+                        const contentHeight =
+                          event.nativeEvent?.contentSize?.height;
                         if (!contentHeight) return;
-                        if (heightUpdateTimeoutRef.current) clearTimeout(heightUpdateTimeoutRef.current);
+                        if (heightUpdateTimeoutRef.current)
+                          clearTimeout(heightUpdateTimeoutRef.current);
                         heightUpdateTimeoutRef.current = setTimeout(() => {
-                          const newHeight = Math.min(Math.max(40, Math.ceil(contentHeight)), maxInputHeight);
-                          if (Math.abs(newHeight - inputHeight) >= 2) setInputHeight(newHeight);
+                          const newHeight = Math.min(
+                            Math.max(40, Math.ceil(contentHeight)),
+                            maxInputHeight
+                          );
+                          if (Math.abs(newHeight - inputHeight) >= 2)
+                            setInputHeight(newHeight);
                         }, 50);
                       }}
                       scrollEnabled={inputHeight >= maxInputHeight - 20}
@@ -999,24 +1280,39 @@ export default function MessageInput({
                 </View>
 
                 <View className="flex-row items-center justify-end pr-1">
-                  {!showRichTextToolbar && Platform.OS !== 'web' && !speechToTextActive && (
-                    <>
-                      {isEmpty && showAttachmentButton && onAttachmentPress && (
-                        <TouchableOpacity onPress={onAttachmentPress} className="p-1">
-                          <Ionicons name="attach" size={24} color="#4B5563" />
+                  {!showRichTextToolbar &&
+                    Platform.OS !== 'web' &&
+                    !speechToTextActive && (
+                      <>
+                        {isEmpty &&
+                          showAttachmentButton &&
+                          onAttachmentPress && (
+                            <TouchableOpacity
+                              onPress={onAttachmentPress}
+                              className="p-1"
+                            >
+                              <Ionicons
+                                name="attach"
+                                size={24}
+                                color="#4B5563"
+                              />
+                            </TouchableOpacity>
+                          )}
+                        <TouchableOpacity
+                          onPress={() => {
+                            setShowRichTextToolbar(true);
+                            setTimeout(
+                              () =>
+                                richTextRef.current?.focusContentEditor(),
+                              100
+                            );
+                          }}
+                          className="p-2"
+                        >
+                          <Ionicons name="text" size={24} color="#4B5563" />
                         </TouchableOpacity>
-                      )}
-                      <TouchableOpacity
-                        onPress={() => {
-                          setShowRichTextToolbar(true);
-                          setTimeout(() => richTextRef.current?.focusContentEditor(), 100);
-                        }}
-                        className="p-2"
-                      >
-                        <Ionicons name="text" size={24} color="#4B5563" />
-                      </TouchableOpacity>
-                    </>
-                  )}
+                      </>
+                    )}
                 </View>
               </View>
             </View>
@@ -1034,7 +1330,7 @@ export default function MessageInput({
                   shadowOffset: { width: 0, height: 1 },
                   shadowOpacity: 0.2,
                   shadowRadius: 3,
-                  elevation: 3
+                  elevation: 3,
                 }}
               >
                 {sending ? (
@@ -1044,7 +1340,7 @@ export default function MessageInput({
                 )}
               </Pressable>
             ) : speechToTextActive ? (
-              <PulsingMicButton 
+              <PulsingMicButton
                 onPress={stopSpeechToText}
                 isListening={true}
                 disabled={sending}
@@ -1052,7 +1348,11 @@ export default function MessageInput({
             ) : (
               <Pressable
                 onPress={handleSendPress}
-                onLongPress={!isEmpty && showScheduleOption ? handleLongPressSend : undefined}
+                onLongPress={
+                  !isEmpty && showScheduleOption
+                    ? handleLongPressSend
+                    : undefined
+                }
                 delayLongPress={400}
                 disabled={sending}
                 className="min-h-[50px] min-w-[50px] rounded-full bg-green-600 items-center justify-center mb-0"
@@ -1061,23 +1361,22 @@ export default function MessageInput({
                   shadowOffset: { width: 0, height: 1 },
                   shadowOpacity: 0.2,
                   shadowRadius: 3,
-                  elevation: 3
+                  elevation: 3,
                 }}
               >
                 {sending ? (
                   <ActivityIndicator color="#fff" size="small" />
                 ) : (
-                  <Ionicons name={(sendIconName as any)} size={22} color="#fff" style={{ marginLeft: 2 }} />
+                  <Ionicons
+                    name={sendIconName as any}
+                    size={22}
+                    color="#fff"
+                    style={{ marginLeft: 2 }}
+                  />
                 )}
               </Pressable>
             )}
           </View>
-
-          {/* {isEmpty && isAudioAvailable && speechAvailable && !speechToTextActive && recordingMode === 'idle' && (
-            <Text className="text-xs text-gray-400 text-center mt-1 mb-1">
-              Tap mic to record • Hold to speak-to-text
-            </Text>
-          )} */}
         </View>
       )}
 
@@ -1097,7 +1396,7 @@ export default function MessageInput({
                   actions.insertOrderedList,
                   actions.alignLeft,
                   actions.alignCenter,
-                  actions.alignRight
+                  actions.alignRight,
                 ]}
                 iconTint="#4B5563"
                 selectedIconTint="#16a34a"
@@ -1106,10 +1405,16 @@ export default function MessageInput({
             )}
           </View>
 
-          <ToolbarButton onPress={() => toggleColorPicker('text')} isActive={showColorPicker === 'text'}>
+          <ToolbarButton
+            onPress={() => toggleColorPicker('text')}
+            isActive={showColorPicker === 'text'}
+          >
             <ColorIndicatorIcon type="text" color={currentTextColor} />
           </ToolbarButton>
-          <ToolbarButton onPress={() => toggleColorPicker('background')} isActive={showColorPicker === 'background'}>
+          <ToolbarButton
+            onPress={() => toggleColorPicker('background')}
+            isActive={showColorPicker === 'background'}
+          >
             <ColorIndicatorIcon type="background" color={currentBgColor} />
           </ToolbarButton>
 
@@ -1123,27 +1428,36 @@ export default function MessageInput({
         </View>
       )}
 
-      {showColorPicker !== null && recordingMode === 'idle' && !speechToTextActive && (
-        <InlineColorPicker
-          visible={true}
-          type={showColorPicker}
-          selectedColor={showColorPicker === 'text' ? currentTextColor : currentBgColor}
-          onSelect={handleColorSelect}
-          onClose={() => {
-            setShowColorPicker(null);
-            setTimeout(() => richTextRef.current?.focusContentEditor(), 50);
-          }}
-        />
-      )}
+      {showColorPicker !== null &&
+        recordingMode === 'idle' &&
+        !speechToTextActive && (
+          <InlineColorPicker
+            visible={true}
+            type={showColorPicker}
+            selectedColor={
+              showColorPicker === 'text' ? currentTextColor : currentBgColor
+            }
+            onSelect={handleColorSelect}
+            onClose={() => {
+              setShowColorPicker(null);
+              setTimeout(
+                () => richTextRef.current?.focusContentEditor(),
+                50
+              );
+            }}
+          />
+        )}
 
-      {showLinkInput && recordingMode === 'idle' && !speechToTextActive && (
-        <InlineLinkInput
-          visible={true}
-          onInsert={handleInsertLink}
-          onClose={() => setShowLinkInput(false)}
-          editorRef={richTextRef}
-        />
-      )}
+      {showLinkInput &&
+        recordingMode === 'idle' &&
+        !speechToTextActive && (
+          <InlineLinkInput
+            visible={true}
+            onInsert={handleInsertLink}
+            onClose={() => setShowLinkInput(false)}
+            editorRef={richTextRef}
+          />
+        )}
 
       {/* Schedule Modal */}
       <Modal
@@ -1152,49 +1466,95 @@ export default function MessageInput({
         animationType="fade"
         onRequestClose={() => setShowScheduleModal(false)}
       >
-        <TouchableWithoutFeedback onPress={() => setShowScheduleModal(false)}>
+        <TouchableWithoutFeedback
+          onPress={() => setShowScheduleModal(false)}
+        >
           <View className="flex-1 justify-end bg-black/40">
             <TouchableWithoutFeedback>
               <View className="bg-white rounded-t-2xl px-4 pb-8 pt-4">
-                <Text className="text-lg font-semibold text-gray-900 mb-4 text-center">Schedule Message</Text>
+                <Text className="text-lg font-semibold text-gray-900 mb-4 text-center">
+                  Schedule Message
+                </Text>
 
                 {!showCustomTimePicker ? (
                   <>
                     <TouchableOpacity
-                      onPress={() => handleScheduleSend(new Date(Date.now() + 10 * 1000).toISOString())}
+                      onPress={() =>
+                        handleScheduleSend(
+                          new Date(
+                            Date.now() + 10 * 1000
+                          ).toISOString()
+                        )
+                      }
                       className="py-3 border-b border-gray-100"
                     >
-                      <Text className="text-base text-gray-900">Send in 10 seconds (testing)</Text>
+                      <Text className="text-base text-gray-900">
+                        Send in 10 seconds (testing)
+                      </Text>
                     </TouchableOpacity>
                     <TouchableOpacity
-                      onPress={() => handleScheduleSend(new Date(Date.now() + 5 * 60 * 1000).toISOString())}
+                      onPress={() =>
+                        handleScheduleSend(
+                          new Date(
+                            Date.now() + 5 * 60 * 1000
+                          ).toISOString()
+                        )
+                      }
                       className="py-3 border-b border-gray-100"
                     >
-                      <Text className="text-base text-gray-900">Send in 5 minutes</Text>
+                      <Text className="text-base text-gray-900">
+                        Send in 5 minutes
+                      </Text>
                     </TouchableOpacity>
                     <TouchableOpacity
-                      onPress={() => handleScheduleSend(new Date(Date.now() + 10 * 60 * 1000).toISOString())}
+                      onPress={() =>
+                        handleScheduleSend(
+                          new Date(
+                            Date.now() + 10 * 60 * 1000
+                          ).toISOString()
+                        )
+                      }
                       className="py-3 border-b border-gray-100"
                     >
-                      <Text className="text-base text-gray-900">Send in 10 minutes</Text>
+                      <Text className="text-base text-gray-900">
+                        Send in 10 minutes
+                      </Text>
                     </TouchableOpacity>
                     <TouchableOpacity
-                      onPress={() => handleScheduleSend(new Date(Date.now() + 30 * 60 * 1000).toISOString())}
+                      onPress={() =>
+                        handleScheduleSend(
+                          new Date(
+                            Date.now() + 30 * 60 * 1000
+                          ).toISOString()
+                        )
+                      }
                       className="py-3 border-b border-gray-100"
                     >
-                      <Text className="text-base text-gray-900">Send in 30 minutes</Text>
+                      <Text className="text-base text-gray-900">
+                        Send in 30 minutes
+                      </Text>
                     </TouchableOpacity>
                     <TouchableOpacity
-                      onPress={() => handleScheduleSend(new Date(Date.now() + 60 * 60 * 1000).toISOString())}
+                      onPress={() =>
+                        handleScheduleSend(
+                          new Date(
+                            Date.now() + 60 * 60 * 1000
+                          ).toISOString()
+                        )
+                      }
                       className="py-3 border-b border-gray-100"
                     >
-                      <Text className="text-base text-gray-900">Send in 1 hour</Text>
+                      <Text className="text-base text-gray-900">
+                        Send in 1 hour
+                      </Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       onPress={() => setShowCustomTimePicker(true)}
                       className="py-3"
                     >
-                      <Text className="text-base text-green-600 font-medium">Pick date & time</Text>
+                      <Text className="text-base text-green-600 font-medium">
+                        Pick date & time
+                      </Text>
                     </TouchableOpacity>
                   </>
                 ) : (
@@ -1214,27 +1574,45 @@ export default function MessageInput({
                         }}
                         className="flex-1 py-3 bg-gray-200 rounded-lg items-center"
                       >
-                        <Text className="text-base font-medium text-gray-700">Back</Text>
+                        <Text className="text-base font-medium text-gray-700">
+                          Back
+                        </Text>
                       </TouchableOpacity>
                       <TouchableOpacity
                         onPress={() => {
                           if (customScheduleDate && customScheduleTime) {
-                            const [h, m] = customScheduleTime.split(':').map(Number);
+                            const [h, m] = customScheduleTime
+                              .split(':')
+                              .map(Number);
                             const scheduled = new Date(customScheduleDate);
                             scheduled.setHours(h, m, 0, 0);
                             if (scheduled > new Date()) {
                               handleScheduleSend(scheduled.toISOString());
                             } else {
-                              Alert.alert('Invalid time', 'Please select a future date and time.');
+                              Alert.alert(
+                                'Invalid time',
+                                'Please select a future date and time.'
+                              );
                             }
                           } else {
-                            Alert.alert('Select time', 'Please select both date and time.');
+                            Alert.alert(
+                              'Select time',
+                              'Please select both date and time.'
+                            );
                           }
                         }}
-                        disabled={!customScheduleDate || !customScheduleTime}
-                        className={`flex-1 py-3 rounded-lg items-center ${!customScheduleDate || !customScheduleTime ? 'bg-gray-300' : 'bg-green-600'}`}
+                        disabled={
+                          !customScheduleDate || !customScheduleTime
+                        }
+                        className={`flex-1 py-3 rounded-lg items-center ${
+                          !customScheduleDate || !customScheduleTime
+                            ? 'bg-gray-300'
+                            : 'bg-green-600'
+                        }`}
                       >
-                        <Text className="text-base font-medium text-white">Schedule</Text>
+                        <Text className="text-base font-medium text-white">
+                          Schedule
+                        </Text>
                       </TouchableOpacity>
                     </View>
                   </View>

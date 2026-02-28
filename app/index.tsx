@@ -13,7 +13,7 @@ import { API_URL, setApiUrl, updateDevIP } from "@/constants/api";
 import useNetworkStatus from '@/hooks/userNetworkStatus';
 import SplashScreen from '@/components/SplashScreen';
 import React from 'react';
-const DEV_IP = "http://10.145.92.242:8080";
+const DEV_IP = "http://10.176.16.242:8080";
 const EXTERNAL_IP = "";
 const INTERNAL_IP = "";
 

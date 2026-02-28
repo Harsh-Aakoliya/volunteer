@@ -10,7 +10,7 @@ import {
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { API_URL } from '@/constants/api';
-import { AuthStorage } from '@/utils/authStorage';
+import { getMediaFiles as fetchMediaFilesApi } from "@/api/chat/media";
 import MediaViewerModal from '@/components/chat/MediaViewerModal';
 
 const NUM_COLUMNS = 3;
@@ -33,23 +33,21 @@ export interface RoomMediaItem {
 }
 
 async function fetchMediaFiles(
-  mediaFilesId: number,
-  token: string | null
+  mediaFilesId: number
 ): Promise<MediaFile[]> {
-  if (!token) return [];
-  const res = await fetch(`${API_URL}/api/vm-media/media/${mediaFilesId}`, {
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-  });
-  if (!res.ok) return [];
-  const data = await res.json();
-  if (!data.success || !data.media?.files) return [];
-  return (data.media.files as any[]).map((f: any) => ({
-    id: f.id ?? Math.random(),
-    fileName: f.url || f.filename || '',
-    originalName: f.originalName || f.filename,
-    mimeType: f.mimeType || 'image/jpeg',
-    size: f.size || 0,
-  }));
+  try {
+    const data = await fetchMediaFilesApi(mediaFilesId);
+    if (!data.success || !data.media?.files) return [];
+    return (data.media.files as any[]).map((f: any) => ({
+      id: f.id ?? Math.random(),
+      fileName: f.url || f.filename || '',
+      originalName: f.originalName || f.filename,
+      mimeType: f.mimeType || 'image/jpeg',
+      size: f.size || 0,
+    }));
+  } catch {
+    return [];
+  }
 }
 
 // Memoized cell to avoid re-renders and reduce scroll lag
@@ -181,7 +179,6 @@ export default function MediaTab({ messages }: { messages: any[] }) {
       if (isInitial) setLoading(true);
       else setLoadingMore(true);
 
-      const token = await AuthStorage.getToken();
       const cur = isInitial ? { messageIndex: 0, fileIndex: 0 } : cursorRef.current;
       const cache = isInitial ? {} : fileCacheRef.current;
       let messageIndex = cur.messageIndex;
@@ -195,7 +192,7 @@ export default function MediaTab({ messages }: { messages: any[] }) {
         let files = newCache[msg.id];
 
         if (!files) {
-          files = await fetchMediaFiles(msg.mediaFilesId, token);
+          files = await fetchMediaFiles(msg.mediaFilesId);
           newCache = { ...newCache, [msg.id]: files };
         }
 
@@ -235,7 +232,6 @@ export default function MediaTab({ messages }: { messages: any[] }) {
     setCursor({ messageIndex: 0, fileIndex: 0 });
 
     const run = async () => {
-      const token = await AuthStorage.getToken();
       if (mediaMessages.length === 0) {
         if (!cancelled) setLoading(false);
         return;
@@ -251,7 +247,7 @@ export default function MediaTab({ messages }: { messages: any[] }) {
         const msg = mediaMessages[messageIndex];
         let files = cache[msg.id];
         if (!files) {
-          files = await fetchMediaFiles(msg.mediaFilesId, token);
+          files = await fetchMediaFiles(msg.mediaFilesId);
           cache[msg.id] = files;
         }
         const start = fileIndex;

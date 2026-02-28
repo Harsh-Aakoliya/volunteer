@@ -14,10 +14,9 @@ import {
   Keyboard,
 } from "react-native";
 import { useLocalSearchParams } from "expo-router";
-import { API_URL } from "@/constants/api";
-import axios from "axios";
 import { router } from "expo-router";
-import { AuthStorage } from '@/utils/authStorage';
+import { createPoll } from "@/api/chat/polls";
+import { sendMessage } from "@/api/chat/messages";
 import { Ionicons } from "@expo/vector-icons";
 import { useSocket } from "@/contexts/SocketContext";
 import DraggableFlatList, {
@@ -73,38 +72,29 @@ export default function Polling() {
     try {
       const validOptions = options.filter(opt => opt.text.trim() !== "");
       
-      const response = await axios.post(`${API_URL}/api/poll`, {
-        question: question,
+      const pollData = await createPoll({
+        question,
         options: validOptions,
         isMultipleChoiceAllowed: multipleChoice,
         pollEndTime: null,
-        roomId: roomId,
-        createdBy: userId,
+        roomId: roomId as string,
+        createdBy: userId as string,
       });
-      const createdPollId = response.data.poll.id;
-      
-      const messageText = "";
-      const token = await AuthStorage.getToken();
-      
-      const pollResponse = await axios.post(
-        `${API_URL}/api/chat/rooms/${roomId}/messages`,
-        {
-          messageText,
-          messageType: "poll",
-          pollId: createdPollId,
-        },
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        }
-      );
+      const createdPollId = pollData.poll.id;
+
+      const pollResponse = await sendMessage(roomId as string, {
+        messageText: "",
+        messageType: "poll",
+        pollId: createdPollId,
+      });
       
       socketSendMessage(roomId as string, {
-        id: pollResponse.data.id,
+        id: pollResponse.id,
         messageText: "",
-        createdAt: pollResponse.data.createdAt,
+        createdAt: pollResponse.createdAt,
         messageType: "poll",
         mediaFilesId: 0,
-        pollId: pollResponse.data.pollId,
+        pollId: pollResponse.pollId,
         tableId: 0,
         replyMessageId: 0,
       });

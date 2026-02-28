@@ -15,9 +15,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Message } from '@/types/type';
-import axios from 'axios';
-import { API_URL } from '@/constants/api';
-import { AuthStorage } from '@/utils/authStorage';
+import { editMessage } from "@/api/chat/messages";
 import RenderHtml from 'react-native-render-html';
 import { isHtmlContent, cleanHtml } from '@/components/chat/message';
 import MessageInput from '@/components/chat/MessageInput';
@@ -143,8 +141,6 @@ export default function EditMessageModal({
 
     try {
       setIsEditing(true);
-      const token = await AuthStorage.getToken();
-      
       const messageId = typeof message.id === 'string' ? message.id : String(message.id);
       const roomIdValue = String(roomId);
       
@@ -152,11 +148,7 @@ export default function EditMessageModal({
         throw new Error('Invalid room ID');
       }
        
-      await axios.put(
-        `${API_URL}/api/chat/rooms/${roomIdValue}/messages/${messageId}`,
-        { messageText: contentToSave },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      await editMessage(roomIdValue, messageId, contentToSave);
 
       const updatedMessage: Message = {
         ...message,

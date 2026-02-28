@@ -1,4 +1,4 @@
-//components/chat/MediaViewerModal.tsx
+// components/chat/MediaViewerModal.tsx
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   View,
@@ -8,15 +8,16 @@ import {
   Image,
   ActivityIndicator,
   Dimensions,
-  StyleSheet,
-  SafeAreaView,
   FlatList,
+  StatusBar,
+  Platform,
+  BackHandler,
+  ScrollView,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { VideoView, useVideoPlayer } from "expo-video";
 import { API_URL } from "@/constants/api";
-import { AuthStorage } from "@/utils/authStorage";
-import axios from "axios";
+import { getMediaFiles } from "@/api/chat/media";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 
@@ -46,6 +47,427 @@ interface MediaViewerModalProps {
   initialIndex?: number;
 }
 
+// ─── Video Player ────────────────────────────────────────────────────────────
+interface VideoPlayerCompProps {
+  file: MediaFile;
+  isActive: boolean;
+}
+
+const VideoPlayerComp: React.FC<VideoPlayerCompProps> = ({ file, isActive }) => {
+  const videoUrl = `${API_URL}/media/chat/${file.url}`;
+
+  const videoPlayer = useVideoPlayer(videoUrl, (player) => {
+    if (player) {
+      player.loop = false;
+      player.muted = false;
+    }
+  });
+
+  useEffect(() => {
+    if (videoPlayer && !isActive) {
+      videoPlayer.pause();
+    }
+  }, [isActive, videoPlayer]);
+
+  return (
+    <VideoView
+      style={{ width: SCREEN_WIDTH, height: SCREEN_HEIGHT - 120 }}
+      player={videoPlayer}
+      nativeControls={true}
+      allowsFullscreen={true}
+      allowsPictureInPicture={true}
+      contentFit="contain"
+    />
+  );
+};
+
+// ─── Gallery Item ────────────────────────────────────────────────────────────
+interface GalleryItemProps {
+  item: MediaFile;
+  index: number;
+  onPress: (index: number) => void;
+}
+
+const GalleryItem: React.FC<GalleryItemProps> = React.memo(
+  ({ item, index, onPress }) => {
+    const isImage = item.mimeType?.startsWith("image/");
+    const isVideo = item.mimeType?.startsWith("video/");
+    const isAudio = item.mimeType?.startsWith("audio/");
+    const mediaUrl = `${API_URL}/media/chat/${item.url}`;
+
+    const [imageHeight, setImageHeight] = useState<number | null>(null);
+
+    useEffect(() => {
+      if (isImage) {
+        Image.getSize(
+          mediaUrl,
+          (w, h) => {
+            const aspectRatio = h / w;
+            const calculated = SCREEN_WIDTH * aspectRatio;
+            setImageHeight(
+              Math.min(Math.max(calculated, 100), SCREEN_HEIGHT * 0.85)
+            );
+          },
+          () => setImageHeight(SCREEN_WIDTH * 0.6)
+        );
+      }
+    }, [mediaUrl, isImage]);
+
+    return (
+      <TouchableOpacity
+        activeOpacity={0.9}
+        onPress={() => onPress(index)}
+        style={{ width: SCREEN_WIDTH }}
+        className="bg-neutral-950"
+      >
+        {isImage && (
+          <View>
+            {imageHeight === null ? (
+              <View
+                className="w-full justify-center items-center bg-neutral-900"
+                style={{ height: 200 }}
+              >
+                <ActivityIndicator size="small" color="#555" />
+              </View>
+            ) : (
+              <Image
+                source={{ uri: mediaUrl }}
+                style={{ width: SCREEN_WIDTH, height: imageHeight }}
+                resizeMode="contain"
+                className="bg-neutral-950"
+              />
+            )}
+          </View>
+        )}
+
+        {isVideo && (
+          <View
+            className="w-full bg-black justify-center items-center"
+            style={{ height: SCREEN_WIDTH * 0.65 }}
+          >
+            <Image
+              source={{ uri: mediaUrl }}
+              style={{ width: SCREEN_WIDTH, height: SCREEN_WIDTH * 0.65 }}
+              resizeMode="cover"
+              className="absolute opacity-60"
+            />
+            <View className="bg-black/60 rounded-full w-16 h-16 justify-center items-center">
+              <Ionicons name="play" size={30} color="white" />
+            </View>
+            <View className="absolute bottom-3 left-3 flex-row items-center bg-black/70 px-2.5 py-1 rounded-full">
+              <Ionicons name="videocam" size={13} color="white" />
+              <Text className="text-white text-xs ml-1 font-medium">Video</Text>
+            </View>
+          </View>
+        )}
+
+        {isAudio && (
+          <View
+            className="w-full bg-neutral-800 flex-row items-center px-5"
+            style={{ height: 76 }}
+          >
+            <View className="bg-purple-600 rounded-full w-12 h-12 justify-center items-center mr-4">
+              <Ionicons name="musical-notes" size={22} color="white" />
+            </View>
+            <View className="flex-1 mr-3">
+              <Text className="text-white text-sm font-medium" numberOfLines={1}>
+                {item.originalName}
+              </Text>
+              <Text className="text-gray-500 text-xs mt-0.5">Audio</Text>
+            </View>
+            <Ionicons name="play-circle" size={34} color="#a78bfa" />
+          </View>
+        )}
+
+        {!isImage && !isVideo && !isAudio && (
+          <View
+            className="w-full bg-neutral-800 flex-row items-center px-5"
+            style={{ height: 76 }}
+          >
+            <View className="bg-gray-600 rounded-lg w-12 h-12 justify-center items-center mr-4">
+              <Ionicons name="document-outline" size={22} color="white" />
+            </View>
+            <View className="flex-1">
+              <Text className="text-gray-300 text-sm font-medium" numberOfLines={1}>
+                {item.originalName}
+              </Text>
+              <Text className="text-gray-600 text-xs mt-0.5">{item.mimeType}</Text>
+            </View>
+          </View>
+        )}
+      </TouchableOpacity>
+    );
+  }
+);
+
+// ─── Gallery View ────────────────────────────────────────────────────────────
+interface GalleryViewProps {
+  files: MediaFile[];
+  onClose: () => void;
+  onMediaPress: (index: number) => void;
+  loading: boolean;
+  error: string | null;
+  onRetry: () => void;
+}
+
+const GalleryView: React.FC<GalleryViewProps> = ({
+  files,
+  onClose,
+  onMediaPress,
+  loading,
+  error,
+  onRetry,
+}) => {
+  return (
+    <View className="flex-1 bg-black">
+      {/* Header */}
+      <View className="flex-row items-center justify-between px-4 pt-14 pb-3 bg-black border-b border-neutral-800/60">
+        <TouchableOpacity onPress={onClose} className="p-2 -ml-1">
+          <Ionicons name="close" size={28} color="white" />
+        </TouchableOpacity>
+
+        <View className="flex-1 items-center">
+          <Text className="text-white text-lg font-bold tracking-tight">Media</Text>
+          {files.length > 0 && (
+            <Text className="text-gray-500 text-xs mt-0.5">
+              {files.length} file{files.length !== 1 ? "s" : ""}
+            </Text>
+          )}
+        </View>
+
+        <View className="w-10" />
+      </View>
+
+      {/* Content */}
+      {loading ? (
+        <View className="flex-1 justify-center items-center">
+          <ActivityIndicator size="large" color="#3b82f6" />
+          <Text className="text-gray-500 mt-4">Loading media...</Text>
+        </View>
+      ) : error ? (
+        <View className="flex-1 justify-center items-center px-6">
+          <Ionicons name="alert-circle-outline" size={56} color="#ef4444" />
+          <Text className="text-red-400 text-center mt-4 text-base">{error}</Text>
+          <TouchableOpacity
+            className="bg-blue-500 px-8 py-3 rounded-xl mt-6"
+            onPress={onRetry}
+          >
+            <Text className="text-white font-semibold">Retry</Text>
+          </TouchableOpacity>
+        </View>
+      ) : files.length > 0 ? (
+        <ScrollView
+          showsVerticalScrollIndicator={true}
+          contentContainerStyle={{ paddingBottom: 60 }}
+        >
+          {files.map((item, index) => (
+            <View key={`gal-${index}-${item.url}`}>
+              <GalleryItem item={item} index={index} onPress={onMediaPress} />
+              {index < files.length - 1 && (
+                <View className="h-0.5 bg-neutral-900" />
+              )}
+            </View>
+          ))}
+        </ScrollView>
+      ) : (
+        <View className="flex-1 justify-center items-center">
+          <Ionicons name="images-outline" size={56} color="#555" />
+          <Text className="text-gray-600 text-base mt-4">No media files</Text>
+        </View>
+      )}
+    </View>
+  );
+};
+
+// ─── Fullscreen Horizontal Viewer ────────────────────────────────────────────
+interface FullScreenViewerProps {
+  files: MediaFile[];
+  initialIndex: number;
+  onBack: () => void;
+}
+
+const FullScreenViewer: React.FC<FullScreenViewerProps> = ({
+  files,
+  initialIndex,
+  onBack,
+}) => {
+  const [currentIndex, setCurrentIndex] = useState(initialIndex);
+  const flatListRef = useRef<FlatList>(null);
+  const containerHeight = SCREEN_HEIGHT - 120;
+
+  useEffect(() => {
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      onBack();
+      return true;
+    });
+    return () => sub.remove();
+  }, [onBack]);
+
+  const onViewableItemsChanged = useCallback(({ viewableItems }: any) => {
+    if (viewableItems.length > 0 && viewableItems[0].index !== null) {
+      setCurrentIndex(viewableItems[0].index);
+    }
+  }, []);
+
+  const viewabilityConfig = useRef({
+    itemVisiblePercentThreshold: 60,
+  }).current;
+
+  const getItemLayout = useCallback(
+    (_: any, index: number) => ({
+      length: SCREEN_WIDTH,
+      offset: SCREEN_WIDTH * index,
+      index,
+    }),
+    []
+  );
+
+  const handleScrollToIndexFailed = useCallback((info: { index: number }) => {
+    setTimeout(() => {
+      flatListRef.current?.scrollToIndex({
+        index: info.index,
+        animated: false,
+      });
+    }, 300);
+  }, []);
+
+  const renderItem = useCallback(
+    ({ item, index }: { item: MediaFile; index: number }) => {
+      const isImage = item.mimeType?.startsWith("image/");
+      const isVideo = item.mimeType?.startsWith("video/");
+      const isAudio = item.mimeType?.startsWith("audio/");
+      const mediaUrl = `${API_URL}/media/chat/${item.url}`;
+
+      return (
+        <View
+          style={{ width: SCREEN_WIDTH, height: containerHeight }}
+          className="justify-center items-center bg-black"
+        >
+          {isImage && (
+            <Image
+              source={{ uri: mediaUrl }}
+              style={{ width: SCREEN_WIDTH, height: containerHeight }}
+              resizeMode="contain"
+            />
+          )}
+
+          {isVideo && (
+            <VideoPlayerComp file={item} isActive={index === currentIndex} />
+          )}
+
+          {isAudio && (
+            <View className="flex-1 justify-center items-center p-5">
+              <View className="w-44 h-44 bg-purple-600 rounded-full justify-center items-center mb-6">
+                <Ionicons name="musical-notes" size={72} color="white" />
+              </View>
+              <Text className="text-white text-lg font-semibold text-center">
+                {item.originalName}
+              </Text>
+              <Text className="text-gray-500 text-sm mt-2">Audio File</Text>
+            </View>
+          )}
+
+          {!isImage && !isVideo && !isAudio && (
+            <View className="flex-1 justify-center items-center p-5">
+              <Ionicons name="document-outline" size={56} color="#666" />
+              <Text className="text-white text-base font-medium text-center mt-4">
+                {item.originalName}
+              </Text>
+              <Text className="text-gray-500 text-sm mt-2 text-center">
+                {item.mimeType}
+              </Text>
+            </View>
+          )}
+        </View>
+      );
+    },
+    [currentIndex, containerHeight]
+  );
+
+  const currentFile = files[currentIndex];
+
+  return (
+    <View className="flex-1 bg-black">
+      {/* Header */}
+      <View className="flex-row items-center justify-between px-4 pt-14 pb-3 bg-black/95 z-10 border-b border-neutral-800/40">
+        <TouchableOpacity onPress={onBack} className="p-2 -ml-1">
+          <Ionicons name="arrow-back" size={26} color="white" />
+        </TouchableOpacity>
+
+        <View className="flex-1 items-center">
+          <Text className="text-white text-base font-semibold">
+            {currentIndex + 1} / {files.length}
+          </Text>
+          {currentFile && (
+            <Text
+              className="text-gray-500 text-xs mt-0.5 max-w-[200px]"
+              numberOfLines={1}
+            >
+              {currentFile.originalName}
+            </Text>
+          )}
+        </View>
+
+        <View className="w-10" />
+      </View>
+
+      {/* Horizontal FlatList */}
+      <FlatList
+        ref={flatListRef}
+        data={files}
+        renderItem={renderItem}
+        keyExtractor={(item, i) => `fs-${i}-${item.url}`}
+        horizontal
+        pagingEnabled
+        showsHorizontalScrollIndicator={false}
+        onViewableItemsChanged={onViewableItemsChanged}
+        viewabilityConfig={viewabilityConfig}
+        getItemLayout={getItemLayout}
+        onScrollToIndexFailed={handleScrollToIndexFailed}
+        initialScrollIndex={initialIndex}
+        initialNumToRender={1}
+        maxToRenderPerBatch={2}
+        windowSize={3}
+        removeClippedSubviews={Platform.OS !== "web"}
+        bounces={false}
+        decelerationRate="fast"
+        snapToInterval={SCREEN_WIDTH}
+        snapToAlignment="start"
+      />
+
+      {/* Pagination */}
+      {files.length > 1 && (
+        <View className="absolute bottom-8 left-0 right-0 items-center">
+          {files.length <= 15 ? (
+            <View className="flex-row items-center justify-center">
+              {files.map((_, i) => (
+                <View
+                  key={i}
+                  style={{
+                    width: i === currentIndex ? 9 : 6,
+                    height: i === currentIndex ? 9 : 6,
+                    borderRadius: 5,
+                    backgroundColor:
+                      i === currentIndex ? "#fff" : "rgba(255,255,255,0.35)",
+                    marginHorizontal: 3,
+                  }}
+                />
+              ))}
+            </View>
+          ) : (
+            <View className="bg-black/70 px-4 py-1.5 rounded-full">
+              <Text className="text-white text-sm font-medium">
+                {currentIndex + 1} of {files.length}
+              </Text>
+            </View>
+          )}
+        </View>
+      )}
+    </View>
+  );
+};
+
+// ─── Main Modal ──────────────────────────────────────────────────────────────
 export default function MediaViewerModal({
   visible,
   onClose,
@@ -56,19 +478,15 @@ export default function MediaViewerModal({
   const [mediaData, setMediaData] = useState<MediaData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [currentIndex, setCurrentIndex] = useState(initialIndex);
-  const [isLayoutReady, setIsLayoutReady] = useState(false);
+  const [viewMode, setViewMode] = useState<"gallery" | "fullscreen">("gallery");
+  const [selectedIndex, setSelectedIndex] = useState(initialIndex);
 
-  const flatListRef = useRef<FlatList>(null);
-
-  // Reset state when modal visibility changes
   useEffect(() => {
     if (visible) {
-      setCurrentIndex(initialIndex);
-      setIsLayoutReady(false);
+      setViewMode("gallery");
+      setSelectedIndex(initialIndex);
 
       if (mediaFiles && mediaFiles.length > 0) {
-        // Use provided media files directly
         const formattedFiles = mediaFiles.map((file) => ({
           url: file.fileName || file.id,
           filename: file.fileName,
@@ -89,494 +507,88 @@ export default function MediaViewerModal({
         setLoading(false);
         setError(null);
       } else if (mediaId) {
-        // Fetch media data from API
         fetchMediaData();
       }
     } else {
-      // Reset when modal closes
       setMediaData(null);
-      setCurrentIndex(0);
-      setIsLayoutReady(false);
+      setViewMode("gallery");
+      setSelectedIndex(0);
+      setError(null);
     }
   }, [visible, mediaId, mediaFiles, initialIndex]);
 
-  // Scroll to initial index after layout is ready
   useEffect(() => {
-    if (
-      visible &&
-      isLayoutReady &&
-      mediaData &&
-      mediaData.files.length > 0 &&
-      initialIndex > 0
-    ) {
-      const timer = setTimeout(() => {
-        flatListRef.current?.scrollToIndex({
-          index: initialIndex,
-          animated: false,
-        });
-      }, 100);
-      return () => clearTimeout(timer);
-    }
-  }, [visible, isLayoutReady, mediaData, initialIndex]);
+    if (!visible) return;
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      if (viewMode === "fullscreen") {
+        setViewMode("gallery");
+        return true;
+      }
+      onClose();
+      return true;
+    });
+    return () => sub.remove();
+  }, [visible, viewMode, onClose]);
 
   const fetchMediaData = async () => {
     setLoading(true);
     setError(null);
     try {
-      const token = await AuthStorage.getToken();
-      console.log(`Fetching media data for ID: ${mediaId}`);
-
-      const response = await axios.get(
-        `${API_URL}/api/vm-media/media/${mediaId}`,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        }
-      );
-
-      if (response.data.success) {
-        setMediaData(response.data.media);
-        console.log(`Loaded ${response.data.media.files.length} files`);
+      const data = await getMediaFiles(mediaId!);
+      if (data.success) {
+        setMediaData(data.media);
       } else {
         setError("Failed to load media files");
       }
-    } catch (error: any) {
-      console.error("Error fetching media:", error);
-      setError(error.response?.data?.error || "Failed to load media files");
+    } catch (err: any) {
+      console.error("Error fetching media:", err);
+      setError(err.response?.data?.error || "Failed to load media files");
     } finally {
       setLoading(false);
     }
   };
 
-  // Handle scroll end to update current index
-  const onViewableItemsChanged = useCallback(({ viewableItems }: any) => {
-    if (viewableItems.length > 0 && viewableItems[0].index !== null) {
-      setCurrentIndex(viewableItems[0].index);
-    }
+  const handleMediaPress = useCallback((index: number) => {
+    setSelectedIndex(index);
+    setViewMode("fullscreen");
   }, []);
 
-  const viewabilityConfig = useRef({
-    itemVisiblePercentThreshold: 50,
-  }).current;
-
-  const handleLayout = useCallback(() => {
-    setIsLayoutReady(true);
+  const handleBackToGallery = useCallback(() => {
+    setViewMode("gallery");
   }, []);
-
-  const getItemLayout = useCallback(
-    (_: any, index: number) => ({
-      length: SCREEN_WIDTH,
-      offset: SCREEN_WIDTH * index,
-      index,
-    }),
-    []
-  );
-
-  const handleScrollToIndexFailed = useCallback(
-    (info: { index: number; highestMeasuredFrameIndex: number; averageItemLength: number }) => {
-      const wait = new Promise((resolve) => setTimeout(resolve, 500));
-      wait.then(() => {
-        flatListRef.current?.scrollToIndex({
-          index: info.index,
-          animated: false,
-        });
-      });
-    },
-    []
-  );
-
-  // Render full-screen media item for carousel
-  const renderCarouselItem = useCallback(
-    ({ item, index }: { item: MediaFile; index: number }) => {
-      const isImage = item.mimeType?.startsWith("image/");
-      const isVideo = item.mimeType?.startsWith("video/");
-      const isAudio = item.mimeType?.startsWith("audio/");
-
-      const imageUrl = `${API_URL}/media/chat/${item.url}`;
-
-      return (
-        <View style={styles.carouselItem}>
-          {isImage && (
-            <View style={styles.mediaContainer}>
-              <Image
-                source={{
-                  uri: imageUrl,
-                  width: SCREEN_WIDTH,
-                  height: SCREEN_HEIGHT,
-                }}
-                style={styles.fullImage}
-                resizeMode="contain"
-                resizeMethod="resize"
-                onError={(e) => {
-
-                  console.log(`Image load error for index ${index}: file to fetch is ${imageUrl}`, e.nativeEvent.error);
-                }}
-              />
-            </View>
-          )}
-
-          {isVideo && (
-            <View style={styles.videoContainer}>
-              <VideoPlayer file={item} isActive={index === currentIndex} />
-            </View>
-          )}
-
-          {isAudio && (
-            <View style={styles.audioContainer}>
-              <View style={styles.audioIcon}>
-                <Ionicons name="musical-notes" size={80} color="white" />
-              </View>
-              <Text style={styles.audioFileName}>{item.originalName}</Text>
-              <Text style={styles.audioLabel}>Audio File</Text>
-            </View>
-          )}
-
-          {!isImage && !isVideo && !isAudio && (
-            <View style={styles.unknownContainer}>
-              <Ionicons name="document-outline" size={60} color="#9ca3af" />
-              <Text style={styles.unknownFileName}>{item.originalName}</Text>
-              <Text style={styles.unknownLabel}>
-                Unsupported file type: {item.mimeType}
-              </Text>
-            </View>
-          )}
-        </View>
-      );
-    },
-    [currentIndex]
-  );
-
-  // Render pagination dots
-  const renderDots = () => {
-    if (!mediaData || mediaData.files.length <= 1) return null;
-
-    // If too many files, show condensed version
-    if (mediaData.files.length > 10) {
-      return (
-        <View style={styles.dotsContainer}>
-          <Text style={styles.paginationText}>
-            {currentIndex + 1} of {mediaData.files.length}
-          </Text>
-        </View>
-      );
-    }
-
-    return (
-      <View style={styles.dotsContainer}>
-        {mediaData.files.map((_, index) => (
-          <View
-            key={index}
-            style={[
-              styles.dot,
-              {
-                backgroundColor: index === currentIndex ? "#3b82f6" : "#6b7280",
-                width: index === currentIndex ? 10 : 8,
-                height: index === currentIndex ? 10 : 8,
-                opacity: index === currentIndex ? 1 : 0.6,
-              },
-            ]}
-          />
-        ))}
-      </View>
-    );
-  };
-
-  const keyExtractor = useCallback(
-    (item: MediaFile, index: number) => `media-${index}-${item.url}`,
-    []
-  );
 
   return (
-    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <SafeAreaView style={styles.container}>
-        {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-            <Ionicons name="close" size={28} color="white" />
-          </TouchableOpacity>
+    <Modal
+      visible={visible}
+      animationType="slide"
+      statusBarTranslucent
+      presentationStyle="fullScreen"
+      onRequestClose={() => {
+        if (viewMode === "fullscreen") {
+          handleBackToGallery();
+        } else {
+          onClose();
+        }
+      }}
+    >
+      <StatusBar barStyle="light-content" backgroundColor="#000" />
 
-          <View style={styles.headerTitleContainer}>
-            {mediaData && mediaData.files.length > 0 && (
-              <Text style={styles.headerTitle}>
-                {currentIndex + 1} / {mediaData.files.length}
-              </Text>
-            )}
-          </View>
-
-          {/* Placeholder for right side to center title */}
-          <View style={styles.headerPlaceholder} />
-        </View>
-
-        {/* Content */}
-        {loading ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color="#3b82f6" />
-            <Text style={styles.loadingText}>Loading media files...</Text>
-          </View>
-        ) : error ? (
-          <View style={styles.errorContainer}>
-            <Text style={styles.errorText}>⚠️ {error}</Text>
-            <TouchableOpacity style={styles.retryButton} onPress={fetchMediaData}>
-              <Text style={styles.retryButtonText}>Retry</Text>
-            </TouchableOpacity>
-          </View>
-        ) : mediaData && mediaData.files.length > 0 ? (
-          <View style={styles.carouselContainer} onLayout={handleLayout}>
-            {/* Carousel */}
-            <FlatList
-              ref={flatListRef}
-              data={mediaData.files}
-              renderItem={renderCarouselItem}
-              keyExtractor={keyExtractor}
-              horizontal
-              pagingEnabled
-              showsHorizontalScrollIndicator={false}
-              onViewableItemsChanged={onViewableItemsChanged}
-              viewabilityConfig={viewabilityConfig}
-              getItemLayout={getItemLayout}
-              onScrollToIndexFailed={handleScrollToIndexFailed}
-              initialNumToRender={1}
-              maxToRenderPerBatch={2}
-              windowSize={3}
-              removeClippedSubviews={true}
-              bounces={false}
-              decelerationRate="fast"
-              snapToInterval={SCREEN_WIDTH}
-              snapToAlignment="start"
-            />
-            {/* Pagination Dots */}
-            {/* {renderDots()} */}
-          </View>
-        ) : (
-          <View style={styles.emptyContainer}>
-            <Ionicons name="images-outline" size={60} color="#6b7280" />
-            <Text style={styles.emptyText}>No media files available</Text>
-          </View>
-        )}
-      </SafeAreaView>
+      {viewMode === "fullscreen" && mediaData ? (
+        <FullScreenViewer
+          files={mediaData.files}
+          initialIndex={selectedIndex}
+          onBack={handleBackToGallery}
+        />
+      ) : (
+        <GalleryView
+          files={mediaData?.files || []}
+          onClose={onClose}
+          onMediaPress={handleMediaPress}
+          loading={loading}
+          error={error}
+          onRetry={fetchMediaData}
+        />
+      )}
     </Modal>
   );
 }
-
-// Video player component - only plays when active
-interface VideoPlayerProps {
-  file: MediaFile;
-  isActive: boolean;
-}
-
-const VideoPlayer: React.FC<VideoPlayerProps> = ({ file, isActive }) => {
-  const videoUrl = `${API_URL}/media/chat/${file.url}`;
-
-  const videoPlayer = useVideoPlayer(videoUrl, (player) => {
-    if (player) {
-      player.loop = false;
-      player.muted = false;
-    }
-  });
-
-  // Pause video when not active
-  useEffect(() => {
-    if (videoPlayer) {
-      if (!isActive) {
-        videoPlayer.pause();
-      }
-    }
-  }, [isActive, videoPlayer]);
-
-  return (
-    <VideoView
-      style={styles.videoPlayer}
-      player={videoPlayer}
-      nativeControls={true}
-      allowsFullscreen={true}
-      allowsPictureInPicture={true}
-      contentFit="contain"
-    />
-  );
-};
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#000",
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: "rgba(0, 0, 0, 0.9)",
-  },
-  closeButton: {
-    padding: 8,
-    width: 44,
-  },
-  headerTitleContainer: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  headerTitle: {
-    color: "white",
-    fontSize: 17,
-    fontWeight: "600",
-  },
-  headerPlaceholder: {
-    width: 44,
-  },
-  carouselContainer: {
-    flex: 1,
-  },
-  carouselItem: {
-    width: SCREEN_WIDTH,
-    height: SCREEN_HEIGHT - 180,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  mediaContainer: {
-    flex: 1,
-    width: "100%",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  fullImage: {
-    width: SCREEN_WIDTH,
-    height: "100%",
-  },
-  videoContainer: {
-    flex: 1,
-    width: "100%",
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "#000",
-  },
-  videoPlayer: {
-    width: SCREEN_WIDTH,
-    height: "100%",
-  },
-  audioContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 20,
-  },
-  audioIcon: {
-    width: 200,
-    height: 200,
-    backgroundColor: "#8b5cf6",
-    borderRadius: 100,
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 20,
-  },
-  audioFileName: {
-    fontSize: 18,
-    fontWeight: "600",
-    color: "#fff",
-    textAlign: "center",
-    marginTop: 20,
-  },
-  audioLabel: {
-    fontSize: 14,
-    color: "#9ca3af",
-    marginTop: 8,
-  },
-  unknownContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 20,
-  },
-  unknownFileName: {
-    fontSize: 16,
-    fontWeight: "500",
-    color: "#fff",
-    textAlign: "center",
-    marginTop: 16,
-  },
-  unknownLabel: {
-    fontSize: 14,
-    color: "#9ca3af",
-    marginTop: 8,
-    textAlign: "center",
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  loadingText: {
-    color: "#9ca3af",
-    marginTop: 16,
-  },
-  errorContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 16,
-  },
-  errorText: {
-    color: "#ef4444",
-    textAlign: "center",
-    marginBottom: 16,
-    fontSize: 16,
-  },
-  retryButton: {
-    backgroundColor: "#3b82f6",
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 8,
-  },
-  retryButtonText: {
-    color: "white",
-    fontWeight: "600",
-    fontSize: 16,
-  },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  emptyText: {
-    color: "#6b7280",
-    fontSize: 16,
-    marginTop: 16,
-  },
-  dotsContainer: {
-    position: "absolute",
-    bottom: 100,
-    left: 0,
-    right: 0,
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "center",
-    gap: 8,
-    paddingTop: 10,
-  },
-  dot: {
-    borderRadius: 5,
-  },
-  paginationText: {
-    color: "white",
-    fontSize: 14,
-    fontWeight: "500",
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 12,
-  },
-  fileInfoContainer: {
-    position: "absolute",
-    bottom: 40,
-    left: 20,
-    right: 20,
-    backgroundColor: "rgba(0, 0, 0, 0.7)",
-    padding: 12,
-    borderRadius: 8,
-  },
-  fileName: {
-    color: "white",
-    fontSize: 14,
-    textAlign: "center",
-  },
-});

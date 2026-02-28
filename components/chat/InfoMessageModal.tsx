@@ -9,9 +9,7 @@ import {
   RefreshControl,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import axios from "axios";
-import { API_URL } from "@/constants/api";
-import { AuthStorage } from "@/utils/authStorage";
+import { getMessageReadStatus } from "@/api/chat/messages";
 import { Message } from "@/types/type";
 import { formatISTTime, formatISTDate } from "@/utils/dateUtils";
 import MediaGrid from "./MediaGrid";
@@ -49,14 +47,10 @@ const InfoMessageModal: React.FC<InfoMessageModalProps> = ({
     if (!message?.id) return;
     try {
       if (!refreshing) setLoading(true);
-      const token = await AuthStorage.getToken();
-      const response = await axios.get(
-        `${API_URL}/api/chat/messages/${message.id}/read-status`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      if (response.data.success) {
-        console.log("response.data.data", response.data.data);
-        let data = response.data.data;
+      const responseData = await getMessageReadStatus(message.id);
+      if (responseData.success) {
+        console.log("response data", responseData.data);
+        let data = responseData.data;
         data.readBy = data.readBy.filter((item: any) => item.userId !== message.senderId);
         data.unreadBy = data.unreadBy.filter((item: any) => item.userId !== message.senderId);
         setData(data);

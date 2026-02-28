@@ -1,17 +1,9 @@
 // api/chat/rooms.ts
-import axios from "axios";
-import { API_URL } from "@/constants/api";
-import { AuthStorage } from "@/utils/authStorage";
+import { api, apiUrl } from "@/api/apiClient";
 import { ChatRoom, ChatUser } from "@/types/type";
 
 export const fetchChatUsers = async (): Promise<ChatUser[]> => {
-  const token = await AuthStorage.getToken();
-  const response = await axios.get(`${API_URL}/api/chat/users`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
-
+  const response = await api.get(apiUrl("/api/chat/users"));
   return response.data.map((user: any) => ({
     userId: user.userId,
     fullName: user.fullName,
@@ -28,22 +20,12 @@ export const createChatRoom = async (
   },
   userIds: string[]
 ): Promise<ChatRoom> => {
-  const token = await AuthStorage.getToken();
-  const response = await axios.post(
-    `${API_URL}/api/chat/rooms`,
-    {
-      roomName: roomData.roomName,
-      roomDescription: roomData.roomDescription,
-      isGroup: roomData.isGroup,
-      userIds,
-    },
-    {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    }
-  );
-
+  const response = await api.post(apiUrl("/api/chat/rooms"), {
+    roomName: roomData.roomName,
+    roomDescription: roomData.roomDescription,
+    isGroup: roomData.isGroup,
+    userIds,
+  });
   return {
     roomId: response.data.id,
     roomName: response.data.roomName,
@@ -53,13 +35,7 @@ export const createChatRoom = async (
 };
 
 export const fetchChatRooms = async (): Promise<ChatRoom[]> => {
-  const token = await AuthStorage.getToken();
-  const response = await axios.get(`${API_URL}/api/chat/rooms`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
-
+  const response = await api.get(apiUrl("/api/chat/rooms"));
   return response.data.map((room: any) => ({
     roomId: room.id || room.roomId,
     roomName: room.roomName,
@@ -69,24 +45,30 @@ export const fetchChatRooms = async (): Promise<ChatRoom[]> => {
     createdOn: room.createdOn,
     isAdmin: room.isAdmin || false,
     canSendMessage: room.canSendMessage || false,
-    lastMessage: room.lastMessage || null,  // NEW
-    unreadCount: room.unreadCount || 0,     // NEW
+    lastMessage: room.lastMessage || null,
+    unreadCount: room.unreadCount || 0,
   }));
+};
+
+export const getRoomDetails = async (
+  roomId: string,
+  userId?: string
+) => {
+  const headers: Record<string, string> = {};
+  if (userId) headers.userId = userId;
+  const response = await api.get(apiUrl(`/api/chat/rooms/${roomId}`), {
+    headers,
+  });
+  return response.data;
 };
 
 export const updateGroupAdmins = async (
   roomId: string,
   adminUserIds: string[]
 ) => {
-  const token = await AuthStorage.getToken();
-  const response = await axios.put(
-    `${API_URL}/api/chat/rooms/${roomId}/admins`,
-    { adminUserIds },
-    {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    }
+  const response = await api.put(
+    apiUrl(`/api/chat/rooms/${roomId}/admins`),
+    { adminUserIds }
   );
   return response.data;
 };
@@ -95,15 +77,9 @@ export const updateRoomMembers = async (
   roomId: string,
   memberUserIds: string[]
 ) => {
-  const token = await AuthStorage.getToken();
-  const response = await axios.put(
-    `${API_URL}/api/chat/rooms/${roomId}/members`,
-    { memberUserIds },
-    {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    }
+  const response = await api.put(
+    apiUrl(`/api/chat/rooms/${roomId}/members`),
+    { memberUserIds }
   );
   return response.data;
 };
@@ -112,15 +88,9 @@ export const updateMessagingPermissions = async (
   roomId: string,
   allowedUserIds: string[]
 ) => {
-  const token = await AuthStorage.getToken();
-  const response = await axios.put(
-    `${API_URL}/api/chat/rooms/${roomId}/messaging-permissions`,
-    { allowedUserIds },
-    {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    }
+  const response = await api.put(
+    apiUrl(`/api/chat/rooms/${roomId}/messaging-permissions`),
+    { allowedUserIds }
   );
   return response.data;
 };
@@ -130,39 +100,22 @@ export const renameRoom = async (
   roomName: string,
   roomDescription?: string
 ) => {
-  const token = await AuthStorage.getToken();
-  const response = await axios.put(
-    `${API_URL}/api/chat/rooms/${roomId}/settings`,
-    { roomName, roomDescription },
-    {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    }
+  const response = await api.put(
+    apiUrl(`/api/chat/rooms/${roomId}/settings`),
+    { roomName, roomDescription }
   );
   return response.data;
 };
 
 export const leaveRoom = async (roomId: string) => {
-  const token = await AuthStorage.getToken();
-  const response = await axios.post(
-    `${API_URL}/api/chat/rooms/${roomId}/leave`,
-    {},
-    {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    }
+  const response = await api.post(
+    apiUrl(`/api/chat/rooms/${roomId}/leave`),
+    {}
   );
   return response.data;
 };
 
 export const deleteRoom = async (roomId: string) => {
-  const token = await AuthStorage.getToken();
-  const response = await axios.delete(`${API_URL}/api/chat/rooms/${roomId}`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
+  const response = await api.delete(apiUrl(`/api/chat/rooms/${roomId}`));
   return response.data;
 };

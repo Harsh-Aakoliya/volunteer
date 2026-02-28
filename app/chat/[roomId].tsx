@@ -38,8 +38,9 @@ import { AuthStorage } from "@/utils/authStorage";
 import { MessageStorage } from "@/utils/messageStorage";
 import { Message, ChatRoom, ChatUser } from "@/types/type";
 import { formatISTTime, formatISTDate } from "@/utils/dateUtils";
-import axios from "axios";
-import { API_URL } from "@/constants/api";
+import { getRoomDetails } from "@/api/chat/rooms";
+import { sendMessage as sendMessageApi, deleteMessages as deleteMessagesApi, markMessageAsRead as markMessageReadApi, markAllMessagesAsRead as markAllReadApi } from "@/api/chat/messages";
+import { moveToChatCamera } from "@/api/chat/media";
 import { useFocusEffect } from "@react-navigation/native";
 import MembersModal from "@/components/chat/MembersModal";
 import MessageStatus from "@/components/chat/MessageStatus";
@@ -777,20 +778,17 @@ const handleDeselectMessage = useCallback((message: Message) => {
       setIsSyncing(true);
       console.log('🔄 [ChatRoom] Syncing messages with server...');
 
-      const token = await AuthStorage.getToken();
       const userData = await AuthStorage.getUser();
-      const response = await axios.get(`${API_URL}/api/chat/rooms/${roomId}`, {
-        headers: { Authorization: `Bearer ${token}`, userId: userData?.seid },
-      });
+      const responseData = await getRoomDetails(roomId as string, userData?.seid);
 
-      if (response.data.isrestricted) {
+      if (responseData.isrestricted) {
         await logout();
         Alert.alert("Access denied", "You are not authorized to access this chat room.");
         router.replace({ pathname: "/(auth)/login", params: { from: "logout" } });
         return;
       }
 
-      const freshMessages: Message[] = response.data.messages || [];
+      const freshMessages: Message[] = responseData.messages || [];
 
       const cachedData = await MessageStorage.getMessages(roomId as string);
       const cachedMessages = cachedData?.messages || [];
@@ -834,9 +832,9 @@ const handleDeselectMessage = useCallback((message: Message) => {
         await MessageStorage.saveMessages(roomId as string, freshMessages);
       }
 
-      setRoom(response.data);
+      setRoom(responseData);
 
-      const initialMembers = response.data.members.map((member: ChatUser) => ({
+      const initialMembers = responseData.members.map((member: ChatUser) => ({
         ...member,
         userId: String(member.userId),
         isOnline: false,
@@ -844,18 +842,17 @@ const handleDeselectMessage = useCallback((message: Message) => {
       setRoomMembers(initialMembers);
 
       if (userData) {
-        const isUserGroupAdmin = response.data.members.some(
+        const isUserGroupAdmin = responseData.members.some(
           (member: ChatUser) => member.userId === userData?.userId && member.isAdmin
         );
         setIsGroupAdmin(isUserGroupAdmin);
       }
 
-      // Update roomName and canSendMessage from server response
-      if (response.data.roomName) {
-        setDisplayRoomName(response.data.roomName);
+      if (responseData.roomName) {
+        setDisplayRoomName(responseData.roomName);
       }
-      if (response.data.canSendMessage !== undefined) {
-        setCanSendMessage(Boolean(response.data.canSendMessage));
+      if (responseData.canSendMessage !== undefined) {
+        setCanSendMessage(Boolean(responseData.canSendMessage));
       }
 
       setIsFromCache(false);
@@ -886,41 +883,36 @@ const handleDeselectMessage = useCallback((message: Message) => {
 
       setIsLoading(true);
 
-      const token = await AuthStorage.getToken();
-      const response = await axios.get(`${API_URL}/api/chat/rooms/${roomId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const responseData = await getRoomDetails(roomId as string);
 
-      if (response.data.isrestricted) {
+      if (responseData.isrestricted) {
         await logout();
         ToastAndroid.show("Access denied", ToastAndroid.SHORT);
         router.replace({ pathname: "/(auth)/login", params: { from: "logout" } });
         return;
       }
 
-      setRoom(response.data);
-      console.log("response.data", response.data);
-      const initialMessages = response.data.messages || [];
+      setRoom(responseData);
+      const initialMessages = responseData.messages || [];
       setMessages(initialMessages);
       setMessagesSet(new Set(initialMessages.map((msg: Message) => msg.id)));
 
       await MessageStorage.saveMessages(roomId as string, initialMessages);
 
       const userData2 = await AuthStorage.getUser();
-      const isUserGroupAdmin = response.data.members.some(
+      const isUserGroupAdmin = responseData.members.some(
         (member: ChatUser) => member.userId === userData2?.userId && member.isAdmin
       );
       setIsGroupAdmin(isUserGroupAdmin);
 
-      // Update roomName and canSendMessage from server response
-      if (response.data.roomName) {
-        setDisplayRoomName(response.data.roomName);
+      if (responseData.roomName) {
+        setDisplayRoomName(responseData.roomName);
       }
-      if (response.data.canSendMessage !== undefined) {
-        setCanSendMessage(Boolean(response.data.canSendMessage));
+      if (responseData.canSendMessage !== undefined) {
+        setCanSendMessage(Boolean(responseData.canSendMessage));
       }
 
-      const initialMembers = response.data.members.map((member: ChatUser) => ({
+      const initialMembers = responseData.members.map((member: ChatUser) => ({
         ...member,
         userId: String(member.userId),
         isOnline: false,
@@ -1197,28 +1189,23 @@ const handleDeselectMessage = useCallback((message: Message) => {
         setTimeout(() => scrollToBottomRef.current(), 100);
       }
 
-      const token = await AuthStorage.getToken();
-      const response = await axios.post(
-        `${API_URL}/api/chat/rooms/${roomId}/messages`,
-        {
-          messageText: trimmedMessage,
-          mediaFilesId,
-          pollId,
-          messageType,
-          tableId,
-          replyMessageId,
-          scheduledAt
-        },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      const responseData = await sendMessageApi(roomId as string, {
+        messageText: trimmedMessage,
+        mediaFilesId,
+        pollId,
+        messageType,
+        tableId,
+        replyMessageId,
+        scheduledAt
+      });
 
-      if (response.data.success && response.data.scheduledMessage) {
+      if (responseData.success && responseData.scheduledMessage) {
         loadScheduledMessages();
         setReplyToMessage(null);
         return;
       }
 
-      const newMessages = Array.isArray(response.data) ? response.data : [response.data];
+      const newMessages = Array.isArray(responseData) ? responseData : [responseData];
 
       // Replace optimistic message with real message
       setMessages(prev => {
@@ -1445,12 +1432,7 @@ const handleDeselectMessage = useCallback((message: Message) => {
     try {
       if (!roomId) return;
       const roomIdStr = Array.isArray(roomId) ? roomId[0] : roomId;
-      const token = await AuthStorage.getToken();
-      await axios.post(
-        `${API_URL}/api/chat/rooms/${roomIdStr}/mark-read`,
-        {},
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      await markAllReadApi(roomIdStr);
     } catch (error) {
       console.log("Error marking all messages as read for room:", error);
     }
@@ -1462,7 +1444,6 @@ const handleDeselectMessage = useCallback((message: Message) => {
     if (!roomIdStr || !currentUser || sending) return;
     setSending(true);
     try {
-      const token = await AuthStorage.getToken();
       const filename = `audio_${Date.now()}.m4a`;
       const formData = new FormData();
       // @ts-ignore – FormData append with object for React Native
@@ -1474,21 +1455,10 @@ const handleDeselectMessage = useCallback((message: Message) => {
       formData.append("roomId", roomIdStr);
       formData.append("senderId", currentUser.userId);
 
-      const response = await axios.post(
-        `${API_URL}/api/vm-media/move-to-chat-camera`,
-        formData,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "multipart/form-data",
-          },
-          transformRequest: (data: any) => data,
-          timeout: 60000,
-        }
-      );
+      const responseData = await moveToChatCamera(formData, 60000);
 
-      if (response.data.success) {
-        const { messageId, mediaId, createdAt } = response.data;
+      if (responseData.success) {
+        const { messageId, mediaId, createdAt } = responseData;
         const newMessage: Message = {
           id: messageId,
           roomId: parseInt(roomIdStr, 10),
@@ -1515,7 +1485,7 @@ const handleDeselectMessage = useCallback((message: Message) => {
         markAllMessagesAsReadInRoom();
         setTimeout(() => scrollToBottomRef.current(), 200);
       } else {
-        throw new Error(response.data?.error || "Upload failed");
+        throw new Error(responseData?.error || "Upload failed");
       }
     } catch (error: any) {
       console.error("Send audio error:", error);
@@ -1531,14 +1501,8 @@ const handleDeselectMessage = useCallback((message: Message) => {
     readSetRef.current.add(messageId);
     
     try {
-      const token = await AuthStorage.getToken();
-      await axios.post(
-        `${API_URL}/api/chat/messages/${messageId}/mark-read`,
-        {},
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      await markMessageReadApi(messageId);
     } catch (error) {
-      // console.error('Error marking message as read:', error);
       console.log('Error marking message as read:', error);
     }
   }, []);
@@ -1560,7 +1524,6 @@ const handleDeselectMessage = useCallback((message: Message) => {
       if (!room.roomId) continue;
       for (const message of messagesToForward) {
         try {
-          const token = await AuthStorage.getToken();
           const isPoll = message.messageType === "poll";
           const isMedia = message.messageType === "media";
           const payload: Record<string, unknown> = {
@@ -1582,22 +1545,17 @@ const handleDeselectMessage = useCallback((message: Message) => {
             payload.mediaFilesId = message.mediaFilesId ?? null;
           }
 
-          const response = await axios.post(
-            `${API_URL}/api/chat/rooms/${room.roomId}/messages`,
-            payload,
-            { headers: { Authorization: `Bearer ${token}` } }
-          );
+          const responseData = await sendMessageApi(room.roomId.toString(), payload as any);
 
-          if (currentUser && response.data) {
-            const data = response.data;
+          if (currentUser && responseData) {
             socketSendMessage(room.roomId.toString(), {
-              id: data.id,
-              messageText: data.messageText ?? message.messageText ?? "",
-              createdAt: data.createdAt,
-              messageType: data.messageType ?? message.messageType,
-              mediaFilesId: data.mediaFilesId ?? null,
-              pollId: data.pollId ?? null,
-              tableId: data.tableId ?? null
+              id: responseData.id,
+              messageText: responseData.messageText ?? message.messageText ?? "",
+              createdAt: responseData.createdAt,
+              messageType: responseData.messageType ?? message.messageType,
+              mediaFilesId: responseData.mediaFilesId ?? null,
+              pollId: responseData.pollId ?? null,
+              tableId: responseData.tableId ?? null
             });
           }
 
@@ -1619,11 +1577,7 @@ const handleDeselectMessage = useCallback((message: Message) => {
 
   const handleDeleteMessages = async (messageIds: (string | number)[]) => {
     try {
-      const token = await AuthStorage.getToken();
-      await axios.delete(`${API_URL}/api/chat/rooms/${roomId}/messages`, {
-        headers: { Authorization: `Bearer ${token}` },
-        data: { messageIds }
-      });
+      await deleteMessagesApi(roomId as string, messageIds);
       messageIds.forEach(id => removeMessage(id, true));
     } catch (error) {
       console.error('Error deleting messages:', error);
@@ -1799,7 +1753,7 @@ const TelegramHeader = React.memo(({
   };
 
   return (
-    <View className="flex-row items-center px-2 py-2.5 bg-white border-b border-[#E5E5E5]">
+    <View className="flex-row items-center px-2 py-2.5 bg-[#F5F5F5] border-b border-[#E5E5E5]">
       <TouchableOpacity onPress={onBackPress} className="p-2">
         <Ionicons name="arrow-back" size={24} color="#000" />
       </TouchableOpacity>

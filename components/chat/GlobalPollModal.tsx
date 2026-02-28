@@ -10,8 +10,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import axios from 'axios';
-import { API_URL } from '@/constants/api';
+import { getPoll, votePoll, togglePollStatus as togglePollStatusApi, reactivatePoll as reactivatePollApi } from "@/api/chat/polls";
 import DateTimePicker from './DateTimePicker';
 
 type PollOption = {
@@ -93,8 +92,8 @@ const GlobalPollModal = ({ pollId, visible, onClose, currentUserId, totalMembers
     try {
       setLoading(true);
       console.log('Fetching poll data for poll:', pollId);
-      const response = await axios.get(`${API_URL}/api/poll/${pollId}`);
-      const pollData = response.data.polldata;
+      const responseData = await getPoll(pollId);
+      const pollData = responseData.polldata;
       setPollData(pollData);
       
       // Initialize voting states based on existing votes
@@ -184,14 +183,11 @@ const GlobalPollModal = ({ pollId, visible, onClose, currentUserId, totalMembers
       }
       
       // Submit vote immediately
-      const response = await axios.post(`${API_URL}/api/poll/${pollId}/vote`, {
-        userId: currentUserId,
-        selectedOptions: optionsToSubmit
-      });
+      const response = await votePoll(pollId, currentUserId, optionsToSubmit);
       
       // Update poll data from response - this will automatically handle
       // vote states, selected options, and vote counts
-      updatePollDataFromResponse(response.data);
+      updatePollDataFromResponse(response);
       
     } catch (error: any) {
       console.error('Error submitting vote:', error);
@@ -217,15 +213,13 @@ const GlobalPollModal = ({ pollId, visible, onClose, currentUserId, totalMembers
     // If poll is active, deactivate immediately
     setToggleStatusLoading(true);
     try {
-      const response = await axios.patch(`${API_URL}/api/poll/${pollId}/toggle`, {
-        userId: currentUserId
-      });
+      const response = await togglePollStatusApi(pollId, currentUserId);
       
       console.log('Poll deactivated');
       Alert.alert('Success', 'Poll deactivated successfully!');
       
       // Update poll data from response instead of refetching
-      updatePollDataFromResponse(response.data);
+      updatePollDataFromResponse(response);
     } catch (error: any) {
       console.error('Error deactivating poll:', error);
       const errorMessage = error.response?.data?.error || 'Failed to deactivate poll';
@@ -250,10 +244,7 @@ const GlobalPollModal = ({ pollId, visible, onClose, currentUserId, totalMembers
       const endDateTime = new Date(reactivateDate);
       endDateTime.setHours(parseInt(hours), parseInt(minutes), 0, 0);
 
-      const response = await axios.patch(`${API_URL}/api/poll/${pollId}/reactivate`, {
-        userId: currentUserId,
-        pollEndTime: endDateTime.toISOString()
-      });
+      const response = await reactivatePollApi(pollId, currentUserId, endDateTime.toISOString());
       
       console.log('Poll reactivated');
       Alert.alert('Success', 'Poll reactivated successfully!');
@@ -262,7 +253,7 @@ const GlobalPollModal = ({ pollId, visible, onClose, currentUserId, totalMembers
       setReactivateTime(null);
       
       // Update poll data from response instead of refetching
-      updatePollDataFromResponse(response.data);
+      updatePollDataFromResponse(response);
     } catch (error: any) {
       console.error('Error reactivating poll:', error);
       const errorMessage = error.response?.data?.error || 'Failed to reactivate poll';

@@ -84,7 +84,7 @@ export const CustomDrawer = (props: DrawerContentComponentProps) => {
   ];
 
   return (
-    <View className="flex-1 bg-white">
+    <View className="flex-1 bg-[#F5F5F5]">
       <ScrollView className="flex-1">
         {/* ── Avatar + Name + Mobile ── */}
         <View className="items-center pt-12 pb-6 px-5">
