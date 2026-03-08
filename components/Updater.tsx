@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect } from "react";
 import { View, Platform, Alert } from "react-native";
 import * as FileSystem from "expo-file-system";
 import { startActivityAsync } from "expo-intent-launcher";
@@ -9,6 +9,8 @@ import {
   clearPendingInstall,
   isBackgroundServiceRunning,
 } from "@/utils/apkUpdateBackgroundService";
+import { AuthStorage } from "@/utils/authStorage";
+import { ChatRoomStorage } from "@/utils/chatRoomsStorage";
 
 export function Updater({
   version,
@@ -34,6 +36,9 @@ export function Updater({
       const pendingPath = await getPendingInstallPath();
       if (pendingPath) {
         try {
+          // Clear auth and chat cache before install so user is redirected to login after update
+          await AuthStorage.clear();
+          await ChatRoomStorage.clearCache();
           const contentUri = await FileSystem.getContentUriAsync(pendingPath);
           await startActivityAsync("android.intent.action.INSTALL_PACKAGE", {
             data: contentUri,

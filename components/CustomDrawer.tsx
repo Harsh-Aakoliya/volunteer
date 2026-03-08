@@ -11,11 +11,13 @@ import {
 } from "react-native";
 import { DrawerContentComponentProps } from "@react-navigation/drawer";
 import { Ionicons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { logout } from "@/api/user";
 import UserProfile from "@/components/UserProfile";
 import ChangePassword from "@/components/ChangePassword";
 import { AuthStorage } from "@/utils/authStorage";
+import * as Application from 'expo-application';
 
 function getInitials(name?: string): string {
   if (!name || !name.trim()) return "?";
@@ -31,7 +33,7 @@ export const CustomDrawer = (props: DrawerContentComponentProps) => {
   const [userProfile, setUserProfile] = useState<any>(null);
   const [showProfileSheet, setShowProfileSheet] = useState(false);
   const [showChangePasswordSheet, setShowChangePasswordSheet] = useState(false);
-
+  const applicationVersion = Application.nativeApplicationVersion;
   useEffect(() => {
     loadUserProfile();
   }, []);
@@ -86,8 +88,13 @@ export const CustomDrawer = (props: DrawerContentComponentProps) => {
   return (
     <View className="flex-1 bg-[#F5F5F5]">
       <ScrollView className="flex-1">
-        {/* ── Avatar + Name + Mobile ── */}
-        <View className="items-center pt-12 pb-6 px-5">
+        {/* ── Avatar + Name + Mobile (gradient matches main header) ── */}
+        <LinearGradient
+          colors={["#FAFAFA", "#F0F0F0", "#E8E8E8"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 0, y: 1 }}
+          style={{ alignItems: "center", paddingTop: 48, paddingBottom: 24, paddingHorizontal: 20 }}
+        >
           {/* Initials circle */}
           <View className="w-20 h-20 rounded-full border-[2.5px] border-blue-500 items-center justify-center bg-blue-50 mb-3">
             <Text className="text-2xl font-bold text-blue-500">
@@ -108,7 +115,7 @@ export const CustomDrawer = (props: DrawerContentComponentProps) => {
           >
             {userProfile?.mobileno || "No mobile number"}
           </Text>
-        </View>
+        </LinearGradient>
 
         {/* Divider */}
         <View className="h-[1px] bg-gray-200 mx-4" />
@@ -133,8 +140,6 @@ export const CustomDrawer = (props: DrawerContentComponentProps) => {
           ))}
         </View>
 
-        <View className="h-[1px] bg-gray-200 mx-4" />
-
         {/* ── Logout ── */}
         <TouchableOpacity
           onPress={handleLogout}
@@ -152,7 +157,8 @@ export const CustomDrawer = (props: DrawerContentComponentProps) => {
 
       {/* ── Bottom: app version or branding ── */}
       <View className="items-center pb-6 pt-2">
-        <Text className="text-[11px] text-gray-300">v1.0.0</Text>
+        <Text className="text-[11px] text-gray-300">{
+          "v" + applicationVersion}</Text>
       </View>
 
       {/* ── Profile Bottom Sheet ── */}
@@ -164,11 +170,11 @@ export const CustomDrawer = (props: DrawerContentComponentProps) => {
       >
         <Pressable className="flex-1 bg-black/50 justify-end" onPress={closeSheets}>
           <Pressable
-            className="bg-white rounded-t-3xl flex-1 pb-4"
+            className="bg-white flex-1 pb-4"
             onPress={() => {}}
           >
             {/* Sheet header */}
-            <View className="flex-row items-center justify-between px-5 py-4 border-b border-gray-200">
+            <View className="flex-row items-center justify-between px-5 py-4">
               <Text className="text-lg font-bold text-gray-900">Profile</Text>
               <TouchableOpacity
                 onPress={() => setShowProfileSheet(false)}
@@ -193,10 +199,10 @@ export const CustomDrawer = (props: DrawerContentComponentProps) => {
       >
         <Pressable className="flex-1 bg-black/50 justify-end" onPress={closeSheets}>
           <Pressable
-            className="bg-white rounded-t-3xl flex-1 pb-4"
+            className="bg-white flex-1 pb-4"
             onPress={() => {}}
           >
-            <View className="flex-row items-center justify-between px-5 py-4 border-b border-gray-200">
+            <View className="flex-row items-center justify-between px-5 py-4">
               <Text className="text-lg font-bold text-gray-900">
                 Change Password
               </Text>

@@ -88,7 +88,6 @@ function getColor(index: number) {
 const Y_AXIS_W = 32;
 
 function computeYAxisTicks(totalMembers: number): number[] {
-  totalMembers = 50;
   if (totalMembers <= 0) return [2, 4, 6, 8, 10];
   if (totalMembers <= 10) return [2, 4, 6, 8, 10];
   if (totalMembers <= 50) return [10, 20, 30, 40, 50];

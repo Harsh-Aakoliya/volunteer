@@ -14,7 +14,6 @@ import {
   Modal,
   ActivityIndicator,
   Animated,
-  StyleSheet,
 } from "react-native";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -26,7 +25,7 @@ import {
   logout,
 } from "@/api/auth";
 import { updateDevIP } from "@/constants/api";
-import { getDefaultDevIP } from "@/app/index";
+import { getDefaultDevIP } from "@/utils/setupApiUrl";
 import { AuthStorage } from "@/utils/authStorage";
 import { ToastAndroid } from "react-native";
 type LoginStep = "setPassword";
@@ -293,7 +292,7 @@ const [mobileNumber, setMobileNumber] = useState<string>("");
   // ==================== RENDER STEPS ====================
 
   const renderSetPasswordStep = () => (
-    <View pointerEvents={verificationStatus !== "success" ? "none" : "auto"}>
+    <View>
       {/* Mobile Number Display */}
       <CustomInput
           label=""
@@ -316,11 +315,22 @@ const [mobileNumber, setMobileNumber] = useState<string>("");
       {isCheckingMobile && (
         <View className="flex-row items-center mt-2">
           <ActivityIndicator size="small" color="#3B82F6" />
-          <Text className="ml-2 text-xs text-gray-500">Verifying mobile number...</Text>
+          <Text className="ml-2 text-xs text-blue-500">
+            Verifying {mobileNumber || "your number"}...
+          </Text>
         </View>
       )}
-      {!!mobileCheckMessage && (
-        <Text className="mt-2 text-sm text-red-500">{mobileCheckMessage}</Text>
+      {!!mobileCheckMessage && !isCheckingMobile && (
+        <View className="flex-row items-start mt-2">
+          <Ionicons name="warning" size={16} color="#EF4444" style={{ marginTop: 1 }} />
+          <Text className="ml-2 text-sm text-red-500 flex-1">{mobileCheckMessage}</Text>
+        </View>
+      )}
+      {isMobileAllowed && !isCheckingMobile && hasMobileCheckResult && (
+        <View className="flex-row items-center mt-2">
+          <Ionicons name="checkmark-circle" size={16} color="#22C55E" />
+          <Text className="ml-2 text-xs text-green-600">Mobile number verified</Text>
+        </View>
       )}
 
       {/* Current Password Input */}
@@ -486,49 +496,6 @@ const [mobileNumber, setMobileNumber] = useState<string>("");
       className="flex-1 bg-white"
       keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
     >
-      {/* Full Screen Overlay - Now outside ScrollView for full coverage */}
-      {(verificationStatus === "pending" || verificationStatus === "failed") && (
-  <View
-    style={[
-      StyleSheet.absoluteFillObject,
-      { 
-        backgroundColor: 'rgba(0, 0, 0, 0.4)', 
-        zIndex: 10
-      }
-    ]}
-    pointerEvents="auto"
-  >
-          {/* Popup positioned below header */}
-          <View 
-            style={{ 
-              marginTop: 190, // Position below Welcome text
-              paddingHorizontal: 20,
-              width: '100%',
-            }}
-          >
-            <View 
-              className="bg-white rounded-2xl px-6 py-5 items-center shadow-lg"
-              style={{
-                shadowColor: "#000",
-                shadowOffset: { width: 0, height: 4 },
-                shadowOpacity: 0.3,
-                shadowRadius: 8,
-                elevation: 10,
-                paddingTop: 90,
-                paddingBottom: 90,
-              }}
-            >
-               {(isCheckingMobile || verificationStatus === "pending") && (
-                <ActivityIndicator size="large" color="#3B82F6" />
-              )}
-              <Text className="text-base font-JakartaSemiBold text-gray-800 text-center mt-3">
-                {verificationMessage || `Verifying ${mobileNumber || "your number"}...`}
-              </Text>
-            </View>
-          </View>
-        </View>
-      )}
-
       <ScrollView
         contentContainerStyle={{ flexGrow: 1 }}
         showsVerticalScrollIndicator={false}

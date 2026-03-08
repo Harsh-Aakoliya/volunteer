@@ -12,6 +12,7 @@ import {
   TextInput,
   Animated,
   Dimensions,
+  Platform,
   StatusBar,
   Keyboard,
   BackHandler,
@@ -536,9 +537,9 @@ const Header = memo(
 
     return (
       <LinearGradient
-        colors={["#F5F5F5", "#F5F5F5"]}
+        colors={["#FAFAFA", "#F0F0F0", "#E8E8E8"]}
         start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
+        end={{ x: 0, y: 1 }}
         style={{
           flexDirection: "row",
           alignItems: "center",
@@ -794,6 +795,12 @@ export default function ChatRoomsList() {
     useCallback(() => {
       console.log("📱 [Rooms] Screen focused");
 
+      // Re-apply status bar to match header gradient (fixes mismatch after closing drawer)
+      StatusBar.setBarStyle("dark-content");
+      if (Platform.OS === "android") {
+        StatusBar.setBackgroundColor("#FAFAFA");
+      }
+
       // Load from cache first for immediate display
       if (!hasLoadedRef.current) {
         loadFromCache();
@@ -913,8 +920,8 @@ export default function ChatRoomsList() {
   return (
     <View style={{ flex: 1, backgroundColor: "#F5F5F5" }}>
       <StatusBar
-        barStyle={isSearchMode ? "dark-content" : "dark-content"}
-        backgroundColor={isSearchMode ? "#FFFFFF" : "#F5F5F5"}
+        barStyle="dark-content"
+        backgroundColor="#FAFAFA"
       />
 
       {/* Header */}

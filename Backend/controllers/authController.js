@@ -65,7 +65,7 @@ async login(req, res){
     const token = jwt.sign(
       { userId: sevak.seid, role: sevak.usertype },
       process.env.JWT_SECRET,
-      { expiresIn: "7d" }
+      { expiresIn: "1d" }
     );
 
     // Remove sensitive data before sending
@@ -290,7 +290,7 @@ async changePassword(req, res){
     }
 
     if (sevak.password !== currentPassword) {
-      return res.status(401).json({
+      return res.status(400).json({
         success: false,
         message: "Current password mismatch",
       });

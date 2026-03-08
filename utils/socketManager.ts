@@ -261,6 +261,7 @@ class SocketManager {
         });
 
         this.socket.on("connect_error", (error) => {
+          console.log("url",url);
           console.error("❌ [Socket] Connection error:", error.message);
         });
 

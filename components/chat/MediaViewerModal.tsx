@@ -261,12 +261,15 @@ const GalleryView: React.FC<GalleryViewProps> = ({
           contentContainerStyle={{ paddingBottom: 60 }}
         >
           {files.map((item, index) => (
-            <View key={`gal-${index}-${item.url}`}>
+            <>
+            <View key={`gal-${index}-${item.url}`} className="flex-1">
               <GalleryItem item={item} index={index} onPress={onMediaPress} />
               {index < files.length - 1 && (
                 <View className="h-0.5 bg-neutral-900" />
               )}
             </View>
+            <View className="h-1.5 bg-neutral-900" />
+            </>
           ))}
         </ScrollView>
       ) : (
@@ -398,14 +401,14 @@ const FullScreenViewer: React.FC<FullScreenViewerProps> = ({
           <Text className="text-white text-base font-semibold">
             {currentIndex + 1} / {files.length}
           </Text>
-          {currentFile && (
+          {/* {currentFile && (
             <Text
               className="text-gray-500 text-xs mt-0.5 max-w-[200px]"
               numberOfLines={1}
             >
               {currentFile.originalName}
             </Text>
-          )}
+          )} */}
         </View>
 
         <View className="w-10" />

@@ -34,6 +34,8 @@ import { Video, ResizeMode } from "expo-av";
 import MessageInput from "@/components/chat/MessageInput";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
+const PREVIEW_HEADER_HEIGHT = 56;
+const PREVIEW_CONTENT_HEIGHT = SCREEN_HEIGHT - 2 * PREVIEW_HEADER_HEIGHT;
 const NUM_COLUMNS = 3;
 const ITEM_MARGIN = 2;
 const ITEM_SIZE = (SCREEN_WIDTH - ITEM_MARGIN * (NUM_COLUMNS + 1)) / NUM_COLUMNS;
@@ -225,7 +227,10 @@ const MediaPreviewModal = React.memo(({
     >
       <SafeAreaView className="flex-1 bg-black">
         {/* Header */}
-        <View className="flex-row items-center justify-between px-4 py-3 bg-black/90">
+        <View
+          className="flex-row items-center justify-between px-4 bg-black/90"
+          style={{ height: PREVIEW_HEADER_HEIGHT }}
+        >
           <TouchableOpacity onPress={onClose} className="w-11 h-11 items-center justify-center">
             <Ionicons name="close" size={28} color="#fff" />
           </TouchableOpacity>
@@ -241,25 +246,26 @@ const MediaPreviewModal = React.memo(({
           </View>
           <TouchableOpacity
             onPress={onSelect}
-            className="w-11 h-11 items-center justify-center"
+            className={`w-9 h-9 rounded-full items-center justify-center border-2 ${
+              isSelected ? 'bg-blue-500 border-blue-500' : 'bg-white/30 border-white'
+            }`}
           >
-            {isSelected ? (
-              <View className="w-7 h-7 rounded-full bg-blue-500 items-center justify-center">
-                <Text className="text-white text-sm font-bold">{selectedOrder}</Text>
-              </View>
-            ) : (
-              <Ionicons name="add-circle-outline" size={28} color="#fff" />
+            {isSelected && selectedOrder !== null && (
+              <Text className="text-white text-sm font-bold">{selectedOrder}</Text>
             )}
           </TouchableOpacity>
         </View>
 
-        {/* Content */}
-        <View className="flex-1 items-center justify-center">
+        {/* Content - centered between header and footer spacer */}
+        <View
+          className="items-center justify-center"
+          style={{ height: PREVIEW_CONTENT_HEIGHT }}
+        >
           {isVideo ? (
             <Video
               ref={videoRef}
               source={{ uri: asset.uri }}
-              style={{ width: SCREEN_WIDTH, height: SCREEN_HEIGHT - 200 }}
+              style={{ width: SCREEN_WIDTH, height: PREVIEW_CONTENT_HEIGHT }}
               resizeMode={ResizeMode.CONTAIN}
               useNativeControls
               shouldPlay={visible}
@@ -268,33 +274,14 @@ const MediaPreviewModal = React.memo(({
           ) : (
             <Image
               source={{ uri: asset.uri }}
-              style={{ width: SCREEN_WIDTH, height: SCREEN_HEIGHT - 200 }}
+              style={{ width: SCREEN_WIDTH, height: PREVIEW_CONTENT_HEIGHT }}
               resizeMode="contain"
             />
           )}
         </View>
 
-        {/* Bottom action */}
-        <View className="px-5 py-4 bg-black/90">
-          <TouchableOpacity
-            onPress={() => {
-              onSelect();
-              onClose();
-            }}
-            className={`flex-row items-center justify-center py-3.5 rounded-xl ${
-              isSelected ? 'bg-red-500' : 'bg-blue-500'
-            }`}
-          >
-            <Ionicons
-              name={isSelected ? "checkmark-circle" : "add-circle"}
-              size={24}
-              color="#fff"
-            />
-            <Text className="text-white text-base font-semibold ml-2">
-              {isSelected ? 'Deselect' : 'Select'}
-            </Text>
-          </TouchableOpacity>
-        </View>
+        {/* Footer spacer - same height as header */}
+        <View style={{ height: PREVIEW_HEADER_HEIGHT }} />
       </SafeAreaView>
     </Modal>
   );
@@ -317,17 +304,37 @@ const SelectedMediaCarouselModal = React.memo(({
   const flatListRef = useRef<FlatList>(null);
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
 
+  // Sync index when opening or when list changes (e.g. after delete)
   useEffect(() => {
-    if (visible && initialIndex >= 0) {
-      setCurrentIndex(initialIndex);
-      setTimeout(() => {
-        flatListRef.current?.scrollToIndex({
-          index: initialIndex,
-          animated: false,
-        });
-      }, 100);
-    }
+    if (!visible || selectedMedia.length === 0) return;
+    const clamped = Math.min(Math.max(0, initialIndex), selectedMedia.length - 1);
+    setCurrentIndex(clamped);
+    setTimeout(() => {
+      flatListRef.current?.scrollToIndex({
+        index: clamped,
+        animated: false,
+      });
+    }, 100);
   }, [visible, initialIndex]);
+
+  // After delete: keep index in bounds and show next photo
+  useEffect(() => {
+    if (!visible || selectedMedia.length === 0) return;
+    setCurrentIndex((prev) => {
+      const next = Math.min(prev, selectedMedia.length - 1);
+      return Math.max(0, next);
+    });
+  }, [visible, selectedMedia.length]);
+
+  // Scroll to current index when it changes (e.g. after delete)
+  useEffect(() => {
+    if (!visible || selectedMedia.length === 0) return;
+    const idx = Math.min(currentIndex, selectedMedia.length - 1);
+    const timer = setTimeout(() => {
+      flatListRef.current?.scrollToIndex({ index: idx, animated: true });
+    }, 50);
+    return () => clearTimeout(timer);
+  }, [visible, selectedMedia.length, currentIndex]);
 
   const onViewableItemsChanged = useCallback(({ viewableItems }: any) => {
     if (viewableItems.length > 0 && viewableItems[0].index !== null) {
@@ -355,17 +362,22 @@ const SelectedMediaCarouselModal = React.memo(({
     []
   );
 
-  const currentMedia = selectedMedia[currentIndex];
+  const safeIndex = Math.min(Math.max(0, currentIndex), selectedMedia.length - 1);
+  const currentMedia = selectedMedia[safeIndex];
+  const initialScrollIndex = Math.min(Math.max(0, initialIndex), selectedMedia.length - 1);
 
   const renderItem = useCallback(({ item }: { item: SelectedMedia }) => {
     const isVideo = item.mediaType === "video";
 
     return (
-      <View style={{ width: SCREEN_WIDTH, height: SCREEN_HEIGHT - 180 }} className="items-center justify-center">
+      <View
+        style={{ width: SCREEN_WIDTH, height: PREVIEW_CONTENT_HEIGHT }}
+        className="items-center justify-center"
+      >
         {isVideo ? (
           <Video
             source={{ uri: item.uri }}
-            style={{ width: SCREEN_WIDTH, height: '100%' }}
+            style={{ width: SCREEN_WIDTH, height: PREVIEW_CONTENT_HEIGHT }}
             resizeMode={ResizeMode.CONTAIN}
             useNativeControls
             shouldPlay={false}
@@ -373,7 +385,7 @@ const SelectedMediaCarouselModal = React.memo(({
         ) : (
           <Image
             source={{ uri: item.uri }}
-            style={{ width: SCREEN_WIDTH, height: '100%' }}
+            style={{ width: SCREEN_WIDTH, height: PREVIEW_CONTENT_HEIGHT }}
             resizeMode="contain"
           />
         )}
@@ -392,20 +404,23 @@ const SelectedMediaCarouselModal = React.memo(({
     >
       <SafeAreaView className="flex-1 bg-black">
         {/* Header */}
-        <View className="flex-row items-center justify-between px-4 py-3 bg-black/90">
+        <View
+          className="flex-row items-center justify-between px-4 bg-black/90"
+          style={{ height: PREVIEW_HEADER_HEIGHT }}
+        >
           <TouchableOpacity onPress={onClose} className="w-11 h-11 items-center justify-center">
             <Ionicons name="close" size={28} color="#fff" />
           </TouchableOpacity>
           <View className="flex-1 items-center">
             <Text className="text-white text-lg font-semibold">
-              {currentIndex + 1} / {selectedMedia.length}
+              {safeIndex + 1} / {selectedMedia.length}
             </Text>
           </View>
           <TouchableOpacity
             onPress={() => {
               if (currentMedia) {
                 onRemove(currentMedia.id);
-                if (selectedMedia.length === 1) {
+                if (selectedMedia.length <= 1) {
                   onClose();
                 }
               }
@@ -416,7 +431,7 @@ const SelectedMediaCarouselModal = React.memo(({
           </TouchableOpacity>
         </View>
 
-        {/* Carousel */}
+        {/* Carousel - opens at initialScrollIndex (e.g. 4th photo = index 3) */}
         <FlatList
           ref={flatListRef}
           data={selectedMedia}
@@ -429,31 +444,35 @@ const SelectedMediaCarouselModal = React.memo(({
           viewabilityConfig={viewabilityConfig}
           getItemLayout={getItemLayout}
           onScrollToIndexFailed={handleScrollToIndexFailed}
-          initialNumToRender={1}
+          initialScrollIndex={initialScrollIndex}
+          initialNumToRender={Math.max(initialScrollIndex + 1, 2)}
           maxToRenderPerBatch={2}
-          windowSize={3}
+          windowSize={5}
           removeClippedSubviews={true}
           bounces={false}
           decelerationRate="fast"
           snapToInterval={SCREEN_WIDTH}
           snapToAlignment="start"
+          style={{ height: PREVIEW_CONTENT_HEIGHT }}
         />
 
-        {/* Pagination dots */}
-        {selectedMedia.length > 1 && selectedMedia.length <= 10 && (
-          <View className="flex-row justify-center items-center py-4 gap-1.5">
-            {selectedMedia.map((_, index) => (
-              <View
-                key={index}
-                className={`rounded-full ${
-                  index === currentIndex 
-                    ? 'w-2.5 h-2.5 bg-blue-500' 
-                    : 'w-2 h-2 bg-white/40'
-                }`}
-              />
-            ))}
-          </View>
-        )}
+        {/* Footer spacer + pagination dots */}
+        <View style={{ height: PREVIEW_HEADER_HEIGHT, justifyContent: 'center' }}>
+          {selectedMedia.length > 1 && selectedMedia.length <= 10 && (
+            <View className="flex-row justify-center items-center gap-1.5">
+              {selectedMedia.map((_, index) => (
+                <View
+                  key={index}
+                  className={`rounded-full ${
+                    index === safeIndex
+                      ? 'w-2.5 h-2.5 bg-blue-500'
+                      : 'w-2 h-2 bg-white/40'
+                  }`}
+                />
+              ))}
+            </View>
+          )}
+        </View>
       </SafeAreaView>
     </Modal>
   );
@@ -733,6 +752,7 @@ export default function AttachmentsScreen() {
   const [overallProgress, setOverallProgress] = useState(0);
   const [currentUploadIndex, setCurrentUploadIndex] = useState(0);
   const [uploadPhase, setUploadPhase] = useState<'idle' | 'uploading' | 'processing' | 'complete' | 'error'>('idle');
+  const uploadAbortRef = useRef<AbortController | null>(null);
 
   // Preview modal state
   const [previewAsset, setPreviewAsset] = useState<MediaLibrary.Asset | null>(null);
@@ -763,27 +783,6 @@ export default function AttachmentsScreen() {
       setHasPermission(false);
     }
   };
-
-  useEffect(() => {
-    const backAction = () => {
-      if (isUploading) {
-        Alert.alert(
-          "Upload in Progress",
-          "Please wait for the upload to complete before leaving.",
-          [{ text: "OK" }]
-        );
-        return true;
-      }
-      router.replace({
-        pathname: "/chat/[roomId]",
-        params: { roomId },
-      });
-      return true;
-    };
-
-    const backHandler = BackHandler.addEventListener("hardwareBackPress", backAction);
-    return () => backHandler.remove();
-  }, [roomId, isUploading]);
 
   const loadMedia = async (cursor?: string) => {
     if (isLoading) return;
@@ -905,6 +904,7 @@ export default function AttachmentsScreen() {
 
   // Reset upload state
   const resetUploadState = useCallback(() => {
+    uploadAbortRef.current = null;
     setIsUploading(false);
     setUploadProgress({});
     setOverallProgress(0);
@@ -912,6 +912,14 @@ export default function AttachmentsScreen() {
     setUploadPhase('idle');
   }, []);
 
+  // Cancel in-progress upload (no message sent)
+  const handleCancelUpload = useCallback(() => {
+    if (uploadAbortRef.current) {
+      uploadAbortRef.current.abort();
+    }
+    setIsSending(false);
+    resetUploadState();
+  }, [resetUploadState]);
 
   // Send media with progress tracking
   const handleSendMedia = async (captionText: string = '') => {
@@ -919,6 +927,10 @@ export default function AttachmentsScreen() {
     
     Keyboard.dismiss();
     
+    const abortController = new AbortController();
+    uploadAbortRef.current = abortController;
+    const signal = abortController.signal;
+
     // Initialize upload state
     setIsUploading(true);
     setIsSending(true);
@@ -950,7 +962,7 @@ export default function AttachmentsScreen() {
         });
       });
 
-      // Upload with progress tracking
+      // Upload with progress tracking (cancellable via signal)
       const uploadResponse_data = await uploadMultipart(formData, (progressEvent) => {
             if (progressEvent.total) {
               const percentComplete = Math.round((progressEvent.loaded * 100) / progressEvent.total);
@@ -980,7 +992,7 @@ export default function AttachmentsScreen() {
                 return updated;
               });
             }
-      }, 300000);
+      }, 300000, signal);
 
       if (!uploadResponse_data.success) {
         throw new Error("Gallery upload failed");
@@ -1018,7 +1030,7 @@ export default function AttachmentsScreen() {
           senderId: userId,
           filesWithCaptions,
           caption: cleanedCaption,
-        });
+        }, signal);
 
       if (moveResponse_data.success) {
         // Mark all as success
@@ -1051,8 +1063,13 @@ export default function AttachmentsScreen() {
         throw new Error("Failed to process media");
       }
     } catch (error: any) {
+      const isCancelled = error?.code === "ERR_CANCELED" || error?.name === "AbortError";
+      if (isCancelled) {
+        resetUploadState();
+        return;
+      }
       console.error("Error sending gallery media:", error);
-      
+
       // Mark all as error
       setUploadPhase('error');
       setUploadProgress(prev => {
@@ -1073,13 +1090,13 @@ export default function AttachmentsScreen() {
           {
             text: "OK",
             onPress: () => {
-              // Reset upload state to allow retry
               resetUploadState();
             }
           }
         ]
       );
     } finally {
+      uploadAbortRef.current = null;
       setIsSending(false);
     }
   };
@@ -1088,6 +1105,31 @@ export default function AttachmentsScreen() {
   const handleRetry = useCallback(() => {
     resetUploadState();
   }, [resetUploadState]);
+
+  // Back button: offer cancel upload when uploading, else go back to chat
+  useEffect(() => {
+    const backAction = () => {
+      if (isUploading) {
+        Alert.alert(
+          "Upload in Progress",
+          "Do you want to cancel the upload? No message will be sent.",
+          [
+            { text: "Continue upload", style: "cancel" },
+            { text: "Cancel upload", style: "destructive", onPress: handleCancelUpload },
+          ]
+        );
+        return true;
+      }
+      router.replace({
+        pathname: "/chat/[roomId]",
+        params: { roomId },
+      });
+      return true;
+    };
+
+    const backHandler = BackHandler.addEventListener("hardwareBackPress", backAction);
+    return () => backHandler.remove();
+  }, [roomId, isUploading, handleCancelUpload]);
 
   // Camera send handler
   const handleCameraSend = useCallback(async (
@@ -1323,12 +1365,16 @@ export default function AttachmentsScreen() {
             </View>
           )}
 
-          {/* Cancel button (only during upload, not on error) */}
+          {/* Cancel upload button (during upload or processing) */}
           {uploadPhase !== 'error' && uploadPhase !== 'complete' && (
             <View className="px-4 py-2">
-              <Text className="text-center text-gray-500 text-sm">
-                Please wait while uploading...
-              </Text>
+              <TouchableOpacity
+                onPress={handleCancelUpload}
+                className="flex-row items-center justify-center py-3 border border-red-500 rounded-xl active:opacity-80"
+              >
+                <Ionicons name="close-circle-outline" size={20} color="#ef4444" />
+                <Text className="text-red-500 font-semibold ml-2">Cancel upload</Text>
+              </TouchableOpacity>
             </View>
           )}
         </View>
@@ -1368,32 +1414,32 @@ export default function AttachmentsScreen() {
 
   return (
     <SafeAreaView className="flex-1 bg-white">
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "padding"}
-        className="flex-1"
-        keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
-      >
-        {/* Tab View */}
-        <View className="flex-1">
-          <TabView
-            navigationState={{ index, routes }}
-            renderScene={renderScene}
-            onIndexChange={setIndex}
-            initialLayout={{ width: layout.width }}
-            renderTabBar={renderTabBar}
-            lazy={true}
-            lazyPreloadDistance={0}
-            swipeEnabled={!isUploading}
-          />
-        </View>
+      {/* Tab View - not inside KeyboardAvoidingView so it doesn't resize when keyboard opens */}
+      <View className="flex-1">
+        <TabView
+          navigationState={{ index, routes }}
+          renderScene={renderScene}
+          onIndexChange={setIndex}
+          initialLayout={{ width: layout.width }}
+          renderTabBar={renderTabBar}
+          lazy={true}
+          lazyPreloadDistance={0}
+          swipeEnabled={!isUploading}
+        />
+      </View>
 
-        {/* Input Bar - Only shown for gallery with selected media */}
-        {showInputBar && (
+      {/* Input Bar - stripe + input move together when keyboard opens */}
+      {showInputBar && (
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          keyboardVerticalOffset={0}
+          style={{ flexShrink: 0 }}
+        >
           <View className="border-t border-gray-200 bg-white">
             {renderInputBar()}
           </View>
-        )}
-      </KeyboardAvoidingView>
+        </KeyboardAvoidingView>
+      )}
 
       {/* Media Preview Modal - disabled during upload */}
       <MediaPreviewModal

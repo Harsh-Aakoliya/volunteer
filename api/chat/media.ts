@@ -13,7 +13,8 @@ export const getMediaFiles = async (mediaFilesId: number) => {
 export const uploadMultipart = async (
   formData: FormData,
   onUploadProgress?: AxiosRequestConfig["onUploadProgress"],
-  timeout: number = 300000
+  timeout: number = 300000,
+  signal?: AbortSignal
 ) => {
   const response = await api.post(
     apiUrl("/api/vm-media/upload-multipart"),
@@ -23,6 +24,7 @@ export const uploadMultipart = async (
       transformRequest: (data: any) => data,
       onUploadProgress,
       timeout,
+      ...(signal && { signal }),
     }
   );
   return response.data;
@@ -37,14 +39,19 @@ export const uploadBase64 = async (
   return response.data;
 };
 
-export const moveToChat = async (data: {
-  tempFolderId: string;
-  roomId: string;
-  senderId: string;
-  filesWithCaptions: any[];
-  caption?: string;
-}) => {
-  const response = await api.post(apiUrl("/api/vm-media/move-to-chat"), data);
+export const moveToChat = async (
+  data: {
+    tempFolderId: string;
+    roomId: string;
+    senderId: string;
+    filesWithCaptions: any[];
+    caption?: string;
+  },
+  signal?: AbortSignal
+) => {
+  const response = await api.post(apiUrl("/api/vm-media/move-to-chat"), data, {
+    ...(signal && { signal }),
+  });
   return response.data;
 };
 

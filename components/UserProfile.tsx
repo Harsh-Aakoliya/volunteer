@@ -25,13 +25,15 @@ const UserProfile: React.FC<UserProfileProps> = ({ user }) => {
     label,
     value,
     color = "#6B7280",
+    last,
   }: {
     icon: any;
     label: string;
     value?: string;
     color?: string;
+    last?: boolean;
   }) => (
-    <View className="flex-row items-center justify-between py-3 border-b border-gray-100">
+    <View className={`flex-row items-center justify-between py-3 ${last ? "" : "border-b border-gray-100"}`}>
       <View className="flex-row items-center flex-1">
         <View className="w-10 h-10 rounded-full bg-gray-100 items-center justify-center mr-3">
           <Ionicons name={icon} size={20} color={color} />
@@ -50,15 +52,17 @@ const UserProfile: React.FC<UserProfileProps> = ({ user }) => {
     contactNumber,
     contactRelation,
     icon,
+    last,
   }: {
     label: string;
     contactName?: string;
     contactNumber?: string;
     contactRelation?: string;
     icon: any;
+    last?: boolean;
   }) => (
     <TouchableOpacity
-      className="flex-row items-center justify-between py-3 border-b border-gray-100"
+      className={`flex-row items-center justify-between py-3 ${last ? "" : "border-b border-gray-100"}`}
       onPress={() => Linking.openURL(`tel:${contactNumber}`)}
       disabled={!contactNumber}
       activeOpacity={contactNumber ? 0.7 : 1}
@@ -81,13 +85,13 @@ const UserProfile: React.FC<UserProfileProps> = ({ user }) => {
   );
 
   return (
-    <View className="flex-1 bg-white rounded-t-3xl">
+    <View className="flex-1 bg-white">
       <ScrollView
-        className="flex-1 px-5 pt-4"
+        className="flex-1 px-5 pt-2"
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: 24 }}
       >
-        <View className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm">
+        <View className="bg-gray-50 rounded-xl border border-gray-100 p-4">
           <PersonalInfoField icon="person-outline" label="Person Name" value={user?.sevakname} />
           <PersonalInfoField icon="call-outline" label="Mobile Number" value={mobile} color="#0284c7" />
           <PersonalInfoField icon="briefcase-outline" label="Department" value={user?.deptname} />
@@ -108,6 +112,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ user }) => {
             contactRelation={user?.emergencycontactrelation2}
             contactNumber={user?.emrgencycontactno2}
             icon="call-outline"
+            last
           />
         </View>
       </ScrollView>

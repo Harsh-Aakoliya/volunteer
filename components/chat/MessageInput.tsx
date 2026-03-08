@@ -1482,14 +1482,14 @@ export default function MessageInput({
                       onPress={() =>
                         handleScheduleSend(
                           new Date(
-                            Date.now() + 10 * 1000
+                            Date.now() + 60 * 1000
                           ).toISOString()
                         )
                       }
                       className="py-3 border-b border-gray-100"
                     >
                       <Text className="text-base text-gray-900">
-                        Send in 10 seconds (testing)
+                        Send in 1 minute (testing)
                       </Text>
                     </TouchableOpacity>
                     <TouchableOpacity
