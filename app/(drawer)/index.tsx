@@ -26,6 +26,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { DrawerActions } from "@react-navigation/native";
 import NoChatRoomComponenet from "@/components/chat/NoChatRoomComponenet";
 import { useSocket } from "@/contexts/SocketContext";
+import { useApiStore } from "@/stores/apiStore";
 import eventEmitter from "@/utils/eventEmitter";
 
 // ==================== CONSTANTS ====================
@@ -628,6 +629,7 @@ const EmptySearchResults = memo(({ searchQuery }: { searchQuery: string }) => (
 
 export default function ChatRoomsList() {
   const navigation = useNavigation();
+  const apiUrlReady = useApiStore((s) => s.apiUrlReady);
   const {
     isConnected,
     isInitialized,
@@ -782,14 +784,15 @@ export default function ChatRoomsList() {
   }, [isSearchMode]);
 
 
+  // Initialize socket only after API URL is set (avoids connection error on app open)
   useEffect(() => {
-    if (!isInitialized) {
+    if (apiUrlReady && !isInitialized) {
       initialize();
     }
     return () => {
       isMountedRef.current = false;
     };
-  }, []);
+  }, [apiUrlReady, isInitialized, initialize]);
 
   useFocusEffect(
     useCallback(() => {
@@ -813,12 +816,8 @@ export default function ChatRoomsList() {
       // The socket will send data when it connects
       if (isConnected && isInitialized) {
         refreshRoomData();
-      } else if (!isInitialized) {
-        // Initialize socket if not already initialized
-        initialize().then(() => {
-          // After initialization, request room data
-          refreshRoomData();
-        });
+      } else if (apiUrlReady && !isInitialized) {
+        initialize().then(() => refreshRoomData());
       }
 
       // Fallback: Clear loading state after a timeout even if there are no rooms yet.
@@ -840,7 +839,7 @@ export default function ChatRoomsList() {
         clearTimeout(timeoutId);
         eventEmitter.off("openChatRoom", handleNotification);
       };
-    }, [isConnected, isInitialized, loadFromCache, refreshRoomData, initialize, rooms.length, socketRooms.length])
+    }, [apiUrlReady, isConnected, isInitialized, loadFromCache, refreshRoomData, initialize, rooms.length, socketRooms.length])
   );
 
   // ==================== HANDLERS ====================

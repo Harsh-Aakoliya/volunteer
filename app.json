@@ -6,11 +6,6 @@
     "userInterfaceStyle": "automatic",
     "icon": "./assets/images/sevakapplogo.png",
     "newArchEnabled": true,
-    "splash": {
-      "image": "./assets/images/sevakapplogo.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#3b82f6"
-    },
     "web": {
       "bundler": "metro",
       "output": "static",

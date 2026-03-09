@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useRef } from "react";
 import { View, Platform, Alert } from "react-native";
 import * as FileSystem from "expo-file-system";
 import { startActivityAsync } from "expo-intent-launcher";
@@ -23,8 +23,15 @@ export function Updater({
   onDone: () => void;
   forceRunForPending?: boolean;
 }) {
+  const cancelledRef = useRef(false);
+
   useEffect(() => {
-    if (!version && !forceRunForPending) return;
+    if (!version && !forceRunForPending) {
+      onDone();
+      return;
+    }
+
+    cancelledRef.current = false;
 
     const run = async () => {
       if (Platform.OS !== "android") {
@@ -32,11 +39,9 @@ export function Updater({
         return;
       }
 
-      // Check for pending install (download completed while app was killed)
       const pendingPath = await getPendingInstallPath();
       if (pendingPath) {
         try {
-          // Clear auth and chat cache before install so user is redirected to login after update
           await AuthStorage.clear();
           await ChatRoomStorage.clearCache();
           const contentUri = await FileSystem.getContentUriAsync(pendingPath);
@@ -47,7 +52,10 @@ export function Updater({
           await clearPendingInstall();
         } catch (e) {
           console.warn("Pending install failed:", e);
-          Alert.alert("Installation", "Update is ready. Please open the app again to install.");
+          Alert.alert(
+            "Installation",
+            "Update is ready. Please open the app again to install."
+          );
         }
         onDone();
         return;
@@ -61,24 +69,29 @@ export function Updater({
       const apiUrl = getApiUrl();
       const uri = `${apiUrl}/media/${version}.apk`;
 
+      onProgress(0);
+
       try {
         const { usedBackground } = await startApkDownloadTask(
           { url: uri, version },
-          (progress) => onProgress(progress)
+          (progress) => {
+            if (!cancelledRef.current) onProgress(progress);
+          }
         );
+        if (cancelledRef.current) return;
         if (!usedBackground) {
           onDone();
           return;
         }
-        // Background task runs async - poll until it stops
         const poll = setInterval(() => {
+          if (cancelledRef.current) return;
           if (!isBackgroundServiceRunning()) {
             clearInterval(poll);
             onDone();
           }
         }, 2000);
-        return () => clearInterval(poll);
       } catch (error) {
+        if (cancelledRef.current) return;
         console.error("Download failed:", error);
         Alert.alert(
           "Download Failed",
@@ -89,7 +102,10 @@ export function Updater({
     };
 
     run();
-  }, [version]);
+    return () => {
+      cancelledRef.current = true;
+    };
+  }, [version, forceRunForPending]);
 
   return <View />;
 }

@@ -126,7 +126,7 @@ const MessageItem = React.memo(({
   onGestureEnd: (event: any, message: Message) => void;
   onReplyPreviewClick: (id: string | number) => void;
   formatTime: (date: string) => string;
-  handleMediaGridPress:any;
+  handleMediaGridPress: any;
 }) => {
   const longPressRef = useRef(null);
   const panRef = useRef(null);
@@ -151,7 +151,6 @@ const MessageItem = React.memo(({
         } else {
           onSelect(message);
         }
-        return;
       }
     }
   }, [selectedMessagesCount, canSelect, isSelected, message, onSelect, onDeselect]);
@@ -163,65 +162,41 @@ const MessageItem = React.memo(({
     messageStatus = "sending";
   }
 
-  const bubbleBorderRadius = useMemo(() => {
-    const defaultRadius = 18;
-    const pointyRadius = 4;
+  // Exact WhatsApp colors & radiuses
+  const BUBBLE_COLOR_OWN = '#E7FFDB'; 
+  const BUBBLE_COLOR_OTHER = '#FFFFFF';
+  const SELECTION_COLOR = 'rgba(0, 168, 132, 0.25)'; // WhatsApp Green selection
 
+  const bubbleBorderRadius = useMemo(() => {
+    const defaultRadius = 8;
     if (hasTail) {
       if (isOwnMessage) {
-        return {
-          borderTopLeftRadius: defaultRadius,
-          borderTopRightRadius: pointyRadius,
-          borderBottomLeftRadius: defaultRadius,
-          borderBottomRightRadius: defaultRadius,
-        };
+        return { borderRadius: defaultRadius, borderTopRightRadius: 0 };
       } else {
-        return {
-          borderTopLeftRadius: pointyRadius,
-          borderTopRightRadius: defaultRadius,
-          borderBottomLeftRadius: defaultRadius,
-          borderBottomRightRadius: defaultRadius,
-        };
+        return { borderRadius: defaultRadius, borderTopLeftRadius: 0 };
       }
-    } else {
-      return {
-        borderRadius: defaultRadius,
-      };
     }
+    return { borderRadius: defaultRadius };
   }, [hasTail, isOwnMessage]);
 
+  const senderInitial = message.senderName ? message.senderName.charAt(0).toUpperCase() : 'U';
+
   return (
-    <View>
-      {isHighlighted && (
-        <View className="absolute inset-0 bg-black/15 -mx-4" />
-      )}
-
-      {/* Reply indicator - right side */}
+    <Animated.View
+      style={{
+        width: "100%",
+        paddingVertical: hasTail ? 3 : 2,
+        // Full-width overlay for both preview highlight and selection state.
+        backgroundColor: isHighlighted
+          ? "rgba(0,0,0,0.15)"
+          : isSelected
+            ? SELECTION_COLOR
+            : "transparent",
+      }}
+    >
       <Animated.View
-        className="absolute top-0 bottom-0 right-4 justify-center"
-        style={{
-          opacity: messageAnimation.interpolate({
-            inputRange: [-80, -30, 0],
-            outputRange: [1, 0.5, 0],
-            extrapolate: 'clamp',
-          }),
-        }}
-      >
-        <View className="bg-[#0088CC] rounded-full p-2">
-          <Ionicons name="arrow-undo" size={20} color="white" />
-        </View>
-      </Animated.View>
-
-      {/* Reply indicator - left side */}
-      <Animated.View
-        className="absolute top-0 bottom-0 left-4 justify-center"
-        style={{
-          opacity: messageAnimation.interpolate({
-            inputRange: [0, 30, 80],
-            outputRange: [0, 0.5, 1],
-            extrapolate: 'clamp',
-          }),
-        }}
+        className="absolute top-0 bottom-0 right-4 justify-center z-0"
+        style={{ opacity: messageAnimation.interpolate({ inputRange: [-80, -30, 0], outputRange: [1, 0.5, 0], extrapolate: 'clamp' }) }}
       >
         <View className="bg-[#0088CC] rounded-full p-2">
           <Ionicons name="arrow-undo" size={20} color="white" />
@@ -247,160 +222,134 @@ const MessageItem = React.memo(({
                 onBegan={() => onGestureBegin(message.id)}
                 onGestureEvent={(event) => onGestureUpdate(event, message.id)}
                 onEnded={(event) => onGestureEnd(event, message)}
-                onCancelled={(event) => onGestureEnd(event, message)}
-                onFailed={(event) => onGestureEnd(event, message)}
                 enabled={!isSelected && canReply}
                 activeOffsetX={[-20, 20]}
                 failOffsetY={[-30, 30]}
-                simultaneousHandlers={[longPressRef, tapRef]}
               >
                 <Animated.View style={{ transform: [{ translateX: messageAnimation }] }}>
-                  <View>
-                    {isSelected && <View className="absolute inset-0 bg-[#0088CC]/15 -mx-4" />}
+                  
+                  {/* Message Row Wrapper */}
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      justifyContent: isOwnMessage ? "flex-end" : "flex-start",
+                      paddingHorizontal: 6,
+                      alignItems: "flex-start",
+                      width: "100%",
+                    }}
+                  >
+                    
+                    {/* AVATAR LOGIC (Left Side for Incoming Messages) */}
+                    {!isOwnMessage && (
+                      <View style={{ width: 32, marginRight: 6, alignItems: 'center' }}>
+                        {hasTail ? (
+                          <View style={{
+                            width: 30, height: 30, borderRadius: 15, 
+                            backgroundColor: '#A6BCE1', // Or use dynamic color
+                            justifyContent: 'center', alignItems: 'center',
+                            marginTop: 0
+                          }}>
+                            <Text style={{ color: 'white', fontWeight: 'bold', fontSize: 14 }}>{senderInitial}</Text>
+                          </View>
+                        ) : null}
+                      </View>
+                    )}
 
-                    <Animated.View
-                      className={`${message.messageType === 'media' ? 'max-w-[90%]' : 'max-w-[75%]'} px-3 pt-2 pb-1.5 mx-2 shadow-sm ${
-                        isOwnMessage 
-                          ? 'self-end bg-[#DCF8C6] ml-[60px]' 
-                          : 'self-start bg-white mr-[60px]'
-                      }`}
+                    <View
                       style={[
                         {
-                          ...bubbleBorderRadius,
-                          marginTop: hasTail ? 8 : 2, 
-                          marginBottom: 2, 
-                        }
+                          backgroundColor: isOwnMessage ? BUBBLE_COLOR_OWN : BUBBLE_COLOR_OTHER,
+                          maxWidth: isOwnMessage ? '85%' : '78%',
+                          paddingHorizontal: 8,
+                          paddingTop: 6,
+                          paddingBottom: message.messageType === "text" ? 6 : 8,
+                          shadowColor: '#000',
+                          shadowOffset: { width: 0, height: 1 },
+                          shadowOpacity: 0.15,
+                          shadowRadius: 1,
+                          elevation: 1,
+                        },
+                        bubbleBorderRadius
                       ]}
                     >
-                      {/* Reply Preview */}
-                      {message.replyMessageId && (
-                        <TouchableOpacity
-                          activeOpacity={0.7}
-                          onPress={() => onReplyPreviewClick(message.replyMessageId!)}
-                        >
-                          <View
-                            className={`py-1.5 px-2.5 mb-1.5 rounded-lg border-l-[3px] ${
-                              isOwnMessage 
-                                ? 'bg-black/5 border-l-[#4CAF50]' 
-                                : 'bg-black/5 border-l-[#0088CC]'
-                            }`}
-                          >
-                            <Text className="text-xs font-semibold text-[#0088CC] mb-0.5">
-                              {message.replySenderName}
-                            </Text>
-                            <Text
-                              className="text-[13px] text-[#666]"
-                              numberOfLines={3}
-                              ellipsizeMode="tail"
-                            >
-                              {getReplyPreviewText({
-                                messageType: message.replyMessageType,
-                                messageText: message.replyMessageText,
-                              } as Message)}
-                            </Text>
-                          </View>
-                        </TouchableOpacity>
+                      {/* --- SVG TAILS --- */}
+                      {hasTail && isOwnMessage && (
+                        <Svg width={8} height={12} viewBox="0 0 8 12" style={{ position: 'absolute', top: 0, right: -7 }}>
+                          <Path d="M0 0 L8 0 L0 12 Z" fill={BUBBLE_COLOR_OWN} />
+                        </Svg>
+                      )}
+                      {hasTail && !isOwnMessage && (
+                        <Svg width={8} height={12} viewBox="0 0 8 12" style={{ position: 'absolute', top: 0, left: -7 }}>
+                          <Path d="M8 0 L0 0 L8 12 Z" fill={BUBBLE_COLOR_OTHER} />
+                        </Svg>
                       )}
 
-                      {/* Sender Name */}
+                      {/* 1. SENDER NAME */}
                       {showSenderName && (
-                        <Text className="text-[13px] font-semibold text-[#0088CC] mb-1">
+                        <Text style={{ fontSize: 13, fontWeight: 'bold', color: '#EA4335', marginBottom: 2 }}>
                           {message.senderName || "Unknown"}
                         </Text>
                       )}
 
-                      {/* TEXT MESSAGE - Now with Read More */}
+                      {/* 2. REPLY PREVIEW */}
+                      {message.replyMessageId && (
+                        <TouchableOpacity
+                          activeOpacity={0.7}
+                          onPress={() => onReplyPreviewClick(message.replyMessageId!)}
+                          style={{
+                            backgroundColor: 'rgba(0,0,0,0.05)',
+                            borderLeftWidth: 4,
+                            borderLeftColor: isOwnMessage ? '#128C7E' : '#0088CC',
+                            borderRadius: 4,
+                            padding: 6,
+                            marginBottom: 4,
+                            marginTop: showSenderName ? 2 : 0
+                          }}
+                        >
+                          <Text style={{ fontSize: 13, fontWeight: 'bold', color: isOwnMessage ? '#128C7E' : '#0088CC', marginBottom: 2 }}>
+                            {message.replySenderName}
+                          </Text>
+                          <Text style={{ fontSize: 13, color: '#667781' }} numberOfLines={3} ellipsizeMode="tail">
+                            {getReplyPreviewText({
+                              messageType: message.replyMessageType,
+                              messageText: message.replyMessageText,
+                            } as Message)}
+                          </Text>
+                        </TouchableOpacity>
+                      )}
+
+                      {/* 3. TEXT MESSAGE */}
                       {message.messageType === "text" && (
                         <ExpandableTextMessage 
                           content={message.messageText} 
                           isOwnMessage={isOwnMessage}
-                          maxLines={10}
+                          timeString={formatTime(message.createdAt || "")}
+                          status={messageStatus}
+                          isEdited={message.isEdited}
                         />
                       )}
 
-                      {/* MEDIA MESSAGE */}
-                      {message.messageType === "media" && (
-                        <View>
-                          <MediaGrid 
-                            messageId={message.id}
-                            onMediaPress={handleMediaGridPress}
-                            mediaFilesId={message.mediaFilesId || 0}
-                            isOwnMessage
-                          />
-                          {message.messageText && message.messageText.trim() !== "" && (
-                            <View className="mt-1">
-                              <ExpandableTextMessage
-                                content={message.messageText}
-                                isOwnMessage={isOwnMessage}
-                                maxLines={10}
-                              />
-                            </View>
-                          )}
-                        </View>
+                      {/* OTHER MESSAGE TYPES (Media, Poll, etc.) */}
+                      {message.messageType !== "text" && (
+                         <View>
+                           {message.messageType === "media" && (
+                              <View>
+                                <MediaGrid messageId={message.id} onMediaPress={handleMediaGridPress} mediaFilesId={message.mediaFilesId || 0} isOwnMessage={isOwnMessage} />
+                                {message.messageText && message.messageText.trim() !== "" && (
+                                  <View className="mt-1">
+                                    <Text style={{ fontSize: 16, color: '#000' }}>{message.messageText}</Text>
+                                  </View>
+                                )}
+                              </View>
+                           )}
+                           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', marginTop: 4 }}>
+                             {message.isEdited && <Text style={{ fontSize: 11, color: '#8E8E93', fontStyle: 'italic', marginRight: 4 }}>edited</Text>}
+                             <Text style={{ fontSize: 11, color: '#8E8E93' }}>{formatTime(message.createdAt || "")}</Text>
+                             {isOwnMessage && <View style={{ marginLeft: 4 }}><MessageStatus status={messageStatus} /></View>}
+                           </View>
+                         </View>
                       )}
-
-                      {/* POLL MESSAGE */}
-                      {message.messageType === "poll" && (
-                        <View>
-                          {typeof message.pollId === "number" && (
-                            <PollMessage
-                              pollId={message.pollId}
-                              currentUserId={currentUser?.userId || ""}
-                              onViewResults={(pollId) => {
-                                router.push({
-                                  pathname: "/chat/poll-votes",
-                                  params: {
-                                    pollId: String(pollId),
-                                    totalMembers: String(totalMembers),
-                                    currentUserId: String(currentUser?.userId || ""),
-                                  },
-                                });
-                              }}
-                            />
-                          )}
-                          {message.messageText && message.messageText.trim() !== "" && (
-                            <View className="mt-1">
-                              <ExpandableTextMessage
-                                content={message.messageText}
-                                isOwnMessage={isOwnMessage}
-                                maxLines={10}
-                              />
-                            </View>
-                          )}
-                        </View>
-                      )}
-
-                      {/* TABLE MESSAGE */}
-                      {message.messageType === "table" && (
-                        <Text className="text-base leading-[22px] text-black">
-                          shared table: {message.tableId}
-                        </Text>
-                      )}
-
-                      {/* ANNOUNCEMENT MESSAGE */}
-                      {message.messageType === "announcement" && (
-                        <ExpandableTextMessage
-                          content={message.messageText || "shared an announcement"}
-                          isOwnMessage={isOwnMessage}
-                          maxLines={10}
-                        />
-                      )}
-
-                      {/* Timestamp and Status */}
-                      <View className="flex-row items-center justify-end mt-1 gap-1">
-                        {message.isEdited && (
-                          <Text className="text-[11px] text-[#8E8E93] italic">edited</Text>
-                        )}
-                        <Text className="text-[11px] text-[#8E8E93]">
-                          {formatTime(message.createdAt || "")}
-                        </Text>
-                        {isOwnMessage && (
-                          <View className="ml-0.5">
-                            <MessageStatus status={messageStatus} />
-                          </View>
-                        )}
-                      </View>
-                    </Animated.View>
+                    </View>
                   </View>
                 </Animated.View>
               </PanGestureHandler>
@@ -408,7 +357,7 @@ const MessageItem = React.memo(({
           </TapGestureHandler>
         </Animated.View>
       </LongPressGestureHandler>
-    </View>
+    </Animated.View>
   );
 }, (prevProps, nextProps) => {
   return (
@@ -1860,7 +1809,7 @@ const TelegramHeader = React.memo(({
             keyExtractor={keyExtractor}
             renderItem={renderItem}
             inverted={true}
-            contentContainerStyle={{ paddingVertical: 10, paddingHorizontal: 6 }}
+            contentContainerStyle={{ paddingVertical: 10 }}
             onScroll={handleScroll}
             scrollEventThrottle={16}
             onViewableItemsChanged={onViewableItemsChanged}

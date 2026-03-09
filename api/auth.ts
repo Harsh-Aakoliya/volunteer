@@ -1,7 +1,6 @@
 // api/auth.ts
 import axios from "axios";
 import { Alert, Platform } from "react-native";
-import { API_URL, setApiUrl } from "../constants/api";
 import { AuthStorage } from "@/utils/authStorage";
 import { router } from "expo-router";
 import * as Notifications from "expo-notifications";
@@ -144,11 +143,6 @@ export const login = async (
 ): Promise<LoginResponse> => {
   console.log("login", mobileNumber, password);
   try {
-    if (Platform.OS === "web") {
-      setApiUrl("http://localhost:8080" as any);
-      console.log("API_URL", API_URL);
-    }
-
     const response = await publicApi.post(apiUrl("/api/auth/login"), {
       mobileNumber,
       password,

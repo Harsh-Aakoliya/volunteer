@@ -27,6 +27,7 @@ import {
   checkAuthStatus,
 } from "@/api/auth";
 import { updateDevIP } from "@/constants/api";
+import { useApiStore } from "@/stores/apiStore";
 import { useSimCards } from "@/hooks/useSimCards";
 import Constants from "expo-constants";
 
@@ -335,10 +336,13 @@ export default function LoginForm() {
     }
   }, []);
 
+  const apiUrlReady = useApiStore((s) => s.apiUrlReady);
+
   useEffect(() => {
     if (!mobileNumber) return;
+    if (!apiUrlReady) return;
     verifyMobileNumber(mobileNumber);
-  }, [mobileNumber, verifyMobileNumber]);
+  }, [mobileNumber, verifyMobileNumber, apiUrlReady]);
 
   // ==================== NAVIGATION HANDLERS ====================
 
@@ -502,27 +506,6 @@ export default function LoginForm() {
     } finally {
       setIsSettingPassword(false);
     }
-  };
-
-  // ==================== DEV MODE - BOTTOM RIGHT TAP ====================
-
-  const handleBottomRightPress = () => {
-    setClickCount((prevCount) => {
-      const newCount = prevCount + 1;
-      console.log("Bottom-right tap count:", newCount);
-
-      if (newCount >= 7) {
-        console.log("🔧 7 taps detected - opening IP modal");
-        setShowIPModal(true);
-        return 0;
-      }
-
-      setTimeout(() => {
-        setClickCount(0);
-      }, 2000);
-
-      return newCount;
-    });
   };
 
   const handleLongPressButton = () => {
@@ -997,18 +980,6 @@ export default function LoginForm() {
               {renderCurrentStep()}
             </Animated.View>
           </View>
-
-          {/* Bottom-right corner tap area for dev mode */}
-          <Pressable
-            onPress={handleBottomRightPress}
-            style={{
-              position: "absolute",
-              bottom: 20,
-              right: 20,
-              width: 80,
-              height: 80,
-            }}
-          />
         </Pressable>
       </ScrollView>
 
