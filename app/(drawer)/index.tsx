@@ -203,12 +203,13 @@ const RoomItem = memo(({ room, currentUserId, onPress, onLongPress }: RoomItemPr
   const getReplyPreviewTextForLastMessage = (reply: { messageType: string; messageText: string }): string => {
     switch (reply.messageType) {
       case 'media':
-        if (reply.messageText && reply.messageText.trim() !== '') {
-          return stripHtmlTags(reply.messageText);
-        }
-        return '📷 Media';
+        return reply.messageText && reply.messageText.trim() !== ''
+          ? stripHtmlTags(reply.messageText)
+          : '📷 Media';
       case 'poll':
-        return '📊 Poll';
+        return reply.messageText && reply.messageText.trim() !== ''
+          ? stripHtmlTags(reply.messageText)
+          : '📊 Poll';
       case 'table':
         return '📋 Table';
       case 'announcement':

@@ -3,6 +3,75 @@ import pool from "../config/database.js";
 import fs from "fs";
 import path from "path";
 
+// -------------------- PREVIEW HELPERS (WhatsApp-style) --------------------
+const pluralize = (n, singular, plural) => (n === 1 ? singular : plural);
+
+async function getMediaDriveUrlObjectById(mediaFilesId) {
+    if (!mediaFilesId) return [];
+    const res = await pool.query('SELECT "driveUrlObject" FROM media WHERE "id" = $1', [mediaFilesId]);
+    if (res.rows.length === 0) return [];
+    let obj = res.rows[0].driveUrlObject || [];
+    if (typeof obj === "string") {
+        try { obj = JSON.parse(obj); } catch { obj = []; }
+    }
+    return Array.isArray(obj) ? obj : [];
+}
+
+function computeMediaCounts(driveUrlObject) {
+    let photos = 0;
+    let videos = 0;
+    let audios = 0;
+    for (const item of driveUrlObject || []) {
+        const mime = String(item?.mimeType || "").toLowerCase();
+        if (mime.startsWith("image/")) photos++;
+        else if (mime.startsWith("video/")) videos++;
+        else if (mime.startsWith("audio/")) audios++;
+    }
+    return { photos, videos, audios };
+}
+
+function formatMediaPreviewText({ photos, videos, audios }) {
+    if (audios > 0 && photos === 0 && videos === 0) {
+        return audios === 1 ? "🎤 Voice message" : `🎤 ${audios} voice messages`;
+    }
+    const totalVisual = photos + videos;
+    if (totalVisual === 1) {
+        if (photos === 1) return "📷 Photo";
+        if (videos === 1) return "🎥 Video";
+    }
+    const parts = [];
+    if (photos > 0) parts.push(`📷 ${photos} ${pluralize(photos, "photo", "photos")}`);
+    if (videos > 0) parts.push(`🎥 ${videos} ${pluralize(videos, "video", "videos")}`);
+    if (audios > 0) parts.push(audios === 1 ? "🎤 Voice message" : `🎤 ${audios} voice messages`);
+    return parts.length ? parts.join(", ") : "📷 Media";
+}
+
+async function getPollTitle(pollId) {
+    if (!pollId) return null;
+    try {
+        const res = await pool.query('SELECT "question" FROM poll WHERE "id" = $1', [pollId]);
+        if (res.rows.length === 0) return null;
+        return res.rows[0].question ? String(res.rows[0].question) : null;
+    } catch {
+        return null;
+    }
+}
+
+async function computePreviewTextForMessageRow(row) {
+    const type = row?.messageType || "text";
+    if (type === "media" && row?.mediaFilesId) {
+        const drive = await getMediaDriveUrlObjectById(row.mediaFilesId);
+        return formatMediaPreviewText(computeMediaCounts(drive));
+    }
+    if (type === "poll" && row?.pollId) {
+        const title = await getPollTitle(row.pollId);
+        return title ? `📊 ${title}` : "📊 Poll";
+    }
+    if (type === "table") return "📋 Table";
+    if (type === "announcement") return "📢 Announcement";
+    return null;
+}
+
 const chatController = {
     async getChatUsers(req, res) {
         try {
@@ -82,6 +151,15 @@ const chatController = {
                         pollId: lastMsgResult.rows[0].pollId,
                         tableId: lastMsgResult.rows[0].tableId,
                     } : null;
+
+                    // Add WhatsApp-style previewText for non-text messages (used by room list)
+                    if (lastMessage && lastMessage.messageType !== 'text') {
+                        lastMessage.previewText = await computePreviewTextForMessageRow({
+                            messageType: lastMessage.messageType,
+                            mediaFilesId: lastMessage.mediaFilesId,
+                            pollId: lastMessage.pollId,
+                        });
+                    }
 
                     return {
                         ...room,
@@ -309,6 +387,85 @@ const chatController = {
                  ORDER BY m."createdAt" DESC`,
                 [roomIdInt]
             );
+
+            // Enrich messages with WhatsApp-style previewText and improved reply preview text.
+            // Batch fetch media + poll data to avoid per-message queries.
+            const rows = messagesResult.rows;
+            const mediaIds = Array.from(new Set(rows.map(r => r.mediaFilesId).filter(Boolean)));
+            const pollIds = Array.from(new Set(rows.map(r => r.pollId).filter(Boolean)));
+            const replyMediaIds = Array.from(new Set(rows.map(r => r.replyMessageType === 'media' ? r.replyMessageId : null).filter(Boolean)));
+
+            const mediaMap = new Map();
+            if (mediaIds.length > 0) {
+                const mres = await pool.query('SELECT "id", "driveUrlObject" FROM media WHERE "id" = ANY($1)', [mediaIds]);
+                for (const m of mres.rows) {
+                    let obj = m.driveUrlObject || [];
+                    if (typeof obj === "string") { try { obj = JSON.parse(obj); } catch { obj = []; } }
+                    mediaMap.set(Number(m.id), Array.isArray(obj) ? obj : []);
+                }
+            }
+
+            const pollMap = new Map();
+            if (pollIds.length > 0) {
+                const pres = await pool.query('SELECT "id", "question" FROM poll WHERE "id" = ANY($1)', [pollIds]);
+                for (const p of pres.rows) pollMap.set(Number(p.id), p.question ? String(p.question) : "");
+            }
+
+            // For replies we need the replied message's mediaFilesId/pollId. Fetch in one go.
+            const replyIds = Array.from(new Set(rows.map(r => r.replyMessageId).filter(Boolean)));
+            const replyMsgMap = new Map();
+            if (replyIds.length > 0) {
+                const rres = await pool.query(
+                    'SELECT "id", "messageType", "messageText", "mediaFilesId", "pollId" FROM chatmessages WHERE "id" = ANY($1)',
+                    [replyIds]
+                );
+                for (const rm of rres.rows) replyMsgMap.set(Number(rm.id), rm);
+                // Fetch media rows for reply messages too
+                const replyMediaFileIds = Array.from(new Set(rres.rows.map(x => x.mediaFilesId).filter(Boolean)));
+                if (replyMediaFileIds.length > 0) {
+                    const rmres = await pool.query('SELECT "id", "driveUrlObject" FROM media WHERE "id" = ANY($1)', [replyMediaFileIds]);
+                    for (const m of rmres.rows) {
+                        let obj = m.driveUrlObject || [];
+                        if (typeof obj === "string") { try { obj = JSON.parse(obj); } catch { obj = []; } }
+                        mediaMap.set(Number(m.id), Array.isArray(obj) ? obj : []);
+                    }
+                }
+                const replyPollIds = Array.from(new Set(rres.rows.map(x => x.pollId).filter(Boolean)));
+                if (replyPollIds.length > 0) {
+                    const rpres = await pool.query('SELECT "id", "question" FROM poll WHERE "id" = ANY($1)', [replyPollIds]);
+                    for (const p of rpres.rows) pollMap.set(Number(p.id), p.question ? String(p.question) : "");
+                }
+            }
+
+            for (const m of rows) {
+                if (m.messageType === 'media' && m.mediaFilesId) {
+                    const drive = mediaMap.get(Number(m.mediaFilesId)) || [];
+                    m.previewText = formatMediaPreviewText(computeMediaCounts(drive));
+                } else if (m.messageType === 'poll' && m.pollId) {
+                    const title = pollMap.get(Number(m.pollId)) || '';
+                    m.previewText = title ? `📊 ${title}` : '📊 Poll';
+                    // Ensure poll messages have a title in messageText for clients that use messageText
+                    if (!m.messageText || String(m.messageText).trim() === '') {
+                        m.messageText = title || '';
+                    }
+                }
+
+                // Reply preview: compute from replied message row, not from rm.messageText
+                if (m.replyMessageId) {
+                    const rm = replyMsgMap.get(Number(m.replyMessageId));
+                    if (rm) {
+                        if (rm.messageType === 'media' && rm.mediaFilesId) {
+                            const drive = mediaMap.get(Number(rm.mediaFilesId)) || [];
+                            m.replyMessageText = formatMediaPreviewText(computeMediaCounts(drive));
+                            m.replyMessageType = 'media';
+                        } else if (rm.messageType === 'poll' && rm.pollId) {
+                            const title = pollMap.get(Number(rm.pollId)) || '';
+                            m.replyMessageText = title ? `📊 ${title}` : '📊 Poll';
+                            m.replyMessageType = 'poll';
+                        }
+                    }
+                }
+            }
             // console.log("messages result in getChatRoomDetails", messagesResult.rows);
 
             // Parse mediaFiles for each message if it exists
@@ -589,6 +746,12 @@ const chatController = {
             if (!replyMessageId) replyMessageId = null;
             if (!scheduledAt) scheduledAt = null;
             if (!isForward) isForward = false;
+
+            // Ensure poll messages persist poll title in messageText (needed for previews)
+            if (messageType === "poll" && (!messageText || String(messageText).trim() === "") && pollId) {
+                const title = await getPollTitle(pollId);
+                if (title) messageText = title;
+            }
 
             const senderId = Number(req.user.userId) || 0;
             console.log(typeof (req.user.userId));

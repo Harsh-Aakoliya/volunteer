@@ -90,6 +90,8 @@ export interface Message {
   senderId: string;
   senderName: string;
   messageText: string;
+  /** WhatsApp-style preview text for room list/reply previews (e.g. "📷 Photo", "📊 Poll title"). */
+  previewText?: string;
   createdAt: string;  
   messageType:string;
   mediaFilesId?: number; // Optional array of media files

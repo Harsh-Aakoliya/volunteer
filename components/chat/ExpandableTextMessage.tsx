@@ -10,17 +10,12 @@ import {
   StyleSheet
 } from 'react-native';
 import RenderHtml from 'react-native-render-html';
-import { LinearGradient } from 'expo-linear-gradient';
 import MessageStatus from "@/components/chat/MessageStatus";
 
 // Enable LayoutAnimation for Android
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
-
-// WhatsApp adds an invisible spacer at the end of text to ensure the absolute positioned timestamp
-// doesn't overlap the text. If the text hits the edge, the spacer forces a new line just for the time.
-const WHATSAPP_SPACER = ' \u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0'; 
 
 interface ExpandableTextMessageProps {
   content: string;
@@ -45,15 +40,14 @@ const ExpandableTextMessage = React.memo(({
   const measureRef = useRef(false);
   const { width } = useWindowDimensions();
   
-  const LINE_HEIGHT = 22;
+  const LINE_HEIGHT = 21;
   const MAX_COLLAPSED_HEIGHT = maxLines * LINE_HEIGHT;
   
-  const bubbleColor = isOwnMessage ? '#E7FFDB' : '#FFFFFF';
-  const readMoreColor = '#0088CC';
-  
-  const gradientColors = isOwnMessage 
-    ? ['rgba(231, 255, 219, 0)', 'rgba(231, 255, 219, 0.8)', 'rgba(231, 255, 219, 1)'] as const
-    : ['rgba(255, 255, 255, 0)', 'rgba(255, 255, 255, 0.8)', 'rgba(255, 255, 255, 1)'] as const;
+  // DYNAMIC SPACER: 
+  // Edited messages have a wider timestamp ("edited 10:00 PM ✓✓"), so they need more non-breaking spaces.
+  // The zero-width space (\u200B) ensures the block of spaces can wrap to a new line if needed.
+  const spacerSpaces = isEdited ? 32 : 18; 
+  const spacerString = '\u200B' + '\u00A0'.repeat(spacerSpaces);
 
   const handleFullLayout = useCallback((event: any) => {
     if (!measureRef.current) {
@@ -75,7 +69,6 @@ const ExpandableTextMessage = React.memo(({
   const cleanContent = useMemo(() => content ? content.trim() : "", [content]);
   const isHTML = /<[a-z][\s\S]*>/i.test(cleanContent);
 
-  // The timestamp component formatted identically to WhatsApp
   const TimestampOverlay = () => (
     <View style={styles.timestampContainer}>
       {isEdited && <Text style={styles.editedText}>edited</Text>}
@@ -91,30 +84,34 @@ const ExpandableTextMessage = React.memo(({
   return (
     <View style={{ position: 'relative' }}>
       
+      {/* Hidden Measure View */}
       {fullHeight === null && (
         <View style={styles.measureView} onLayout={handleFullLayout} pointerEvents="none">
           <Text style={styles.textContent}>{cleanContent}</Text>
         </View>
       )}
       
+      {/* Content Container */}
       <View 
         style={{ 
           maxHeight: showReadMore && !isExpanded ? MAX_COLLAPSED_HEIGHT : undefined,
           overflow: 'hidden',
-          minWidth: 80 // Ensures short messages are wide enough to hold the timestamp
+          minWidth: 80 
         }}
       >
         {!isHTML ? (
           <Text style={styles.textContent}>
             {cleanContent}
-            {/* The magic spacer that pushes the timestamp out of the way */}
-            <Text style={styles.spacerText}>{WHATSAPP_SPACER}</Text>
+            {/* If NOT showing the read more button, append spacer directly to the text */}
+            {!showReadMore && (
+              <Text style={styles.spacerText}>{spacerString}</Text>
+            )}
           </Text>
         ) : (
           <View>
              <RenderHtml
-              contentWidth={width * 0.75}
-              source={{ html: cleanContent + `<span style="opacity:0;">${WHATSAPP_SPACER}</span>` }}
+              contentWidth={width * 0.70}
+              source={{ html: cleanContent + (!showReadMore ? `<span style="opacity:0; font-size:15.5px;">${spacerString}</span>` : '') }}
               baseStyle={styles.textContent}
               tagsStyles={{
                 body: { margin: 0, padding: 0 },
@@ -126,24 +123,25 @@ const ExpandableTextMessage = React.memo(({
         )}
       </View>
 
-      {/* Absolute Timestamp positioned at the bottom right */}
-      <TimestampOverlay />
-      
-      {/* Read More Handling */}
-      {showReadMore && !isExpanded && (
-        <View style={styles.readMoreContainer}>
-          <LinearGradient colors={gradientColors} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.gradientFade} />
-          <TouchableOpacity onPress={toggleExpand} style={[styles.readMoreButton, { backgroundColor: bubbleColor }]}>
-            <Text style={[styles.readMoreText, { color: readMoreColor }]}>Read more</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-      
-      {showReadMore && isExpanded && (
-        <TouchableOpacity onPress={toggleExpand} style={styles.readLessButton}>
-          <Text style={[styles.readLessText, { color: readMoreColor }]}>Read less</Text>
+      {/* Read More / Read Less anchored strictly to the Bottom-Left */}
+      {showReadMore && (
+        <TouchableOpacity 
+          onPress={toggleExpand} 
+          style={styles.readMoreButton}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.readMoreText}>
+            {isExpanded ? 'Read less' : 'Read more'}
+            {/* ALWAYS append the spacer to the button text. This forces the bubble to widen 
+                enough for vertical text and prevents the timestamp from overlapping the button. */}
+            <Text style={styles.spacerText}>{spacerString}</Text>
+          </Text>
         </TouchableOpacity>
       )}
+
+      {/* Timestamp stays anchored to the bottom right corner exactly */}
+      <TimestampOverlay />
+      
     </View>
   );
 });
@@ -155,7 +153,7 @@ const styles = StyleSheet.create({
     zIndex: -1,
   },
   textContent: {
-    fontSize: 15.5, // Exactly matching WhatsApp readability scale
+    fontSize: 15.5, 
     lineHeight: 21,
     color: '#111B21',
     fontFamily: Platform.OS === 'ios' ? 'System' : 'sans-serif',
@@ -167,43 +165,38 @@ const styles = StyleSheet.create({
   },
   timestampContainer: {
     position: 'absolute',
-    bottom: -2,    // Snug against the bottom
-    right: 0,      // Snug against the right
+    bottom: 0,     // Perfectly aligns with the bottom baseline
+    right: 0,      
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'transparent', // No background needed due to spacer text pushing content away
   },
   timeText: {
     fontSize: 11,
     color: '#667781',
     marginLeft: 4,
-    marginBottom: 1, // Slight baseline adjustment
+    marginBottom: 1, 
   },
   editedText: {
     fontSize: 11,
     color: '#667781',
     fontStyle: 'italic',
     marginRight: 2,
+    marginBottom: 1,
   },
   statusIcon: {
     marginLeft: 3,
     marginBottom: 1,
-    marginTop: 1 // alignment tweak
   },
-  // Read More Styles
-  readMoreContainer: {
-    position: 'absolute',
-    bottom: 20, // Sit just above the timestamp line
-    right: 0,
-    flexDirection: 'row',
-    alignItems: 'center',
-    height: 24,
+  readMoreButton: { 
+    alignSelf: 'flex-start', // Forces it immediately to the left
+    marginTop: 2,
   },
-  gradientFade: { width: 60, height: '100%' },
-  readMoreButton: { paddingLeft: 4, paddingRight: 2, height: '100%', justifyContent: 'center' },
-  readMoreText: { fontSize: 15, fontWeight: '600' },
-  readLessButton: { alignSelf: 'flex-start', marginTop: 10, paddingBottom: 4 },
-  readLessText: { fontSize: 15, fontWeight: '600' },
+  readMoreText: { 
+    fontSize: 15.5, 
+    lineHeight: 21,
+    fontWeight: '600',
+    color: '#0088CC', 
+  },
 });
 
 export default ExpandableTextMessage;

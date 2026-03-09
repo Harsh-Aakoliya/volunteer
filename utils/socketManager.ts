@@ -16,6 +16,7 @@ export interface LastMessage {
   id: number;
   messageText: string;
   messageType: string;
+  previewText?: string;
   createdAt: string;
   roomId: string;
   sender: {
@@ -34,6 +35,7 @@ export interface ChatMessage {
   senderName: string;
   messageText: string;
   messageType: string;
+  previewText?: string;
   createdAt: string;
   mediaFilesId?: number;
   pollId?: number;
@@ -82,6 +84,7 @@ export interface RoomData {
     id: number;
     text: string;
     messageType: string;
+    previewText?: string;
     senderName: string;
     senderId: string;
     timestamp: string;
@@ -358,6 +361,7 @@ class SocketManager {
         senderName: data.sender?.userName || data.senderName,
         messageText: data.messageText,
         messageType: data.messageType || "text",
+        previewText: data.previewText,
         createdAt: data.createdAt,
         mediaFilesId: data.mediaFilesId,
         pollId: data.pollId,

@@ -243,15 +243,11 @@ export function SocketProvider({ children }: SocketProviderProps) {
             // Convert lastMessage from old format to new format
             let newLastMessage = r.lastMessage;
             if (data.lastMessage) {
-              let displayText = data.lastMessage.messageText;
-              if (data.lastMessage.messageType !== 'text') {
-                const typeMap: Record<string, string> = {
-                  'media': 'shared media',
-                  'poll': 'shared poll',
-                  'table': 'shared table',
-                  'announcement': 'shared announcement'
-                };
-                displayText = typeMap[data.lastMessage.messageType] || data.lastMessage.messageText;
+              let displayText =
+                (data.lastMessage as any).previewText ||
+                data.lastMessage.messageText;
+              if (data.lastMessage.messageType !== 'text' && !displayText) {
+                displayText = '📷 Media';
               }
               
               newLastMessage = {
@@ -318,13 +314,10 @@ export function SocketProvider({ children }: SocketProviderProps) {
       // Determine display text based on message type
       let displayText = message.messageText;
       if (message.messageType !== 'text') {
-        const typeMap: Record<string, string> = {
-          'media': 'shared media',
-          'poll': 'shared poll',
-          'table': 'shared table',
-          'announcement': 'shared announcement'
-        };
-        displayText = typeMap[message.messageType] || message.messageText;
+        displayText = (message as any).previewText || displayText;
+        if (!displayText) {
+          displayText = message.messageType === 'poll' ? '📊 Poll' : '📷 Media';
+        }
       }
 
       setState((prev) : any=> {

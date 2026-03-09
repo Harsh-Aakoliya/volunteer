@@ -39,7 +39,7 @@ const { DEV_IP, INTERNAL_IP, EXTERNAL_IP } = Constants?.expoConfig?.extra as {
 
 // ==================== DEBUG FLAG ====================
 // Set to true during development to allow manual mobile entry when SIM fetch fails
-const IS_DEBUG = __DEV__ ?? false;
+const IS_DEBUG = __DEV__ ?? true;
 
 interface SimCard {
   phoneNumber: string;

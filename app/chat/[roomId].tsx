@@ -57,12 +57,12 @@ import { getScheduledMessages } from "@/api/chat";
 import { logout } from '@/api/auth';
 import { useSocket, useChatRoomSubscription } from '@/contexts/SocketContext';
 import ExpandableTextMessage from "@/components/chat/ExpandableTextMessage";
-import { 
-  ChatMessage, 
-  MessageEditedEvent, 
-  MessagesDeletedEvent, 
+import {
+  ChatMessage,
+  MessageEditedEvent,
+  MessagesDeletedEvent,
   OnlineUsersUpdate,
-  MemberInfo 
+  MemberInfo
 } from '@/utils/socketManager';
 import socketManager from '@/utils/socketManager';
 import PollMessage from '@/components/chat/PollMessage';
@@ -162,10 +162,9 @@ const MessageItem = React.memo(({
     messageStatus = "sending";
   }
 
-  // Exact WhatsApp colors & radiuses
-  const BUBBLE_COLOR_OWN = '#E7FFDB'; 
+  const BUBBLE_COLOR_OWN = '#E7FFDB';
   const BUBBLE_COLOR_OTHER = '#FFFFFF';
-  const SELECTION_COLOR = 'rgba(0, 168, 132, 0.25)'; // WhatsApp Green selection
+  const SELECTION_COLOR = 'rgba(0, 168, 132, 0.25)'; 
 
   const bubbleBorderRadius = useMemo(() => {
     const defaultRadius = 8;
@@ -186,7 +185,6 @@ const MessageItem = React.memo(({
       style={{
         width: "100%",
         paddingVertical: hasTail ? 3 : 2,
-        // Full-width overlay for both preview highlight and selection state.
         backgroundColor: isHighlighted
           ? "rgba(0,0,0,0.15)"
           : isSelected
@@ -227,8 +225,6 @@ const MessageItem = React.memo(({
                 failOffsetY={[-30, 30]}
               >
                 <Animated.View style={{ transform: [{ translateX: messageAnimation }] }}>
-                  
-                  {/* Message Row Wrapper */}
                   <View
                     style={{
                       flexDirection: "row",
@@ -238,14 +234,12 @@ const MessageItem = React.memo(({
                       width: "100%",
                     }}
                   >
-                    
-                    {/* AVATAR LOGIC (Left Side for Incoming Messages) */}
                     {!isOwnMessage && (
                       <View style={{ width: 32, marginRight: 6, alignItems: 'center' }}>
                         {hasTail ? (
                           <View style={{
-                            width: 30, height: 30, borderRadius: 15, 
-                            backgroundColor: '#A6BCE1', // Or use dynamic color
+                            width: 30, height: 30, borderRadius: 15,
+                            backgroundColor: '#A6BCE1',
                             justifyContent: 'center', alignItems: 'center',
                             marginTop: 0
                           }}>
@@ -262,7 +256,7 @@ const MessageItem = React.memo(({
                           maxWidth: isOwnMessage ? '85%' : '78%',
                           paddingHorizontal: 8,
                           paddingTop: 6,
-                          paddingBottom: message.messageType === "text" ? 6 : 8,
+                          paddingBottom: 8, // Set specifically to 8 for perfect timestamp clearance
                           shadowColor: '#000',
                           shadowOffset: { width: 0, height: 1 },
                           shadowOpacity: 0.15,
@@ -272,7 +266,6 @@ const MessageItem = React.memo(({
                         bubbleBorderRadius
                       ]}
                     >
-                      {/* --- SVG TAILS --- */}
                       {hasTail && isOwnMessage && (
                         <Svg width={8} height={12} viewBox="0 0 8 12" style={{ position: 'absolute', top: 0, right: -7 }}>
                           <Path d="M0 0 L8 0 L0 12 Z" fill={BUBBLE_COLOR_OWN} />
@@ -284,14 +277,12 @@ const MessageItem = React.memo(({
                         </Svg>
                       )}
 
-                      {/* 1. SENDER NAME */}
                       {showSenderName && (
                         <Text style={{ fontSize: 13, fontWeight: 'bold', color: '#EA4335', marginBottom: 2 }}>
                           {message.senderName || "Unknown"}
                         </Text>
                       )}
 
-                      {/* 2. REPLY PREVIEW */}
                       {message.replyMessageId && (
                         <TouchableOpacity
                           activeOpacity={0.7}
@@ -318,37 +309,58 @@ const MessageItem = React.memo(({
                         </TouchableOpacity>
                       )}
 
-                      {/* 3. TEXT MESSAGE */}
                       {message.messageType === "text" && (
-                        <ExpandableTextMessage 
-                          content={message.messageText} 
+                        <ExpandableTextMessage
+                          content={message.messageText}
                           isOwnMessage={isOwnMessage}
                           timeString={formatTime(message.createdAt || "")}
                           status={messageStatus}
                           isEdited={message.isEdited}
                         />
                       )}
+                      
+                      <View>
+                        {message.messageType === "media" && (
+                          <View>
+                            <MediaGrid messageId={message.id} onMediaPress={handleMediaGridPress} mediaFilesId={message.mediaFilesId || 0} isOwnMessage={isOwnMessage} />
+                            {(
+                              <ExpandableTextMessage
+                                content={message.messageText}
+                                isOwnMessage={isOwnMessage}
+                                timeString={formatTime(message.createdAt || "")}
+                                status={messageStatus}
+                                isEdited={message.isEdited}
+                              />
+                            )}
+                          </View>
+                        )}
+                        {message.messageType === "poll" && (
+                          <View>
+                            {typeof message.pollId === "number" && (
+                              <PollMessage
+                                pollId={message.pollId}
+                                currentUserId={currentUser?.userId || ""}
+                                onViewResults={(pollId) => {
+                                  router.push({
+                                    pathname: "/chat/poll-votes",
+                                    params: {
+                                      pollId: String(pollId),
+                                      totalMembers: String(totalMembers),
+                                      currentUserId: String(currentUser?.userId || ""),
+                                    },
+                                  });
+                                }}
+                              />
+                            )}
+                            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', marginTop: 4 }}>
+                              {message.isEdited && <Text style={{ fontSize: 11, color: '#8E8E93', fontStyle: 'italic', marginRight: 4 }}>edited</Text>}
+                              <Text style={{ fontSize: 11, color: '#8E8E93' }}>{formatTime(message.createdAt || "")}</Text>
+                              {isOwnMessage && <View style={{ marginLeft: 4 }}><MessageStatus status={messageStatus} /></View>}
+                            </View>
+                          </View>
+                        )}
+                      </View>
 
-                      {/* OTHER MESSAGE TYPES (Media, Poll, etc.) */}
-                      {message.messageType !== "text" && (
-                         <View>
-                           {message.messageType === "media" && (
-                              <View>
-                                <MediaGrid messageId={message.id} onMediaPress={handleMediaGridPress} mediaFilesId={message.mediaFilesId || 0} isOwnMessage={isOwnMessage} />
-                                {message.messageText && message.messageText.trim() !== "" && (
-                                  <View className="mt-1">
-                                    <Text style={{ fontSize: 16, color: '#000' }}>{message.messageText}</Text>
-                                  </View>
-                                )}
-                              </View>
-                           )}
-                           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', marginTop: 4 }}>
-                             {message.isEdited && <Text style={{ fontSize: 11, color: '#8E8E93', fontStyle: 'italic', marginRight: 4 }}>edited</Text>}
-                             <Text style={{ fontSize: 11, color: '#8E8E93' }}>{formatTime(message.createdAt || "")}</Text>
-                             {isOwnMessage && <View style={{ marginLeft: 4 }}><MessageStatus status={messageStatus} /></View>}
-                           </View>
-                         </View>
-                      )}
                     </View>
                   </View>
                 </Animated.View>
@@ -394,7 +406,7 @@ export default function ChatRoomScreen() {
   const { roomId, roomName: paramRoomName, canSendMessage: paramCanSendMessage } = useLocalSearchParams();
   const { initiateCall } = useVideoCall();
 
-  
+
   // Socket context (initialize used when opening room from notification before socket is ready)
   const {
     isConnected,
@@ -465,7 +477,7 @@ export default function ChatRoomScreen() {
   const messageAnimations = useRef<Map<string | number, Animated.Value>>(new Map());
   const hapticTriggered = useRef<Map<string | number, boolean>>(new Map());
   const readSetRef = useRef<Set<number>>(new Set());
-  
+
   // Highlighted message for reply scroll
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | number | null>(null);
 
@@ -491,12 +503,12 @@ export default function ChatRoomScreen() {
     const sortedMessages = [...messages].sort((a, b) => {
       const aIsTemp = typeof a.id === 'string' && a.id.startsWith('temp-');
       const bIsTemp = typeof b.id === 'string' && b.id.startsWith('temp-');
-      
+
       // If both are temp or both are not temp, sort by createdAt
       if (aIsTemp === bIsTemp) {
         return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
       }
-      
+
       // Temp messages go after non-temp messages
       return aIsTemp ? 1 : -1;
     });
@@ -581,10 +593,10 @@ export default function ChatRoomScreen() {
         console.log("⚠️ [ChatRoom] Duplicate message ignored:", message.id);
         return prev;
       }
-      
+
       const newSet = new Set(prev);
       newSet.add(message.id);
-      
+
       // Trigger smooth layout animation
       LayoutAnimation.configureNext({
         duration: 200,
@@ -596,7 +608,7 @@ export default function ChatRoomScreen() {
           type: LayoutAnimation.Types.easeInEaseOut,
         },
       });
-      
+
       setMessages(prevMsgs => {
         const newMessages = [...prevMsgs, message];
         if (updateCache && roomId) {
@@ -604,7 +616,7 @@ export default function ChatRoomScreen() {
         }
         return newMessages;
       });
-      
+
       return newSet;
     });
   }, [roomId]);
@@ -639,17 +651,17 @@ export default function ChatRoomScreen() {
     });
   }, [roomId]);
 
-const handleStartSelection = useCallback((message: Message) => {
-  setSelectedMessages([message]);
-}, []);
+  const handleStartSelection = useCallback((message: Message) => {
+    setSelectedMessages([message]);
+  }, []);
 
-const handleSelectMessage = useCallback((message: Message) => {
-  setSelectedMessages(prev => [...prev, message]);
-}, []);
+  const handleSelectMessage = useCallback((message: Message) => {
+    setSelectedMessages(prev => [...prev, message]);
+  }, []);
 
-const handleDeselectMessage = useCallback((message: Message) => {
-  setSelectedMessages(prev => prev.filter(msg => msg.id !== message.id));
-}, []);
+  const handleDeselectMessage = useCallback((message: Message) => {
+    setSelectedMessages(prev => prev.filter(msg => msg.id !== message.id));
+  }, []);
 
   const scrollToBottom = useCallback(() => {
     if (flatListRef.current && messages.length > 0) {
@@ -657,7 +669,7 @@ const handleDeselectMessage = useCallback((message: Message) => {
       setShowScrollToBottom(false);
     }
   }, [messages.length]);
-  
+
   // Expose scrollToBottom for use in sendMessage
   const scrollToBottomRef = useRef(scrollToBottom);
   useEffect(() => {
@@ -899,7 +911,7 @@ const handleDeselectMessage = useCallback((message: Message) => {
   // Handle new messages (includes scheduled messages when they fire - real-time for sender & receiver)
   const handleNewMessage = useCallback((message: ChatMessage) => {
     console.log("📨 [ChatRoom] New message received:", message.id);
-    
+
     if (currentUser && (message.messageType === "media" || message.messageType === "poll" || message.messageType === "table" || message.messageType === "announcement" || message.messageType === "text")) {
       const newMessage: Message = {
         id: message.id,
@@ -995,7 +1007,7 @@ const handleDeselectMessage = useCallback((message: Message) => {
     setShowVideoCallNotification(false);
     router.push({
       pathname: '/chat/video-call',
-      params: { 
+      params: {
         roomId: Array.isArray(roomId) ? roomId[0] : roomId,
         joining: 'true', // Mark that this user is joining an existing call
       },
@@ -1060,24 +1072,24 @@ const handleDeselectMessage = useCallback((message: Message) => {
         clearSelection();
         return true;
       }
-  
+
       if (router.canGoBack()) {
         router.back();              // normal flow
       } else {
         router.replace("/(drawer)"); // notification / cold start
       }
-  
+
       return true;
     };
-  
+
     const sub = BackHandler.addEventListener(
       "hardwareBackPress",
       onBackPress
     );
-  
+
     return () => sub.remove();
   }, [selectedMessages]);
-  
+
 
   // ==================== MESSAGE ACTIONS ====================
 
@@ -1106,7 +1118,7 @@ const handleDeselectMessage = useCallback((message: Message) => {
       setMessageText("");
 
       const tempId = `temp-${Date.now()}`;
-      
+
       // Format reply text based on message type using utility function
       let formattedReplyText = '';
       if (replyToMessage) {
@@ -1211,7 +1223,7 @@ const handleDeselectMessage = useCallback((message: Message) => {
       console.error("Error sending message:", error);
       alert("Failed to send message");
       setMessageText(trimmedMessage);
-      
+
       // Remove failed optimistic message
       setMessages(prev => prev.filter(msg => typeof msg.id !== 'string' || !msg.id.includes('temp')));
       setMessagesSet(prev => {
@@ -1236,7 +1248,7 @@ const handleDeselectMessage = useCallback((message: Message) => {
 
   const handleMessageLongPress = useCallback((message: Message) => {
     console.log("on long press calling", { isGroupAdmin, canSendMessage, messageSenderId: message.senderId, currentUserId: currentUser?.userId });
-    
+
     // Permission check:
     // - Admin can select any message
     // - Can send message users can only select their own messages
@@ -1245,14 +1257,14 @@ const handleDeselectMessage = useCallback((message: Message) => {
       console.log("Cannot select: user cannot send messages");
       return;
     }
-    
+
     const canSelect = isGroupAdmin || (canSendMessage && currentUser && message.senderId === currentUser.userId);
-    
+
     if (!canSelect) {
       console.log("Cannot select: not admin and not own message");
       return;
     }
-    
+
     if (selectedMessages.length === 0) {
       setSelectedMessages([message]);
     } else if (!isMessageSelected(message.id)) {
@@ -1263,7 +1275,7 @@ const handleDeselectMessage = useCallback((message: Message) => {
   const handleMessagePress = useCallback((message: Message) => {
     // Only handle selection if messages are already selected
     if (selectedMessages.length === 0) return;
-    
+
     // Permission check:
     // - Admin can select any message
     // - Can send message users can only select their own messages
@@ -1271,11 +1283,11 @@ const handleDeselectMessage = useCallback((message: Message) => {
     if (!canSendMessage && !isGroupAdmin) {
       return;
     }
-    
+
     const canSelect = isGroupAdmin || (canSendMessage && currentUser && message.senderId === currentUser.userId);
-    
+
     if (!canSelect) return;
-    
+
     if (isMessageSelected(message.id)) {
       setSelectedMessages(prev => prev.filter(msg => msg.id !== message.id));
     } else {
@@ -1448,7 +1460,7 @@ const handleDeselectMessage = useCallback((message: Message) => {
     if (typeof messageId !== "number") return;
     if (readSetRef.current.has(messageId)) return;
     readSetRef.current.add(messageId);
-    
+
     try {
       await markMessageReadApi(messageId);
     } catch (error) {
@@ -1461,10 +1473,10 @@ const handleDeselectMessage = useCallback((message: Message) => {
       Alert.alert('Error', 'Room ID is missing');
       return;
     }
-    
+
     const roomIdStr = Array.isArray(roomId) ? roomId[0] : roomId;
     const roomNameStr = room?.roomName || 'Video Call';
-    
+
     initiateCall(roomIdStr, roomNameStr);
   }, [roomId, room?.roomName, initiateCall]);
 
@@ -1552,7 +1564,7 @@ const handleDeselectMessage = useCallback((message: Message) => {
     if (item.itemType === 'dateSeparator') {
       return <DateSeparator dateString={item.date} formatDateForDisplay={formatDateForDisplay} />;
     }
-  
+
     const message = item as Message & { itemType: 'message' };
     const isOwnMessage = message.senderId === currentUser?.userId;
     const isSelected = isMessageSelected(message.id);
@@ -1562,16 +1574,16 @@ const handleDeselectMessage = useCallback((message: Message) => {
     // Determine if this message should have a "tail" (pointy corner)
     let hasTail = false;
     if (index === preparedListData.length - 1) {
-        hasTail = true;
+      hasTail = true;
     } else {
-        const chronologicallyPreviousItem = preparedListData[index + 1];
-        if (chronologicallyPreviousItem.itemType === 'message') {
-            if ((chronologicallyPreviousItem as Message).senderId !== message.senderId) {
-                hasTail = true;
-            }
-        } else if (chronologicallyPreviousItem.itemType === 'dateSeparator') {
-            hasTail = true;
+      const chronologicallyPreviousItem = preparedListData[index + 1];
+      if (chronologicallyPreviousItem.itemType === 'message') {
+        if ((chronologicallyPreviousItem as Message).senderId !== message.senderId) {
+          hasTail = true;
         }
+      } else if (chronologicallyPreviousItem.itemType === 'dateSeparator') {
+        hasTail = true;
+      }
     }
 
     // Only show sender name inside the bubble for INCOMING messages that start a new block
@@ -1579,14 +1591,14 @@ const handleDeselectMessage = useCallback((message: Message) => {
     if (!isOwnMessage && hasTail) {
       showSenderName = true;
     }
-  // Handle media grid press
-  const handleMediaGridPress = (mediaFiles: any[], selectedIndex: number) => {
-    console.log("Opening media viewer for media files:", mediaFiles, "at index:", selectedIndex);
-    setSelectedMediaFiles(mediaFiles);
-    setSelectedMediaIndex(selectedIndex);
-    setShowMediaViewer(true);
-  };
-  
+    // Handle media grid press
+    const handleMediaGridPress = (mediaFiles: any[], selectedIndex: number) => {
+      console.log("Opening media viewer for media files:", mediaFiles, "at index:", selectedIndex);
+      setSelectedMediaFiles(mediaFiles);
+      setSelectedMediaIndex(selectedIndex);
+      setShowMediaViewer(true);
+    };
+
     return (
       <MessageItem
         message={message}
@@ -1614,11 +1626,11 @@ const handleDeselectMessage = useCallback((message: Message) => {
     );
   }, [
     preparedListData,
-    currentUser, 
-    selectedMessages.length, 
-    formatDateForDisplay, 
+    currentUser,
+    selectedMessages.length,
+    formatDateForDisplay,
     isGroupAdmin,
-    canSendMessage, 
+    canSendMessage,
     isMessageSelected,
     handleSelectMessage,
     handleDeselectMessage,
@@ -1662,321 +1674,321 @@ const handleDeselectMessage = useCallback((message: Message) => {
       </View>
     );
   }
-const TelegramHeader = React.memo(({
-  roomName,
-  memberCount,
-  onlineCount,
-  onBackPress,
-  onAvatarPress,
-  onMenuPress,
-  onVideoCallPress,
-  onCalendarPress,
-  scheduledCount,
-  isSyncing,
-}: {
-  roomName: string;
-  memberCount: number;
-  onlineCount: number;
-  onBackPress: () => void;
-  onAvatarPress: () => void;
-  onMenuPress?: () => void;
-  onVideoCallPress?: () => void;
-  onCalendarPress?: () => void;
-  scheduledCount?: number;
-  isSyncing: boolean;
-}) => {
-  const getInitials = (name: string) => {
-    return name
-      .split(' ')
-      .map(word => word[0])
-      .join('')
-      .toUpperCase()
-      .slice(0, 2);
-  };
+  const TelegramHeader = React.memo(({
+    roomName,
+    memberCount,
+    onlineCount,
+    onBackPress,
+    onAvatarPress,
+    onMenuPress,
+    onVideoCallPress,
+    onCalendarPress,
+    scheduledCount,
+    isSyncing,
+  }: {
+    roomName: string;
+    memberCount: number;
+    onlineCount: number;
+    onBackPress: () => void;
+    onAvatarPress: () => void;
+    onMenuPress?: () => void;
+    onVideoCallPress?: () => void;
+    onCalendarPress?: () => void;
+    scheduledCount?: number;
+    isSyncing: boolean;
+  }) => {
+    const getInitials = (name: string) => {
+      return name
+        .split(' ')
+        .map(word => word[0])
+        .join('')
+        .toUpperCase()
+        .slice(0, 2);
+    };
 
-  const getStatusText = () => {
-    if (onlineCount > 0) {
-      return `${memberCount} members, ${onlineCount} online`;
-    }
-    return `${memberCount} members`;
-  };
+    const getStatusText = () => {
+      if (onlineCount > 0) {
+        return `${memberCount} members, ${onlineCount} online`;
+      }
+      return `${memberCount} members`;
+    };
 
-  return (
-    <View className="flex-row items-center px-2 py-2.5 bg-[#F5F5F5] border-b border-[#E5E5E5]">
-      <TouchableOpacity onPress={onBackPress} className="p-2">
-        <Ionicons name="arrow-back" size={24} color="#000" />
-      </TouchableOpacity>
-
-      <TouchableOpacity onPress={onMenuPress} className="flex-1 flex-row items-center ml-1">
-        <View className="w-10 h-10 rounded-full bg-[#0088CC] justify-center items-center">
-          <Text className="text-base font-semibold text-white">{getInitials(roomName)}</Text>
-        </View>
-
-        <View className="ml-3 flex-1">
-          <Text className="text-[17px] font-semibold text-black" numberOfLines={1}>
-            {roomName}
-          </Text>
-          <View className="flex-row items-center mt-0.5">
-            {isSyncing ? (
-              <Text className="text-[13px] text-[#8E8E93]">updating...</Text>
-            ) : (
-              <Text className="text-[13px] text-[#8E8E93]">{getStatusText()}</Text>
-            )}
-          </View>
-        </View>
-      </TouchableOpacity>
-
-      {scheduledCount !== undefined && scheduledCount > 0 && onCalendarPress && (
-        <TouchableOpacity onPress={onCalendarPress} className="p-2">
-          <Ionicons name="calendar-outline" size={24} color="#0088CC" />
+    return (
+      <View className="flex-row items-center px-2 py-2.5 bg-[#F5F5F5] border-b border-[#E5E5E5]">
+        <TouchableOpacity onPress={onBackPress} className="p-2">
+          <Ionicons name="arrow-back" size={24} color="#000" />
         </TouchableOpacity>
-      )}
-    </View>
-  );
-});
+
+        <TouchableOpacity onPress={onMenuPress} className="flex-1 flex-row items-center ml-1">
+          <View className="w-10 h-10 rounded-full bg-[#0088CC] justify-center items-center">
+            <Text className="text-base font-semibold text-white">{getInitials(roomName)}</Text>
+          </View>
+
+          <View className="ml-3 flex-1">
+            <Text className="text-[17px] font-semibold text-black" numberOfLines={1}>
+              {roomName}
+            </Text>
+            <View className="flex-row items-center mt-0.5">
+              {isSyncing ? (
+                <Text className="text-[13px] text-[#8E8E93]">updating...</Text>
+              ) : (
+                <Text className="text-[13px] text-[#8E8E93]">{getStatusText()}</Text>
+              )}
+            </View>
+          </View>
+        </TouchableOpacity>
+
+        {scheduledCount !== undefined && scheduledCount > 0 && onCalendarPress && (
+          <TouchableOpacity onPress={onCalendarPress} className="p-2">
+            <Ionicons name="calendar-outline" size={24} color="#0088CC" />
+          </TouchableOpacity>
+        )}
+      </View>
+    );
+  });
 
   // ==================== MAIN RENDER ====================
   const insets = useSafeAreaInsets();
-  
+
   return (
     <GestureHandlerRootView className="flex-1">
       {/* NO SafeAreaView - we handle insets manually */}
-      <View 
-        style={{ 
-          flex: 1, 
+      <View
+        style={{
+          flex: 1,
           backgroundColor: '#E5DDD5', // Match chat background – avoids white flash during keyboard transitions
           paddingTop: insets.top, // Only top safe area
         }}
       >
-      {/* --- HEADER SECTION --- */}
-      {selectedMessages.length > 0 ? (
-        <ChatMessageOptions
-          selectedMessages={selectedMessages}
-          setSelectedMessages={setSelectedMessages}
-          isAdmin={isGroupAdmin}
-          canSendMessage={canSendMessage}
-          onClose={clearSelection}
-          onForward={handleForwardMessages}
-          currentRoomId={Array.isArray(roomId) ? String(roomId[0]) : String(roomId)}
-          onDeletePress={handleDeleteMessages}
-          roomId={Array.isArray(roomId) ? roomId[0] : roomId}
-          roomMembers={roomMembers}
-          currentUser={currentUser}
-          onMessageEdited={onMessageEditedFromOptions}
-          onEditPress={handleEditPressFromOptions}
-        />
-      ) : (
-        <TelegramHeader
-          roomName={displayRoomName}
-          memberCount={roomMembers.length}
-          onlineCount={onlineUsers.length}
-          onBackPress={() => {
-            if (router.canGoBack()) {
-              router.back();              // normal flow
-            } else {
-              router.replace("/(drawer)"); // notification / cold start
-            }
-          }}
-          onAvatarPress={() => setShowMembersModal(true)}
-          onMenuPress={isGroupAdmin ? () => router.push({
-            pathname: "/chat/room-info",
-            params: { roomId },
-          }) : undefined}
-          onVideoCallPress={handleVideoCallPress}
-          onCalendarPress={
-            scheduledMessages.length > 0
-              ? () => router.push({
+        {/* --- HEADER SECTION --- */}
+        {selectedMessages.length > 0 ? (
+          <ChatMessageOptions
+            selectedMessages={selectedMessages}
+            setSelectedMessages={setSelectedMessages}
+            isAdmin={isGroupAdmin}
+            canSendMessage={canSendMessage}
+            onClose={clearSelection}
+            onForward={handleForwardMessages}
+            currentRoomId={Array.isArray(roomId) ? String(roomId[0]) : String(roomId)}
+            onDeletePress={handleDeleteMessages}
+            roomId={Array.isArray(roomId) ? roomId[0] : roomId}
+            roomMembers={roomMembers}
+            currentUser={currentUser}
+            onMessageEdited={onMessageEditedFromOptions}
+            onEditPress={handleEditPressFromOptions}
+          />
+        ) : (
+          <TelegramHeader
+            roomName={displayRoomName}
+            memberCount={roomMembers.length}
+            onlineCount={onlineUsers.length}
+            onBackPress={() => {
+              if (router.canGoBack()) {
+                router.back();              // normal flow
+              } else {
+                router.replace("/(drawer)"); // notification / cold start
+              }
+            }}
+            onAvatarPress={() => setShowMembersModal(true)}
+            onMenuPress={isGroupAdmin ? () => router.push({
+              pathname: "/chat/room-info",
+              params: { roomId },
+            }) : undefined}
+            onVideoCallPress={handleVideoCallPress}
+            onCalendarPress={
+              scheduledMessages.length > 0
+                ? () => router.push({
                   pathname: "/chat/[roomId]/scheduled",
                   params: { roomId: Array.isArray(roomId) ? roomId[0] : roomId, roomName: displayRoomName },
                 })
-              : undefined
-          }
-          scheduledCount={scheduledMessages.length}
-          isSyncing={isSyncing}
-        />
-      )}
-
-      {/* --- MESSAGES + INPUT (single ImageBackground to avoid flash on keyboard) --- */}
-      <ImageBackground
-        source={require("@/assets/images/chatbackground.png")}
-        resizeMode="repeat"
-        style={{ flex: 1 }}
-      >
-        <View style={{ flex: 1, position: 'relative' }}>
-          <FlatList
-            ref={flatListRef}
-            data={preparedListData}
-            keyExtractor={keyExtractor}
-            renderItem={renderItem}
-            inverted={true}
-            contentContainerStyle={{ paddingVertical: 10 }}
-            onScroll={handleScroll}
-            scrollEventThrottle={16}
-            onViewableItemsChanged={onViewableItemsChanged}
-            viewabilityConfig={viewabilityConfig}
-            removeClippedSubviews={Platform.OS === 'android'}
-            keyboardDismissMode="interactive"
-            keyboardShouldPersistTaps="handled"
-            ListEmptyComponent={
-              <View className="flex-1 justify-center items-center pb-[300px]">
-                <Ionicons name="chatbubble-outline" size={60} color="#AEBAC1" />
-                <Text className="text-gray-500 mt-4 text-center bg-white/80 px-2 py-1">
-                  No messages yet.
-                </Text>
-              </View>
+                : undefined
             }
+            scheduledCount={scheduledMessages.length}
+            isSyncing={isSyncing}
           />
-          {showScrollToBottom && (
-            <TouchableOpacity
-              onPress={scrollToBottom}
-              style={{
-                position: 'absolute',
-                bottom: 10,
-                right: 10,
-                width: 36,
-                height: 36,
-                borderRadius: 18,
-                backgroundColor: '#FFFFFF',
-                justifyContent: 'center',
-                alignItems: 'center',
-                shadowColor: '#000',
-                shadowOffset: { width: 0, height: 2 },
-                shadowOpacity: 0.2,
-                shadowRadius: 3,
-                elevation: 5,
-                zIndex: 1000,
-              }}
-              activeOpacity={0.7}
-            >
-              <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
-                <Path
-                  d="M7 6 L12 11 L17 6 M7 13 L12 18 L17 13"
-                  stroke="#000000"
-                  strokeWidth={2.5}
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </Svg>
-            </TouchableOpacity>
-          )}
-        </View>
+        )}
 
-        <KeyboardAvoidingView
-          // Use padding behavior only on iOS; let Android rely on adjustResize
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
-          // Offset by bottom inset on iOS so the input consistently sits above the keyboard
-          keyboardVerticalOffset={Platform.OS === "ios" ? insets.bottom : 0}
-          style={{ flex: 0 }}
+        {/* --- MESSAGES + INPUT (single ImageBackground to avoid flash on keyboard) --- */}
+        <ImageBackground
+          source={require("@/assets/images/chatbackground.png")}
+          resizeMode="repeat"
+          style={{ flex: 1 }}
         >
-          <View style={{ paddingBottom: insets.bottom }}>
-          <View className="pb-1">
-          {canSendMessage ? (
-            <MessageInput
-              messageText={messageText}
-              onChangeText={setMessageText}
-              onSend={(text, messageType, mediafilesId, tableId, pollId, scheduledAt) => {
-                sendMessage(
-                  text, 
-                  messageType, 
-                  mediafilesId, 
-                  tableId, 
-                  pollId, 
-                  replyToMessage?.id as number, 
-                  scheduledAt
-                );
-                handleCancelReply();
-              }}
-              placeholder="Message"
-              sending={sending}
-              currentUser={currentUser}
-              replyToMessage={replyToMessage}
-              onCancelReply={handleCancelReply}
-              onAttachmentPress={() => {
-                router.push({
-                  pathname: "/chat/[roomId]/attachments",
-                  params: { roomId: roomId as string, userId: currentUser?.userId ?? "" },
-                });
-              }}
-              isAttachmentSheetOpen={false}
-              onSendAudio={handleSendAudio}
+          <View style={{ flex: 1, position: 'relative' }}>
+            <FlatList
+              ref={flatListRef}
+              data={preparedListData}
+              keyExtractor={keyExtractor}
+              renderItem={renderItem}
+              inverted={true}
+              contentContainerStyle={{ paddingVertical: 10 }}
+              onScroll={handleScroll}
+              scrollEventThrottle={16}
+              onViewableItemsChanged={onViewableItemsChanged}
+              viewabilityConfig={viewabilityConfig}
+              removeClippedSubviews={Platform.OS === 'android'}
+              keyboardDismissMode="interactive"
+              keyboardShouldPersistTaps="handled"
+              ListEmptyComponent={
+                <View className="flex-1 justify-center items-center pb-[300px]">
+                  <Ionicons name="chatbubble-outline" size={60} color="#AEBAC1" />
+                  <Text className="text-gray-500 mt-4 text-center bg-white/80 px-2 py-1">
+                    No messages yet.
+                  </Text>
+                </View>
+              }
             />
-          ) : (
-            <View className="p-3 bg-white/95 m-2 rounded-lg items-center border border-gray-200">
-              <Text className="text-[#54656F] text-sm text-center">
-                Only group admins can send messages
-              </Text>
+            {showScrollToBottom && (
+              <TouchableOpacity
+                onPress={scrollToBottom}
+                style={{
+                  position: 'absolute',
+                  bottom: 10,
+                  right: 10,
+                  width: 36,
+                  height: 36,
+                  borderRadius: 18,
+                  backgroundColor: '#FFFFFF',
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                  shadowColor: '#000',
+                  shadowOffset: { width: 0, height: 2 },
+                  shadowOpacity: 0.2,
+                  shadowRadius: 3,
+                  elevation: 5,
+                  zIndex: 1000,
+                }}
+                activeOpacity={0.7}
+              >
+                <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
+                  <Path
+                    d="M7 6 L12 11 L17 6 M7 13 L12 18 L17 13"
+                    stroke="#000000"
+                    strokeWidth={2.5}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </Svg>
+              </TouchableOpacity>
+            )}
+          </View>
+
+          <KeyboardAvoidingView
+            // Use padding behavior only on iOS; let Android rely on adjustResize
+            behavior={Platform.OS === "ios" ? "padding" : undefined}
+            // Offset by bottom inset on iOS so the input consistently sits above the keyboard
+            keyboardVerticalOffset={Platform.OS === "ios" ? insets.bottom : 0}
+            style={{ flex: 0 }}
+          >
+            <View style={{ paddingBottom: insets.bottom }}>
+              <View className="pb-1">
+                {canSendMessage ? (
+                  <MessageInput
+                    messageText={messageText}
+                    onChangeText={setMessageText}
+                    onSend={(text, messageType, mediafilesId, tableId, pollId, scheduledAt) => {
+                      sendMessage(
+                        text,
+                        messageType,
+                        mediafilesId,
+                        tableId,
+                        pollId,
+                        replyToMessage?.id as number,
+                        scheduledAt
+                      );
+                      handleCancelReply();
+                    }}
+                    placeholder="Message"
+                    sending={sending}
+                    currentUser={currentUser}
+                    replyToMessage={replyToMessage}
+                    onCancelReply={handleCancelReply}
+                    onAttachmentPress={() => {
+                      router.push({
+                        pathname: "/chat/[roomId]/attachments",
+                        params: { roomId: roomId as string, userId: currentUser?.userId ?? "" },
+                      });
+                    }}
+                    isAttachmentSheetOpen={false}
+                    onSendAudio={handleSendAudio}
+                  />
+                ) : (
+                  <View className="p-3 bg-white/95 m-2 rounded-lg items-center border border-gray-200">
+                    <Text className="text-[#54656F] text-sm text-center">
+                      Only group admins can send messages
+                    </Text>
+                  </View>
+                )}
+              </View>
             </View>
-          )}
-          </View>
-          </View>
-        </KeyboardAvoidingView>
-      </ImageBackground>
+          </KeyboardAvoidingView>
+        </ImageBackground>
 
-      {/* --- MODALS --- */}
-      <MembersModal
-        visible={showMembersModal}
-        onClose={() => setShowMembersModal(false)}
-        members={roomMembers.map((member) => ({
-          userId: member.userId,
-          fullName: member.fullName || "Unknown User",
-          isAdmin: Boolean(member.isAdmin),
-          isOnline: onlineUsers.includes(member.userId),
-        }))}
-        currentUserId={currentUser?.userId || ""}
-      />
-
-      {showMediaViewer && (
-        <MediaViewerModal
-          visible={showMediaViewer}
-          onClose={() => {
-            setShowMediaViewer(false);
-            setSelectedMediaId(null);
-            setSelectedMediaFiles([]);
-            setSelectedMediaIndex(0);
-          }}
-          mediaId={selectedMediaId || undefined}
-          mediaFiles={selectedMediaFiles}
-          initialIndex={selectedMediaIndex}
+        {/* --- MODALS --- */}
+        <MembersModal
+          visible={showMembersModal}
+          onClose={() => setShowMembersModal(false)}
+          members={roomMembers.map((member) => ({
+            userId: member.userId,
+            fullName: member.fullName || "Unknown User",
+            isAdmin: Boolean(member.isAdmin),
+            isOnline: onlineUsers.includes(member.userId),
+          }))}
+          currentUserId={currentUser?.userId || ""}
         />
-      )}
 
-      <GlobalPollModal
-        pollId={activePollId}
-        visible={showPollModal}
-        onClose={() => {
-          setShowPollModal(false);
-          setActivePollId(null);
-        }}
-        currentUserId={currentUser?.userId || ""}
-        totalMembers={roomMembers.length}
-      />
+        {showMediaViewer && (
+          <MediaViewerModal
+            visible={showMediaViewer}
+            onClose={() => {
+              setShowMediaViewer(false);
+              setSelectedMediaId(null);
+              setSelectedMediaFiles([]);
+              setSelectedMediaIndex(0);
+            }}
+            mediaId={selectedMediaId || undefined}
+            mediaFiles={selectedMediaFiles}
+            initialIndex={selectedMediaIndex}
+          />
+        )}
 
-      <AudioRecorder
-        isVisible={showAudioRecorder}
-        onRecordingComplete={() => {}}
-        onCancel={() => {
-          setShowAudioRecorder(false);
-          setIsRecordingAudio(false);
-        }}
-      />
+        <GlobalPollModal
+          pollId={activePollId}
+          visible={showPollModal}
+          onClose={() => {
+            setShowPollModal(false);
+            setActivePollId(null);
+          }}
+          currentUserId={currentUser?.userId || ""}
+          totalMembers={roomMembers.length}
+        />
 
-      <EditMessageModal
-        visible={showEditModalFromOptions && !!messageToEditForModal}
-        onClose={() => {
-          setShowEditModalFromOptions(false);
-          setMessageToEditForModal(null);
-        }}
-        message={messageToEditForModal}
-        roomId={Array.isArray(roomId) ? roomId[0] : roomId ?? ''}
-        roomMembers={roomMembers}
-        currentUser={currentUser}
-        onMessageEdited={(editedMessage) => {
-          onMessageEditedFromOptions(editedMessage);
-          setShowEditModalFromOptions(false);
-          setMessageToEditForModal(null);
-        }}
-      />
-    </View>
-  </GestureHandlerRootView>
-);
+        <AudioRecorder
+          isVisible={showAudioRecorder}
+          onRecordingComplete={() => { }}
+          onCancel={() => {
+            setShowAudioRecorder(false);
+            setIsRecordingAudio(false);
+          }}
+        />
+
+        <EditMessageModal
+          visible={showEditModalFromOptions && !!messageToEditForModal}
+          onClose={() => {
+            setShowEditModalFromOptions(false);
+            setMessageToEditForModal(null);
+          }}
+          message={messageToEditForModal}
+          roomId={Array.isArray(roomId) ? roomId[0] : roomId ?? ''}
+          roomMembers={roomMembers}
+          currentUser={currentUser}
+          onMessageEdited={(editedMessage) => {
+            onMessageEditedFromOptions(editedMessage);
+            setShowEditModalFromOptions(false);
+            setMessageToEditForModal(null);
+          }}
+        />
+      </View>
+    </GestureHandlerRootView>
+  );
 }

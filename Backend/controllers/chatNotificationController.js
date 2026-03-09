@@ -34,6 +34,68 @@ const stripHtmlTags = (html) => {
 // Format message content for notification based on message type
 const formatMessageContent = async (message, senderName) => {
   const messageType = message.messageType || 'text';
+
+  const pluralize = (n, singular, plural) => (n === 1 ? singular : plural);
+
+  const getMediaSummary = async (mediaFilesId) => {
+    if (!mediaFilesId) return null;
+    try {
+      const mediaResult = await pool.query(
+        'SELECT "driveUrlObject" FROM media WHERE "id" = $1',
+        [mediaFilesId]
+      );
+      if (mediaResult.rows.length === 0) return null;
+      let driveUrlObject = mediaResult.rows[0].driveUrlObject || [];
+      if (typeof driveUrlObject === "string") {
+        try { driveUrlObject = JSON.parse(driveUrlObject); } catch { driveUrlObject = []; }
+      }
+      if (!Array.isArray(driveUrlObject)) driveUrlObject = [];
+      let photos = 0;
+      let videos = 0;
+      let audios = 0;
+      for (const item of driveUrlObject) {
+        const mime = String(item?.mimeType || "").toLowerCase();
+        if (mime.startsWith("image/")) photos++;
+        else if (mime.startsWith("video/")) videos++;
+        else if (mime.startsWith("audio/")) audios++;
+      }
+      return { photos, videos, audios };
+    } catch (error) {
+      console.error('Error fetching media summary:', error);
+      return null;
+    }
+  };
+
+  const formatMediaNotificationText = ({ photos, videos, audios }) => {
+    // Single audio
+    if (audios > 0 && photos === 0 && videos === 0) {
+      return audios === 1 ? 'sent a voice message' : `sent ${audios} voice messages`;
+    }
+    const totalVisual = photos + videos;
+    // Single photo/video
+    if (totalVisual === 1) {
+      if (photos === 1) return 'sent 1 photo';
+      if (videos === 1) return 'sent 1 video';
+    }
+    // Multiple
+    const parts = [];
+    if (photos > 0) parts.push(`${photos} ${pluralize(photos, 'photo', 'photos')}`);
+    if (videos > 0) parts.push(`${videos} ${pluralize(videos, 'video', 'videos')}`);
+    if (audios > 0) parts.push(audios === 1 ? 'voice message' : `${audios} voice messages`);
+    return parts.length ? `shared ${parts.join(', ')}` : 'shared media';
+  };
+
+  const getPollTitle = async (pollId) => {
+    if (!pollId) return null;
+    try {
+      const res = await pool.query('SELECT "question" FROM poll WHERE "id" = $1', [pollId]);
+      if (res.rows.length === 0) return null;
+      return res.rows[0].question ? String(res.rows[0].question) : null;
+    } catch (error) {
+      console.error('Error fetching poll title:', error);
+      return null;
+    }
+  };
   
   switch (messageType) {
     case 'text':
@@ -44,34 +106,21 @@ const formatMessageContent = async (message, senderName) => {
       }
       return 'sent a message';
     
-    case 'media':
-      // For media, show messageText (caption) if exists, else show photo count
-      if (message.messageText && message.messageText.trim() !== '') {
-        const cleaned = stripHtmlTags(message.messageText);
-        return cleaned.substring(0, 50) + (cleaned.length > 50 ? '...' : '');
-      }
-      // Try to get photo count from mediaFilesId
-      if (message.mediaFilesId) {
-        try {
-          const mediaResult = await pool.query(
-            'SELECT "driveUrlObject" FROM media WHERE "id" = $1',
-            [message.mediaFilesId]
-          );
-          if (mediaResult.rows.length > 0) {
-            const driveUrlObject = mediaResult.rows[0].driveUrlObject || [];
-            const photoCount = Array.isArray(driveUrlObject) ? driveUrlObject.length : 0;
-            if (photoCount > 0) {
-              return `shared ${photoCount} ${photoCount === 1 ? 'photo' : 'photos'}`;
-            }
-          }
-        } catch (error) {
-          console.error('Error fetching media count:', error);
-        }
-      }
+    case 'media': {
+      // WhatsApp-style: ignore captions for notification body
+      const summary = await getMediaSummary(message.mediaFilesId);
+      if (summary) return formatMediaNotificationText(summary);
       return 'shared media';
+    }
     
-    case 'poll':
-      return 'shared a poll';
+    case 'poll': {
+      const title = await getPollTitle(message.pollId);
+      if (title) {
+        const cleaned = stripHtmlTags(title);
+        return `sent a poll (${cleaned.substring(0, 80)}${cleaned.length > 80 ? '...' : ''})`;
+      }
+      return 'sent a poll';
+    }
     
     case 'table':
       return 'shared a table';

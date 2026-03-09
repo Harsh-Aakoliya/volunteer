@@ -65,7 +65,7 @@ async login(req, res){
     const token = jwt.sign(
       { userId: sevak.seid, role: sevak.usertype },
       process.env.JWT_SECRET,
-      { expiresIn: "1d" }
+      { expiresIn: "7d" }
     );
 
     // Remove sensitive data before sending

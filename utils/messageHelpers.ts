@@ -128,16 +128,22 @@ const stripHtmlTags = (html: string): string => {
 
 export const getReplyPreviewText = (message: Message): string => {
   if (!message) return 'Message';
+
+  // Prefer server/computed previewText when available (keeps previews consistent for media/poll).
+  if (message.previewText && String(message.previewText).trim() !== '') {
+    return stripHtmlTags(String(message.previewText));
+  }
   
   switch (message.messageType) {
     case 'media':
-      // For media, show messageText if exists (caption), else show "Media"
-      if (message.messageText && message.messageText.trim() !== '') {
-        return stripHtmlTags(message.messageText);
-      }
+      // WhatsApp-style: ignore captions for reply preview; rely on previewText when possible.
       return '📷 Media';
     
     case 'poll':
+      // If backend stored poll title in messageText, show it
+      // if (message.messageText && message.messageText.trim() !== '') {
+      //   return `📊 ${stripHtmlTags(message.messageText)}`;
+      // }
       return '📊 Poll';
     
     case 'table':

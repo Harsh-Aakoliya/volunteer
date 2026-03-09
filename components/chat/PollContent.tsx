@@ -85,14 +85,14 @@ export default function PollContent({
       const createdPollId = pollData.poll.id;
 
       const pollResponse = await sendMessage(roomId, {
-        messageText: "",
+        messageText: question,
         messageType: "poll",
         pollId: createdPollId,
       });
 
       socketSendMessage(roomId, {
         id: pollResponse.id,
-        messageText: "",
+        messageText: question,
         createdAt: pollResponse.createdAt,
         messageType: "poll",
         mediaFilesId: 0,

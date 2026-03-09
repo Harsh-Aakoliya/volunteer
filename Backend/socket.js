@@ -28,6 +28,97 @@ const setupSocketIO = (io, app) => {
   // Throttle: userId -> lastRequestTime
   const requestThrottle = new Map();
 
+  // ==================== PREVIEW HELPERS (WhatsApp-style) ====================
+
+  const pluralize = (n, singular, plural) => (n === 1 ? singular : plural);
+
+  async function getMediaDriveUrlObjectById(pool, mediaFilesId) {
+    if (!mediaFilesId) return [];
+    const res = await pool.query('SELECT "driveUrlObject" FROM media WHERE "id" = $1', [mediaFilesId]);
+    if (res.rows.length === 0) return [];
+    let obj = res.rows[0].driveUrlObject || [];
+    if (typeof obj === "string") {
+      try { obj = JSON.parse(obj); } catch { obj = []; }
+    }
+    return Array.isArray(obj) ? obj : [];
+  }
+
+  function computeMediaCounts(driveUrlObject) {
+    let photos = 0;
+    let videos = 0;
+    let audios = 0;
+    for (const item of driveUrlObject || []) {
+      const mime = String(item?.mimeType || "").toLowerCase();
+      if (mime.startsWith("image/")) photos++;
+      else if (mime.startsWith("video/")) videos++;
+      else if (mime.startsWith("audio/")) audios++;
+    }
+    return { photos, videos, audios };
+  }
+
+  function formatMediaPreviewText({ photos, videos, audios }) {
+    if (audios > 0 && photos === 0 && videos === 0) {
+      return audios === 1 ? "🎤 Voice message" : `🎤 ${audios} voice messages`;
+    }
+    const totalVisual = photos + videos;
+    if (totalVisual === 1) {
+      if (photos === 1) return "📷 Photo";
+      if (videos === 1) return "🎥 Video";
+    }
+    const parts = [];
+    if (photos > 0) parts.push(`📷 ${photos} ${pluralize(photos, "photo", "photos")}`);
+    if (videos > 0) parts.push(`🎥 ${videos} ${pluralize(videos, "video", "videos")}`);
+    if (audios > 0) parts.push(audios === 1 ? "🎤 Voice message" : `🎤 ${audios} voice messages`);
+    return parts.length ? parts.join(", ") : "📷 Media";
+  }
+
+  async function getPollTitle(pool, pollId) {
+    if (!pollId) return null;
+    try {
+      const res = await pool.query('SELECT "question" FROM poll WHERE "id" = $1', [pollId]);
+      if (res.rows.length === 0) return null;
+      return res.rows[0].question ? String(res.rows[0].question) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  async function computePreviewTextForMessage(pool, msg) {
+    const type = msg?.messageType || "text";
+    if (type === "media" && msg?.mediaFilesId) {
+      const drive = await getMediaDriveUrlObjectById(pool, msg.mediaFilesId);
+      return formatMediaPreviewText(computeMediaCounts(drive));
+    }
+    if (type === "poll" && msg?.pollId) {
+      const title = await getPollTitle(pool, msg.pollId);
+      return title ? `📊 ${title}` : "📊 Poll";
+    }
+    if (type === "table") return "📋 Table";
+    if (type === "announcement") return "📢 Announcement";
+    return null;
+  }
+
+  async function computeReplyPreviewText(pool, replyMessageId) {
+    if (!replyMessageId) return null;
+    const res = await pool.query(
+      'SELECT "messageType", "messageText", "mediaFilesId", "pollId" FROM chatmessages WHERE "id" = $1',
+      [replyMessageId]
+    );
+    if (res.rows.length === 0) return null;
+    const row = res.rows[0];
+    const base = {
+      messageType: row.messageType || "text",
+      messageText: row.messageText || "",
+      mediaFilesId: row.mediaFilesId || null,
+      pollId: row.pollId || null,
+    };
+    if (base.messageType === "text") {
+      const t = String(base.messageText || "").trim();
+      return t.length > 60 ? t.substring(0, 60) + "..." : t || "Message";
+    }
+    return await computePreviewTextForMessage(pool, base);
+  }
+
   // ==================== VIDEO CALL DATA STORES ====================
   
   // Map: roomId -> Set<userId> (active call participants)
@@ -222,12 +313,21 @@ const setupSocketIO = (io, app) => {
               (unreadCounts[userIdStr][roomIdStr] || 0) + 1;
           }
 
+          // For room list updates we want WhatsApp-style preview text (not captions).
+          const lastMessageForRoomUpdate = {
+            ...lastMessage,
+            messageText:
+              lastMessage?.previewText && lastMessage?.messageType !== "text"
+                ? lastMessage.previewText
+                : lastMessage?.messageText,
+          };
+
           for (const sid of sockets) {
             const socket = io.sockets.sockets.get(sid);
             if (socket) {
               socket.emit("roomUpdate", {
                 roomId: roomIdStr,
-                lastMessage,
+                lastMessage: lastMessageForRoomUpdate,
                 unreadCount: unreadCounts[userIdStr]?.[roomIdStr] || 0,
               });
             }
@@ -429,7 +529,7 @@ const setupSocketIO = (io, app) => {
         );
 
         // Build unified rooms data array
-        const rooms = result.rows.map((room) => {
+        const rooms = await Promise.all(result.rows.map(async (room) => {
           const roomIdStr = room.roomId.toString();
           const lastMsg = lastMessages[roomIdStr];
           const userUnread = unreadCounts[userIdStr]?.[roomIdStr] || 0;
@@ -438,15 +538,14 @@ const setupSocketIO = (io, app) => {
           let lastMessageData = null;
           if (lastMsg) {
             let displayText = lastMsg.messageText;
+            let previewText = lastMsg.previewText || null;
             if (lastMsg.messageType !== 'text') {
-              // Show "shared {type}" for non-text messages
-              const typeMap = {
-                'media': 'media',
-                'poll': 'poll',
-                'table': 'table',
-                'announcement': 'announcement'
-              };
-              displayText = `shared ${typeMap[lastMsg.messageType] || lastMsg.messageType}`;
+              // WhatsApp-style: prefer previewText (Photo/Video/Voice/Poll title)
+              if (!previewText) {
+                // Compute on demand (mediaFilesId/pollId based)
+                previewText = await computePreviewTextForMessage(pool, lastMsg);
+              }
+              displayText = previewText || displayText || '📷 Media';
             }
             
             lastMessageData = {
@@ -456,6 +555,11 @@ const setupSocketIO = (io, app) => {
               senderName: lastMsg.sender?.userName || 'Unknown',
               senderId: lastMsg.sender?.userId,
               timestamp: lastMsg.createdAt,
+              replyMessageId: lastMsg.replyMessageId || null,
+              replyMessageType: lastMsg.replyMessageType || null,
+              replyMessageText: lastMsg.replyMessageText || null,
+              replySenderName: lastMsg.replySenderName || null,
+              previewText: previewText,
             };
           }
           
@@ -467,7 +571,7 @@ const setupSocketIO = (io, app) => {
             lastMessage: lastMessageData,
             unreadCount: userUnread,
           };
-        });
+        }));
 
         // Single unified event with all room data
         socket.emit("roomsData", { rooms });
@@ -557,19 +661,24 @@ const setupSocketIO = (io, app) => {
       const roomIdStr = String(roomId);
       console.log("📤 [Socket] Message in room:", roomIdStr);
 
-      // Format reply text for display (for polls, media, etc show type name)
+      // WhatsApp-style reply preview text (media/poll title/etc)
       let replyMessageText = message.replyMessageText || null;
-      if (message.replyMessageId && message.replyMessageType) {
-        if (message.replyMessageType === 'poll') {
-          replyMessageText = '📊 Poll';
-        } else if (message.replyMessageType === 'media') {
-          replyMessageText = '📷 Media';
-        } else if (message.replyMessageType === 'table') {
-          replyMessageText = '📋 Table';
-        } else if (message.replyMessageType === 'announcement') {
-          replyMessageText = '📢 Announcement';
-        }
-      }
+      try {
+        const pool = await import("./config/database.js").then((m) => m.default);
+        const computed = await computeReplyPreviewText(pool, message.replyMessageId);
+        if (computed) replyMessageText = computed;
+      } catch {}
+
+      // WhatsApp-style preview text for room list/notifications (not used in bubble body)
+      let previewText = null;
+      try {
+        const pool = await import("./config/database.js").then((m) => m.default);
+        previewText = await computePreviewTextForMessage(pool, {
+          messageType: message.messageType,
+          mediaFilesId: message.mediaFilesId,
+          pollId: message.pollId,
+        });
+      } catch {}
 
       const msgData = {
         id: message.id,
@@ -587,6 +696,7 @@ const setupSocketIO = (io, app) => {
         replyMessageId: message.replyMessageId || null,
         replySenderName: message.replySenderName || null,
         replyMessageText: replyMessageText,
+        previewText: previewText,
       };
 
       lastMessages[roomIdStr] = msgData;

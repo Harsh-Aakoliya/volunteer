@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
@@ -7,6 +6,7 @@ import {
   Image,
   ActivityIndicator,
   StyleSheet,
+  useWindowDimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { VideoView, useVideoPlayer } from 'expo-video';
@@ -31,43 +31,19 @@ interface MediaGridProps {
   isLoading?: boolean;
 }
 
-// Cache for media files
+// Cache for media files and dimensions
 const mediaCache: Map<number, MediaFile[]> = new Map();
-// Cache for image dimensions (uri -> {w, h})
 const dimensionsCache: Map<string, { w: number; h: number }> = new Map();
 
-const GAP = 4;
-const CONTAINER_WIDTH = 260;
-const CONTAINER_WIDTH_WIDE = 320; // For PPP and PLL/LPL/LLP/LLL – wider layout
-const HALF_WIDTH = (CONTAINER_WIDTH - GAP) / 2;
-// Single media: use wider bubble and allow a bit more height
-const SINGLE_MAX_HEIGHT_RATIO = 1.4;
-const MAX_SINGLE_WIDTH = CONTAINER_WIDTH_WIDE;
-const MAX_SINGLE_HEIGHT = MAX_SINGLE_WIDTH * SINGLE_MAX_HEIGHT_RATIO;
-// Multi-media bubbles: keep total height reasonably compact
-const MAX_HEIGHT_RATIO = 1.2;
-const MIN_CELL_SIZE = 80;
 const BORDER_RADIUS = 8;
-
-// Compute display size from actual dimensions - Telegram style: adapt BOTH width and height
-// Portrait images → narrower bubble, landscape → full width bubble, no white patches
-function fitInBox(imgW: number, imgH: number): { w: number; h: number } {
-  if (imgW <= 0 || imgH <= 0) return { w: MAX_SINGLE_WIDTH, h: MAX_SINGLE_WIDTH };
-  const aspect = imgH / imgW;
-  const maxAspect = MAX_SINGLE_HEIGHT / MAX_SINGLE_WIDTH;
-  if (aspect >= maxAspect) {
-    // Portrait or tall: limit by height, width shrinks (narrower bubble)
-    const h = MAX_SINGLE_HEIGHT;
-    const w = h / aspect;
-    return { w, h };
-  }
-  // Landscape or wide: limit by width, height shrinks
-  const w = MAX_SINGLE_WIDTH;
-  const h = w * aspect;
-  return { w, h };
-}
+const GAP = 4;
 
 const getImageUri = (fileName: string) => `${API_URL}/media/chat/${fileName}`;
+
+const clampAspect = (d: { w: number; h: number }) => {
+  if (!d || d.w <= 0 || d.h <= 0) return 1;
+  return Math.min(Math.max(d.w / d.h, 0.6), 2.0);
+};
 
 const MediaGrid: React.FC<MediaGridProps> = ({
   mediaFilesId,
@@ -78,6 +54,30 @@ const MediaGrid: React.FC<MediaGridProps> = ({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [dimensions, setDimensions] = useState<Record<number, { w: number; h: number }>>({});
+
+  // ----------------------------------------------------
+  // DYNAMIC SIZING CALCULATIONS
+  // ----------------------------------------------------
+  const { width: screenWidth } = useWindowDimensions();
+  
+  // Exactly calculate the maximum internal space of the bubble to prevent ANY overflow.
+  const SAFE_SCREEN_WIDTH = screenWidth - 12; // Accounts for outer wrapper padding
+  const bubbleMaxWidth = isOwnMessage ? SAFE_SCREEN_WIDTH * 0.85 : SAFE_SCREEN_WIDTH * 0.78;
+  const MAX_BUBBLE_WIDTH = bubbleMaxWidth - 16; // Accounts for internal bubble padding
+  
+  const MAX_SINGLE_HEIGHT = MAX_BUBBLE_WIDTH * 1.4;
+
+  const fitInBox = useCallback((imgW: number, imgH: number): { w: number; h: number } => {
+    if (imgW <= 0 || imgH <= 0) return { w: MAX_BUBBLE_WIDTH, h: MAX_BUBBLE_WIDTH };
+    const aspect = imgH / imgW;
+    const maxAspect = MAX_SINGLE_HEIGHT / MAX_BUBBLE_WIDTH;
+    if (aspect >= maxAspect) {
+      const h = MAX_SINGLE_HEIGHT;
+      return { w: h / aspect, h };
+    }
+    const w = MAX_BUBBLE_WIDTH;
+    return { w, h: w * aspect };
+  }, [MAX_BUBBLE_WIDTH, MAX_SINGLE_HEIGHT]);
 
   const fetchDimensions = useCallback((files: MediaFile[]) => {
     files.forEach((file, index) => {
@@ -90,7 +90,6 @@ const MediaGrid: React.FC<MediaGridProps> = ({
         if (cached) {
           setDimensions((prev) => ({ ...prev, [index]: cached }));
         } else {
-          // Pre-fetch dimensions; onLoad in SingleMediaDisplay is fallback when this fails (e.g. auth)
           Image.getSize(
             uri,
             (w, h) => {
@@ -98,7 +97,7 @@ const MediaGrid: React.FC<MediaGridProps> = ({
               dimensionsCache.set(uri, d);
               setDimensions((prev) => ({ ...prev, [index]: d }));
             },
-            () => { /* onLoad will provide dimensions when image renders */ }
+            () => { /* onLoad provides fallback */ }
           );
         }
       } else if (isVideo) {
@@ -180,14 +179,14 @@ const MediaGrid: React.FC<MediaGridProps> = ({
     [onImageDimensions]
   );
 
-  const renderCell = (
+  // Core renderer updated to support percentage & Flexbox styling
+  const renderFlexCell = (
     file: MediaFile,
     index: number,
-    width: number,
-    height: number,
-    borderRadius: number = BORDER_RADIUS,
+    styleProps: any,
     resizeMode: 'cover' | 'contain' = 'cover'
   ) => {
+    if (!file) return null;
     const isImage = file.mimeType.startsWith('image');
     const isVideo = file.mimeType.startsWith('video');
     const isAudio = file.mimeType.startsWith('audio');
@@ -197,20 +196,16 @@ const MediaGrid: React.FC<MediaGridProps> = ({
       <TouchableOpacity
         key={file.id}
         onPress={() => onMediaPress(mediaFiles, index)}
-        style={[styles.cell, { width, height, borderRadius }]}
+        style={[styles.cell, styleProps, { borderRadius: BORDER_RADIUS }]}
         activeOpacity={0.9}
       >
         {isImage && (
-          <Image
-            source={{ uri }}
-            style={{ width, height }}
-            resizeMode={resizeMode}
-          />
+          <Image source={{ uri }} style={{ width: '100%', height: '100%' }} resizeMode={resizeMode} />
         )}
         {isVideo && (
           <Video
             source={{ uri }}
-            style={{ width, height }}
+            style={{ width: '100%', height: '100%' }}
             resizeMode={resizeMode === 'cover' ? ResizeMode.COVER : ResizeMode.CONTAIN}
             shouldPlay={false}
             isMuted
@@ -220,9 +215,9 @@ const MediaGrid: React.FC<MediaGridProps> = ({
           />
         )}
         {isAudio && (
-          <View style={[styles.audioCell, { width, height }]}>
+          <View style={[styles.audioCell, { width: '100%', height: '100%' }]}>
             <View style={styles.audioIcon}>
-              <Ionicons name="musical-notes" size={width * 0.2} color="white" />
+              <Ionicons name="musical-notes" size={32} color="white" />
             </View>
           </View>
         )}
@@ -237,20 +232,18 @@ const MediaGrid: React.FC<MediaGridProps> = ({
     );
   };
 
-  // Loading
   if (loading) {
     return (
-      <View style={[styles.placeholder, { height: 140 }]}>
+      <View style={[styles.placeholder, { width: '100%', minWidth: 200, maxWidth: MAX_BUBBLE_WIDTH, height: 140 }]}>
         <ActivityIndicator size="small" color="#6b7280" />
         <Text style={styles.placeholderText}>Loading media...</Text>
       </View>
     );
   }
 
-  // Error / empty
   if (error || mediaFiles.length === 0) {
     return (
-      <View style={[styles.placeholder, styles.emptyPlaceholder, { height: 140 }]}>
+      <View style={[styles.placeholder, styles.emptyPlaceholder, { width: '100%', minWidth: 200, maxWidth: MAX_BUBBLE_WIDTH, height: 140 }]}>
         <Ionicons name="image-outline" size={32} color="#9ca3af" />
         <Text style={styles.placeholderText}>No media files</Text>
       </View>
@@ -260,7 +253,6 @@ const MediaGrid: React.FC<MediaGridProps> = ({
   const count = mediaFiles.length;
   const single = mediaFiles[0];
 
-  // Single audio → inline player
   if (count === 1 && single.mimeType.startsWith('audio')) {
     return (
       <AudioMessagePlayer
@@ -270,19 +262,22 @@ const MediaGrid: React.FC<MediaGridProps> = ({
     );
   }
 
-  // Single image/video – Telegram style: adapt width AND height from actual dimensions
-  // Portrait → narrower bubble, landscape → full width, no white patches
+  // ----------------------------------------------------
+  // SINGLE MEDIA: Perfect scaling
+  // ----------------------------------------------------
   if (count === 1) {
     const dim = getDim(0);
     const { w, h } = fitInBox(dim.w, dim.h);
+    const safeMinWidth = Math.min(w, MAX_BUBBLE_WIDTH); // Ensure minWidth never breaks bounds
 
     return (
       <View style={styles.singleWrapper}>
         <SingleMediaDisplay
           file={single}
           index={0}
-          displayWidth={w}
-          displayHeight={h}
+          displayWidth={safeMinWidth}
+          aspectRatio={w / h}
+          maxWidth={MAX_BUBBLE_WIDTH}
           mediaFiles={mediaFiles}
           onMediaPress={onMediaPress}
           onImageDimensions={onImageDimensions}
@@ -291,195 +286,97 @@ const MediaGrid: React.FC<MediaGridProps> = ({
     );
   }
 
-  // Two files – side-by-side only when both portrait; stacked when both landscape or mixed
-  if (count === 2) {
-    const d0 = getDim(0);
-    const d1 = getDim(1);
-    const aspect0 = d0.h / d0.w;
-    const aspect1 = d1.h / d1.w;
-    const portrait0 = aspect0 >= 1;
-    const portrait1 = aspect1 >= 1;
-    const bothPortrait = portrait0 && portrait1;
-    const mixedPortraitLandscape = portrait0 !== portrait1;
-
-    if (bothPortrait) {
-      // Side-by-side
-      const rowH = Math.max(HALF_WIDTH * aspect0, HALF_WIDTH * aspect1, MIN_CELL_SIZE);
+  // Helper to abstract the +N overlay logic
+  const cell = (idx: number, styleProps: any, remaining?: number) => {
+    if (idx === 2 && remaining != null && remaining > 0) {
       return (
-        <View style={styles.wrapper}>
-          <View style={[styles.row2, { height: rowH }]}>
-            {mediaFiles.map((f, i) => (
-              <View key={f.id} style={{ width: HALF_WIDTH, height: rowH }}>
-                {renderCell(f, i, HALF_WIDTH, rowH)}
-              </View>
-            ))}
-          </View>
-        </View>
-      );
-    }
-
-    // Stacked: both landscape, or mixed (one portrait + one landscape)
-    let h0 = Math.max(CONTAINER_WIDTH * aspect0, MIN_CELL_SIZE);
-    let h1 = Math.max(CONTAINER_WIDTH * aspect1, MIN_CELL_SIZE);
-
-    // For mixed portrait+landscape, show full portrait height (no global clamp).
-    // For both-landscape, still clamp to keep bubble compact.
-    if (!mixedPortraitLandscape) {
-      const totalH2 = h0 + GAP + h1;
-      const maxH2 = CONTAINER_WIDTH * MAX_HEIGHT_RATIO;
-      if (totalH2 > maxH2) {
-        const scale = maxH2 / totalH2;
-        h0 *= scale;
-        h1 *= scale;
-      }
-    }
-    return (
-      <View style={styles.wrapper}>
-        <View style={[styles.stack2, { height: h0 + GAP + h1 }]}>
-          <View style={{ width: CONTAINER_WIDTH, height: h0 }}>
-            {renderCell(mediaFiles[0], 0, CONTAINER_WIDTH, h0)}
-          </View>
-          <View style={{ width: CONTAINER_WIDTH, height: h1 }}>
-            {renderCell(mediaFiles[1], 1, CONTAINER_WIDTH, h1)}
-          </View>
-        </View>
-      </View>
-    );
-  }
-
-  // Three files OR 4+ files (show first 3 with same layout, +N overlay on 3rd when 4+)
-  if (count >= 3) {
-    const visible = count >= 4 ? mediaFiles.slice(0, 3) : mediaFiles;
-    const remaining = count >= 4 ? count - 3 : undefined;
-
-    const d0 = getDim(0);
-    const d1 = getDim(1);
-    const d2 = getDim(2);
-    const p0 = d0.h / d0.w >= 1;
-    const p1 = d1.h / d1.w >= 1;
-    const p2 = d2.h / d2.w >= 1;
-    const orientations = [p0, p1, p2];
-    const portraitCount = orientations.filter(Boolean).length;
-
-    const renderThird = (w: number, h: number) =>
-      remaining != null ? (
-        <View style={{ width: w, height: h, position: 'relative' }}>
-          {renderCell(visible[2], 2, w, h)}
+        <View style={[styleProps, { position: 'relative' }]}>
+          {renderFlexCell(mediaFiles[idx], idx, { ...StyleSheet.absoluteFillObject })}
           <TouchableOpacity
             style={[StyleSheet.absoluteFillObject, styles.plusOverlay]}
             onPress={() => onMediaPress(mediaFiles, 3)}
             activeOpacity={1}
           >
-            <View>
-              <Text style={styles.plusText}>+{remaining}</Text>
-            </View>
+            <Text style={styles.plusText}>+{remaining}</Text>
           </TouchableOpacity>
         </View>
-      ) : (
-        renderCell(visible[2], 2, w, h)
       );
+    }
+    return renderFlexCell(mediaFiles[idx], idx, styleProps);
+  };
 
-    // Case 1 (PPP): L-shape – 1 portrait left, 2 portraits stacked right (wider layout)
-    if (p0 && p1 && p2) {
-      const W = CONTAINER_WIDTH_WIDE;
-      const halfW = (W - GAP) / 2;
-      let rightTopH = Math.max(halfW * (d1.h / d1.w), MIN_CELL_SIZE);
-      let rightBottomH = Math.max(halfW * (d2.h / d2.w), MIN_CELL_SIZE);
-      let leftH = rightTopH + GAP + rightBottomH;
-      // Clamp total height for this bubble
-      const maxH = W * MAX_HEIGHT_RATIO;
-      if (leftH > maxH) {
-        const scale = maxH / leftH;
-        rightTopH *= scale;
-        rightBottomH *= scale;
-        leftH = rightTopH + GAP + rightBottomH;
-      }
+  // ----------------------------------------------------
+  // 2 MEDIA FILES
+  // ----------------------------------------------------
+  if (count === 2) {
+    const aspect0 = getDim(0).w / getDim(0).h;
+    const aspect1 = getDim(1).w / getDim(1).h;
+    const bothPortrait = aspect0 <= 1 && aspect1 <= 1;
+
+    // Both Portrait -> Side by Side
+    if (bothPortrait) {
       return (
-        <View style={[styles.wrapper, { width: W }]}>
-          <View style={[styles.row3, { height: leftH, width: W }]}>
-            <View style={{ width: halfW, height: leftH }}>
-              {renderCell(visible[0], 0, halfW, leftH)}
-            </View>
-            <View style={[styles.stackRight, { height: leftH, width: halfW }]}>
-              <View style={{ height: rightTopH }}>
-                {renderCell(visible[1], 1, halfW, rightTopH)}
-              </View>
-              <View style={{ height: rightBottomH }}>{renderThird(halfW, rightBottomH)}</View>
-            </View>
+        <View style={[{ width: '100%', minWidth: 200, maxWidth: MAX_BUBBLE_WIDTH, flexDirection: 'row', gap: GAP }, styles.wrapper]}>
+          {cell(0, { flex: 1, aspectRatio: 3/4 })}
+          {cell(1, { flex: 1, aspectRatio: 3/4 })}
+        </View>
+      );
+    }
+
+    // Stacked
+    return (
+      <View style={[{ width: '100%', minWidth: 200, maxWidth: MAX_BUBBLE_WIDTH, gap: GAP }, styles.wrapper]}>
+        {cell(0, { width: '100%', aspectRatio: clampAspect(getDim(0)) })}
+        {cell(1, { width: '100%', aspectRatio: clampAspect(getDim(1)) })}
+      </View>
+    );
+  }
+
+  // ----------------------------------------------------
+  // 3 OR 4+ MEDIA FILES
+  // ----------------------------------------------------
+  if (count >= 3) {
+    const remaining = count >= 4 ? count - 3 : 0;
+    const p0 = getDim(0).w / getDim(0).h <= 1;
+    const p1 = getDim(1).w / getDim(1).h <= 1;
+    const p2 = getDim(2).w / getDim(2).h <= 1;
+    const orientations = [p0, p1, p2];
+    const portraitCount = orientations.filter(Boolean).length;
+
+    // 1 Left, 2 Right (PPP)
+    if (p0 && p1 && p2) {
+      return (
+        <View style={[{ width: '100%', minWidth: 240, maxWidth: MAX_BUBBLE_WIDTH, flexDirection: 'row', gap: GAP, aspectRatio: 1.2 }, styles.wrapper]}>
+          {cell(0, { flex: 1 })}
+          <View style={{ flex: 1, gap: GAP }}>
+            {cell(1, { flex: 1 })}
+            {cell(2, { flex: 1 }, remaining)}
           </View>
         </View>
       );
     }
 
-    // Cases 2,3,4 (PPL, PLP, LPP): 2 portraits side-by-side on top, 1 landscape full width below (narrow layout)
+    // 2 Top, 1 Bottom (PPL, PLP, LPP)
     if (portraitCount === 2) {
       const portraitIndices = [0, 1, 2].filter((i) => orientations[i]);
       const landscapeIndex = [0, 1, 2].find((i) => !orientations[i])!;
-      let topH = Math.max(
-        HALF_WIDTH * (getDim(portraitIndices[0]).h / getDim(portraitIndices[0]).w),
-        HALF_WIDTH * (getDim(portraitIndices[1]).h / getDim(portraitIndices[1]).w),
-        MIN_CELL_SIZE
-      );
-      const bottomD = getDim(landscapeIndex);
-      let bottomH = Math.max(CONTAINER_WIDTH * (bottomD.h / bottomD.w), MIN_CELL_SIZE);
-
-      // Clamp total height for this bubble
-      const totalH3 = topH + GAP + bottomH;
-      const maxH3 = CONTAINER_WIDTH * MAX_HEIGHT_RATIO;
-      if (totalH3 > maxH3) {
-        const scale = maxH3 / totalH3;
-        topH *= scale;
-        bottomH *= scale;
-      }
-
-      const cell = (idx: number, w: number, h: number) =>
-        idx === 2 && remaining != null
-          ? renderThird(w, h)
-          : renderCell(visible[idx], idx, w, h);
-
       return (
-        <View style={[styles.wrapper, { width: CONTAINER_WIDTH }]}>
-          <View style={[styles.stack2, { height: topH + GAP + bottomH }]}>
-            <View style={[styles.row2, { height: topH }]}>
-              <View style={{ width: HALF_WIDTH, height: topH }}>
-                {cell(portraitIndices[0], HALF_WIDTH, topH)}
-              </View>
-              <View style={{ width: HALF_WIDTH, height: topH }}>
-                {cell(portraitIndices[1], HALF_WIDTH, topH)}
-              </View>
-            </View>
-            <View style={{ width: CONTAINER_WIDTH, height: bottomH }}>
-              {cell(landscapeIndex, CONTAINER_WIDTH, bottomH)}
-            </View>
+        <View style={[{ width: '100%', minWidth: 240, maxWidth: MAX_BUBBLE_WIDTH, gap: GAP, aspectRatio: 1 }, styles.wrapper]}>
+          <View style={{ flex: 1, flexDirection: 'row', gap: GAP }}>
+            {cell(portraitIndices[0], { flex: 1 })}
+            {cell(portraitIndices[1], { flex: 1 })}
           </View>
+          {cell(landscapeIndex, { flex: 1 }, landscapeIndex === 2 ? remaining : 0)}
         </View>
       );
     }
 
-    // Cases 5,6,7,8 (PLL, LPL, LLP, LLL): all stacked top to bottom (wider layout)
-    const W = CONTAINER_WIDTH_WIDE;
-    let h0 = Math.max(W * (d0.h / d0.w), MIN_CELL_SIZE);
-    let h1 = Math.max(W * (d1.h / d1.w), MIN_CELL_SIZE);
-    let h2 = Math.max(W * (d2.h / d2.w), MIN_CELL_SIZE);
-    const totalH4 = h0 + GAP + h1 + GAP + h2;
-    const maxH4 = W * MAX_HEIGHT_RATIO;
-    if (totalH4 > maxH4) {
-      const scale = maxH4 / totalH4;
-      h0 *= scale;
-      h1 *= scale;
-      h2 *= scale;
-    }
+    // All Stacked (PLL, LPL, LLP, LLL)
     return (
-      <View style={[styles.wrapper, { width: W }]}>
-        <View style={[styles.stack2, { height: h0 + GAP + h1 + GAP + h2, width: W }]}>
-          <View style={{ width: W, height: h0 }}>
-            {renderCell(visible[0], 0, W, h0)}
-          </View>
-          <View style={{ width: W, height: h1 }}>
-            {renderCell(visible[1], 1, W, h1)}
-          </View>
-          <View style={{ width: W, height: h2 }}>{renderThird(W, h2)}</View>
-        </View>
+      <View style={[{ width: '100%', minWidth: 240, maxWidth: MAX_BUBBLE_WIDTH, gap: GAP }, styles.wrapper]}>
+        {cell(0, { width: '100%', aspectRatio: clampAspect(getDim(0)) })}
+        {cell(1, { width: '100%', aspectRatio: clampAspect(getDim(1)) })}
+        {cell(2, { width: '100%', aspectRatio: clampAspect(getDim(2)) }, remaining)}
       </View>
     );
   }
@@ -487,16 +384,19 @@ const MediaGrid: React.FC<MediaGridProps> = ({
   return null;
 };
 
-// Single media (image/video) with adaptive sizing - uses Image onLoad / Video onReadyForDisplay for real dimensions
+// ==========================================
+// SINGLE MEDIA DISPLAY (Responsive Sizing)
+// ==========================================
 const SingleMediaDisplay: React.FC<{
   file: MediaFile;
   index: number;
   displayWidth: number;
-  displayHeight: number;
+  aspectRatio: number;
+  maxWidth: number;
   mediaFiles: MediaFile[];
   onMediaPress: (files: MediaFile[], idx: number) => void;
   onImageDimensions: (index: number, w: number, h: number) => void;
-}> = ({ file, index, displayWidth, displayHeight, mediaFiles, onMediaPress, onImageDimensions }) => {
+}> = ({ file, index, displayWidth, aspectRatio, maxWidth, mediaFiles, onMediaPress, onImageDimensions }) => {
   const isImage = file.mimeType.startsWith('image');
   const isVideo = file.mimeType.startsWith('video');
   const uri = getImageUri(file.fileName);
@@ -520,14 +420,23 @@ const SingleMediaDisplay: React.FC<{
   return (
     <TouchableOpacity
       onPress={() => onMediaPress(mediaFiles, index)}
-      style={[styles.cell, { width: displayWidth, height: displayHeight, borderRadius: BORDER_RADIUS }]}
+      style={[
+        styles.cell,
+        {
+          width: '100%',
+          minWidth: displayWidth,
+          maxWidth: maxWidth,
+          aspectRatio: aspectRatio,
+          borderRadius: BORDER_RADIUS,
+        }
+      ]}
       activeOpacity={0.9}
     >
       {isImage && (
         <Image
           source={{ uri }}
-          style={{ width: displayWidth, height: displayHeight }}
-          resizeMode="contain"
+          style={{ width: '100%', height: '100%' }}
+          resizeMode="cover"
           onLoad={handleImageLoad}
         />
       )}
@@ -535,8 +444,8 @@ const SingleMediaDisplay: React.FC<{
         <>
           <Video
             source={{ uri }}
-            style={{ width: displayWidth, height: displayHeight }}
-            resizeMode={ResizeMode.CONTAIN}
+            style={{ width: '100%', height: '100%' }}
+            resizeMode={ResizeMode.COVER}
             shouldPlay={false}
             isMuted
             isLooping={false}
@@ -554,38 +463,8 @@ const SingleMediaDisplay: React.FC<{
   );
 };
 
-const VideoThumbnail: React.FC<{ fileName: string; width: number; height: number }> = ({
-  fileName,
-  width,
-  height,
-}) => {
-  const videoUrl = getImageUri(fileName);
-  const player = useVideoPlayer(videoUrl, (p) => {
-    if (p) {
-      p.loop = false;
-      p.muted = true;
-      p.pause();
-    }
-  });
-
-  return (
-    <View style={[styles.videoWrap, { width, height }]}>
-      <VideoView
-        style={{ width, height }}
-        player={player}
-        nativeControls={false}
-        allowsFullscreen={false}
-        allowsPictureInPicture={false}
-        showsTimecodes={false}
-        requiresLinearPlayback
-      />
-    </View>
-  );
-};
-
 const styles = StyleSheet.create({
   placeholder: {
-    width: CONTAINER_WIDTH,
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#f3f4f6',
@@ -599,38 +478,10 @@ const styles = StyleSheet.create({
   },
   placeholderText: { marginTop: 8, fontSize: 12, color: '#6b7280' },
   wrapper: { marginVertical: 4 },
-  singleWrapper: { marginVertical: 4 },
+  singleWrapper: { marginVertical: 4, width: '100%' },
   cell: {
     overflow: 'hidden',
     backgroundColor: '#f3f4f6',
-  },
-  row2: {
-    width: CONTAINER_WIDTH,
-    flexDirection: 'row',
-    gap: GAP,
-  },
-  stack2: {
-    width: CONTAINER_WIDTH,
-    flexDirection: 'column',
-    gap: GAP,
-  },
-  row3: {
-    width: CONTAINER_WIDTH,
-    flexDirection: 'row',
-    gap: GAP,
-  },
-  stackRight: {
-    width: HALF_WIDTH,
-    gap: GAP,
-  },
-  grid4: {
-    width: CONTAINER_WIDTH,
-    gap: GAP,
-  },
-  gridRow: {
-    flexDirection: 'row',
-    gap: GAP,
-    height: (CONTAINER_WIDTH - GAP) / 2,
   },
   audioCell: {
     justifyContent: 'center',
@@ -638,10 +489,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#e5e7eb',
   },
   audioIcon: {
-    width: 80,
-    height: 80,
+    width: 60,
+    height: 60,
     backgroundColor: '#8b5cf6',
-    borderRadius: 40,
+    borderRadius: 30,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -659,14 +510,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  videoWrap: { overflow: 'hidden' },
   plusOverlay: {
     ...StyleSheet.absoluteFillObject,
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: 'rgba(0,0,0,0.5)',
+    borderRadius: BORDER_RADIUS,
   },
-  plusText: { color: 'white', fontSize: 20, fontWeight: 'bold' },
+  plusText: { color: 'white', fontSize: 24, fontWeight: 'bold' },
 });
 
 export default MediaGrid;
