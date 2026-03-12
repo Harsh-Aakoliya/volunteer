@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
+// components/chat/MediaGrid.tsx
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -6,14 +7,19 @@ import {
   Image,
   ActivityIndicator,
   StyleSheet,
-  useWindowDimensions,
+  Dimensions,
+  Platform,
+  Animated as RNAnimated,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { VideoView, useVideoPlayer } from 'expo-video';
 import { Video, ResizeMode } from 'expo-av';
+import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
 import { API_URL } from '@/constants/api';
-import { getMediaFiles } from "@/api/chat/media";
+import { getMediaFiles } from '@/api/chat/media';
 import AudioMessagePlayer from '@/components/chat/AudioMessagePlayer';
+
+// ==================== TYPES ====================
 
 interface MediaFile {
   id: number;
@@ -21,6 +27,7 @@ interface MediaFile {
   originalName: string;
   mimeType: string;
   size: number;
+  duration?: number; // video/audio duration in seconds
 }
 
 interface MediaGridProps {
@@ -31,94 +38,340 @@ interface MediaGridProps {
   isLoading?: boolean;
 }
 
-// Cache for media files and dimensions
+// ==================== CACHES ====================
+
 const mediaCache: Map<number, MediaFile[]> = new Map();
 const dimensionsCache: Map<string, { w: number; h: number }> = new Map();
+const loadingPromises: Map<number, Promise<MediaFile[]>> = new Map();
 
-const BORDER_RADIUS = 8;
-const GAP = 4;
+// ==================== CONSTANTS ====================
+
+const SCREEN_W = Dimensions.get('window').width;
+const GAP = 2;
+const BORDER_RADIUS = 10;
+
+// Bubble-relative sizing
+const CONTAINER_MAX_W = Math.floor(SCREEN_W * 0.70);
+const HALF_W = Math.floor((CONTAINER_MAX_W - GAP) / 2);
+const THIRD_W = Math.floor((CONTAINER_MAX_W - GAP * 2) / 3);
+
+// Single media constraints
+const SINGLE_MAX_W = CONTAINER_MAX_W;
+const SINGLE_MAX_H = Math.floor(SINGLE_MAX_W * 1.6); // max portrait height
+const SINGLE_MIN_H = Math.floor(SINGLE_MAX_W * 0.4); // min landscape height
+
+// Multi constraints
+const MULTI_MAX_TOTAL_H = Math.floor(CONTAINER_MAX_W * 1.4);
+const MIN_CELL = 70;
+
+/**
+ * Exported for the chat screen to constrain the bubble media section.
+ */
+export const MEDIA_CONTAINER_MAX_WIDTH = CONTAINER_MAX_W;
+
+// ==================== HELPERS ====================
 
 const getImageUri = (fileName: string) => `${API_URL}/media/chat/${fileName}`;
 
-const clampAspect = (d: { w: number; h: number }) => {
-  if (!d || d.w <= 0 || d.h <= 0) return 1;
-  return Math.min(Math.max(d.w / d.h, 0.6), 2.0);
+function formatDuration(seconds: number): string {
+  if (!seconds || seconds <= 0) return '0:00';
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/** Fit SINGLE image:
+ *  - ALWAYS use full available width (SINGLE_MAX_W) so it lines up perfectly
+ *    with the caption / bubble width (WhatsApp-style).
+ *  - Adjust height based on aspect ratio, clamped between SINGLE_MIN_H and SINGLE_MAX_H.
+ */
+function fitSingle(imgW: number, imgH: number): { w: number; h: number } {
+  if (imgW <= 0 || imgH <= 0) return { w: SINGLE_MAX_W, h: SINGLE_MAX_W };
+  const aspect = imgH / imgW;
+  const w = SINGLE_MAX_W;
+  let h = w * aspect;
+
+  if (h > SINGLE_MAX_H) {
+    h = SINGLE_MAX_H;
+  }
+  if (h < SINGLE_MIN_H) {
+    h = SINGLE_MIN_H;
+  }
+
+  return { w: Math.round(w), h: Math.round(h) };
+}
+
+/** Clamp total height of a layout keeping ratios */
+function clampTotalHeight(heights: number[], maxTotal: number): number[] {
+  const total = heights.reduce((a, b) => a + b, 0) + GAP * (heights.length - 1);
+  if (total <= maxTotal) return heights;
+  const scale = (maxTotal - GAP * (heights.length - 1)) / heights.reduce((a, b) => a + b, 0);
+  return heights.map((h) => Math.max(Math.round(h * scale), MIN_CELL));
+}
+
+// ==================== IMAGE SHIMMER PLACEHOLDER ====================
+
+const ShimmerPlaceholder: React.FC<{ width: number; height: number }> = ({ width, height }) => {
+  const animValue = useRef(new RNAnimated.Value(0)).current;
+
+  useEffect(() => {
+    const animation = RNAnimated.loop(
+      RNAnimated.sequence([
+        RNAnimated.timing(animValue, {
+          toValue: 1,
+          duration: 1000,
+          useNativeDriver: true,
+        }),
+        RNAnimated.timing(animValue, {
+          toValue: 0,
+          duration: 1000,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    animation.start();
+    return () => animation.stop();
+  }, []);
+
+  const opacity = animValue.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.3, 0.7],
+  });
+
+  return (
+    <RNAnimated.View
+      style={{
+        width,
+        height,
+        backgroundColor: '#e0e0e0',
+        opacity,
+        borderRadius: BORDER_RADIUS,
+      }}
+    />
+  );
 };
+
+// ==================== PROGRESSIVE IMAGE ====================
+
+const ProgressiveImage: React.FC<{
+  uri: string;
+  width: number;
+  height: number;
+  resizeMode?: 'cover' | 'contain';
+  borderRadius?: number;
+  onDimensions?: (w: number, h: number) => void;
+}> = React.memo(({ uri, width, height, resizeMode = 'cover', borderRadius = 0, onDimensions }) => {
+  const [loaded, setLoaded] = useState(false);
+  const fadeAnim = useRef(new RNAnimated.Value(0)).current;
+
+  const handleLoad = useCallback(
+    (e: any) => {
+      setLoaded(true);
+      RNAnimated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 250,
+        useNativeDriver: true,
+      }).start();
+
+      const source = e?.nativeEvent?.source;
+      if (source?.width && source?.height && onDimensions) {
+        onDimensions(source.width, source.height);
+      }
+    },
+    [onDimensions, fadeAnim]
+  );
+
+  return (
+    <View style={{ width, height, borderRadius, overflow: 'hidden', backgroundColor: '#e8e8e8' }}>
+      {!loaded && (
+        <View style={StyleSheet.absoluteFill}>
+          <ShimmerPlaceholder width={width} height={height} />
+        </View>
+      )}
+      <RNAnimated.View style={{ opacity: fadeAnim, width, height }}>
+        <Image
+          source={{ uri }}
+          style={{ width, height }}
+          resizeMode={resizeMode}
+          onLoad={handleLoad}
+        />
+      </RNAnimated.View>
+    </View>
+  );
+});
+
+// ==================== VIDEO THUMBNAIL CELL ====================
+
+const VideoCell: React.FC<{
+  file: MediaFile;
+  width: number;
+  height: number;
+  resizeMode?: 'cover' | 'contain';
+  onPress: () => void;
+  onDimensions?: (w: number, h: number) => void;
+}> = React.memo(({ file, width, height, resizeMode = 'cover', onPress, onDimensions }) => {
+  const uri = getImageUri(file.fileName);
+
+  const handleReady = useCallback(
+    (e: any) => {
+      const ns = e?.naturalSize;
+      if (ns?.width && ns?.height && onDimensions) {
+        dimensionsCache.set(uri, { w: ns.width, h: ns.height });
+        onDimensions(ns.width, ns.height);
+      }
+    },
+    [uri, onDimensions]
+  );
+
+  return (
+    <TouchableOpacity onPress={onPress} activeOpacity={0.85} style={[styles.cell, { width, height }]}>
+      <Video
+        source={{ uri }}
+        style={{ width, height }}
+        resizeMode={resizeMode === 'cover' ? ResizeMode.COVER : ResizeMode.CONTAIN}
+        shouldPlay={false}
+        isMuted
+        isLooping={false}
+        useNativeControls={false}
+        onReadyForDisplay={handleReady}
+      />
+      {/* Gradient overlay at bottom for duration */}
+      <LinearGradient
+        colors={['transparent', 'rgba(0,0,0,0.5)']}
+        style={styles.videoGradient}
+      >
+        <View style={styles.videoDurationRow}>
+          <Ionicons name="videocam" size={12} color="white" />
+          {file.duration != null && file.duration > 0 && (
+            <Text style={styles.videoDurationText}>{formatDuration(file.duration)}</Text>
+          )}
+        </View>
+      </LinearGradient>
+      {/* Centered play */}
+      <View style={styles.playOverlay}>
+        <View style={styles.playCircle}>
+          <Ionicons name="play" size={22} color="white" style={{ marginLeft: 2 }} />
+        </View>
+      </View>
+    </TouchableOpacity>
+  );
+});
+
+// ==================== DOCUMENT FILE CELL ====================
+
+const DocumentCell: React.FC<{
+  file: MediaFile;
+  width: number;
+  height: number;
+  onPress: () => void;
+}> = React.memo(({ file, width, height, onPress }) => {
+  const ext = file.originalName?.split('.').pop()?.toUpperCase() || 'FILE';
+  const iconName = getDocumentIcon(file.mimeType);
+
+  return (
+    <TouchableOpacity onPress={onPress} activeOpacity={0.85} style={[styles.cell, styles.documentCell, { width, height }]}>
+      <View style={styles.documentIconContainer}>
+        <View style={[styles.documentIconCircle, { backgroundColor: getDocumentColor(ext) }]}>
+          <Ionicons name={iconName as any} size={24} color="white" />
+        </View>
+      </View>
+      <View style={styles.documentInfo}>
+        <Text style={styles.documentName} numberOfLines={1}>
+          {file.originalName || file.fileName}
+        </Text>
+        <Text style={styles.documentMeta}>
+          {ext} • {formatFileSize(file.size)}
+        </Text>
+      </View>
+    </TouchableOpacity>
+  );
+});
+
+function getDocumentIcon(mimeType: string): string {
+  if (mimeType.includes('pdf')) return 'document-text';
+  if (mimeType.includes('word') || mimeType.includes('document')) return 'document';
+  if (mimeType.includes('sheet') || mimeType.includes('excel')) return 'grid';
+  if (mimeType.includes('presentation') || mimeType.includes('powerpoint')) return 'easel';
+  if (mimeType.includes('zip') || mimeType.includes('rar') || mimeType.includes('archive'))
+    return 'file-tray-full';
+  return 'document-attach';
+}
+
+function getDocumentColor(ext: string): string {
+  switch (ext) {
+    case 'PDF':
+      return '#E53935';
+    case 'DOC':
+    case 'DOCX':
+      return '#1565C0';
+    case 'XLS':
+    case 'XLSX':
+      return '#2E7D32';
+    case 'PPT':
+    case 'PPTX':
+      return '#D84315';
+    case 'ZIP':
+    case 'RAR':
+      return '#6A1B9A';
+    default:
+      return '#546E7A';
+  }
+}
+
+// ==================== GIF CELL ====================
+
+const GifCell: React.FC<{
+  file: MediaFile;
+  width: number;
+  height: number;
+  onPress: () => void;
+  onDimensions?: (w: number, h: number) => void;
+}> = React.memo(({ file, width, height, onPress, onDimensions }) => {
+  const uri = getImageUri(file.fileName);
+
+  return (
+    <TouchableOpacity onPress={onPress} activeOpacity={0.85} style={[styles.cell, { width, height }]}>
+      <ProgressiveImage
+        uri={uri}
+        width={width}
+        height={height}
+        resizeMode="cover"
+        onDimensions={onDimensions}
+      />
+      {/* GIF badge */}
+      <View style={styles.gifBadge}>
+        <Text style={styles.gifBadgeText}>GIF</Text>
+      </View>
+    </TouchableOpacity>
+  );
+});
+
+// ==================== MEDIA GRID COMPONENT ====================
 
 const MediaGrid: React.FC<MediaGridProps> = ({
   mediaFilesId,
   onMediaPress,
   isOwnMessage,
+  messageId,
 }) => {
   const [mediaFiles, setMediaFiles] = useState<MediaFile[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
-  const [dimensions, setDimensions] = useState<Record<number, { w: number; h: number }>>({});
+  const [dims, setDims] = useState<Record<number, { w: number; h: number }>>({});
 
-  // ----------------------------------------------------
-  // DYNAMIC SIZING CALCULATIONS
-  // ----------------------------------------------------
-  const { width: screenWidth } = useWindowDimensions();
-  
-  // Exactly calculate the maximum internal space of the bubble to prevent ANY overflow.
-  const SAFE_SCREEN_WIDTH = screenWidth - 12; // Accounts for outer wrapper padding
-  const bubbleMaxWidth = isOwnMessage ? SAFE_SCREEN_WIDTH * 0.85 : SAFE_SCREEN_WIDTH * 0.78;
-  const MAX_BUBBLE_WIDTH = bubbleMaxWidth - 16; // Accounts for internal bubble padding
-  
-  const MAX_SINGLE_HEIGHT = MAX_BUBBLE_WIDTH * 1.4;
-
-  const fitInBox = useCallback((imgW: number, imgH: number): { w: number; h: number } => {
-    if (imgW <= 0 || imgH <= 0) return { w: MAX_BUBBLE_WIDTH, h: MAX_BUBBLE_WIDTH };
-    const aspect = imgH / imgW;
-    const maxAspect = MAX_SINGLE_HEIGHT / MAX_BUBBLE_WIDTH;
-    if (aspect >= maxAspect) {
-      const h = MAX_SINGLE_HEIGHT;
-      return { w: h / aspect, h };
-    }
-    const w = MAX_BUBBLE_WIDTH;
-    return { w, h: w * aspect };
-  }, [MAX_BUBBLE_WIDTH, MAX_SINGLE_HEIGHT]);
-
-  const fetchDimensions = useCallback((files: MediaFile[]) => {
-    files.forEach((file, index) => {
-      const isImage = file.mimeType.startsWith('image');
-      const isVideo = file.mimeType.startsWith('video');
-
-      if (isImage) {
-        const uri = getImageUri(file.fileName);
-        const cached = dimensionsCache.get(uri);
-        if (cached) {
-          setDimensions((prev) => ({ ...prev, [index]: cached }));
-        } else {
-          Image.getSize(
-            uri,
-            (w, h) => {
-              const d = { w, h };
-              dimensionsCache.set(uri, d);
-              setDimensions((prev) => ({ ...prev, [index]: d }));
-            },
-            () => { /* onLoad provides fallback */ }
-          );
-        }
-      } else if (isVideo) {
-        setDimensions((prev) => ({ ...prev, [index]: { w: 16, h: 9 } }));
-      }
-    });
-  }, []);
-
-  const onImageDimensions = useCallback((index: number, w: number, h: number) => {
-    const uri = getImageUri(mediaFiles[index]?.fileName || '');
-    const d = { w, h };
-    dimensionsCache.set(uri, d);
-    setDimensions((prev) => ({ ...prev, [index]: d }));
-  }, [mediaFiles]);
-
+  // ---- Fetch media files with dedup ----
   useEffect(() => {
     if (!mediaFilesId) {
       setMediaFiles([]);
       setLoading(false);
       setError(false);
-      setDimensions({});
+      setDims({});
       return;
     }
 
@@ -127,14 +380,14 @@ const MediaGrid: React.FC<MediaGridProps> = ({
       setMediaFiles(cached);
       setLoading(false);
       setError(false);
-      fetchDimensions(cached);
+      prefetchDimensions(cached);
       return;
     }
 
-    const load = async () => {
-      try {
-        setLoading(true);
-        setError(false);
+    // Deduplicate concurrent requests
+    let promise = loadingPromises.get(mediaFilesId);
+    if (!promise) {
+      promise = (async () => {
         const data = await getMediaFiles(mediaFilesId);
         if (data.success && data.media?.files) {
           const files: MediaFile[] = data.media.files.map((f: any) => ({
@@ -143,381 +396,819 @@ const MediaGrid: React.FC<MediaGridProps> = ({
             originalName: f.originalName || f.filename,
             mimeType: f.mimeType,
             size: f.size || 0,
+            duration: f.duration,
           }));
-          setMediaFiles(files);
           mediaCache.set(mediaFilesId, files);
-          fetchDimensions(files);
-        } else {
-          setMediaFiles([]);
+          return files;
         }
-      } catch {
+        return [];
+      })();
+      loadingPromises.set(mediaFilesId, promise);
+    }
+
+    setLoading(true);
+    setError(false);
+
+    promise
+      .then((files) => {
+        setMediaFiles(files);
+        prefetchDimensions(files);
+      })
+      .catch(() => {
         setError(true);
-      } finally {
+      })
+      .finally(() => {
         setLoading(false);
-      }
-    };
-    load();
-  }, [mediaFilesId, fetchDimensions]);
+        loadingPromises.delete(mediaFilesId);
+      });
+  }, [mediaFilesId]);
 
-  const getDim = (index: number) => {
-    const d = dimensions[index];
-    const f = mediaFiles[index];
-    if (d) return d;
-    if (f?.mimeType.startsWith('video')) return { w: 16, h: 9 };
-    return { w: 1, h: 1 };
-  };
-
-  const handleVideoReadyInCell = useCallback(
-    (index: number, uri: string) => (e: { naturalSize?: { width: number; height: number } }) => {
-      const naturalSize = e?.naturalSize;
-      if (naturalSize?.width && naturalSize?.height) {
-        const d = { w: naturalSize.width, h: naturalSize.height };
-        dimensionsCache.set(uri, d);
-        onImageDimensions(index, naturalSize.width, naturalSize.height);
+  // ---- Prefetch image dimensions ----
+  const prefetchDimensions = useCallback((files: MediaFile[]) => {
+    files.forEach((file, idx) => {
+      if (file.mimeType.startsWith('image')) {
+        const uri = getImageUri(file.fileName);
+        const cached = dimensionsCache.get(uri);
+        if (cached) {
+          setDims((prev) => ({ ...prev, [idx]: cached }));
+        } else {
+          Image.getSize(
+            uri,
+            (w, h) => {
+              dimensionsCache.set(uri, { w, h });
+              setDims((prev) => ({ ...prev, [idx]: { w, h } }));
+            },
+            () => {}
+          );
+        }
+      } else if (file.mimeType.startsWith('video')) {
+        setDims((prev) => ({ ...prev, [idx]: { w: 16, h: 9 } }));
       }
+    });
+  }, []);
+
+  const onCellDimensions = useCallback(
+    (index: number, w: number, h: number) => {
+      const file = mediaFiles[index];
+      if (file) {
+        const uri = getImageUri(file.fileName);
+        dimensionsCache.set(uri, { w, h });
+      }
+      setDims((prev) => ({ ...prev, [index]: { w, h } }));
     },
-    [onImageDimensions]
+    [mediaFiles]
   );
 
-  // Core renderer updated to support percentage & Flexbox styling
-  const renderFlexCell = (
-    file: MediaFile,
-    index: number,
-    styleProps: any,
-    resizeMode: 'cover' | 'contain' = 'cover'
-  ) => {
-    if (!file) return null;
-    const isImage = file.mimeType.startsWith('image');
-    const isVideo = file.mimeType.startsWith('video');
-    const isAudio = file.mimeType.startsWith('audio');
-    const uri = getImageUri(file.fileName);
+  const getDim = useCallback(
+    (index: number) => {
+      return dims[index] || { w: 1, h: 1 };
+    },
+    [dims]
+  );
 
-    return (
-      <TouchableOpacity
-        key={file.id}
-        onPress={() => onMediaPress(mediaFiles, index)}
-        style={[styles.cell, styleProps, { borderRadius: BORDER_RADIUS }]}
-        activeOpacity={0.9}
-      >
-        {isImage && (
-          <Image source={{ uri }} style={{ width: '100%', height: '100%' }} resizeMode={resizeMode} />
-        )}
-        {isVideo && (
-          <Video
-            source={{ uri }}
-            style={{ width: '100%', height: '100%' }}
-            resizeMode={resizeMode === 'cover' ? ResizeMode.COVER : ResizeMode.CONTAIN}
-            shouldPlay={false}
-            isMuted
-            isLooping={false}
-            useNativeControls={false}
-            onReadyForDisplay={handleVideoReadyInCell(index, uri)}
-          />
-        )}
-        {isAudio && (
-          <View style={[styles.audioCell, { width: '100%', height: '100%' }]}>
-            <View style={styles.audioIcon}>
-              <Ionicons name="musical-notes" size={32} color="white" />
+  const isPortrait = useCallback(
+    (index: number) => {
+      const d = getDim(index);
+      return d.h / d.w >= 1;
+    },
+    [getDim]
+  );
+
+  const aspect = useCallback(
+    (index: number) => {
+      const d = getDim(index);
+      return d.w > 0 ? d.h / d.w : 1;
+    },
+    [getDim]
+  );
+
+  // ---- Classify file type ----
+  const getFileType = useCallback((file: MediaFile) => {
+    if (file.mimeType.startsWith('image/gif')) return 'gif';
+    if (file.mimeType.startsWith('image')) return 'image';
+    if (file.mimeType.startsWith('video')) return 'video';
+    if (file.mimeType.startsWith('audio')) return 'audio';
+    return 'document';
+  }, []);
+
+  // ---- Render individual cell ----
+  const renderMediaCell = useCallback(
+    (
+      file: MediaFile,
+      index: number,
+      width: number,
+      height: number,
+      resizeMode: 'cover' | 'contain' = 'cover',
+      cornerRadii?: {
+        topLeft?: number;
+        topRight?: number;
+        bottomLeft?: number;
+        bottomRight?: number;
+      }
+    ) => {
+      const type = getFileType(file);
+      const radius = cornerRadii || {};
+      const cellStyle = {
+        borderTopLeftRadius: radius.topLeft ?? 0,
+        borderTopRightRadius: radius.topRight ?? 0,
+        borderBottomLeftRadius: radius.bottomLeft ?? 0,
+        borderBottomRightRadius: radius.bottomRight ?? 0,
+      };
+
+      const press = () => onMediaPress(mediaFiles, index);
+      const dimCb = (w: number, h: number) => onCellDimensions(index, w, h);
+
+      switch (type) {
+        case 'gif':
+          return (
+            <View key={file.id} style={[{ width, height, overflow: 'hidden' }, cellStyle]}>
+              <GifCell file={file} width={width} height={height} onPress={press} onDimensions={dimCb} />
             </View>
-          </View>
-        )}
-        {isVideo && (
-          <View style={styles.playOverlay}>
-            <View style={styles.playButton}>
-              <Ionicons name="play" size={25} color="white" />
+          );
+
+        case 'image':
+          return (
+            <TouchableOpacity
+              key={file.id}
+              onPress={press}
+              activeOpacity={0.85}
+              style={[styles.cell, { width, height }, cellStyle]}
+            >
+              <ProgressiveImage
+                uri={getImageUri(file.fileName)}
+                width={width}
+                height={height}
+                resizeMode={resizeMode}
+                onDimensions={dimCb}
+              />
+            </TouchableOpacity>
+          );
+
+        case 'video':
+          return (
+            <View key={file.id} style={[{ width, height, overflow: 'hidden' }, cellStyle]}>
+              <VideoCell
+                file={file}
+                width={width}
+                height={height}
+                resizeMode={resizeMode}
+                onPress={press}
+                onDimensions={dimCb}
+              />
             </View>
-          </View>
-        )}
-      </TouchableOpacity>
-    );
-  };
+          );
 
-  if (loading) {
-    return (
-      <View style={[styles.placeholder, { width: '100%', minWidth: 200, maxWidth: MAX_BUBBLE_WIDTH, height: 140 }]}>
-        <ActivityIndicator size="small" color="#6b7280" />
-        <Text style={styles.placeholderText}>Loading media...</Text>
-      </View>
-    );
-  }
+        case 'audio':
+          return (
+            <View key={file.id} style={[{ width, height, overflow: 'hidden' }, cellStyle]}>
+              <View style={[styles.audioCell, { width, height }]}>
+                <View style={styles.audioIconCircle}>
+                  <Ionicons name="musical-notes" size={Math.min(width, height) * 0.18} color="white" />
+                </View>
+                {file.duration != null && file.duration > 0 && (
+                  <Text style={styles.audioDuration}>{formatDuration(file.duration)}</Text>
+                )}
+              </View>
+            </View>
+          );
 
-  if (error || mediaFiles.length === 0) {
-    return (
-      <View style={[styles.placeholder, styles.emptyPlaceholder, { width: '100%', minWidth: 200, maxWidth: MAX_BUBBLE_WIDTH, height: 140 }]}>
-        <Ionicons name="image-outline" size={32} color="#9ca3af" />
-        <Text style={styles.placeholderText}>No media files</Text>
-      </View>
-    );
-  }
+        case 'document':
+          return (
+            <View key={file.id} style={[{ width, height, overflow: 'hidden' }, cellStyle]}>
+              <DocumentCell file={file} width={width} height={height} onPress={press} />
+            </View>
+          );
 
-  const count = mediaFiles.length;
-  const single = mediaFiles[0];
+        default:
+          return null;
+      }
+    },
+    [mediaFiles, onMediaPress, getFileType, onCellDimensions]
+  );
 
-  if (count === 1 && single.mimeType.startsWith('audio')) {
-    return (
-      <AudioMessagePlayer
-        audioUrl={getImageUri(single.fileName)}
-        isOwnMessage={isOwnMessage}
-      />
-    );
-  }
+  // ---- Corner radius helper for grid positions ----
+  const getCornerRadii = useCallback(
+    (position: 'single' | 'topLeft' | 'topRight' | 'bottomLeft' | 'bottomRight' | 'top' | 'bottom' | 'left' | 'right' | 'middle') => {
+      const R = BORDER_RADIUS;
+      switch (position) {
+        case 'single':
+          return { topLeft: R, topRight: R, bottomLeft: R, bottomRight: R };
+        case 'topLeft':
+          return { topLeft: R };
+        case 'topRight':
+          return { topRight: R };
+        case 'bottomLeft':
+          return { bottomLeft: R };
+        case 'bottomRight':
+          return { bottomRight: R };
+        case 'top':
+          return { topLeft: R, topRight: R };
+        case 'bottom':
+          return { bottomLeft: R, bottomRight: R };
+        case 'left':
+          return { topLeft: R, bottomLeft: R };
+        case 'right':
+          return { topRight: R, bottomRight: R };
+        case 'middle':
+        default:
+          return {};
+      }
+    },
+    []
+  );
 
-  // ----------------------------------------------------
-  // SINGLE MEDIA: Perfect scaling
-  // ----------------------------------------------------
-  if (count === 1) {
-    const dim = getDim(0);
-    const { w, h } = fitInBox(dim.w, dim.h);
-    const safeMinWidth = Math.min(w, MAX_BUBBLE_WIDTH); // Ensure minWidth never breaks bounds
-
-    return (
-      <View style={styles.singleWrapper}>
-        <SingleMediaDisplay
-          file={single}
-          index={0}
-          displayWidth={safeMinWidth}
-          aspectRatio={w / h}
-          maxWidth={MAX_BUBBLE_WIDTH}
-          mediaFiles={mediaFiles}
-          onMediaPress={onMediaPress}
-          onImageDimensions={onImageDimensions}
-        />
-      </View>
-    );
-  }
-
-  // Helper to abstract the +N overlay logic
-  const cell = (idx: number, styleProps: any, remaining?: number) => {
-    if (idx === 2 && remaining != null && remaining > 0) {
+  // ---- "+N" overlay ----
+  const renderPlusOverlay = useCallback(
+    (
+      file: MediaFile,
+      index: number,
+      width: number,
+      height: number,
+      remaining: number,
+      cornerRadii?: any
+    ) => {
       return (
-        <View style={[styleProps, { position: 'relative' }]}>
-          {renderFlexCell(mediaFiles[idx], idx, { ...StyleSheet.absoluteFillObject })}
+        <View key={`plus-${file.id}`} style={[{ width, height, overflow: 'hidden', position: 'relative' }, cornerRadii && {
+          borderTopLeftRadius: cornerRadii.topLeft ?? 0,
+          borderTopRightRadius: cornerRadii.topRight ?? 0,
+          borderBottomLeftRadius: cornerRadii.bottomLeft ?? 0,
+          borderBottomRightRadius: cornerRadii.bottomRight ?? 0,
+        }]}>
+          {renderMediaCell(file, index, width, height, 'cover')}
           <TouchableOpacity
             style={[StyleSheet.absoluteFillObject, styles.plusOverlay]}
-            onPress={() => onMediaPress(mediaFiles, 3)}
-            activeOpacity={1}
+            onPress={() => onMediaPress(mediaFiles, index)}
+            activeOpacity={0.9}
           >
-            <Text style={styles.plusText}>+{remaining}</Text>
+            <BlurView intensity={Platform.OS === 'ios' ? 20 : 0} style={StyleSheet.absoluteFill}>
+              <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'center', alignItems: 'center' }]}>
+                <Text style={styles.plusText}>+{remaining}</Text>
+              </View>
+            </BlurView>
           </TouchableOpacity>
         </View>
       );
-    }
-    return renderFlexCell(mediaFiles[idx], idx, styleProps);
-  };
+    },
+    [renderMediaCell, onMediaPress, mediaFiles]
+  );
 
-  // ----------------------------------------------------
-  // 2 MEDIA FILES
-  // ----------------------------------------------------
-  if (count === 2) {
-    const aspect0 = getDim(0).w / getDim(0).h;
-    const aspect1 = getDim(1).w / getDim(1).h;
-    const bothPortrait = aspect0 <= 1 && aspect1 <= 1;
+  // ==================== LAYOUTS ====================
 
-    // Both Portrait -> Side by Side
-    if (bothPortrait) {
-      return (
-        <View style={[{ width: '100%', minWidth: 200, maxWidth: MAX_BUBBLE_WIDTH, flexDirection: 'row', gap: GAP }, styles.wrapper]}>
-          {cell(0, { flex: 1, aspectRatio: 3/4 })}
-          {cell(1, { flex: 1, aspectRatio: 3/4 })}
-        </View>
-      );
-    }
+  const renderLayout = useMemo(() => {
+    if (loading) return null;
+    if (error || mediaFiles.length === 0) return null;
 
-    // Stacked
-    return (
-      <View style={[{ width: '100%', minWidth: 200, maxWidth: MAX_BUBBLE_WIDTH, gap: GAP }, styles.wrapper]}>
-        {cell(0, { width: '100%', aspectRatio: clampAspect(getDim(0)) })}
-        {cell(1, { width: '100%', aspectRatio: clampAspect(getDim(1)) })}
-      </View>
+    const count = mediaFiles.length;
+
+    // Separate audio files and visual files
+    const audioFiles = mediaFiles.filter((f) => f.mimeType.startsWith('audio'));
+    const visualFiles = mediaFiles.filter((f) => !f.mimeType.startsWith('audio'));
+    const docFiles = mediaFiles.filter(
+      (f) => !f.mimeType.startsWith('image') && !f.mimeType.startsWith('video') && !f.mimeType.startsWith('audio')
     );
-  }
 
-  // ----------------------------------------------------
-  // 3 OR 4+ MEDIA FILES
-  // ----------------------------------------------------
-  if (count >= 3) {
-    const remaining = count >= 4 ? count - 3 : 0;
-    const p0 = getDim(0).w / getDim(0).h <= 1;
-    const p1 = getDim(1).w / getDim(1).h <= 1;
-    const p2 = getDim(2).w / getDim(2).h <= 1;
-    const orientations = [p0, p1, p2];
-    const portraitCount = orientations.filter(Boolean).length;
-
-    // 1 Left, 2 Right (PPP)
-    if (p0 && p1 && p2) {
+    // ===== ONLY AUDIO FILES =====
+    if (count === audioFiles.length) {
       return (
-        <View style={[{ width: '100%', minWidth: 240, maxWidth: MAX_BUBBLE_WIDTH, flexDirection: 'row', gap: GAP, aspectRatio: 1.2 }, styles.wrapper]}>
-          {cell(0, { flex: 1 })}
-          <View style={{ flex: 1, gap: GAP }}>
-            {cell(1, { flex: 1 })}
-            {cell(2, { flex: 1 }, remaining)}
-          </View>
+        <View style={{ width: CONTAINER_MAX_W }}>
+          {audioFiles.map((file, idx) => (
+            <View key={file.id} style={{ marginBottom: idx < audioFiles.length - 1 ? 4 : 0 }}>
+              <AudioMessagePlayer
+                audioUrl={getImageUri(file.fileName)}
+                isOwnMessage={isOwnMessage}
+              />
+            </View>
+          ))}
         </View>
       );
     }
 
-    // 2 Top, 1 Bottom (PPL, PLP, LPP)
-    if (portraitCount === 2) {
-      const portraitIndices = [0, 1, 2].filter((i) => orientations[i]);
-      const landscapeIndex = [0, 1, 2].find((i) => !orientations[i])!;
+    // ===== SINGLE AUDIO + handle separately =====
+    if (audioFiles.length === 1 && visualFiles.length === 0 && docFiles.length === 0) {
       return (
-        <View style={[{ width: '100%', minWidth: 240, maxWidth: MAX_BUBBLE_WIDTH, gap: GAP, aspectRatio: 1 }, styles.wrapper]}>
-          <View style={{ flex: 1, flexDirection: 'row', gap: GAP }}>
-            {cell(portraitIndices[0], { flex: 1 })}
-            {cell(portraitIndices[1], { flex: 1 })}
-          </View>
-          {cell(landscapeIndex, { flex: 1 }, landscapeIndex === 2 ? remaining : 0)}
-        </View>
-      );
-    }
-
-    // All Stacked (PLL, LPL, LLP, LLL)
-    return (
-      <View style={[{ width: '100%', minWidth: 240, maxWidth: MAX_BUBBLE_WIDTH, gap: GAP }, styles.wrapper]}>
-        {cell(0, { width: '100%', aspectRatio: clampAspect(getDim(0)) })}
-        {cell(1, { width: '100%', aspectRatio: clampAspect(getDim(1)) })}
-        {cell(2, { width: '100%', aspectRatio: clampAspect(getDim(2)) }, remaining)}
-      </View>
-    );
-  }
-
-  return null;
-};
-
-// ==========================================
-// SINGLE MEDIA DISPLAY (Responsive Sizing)
-// ==========================================
-const SingleMediaDisplay: React.FC<{
-  file: MediaFile;
-  index: number;
-  displayWidth: number;
-  aspectRatio: number;
-  maxWidth: number;
-  mediaFiles: MediaFile[];
-  onMediaPress: (files: MediaFile[], idx: number) => void;
-  onImageDimensions: (index: number, w: number, h: number) => void;
-}> = ({ file, index, displayWidth, aspectRatio, maxWidth, mediaFiles, onMediaPress, onImageDimensions }) => {
-  const isImage = file.mimeType.startsWith('image');
-  const isVideo = file.mimeType.startsWith('video');
-  const uri = getImageUri(file.fileName);
-
-  const handleImageLoad = (e: any) => {
-    const source = e?.nativeEvent?.source;
-    if (source?.width && source?.height) {
-      onImageDimensions(index, source.width, source.height);
-    }
-  };
-
-  const handleVideoReadyForDisplay = (e: { naturalSize?: { width: number; height: number } }) => {
-    const naturalSize = e?.naturalSize;
-    if (naturalSize?.width && naturalSize?.height) {
-      const d = { w: naturalSize.width, h: naturalSize.height };
-      dimensionsCache.set(uri, d);
-      onImageDimensions(index, naturalSize.width, naturalSize.height);
-    }
-  };
-
-  return (
-    <TouchableOpacity
-      onPress={() => onMediaPress(mediaFiles, index)}
-      style={[
-        styles.cell,
-        {
-          width: '100%',
-          minWidth: displayWidth,
-          maxWidth: maxWidth,
-          aspectRatio: aspectRatio,
-          borderRadius: BORDER_RADIUS,
-        }
-      ]}
-      activeOpacity={0.9}
-    >
-      {isImage && (
-        <Image
-          source={{ uri }}
-          style={{ width: '100%', height: '100%' }}
-          resizeMode="cover"
-          onLoad={handleImageLoad}
+        <AudioMessagePlayer
+          audioUrl={getImageUri(audioFiles[0].fileName)}
+          isOwnMessage={isOwnMessage}
         />
-      )}
-      {isVideo && (
-        <>
-          <Video
-            source={{ uri }}
-            style={{ width: '100%', height: '100%' }}
-            resizeMode={ResizeMode.COVER}
-            shouldPlay={false}
-            isMuted
-            isLooping={false}
-            useNativeControls={false}
-            onReadyForDisplay={handleVideoReadyForDisplay}
-          />
-          <View style={styles.playOverlay}>
-            <View style={styles.playButton}>
-              <Ionicons name="play" size={25} color="white" />
+      );
+    }
+
+    // ===== ONLY DOCUMENTS =====
+    if (count === docFiles.length) {
+      return (
+        <View style={{ width: CONTAINER_MAX_W }}>
+          {docFiles.map((file, idx) => (
+            <View key={file.id} style={{ marginBottom: idx < docFiles.length - 1 ? 4 : 0 }}>
+              <DocumentCell
+                file={file}
+                width={CONTAINER_MAX_W}
+                height={64}
+                onPress={() => onMediaPress(mediaFiles, mediaFiles.indexOf(file))}
+              />
+            </View>
+          ))}
+        </View>
+      );
+    }
+
+    // ===== VISUAL FILES LAYOUT =====
+    // Work with the visual (image/video/gif) files for grid layout
+    const visuals = visualFiles.length > 0 ? visualFiles : mediaFiles.filter((f) => !f.mimeType.startsWith('audio'));
+    const vCount = visuals.length;
+
+    if (vCount === 0) return null;
+
+    // Map visual file back to original index in mediaFiles
+    const originalIndex = (vFile: MediaFile) => mediaFiles.indexOf(vFile);
+
+    // ---- 1 VISUAL ----
+    if (vCount === 1) {
+      const file = visuals[0];
+      const idx = originalIndex(file);
+      const d = getDim(idx);
+      const { w, h } = fitSingle(d.w, d.h);
+
+      return (
+        <View style={[styles.gridContainer, { width: w }]}>
+          {/* Single media should fully cover its cell (no grey borders) */}
+          {renderMediaCell(file, idx, w, h, 'cover', getCornerRadii('single'))}
+          {/* Render audio files below if mixed */}
+          {audioFiles.map((af, ai) => (
+            <View key={af.id} style={{ marginTop: 4 }}>
+              <AudioMessagePlayer audioUrl={getImageUri(af.fileName)} isOwnMessage={isOwnMessage} />
+            </View>
+          ))}
+          {docFiles.map((df) => (
+            <View key={df.id} style={{ marginTop: 4 }}>
+              <DocumentCell file={df} width={w} height={64} onPress={() => onMediaPress(mediaFiles, mediaFiles.indexOf(df))} />
+            </View>
+          ))}
+        </View>
+      );
+    }
+
+    // ---- 2 VISUALS ----
+    if (vCount === 2) {
+      const idx0 = originalIndex(visuals[0]);
+      const idx1 = originalIndex(visuals[1]);
+      const p0 = isPortrait(idx0);
+      const p1 = isPortrait(idx1);
+
+      // Both portrait → side by side
+      if (p0 && p1) {
+        const maxAspect = Math.max(aspect(idx0), aspect(idx1));
+        let rowH = Math.round(HALF_W * Math.min(maxAspect, 1.8));
+        rowH = Math.max(rowH, MIN_CELL);
+
+        return (
+          <View style={[styles.gridContainer, { width: CONTAINER_MAX_W }]}>
+            <View style={styles.row}>
+              {renderMediaCell(visuals[0], idx0, HALF_W, rowH, 'cover', getCornerRadii('topLeft'))}
+              {renderMediaCell(visuals[1], idx1, HALF_W, rowH, 'cover', getCornerRadii('topRight'))}
             </View>
           </View>
-        </>
-      )}
-    </TouchableOpacity>
-  );
+        );
+      }
+
+      // Both landscape or mixed → stacked
+      let h0 = Math.round(CONTAINER_MAX_W * Math.min(aspect(idx0), 0.8));
+      let h1 = Math.round(CONTAINER_MAX_W * Math.min(aspect(idx1), 0.8));
+      [h0, h1] = clampTotalHeight([h0, h1], MULTI_MAX_TOTAL_H);
+
+      return (
+        <View style={[styles.gridContainer, { width: CONTAINER_MAX_W }]}>
+          <View style={[styles.column, { gap: GAP }]}>
+            {renderMediaCell(visuals[0], idx0, CONTAINER_MAX_W, h0, 'cover', getCornerRadii('top'))}
+            {renderMediaCell(visuals[1], idx1, CONTAINER_MAX_W, h1, 'cover', getCornerRadii('bottom'))}
+          </View>
+        </View>
+      );
+    }
+
+    // ---- 3 VISUALS ----
+    if (vCount === 3) {
+      const idx0 = originalIndex(visuals[0]);
+      const idx1 = originalIndex(visuals[1]);
+      const idx2 = originalIndex(visuals[2]);
+      const p0 = isPortrait(idx0);
+      const p1 = isPortrait(idx1);
+      const p2 = isPortrait(idx2);
+      const portraitCount = [p0, p1, p2].filter(Boolean).length;
+
+      // All portrait → 1 big left + 2 stacked right (WhatsApp L-shape)
+      if (portraitCount >= 2) {
+        // Use first portrait as big, rest stacked
+        const bigIdx = p0 ? 0 : p1 ? 1 : 2;
+        const smallIndices = [0, 1, 2].filter((i) => i !== bigIdx);
+        const bigFile = visuals[bigIdx];
+        const bigOrigIdx = originalIndex(bigFile);
+        const bigW = HALF_W;
+        const smallW = HALF_W;
+
+        let smallH0 = Math.round(smallW * Math.min(aspect(originalIndex(visuals[smallIndices[0]])), 1.5));
+        let smallH1 = Math.round(smallW * Math.min(aspect(originalIndex(visuals[smallIndices[1]])), 1.5));
+        let bigH = smallH0 + GAP + smallH1;
+        const maxH = Math.round(CONTAINER_MAX_W * 1.3);
+        if (bigH > maxH) {
+          const scale = maxH / bigH;
+          smallH0 = Math.round(smallH0 * scale);
+          smallH1 = Math.round(smallH1 * scale);
+          bigH = smallH0 + GAP + smallH1;
+        }
+        smallH0 = Math.max(smallH0, MIN_CELL);
+        smallH1 = Math.max(smallH1, MIN_CELL);
+        bigH = smallH0 + GAP + smallH1;
+
+        return (
+          <View style={[styles.gridContainer, { width: CONTAINER_MAX_W }]}>
+            <View style={[styles.row, { gap: GAP, height: bigH }]}>
+              {renderMediaCell(bigFile, bigOrigIdx, bigW, bigH, 'cover', getCornerRadii('left'))}
+              <View style={[styles.column, { gap: GAP, width: smallW }]}>
+                {renderMediaCell(
+                  visuals[smallIndices[0]],
+                  originalIndex(visuals[smallIndices[0]]),
+                  smallW,
+                  smallH0,
+                  'cover',
+                  getCornerRadii('topRight')
+                )}
+                {renderMediaCell(
+                  visuals[smallIndices[1]],
+                  originalIndex(visuals[smallIndices[1]]),
+                  smallW,
+                  smallH1,
+                  'cover',
+                  getCornerRadii('bottomRight')
+                )}
+              </View>
+            </View>
+          </View>
+        );
+      }
+
+      // All landscape or mixed → top full width + bottom two side by side
+      let topH = Math.round(CONTAINER_MAX_W * Math.min(aspect(idx0), 0.65));
+      let bottomH = Math.round(HALF_W * Math.max(aspect(idx1), aspect(idx2)));
+      [topH, bottomH] = clampTotalHeight([topH, bottomH], MULTI_MAX_TOTAL_H);
+
+      return (
+        <View style={[styles.gridContainer, { width: CONTAINER_MAX_W }]}>
+          <View style={[styles.column, { gap: GAP }]}>
+            {renderMediaCell(visuals[0], idx0, CONTAINER_MAX_W, topH, 'cover', getCornerRadii('top'))}
+            <View style={[styles.row, { gap: GAP }]}>
+              {renderMediaCell(visuals[1], idx1, HALF_W, bottomH, 'cover', getCornerRadii('bottomLeft'))}
+              {renderMediaCell(visuals[2], idx2, HALF_W, bottomH, 'cover', getCornerRadii('bottomRight'))}
+            </View>
+          </View>
+        </View>
+      );
+    }
+
+    // ---- 4 VISUALS ----
+    if (vCount === 4) {
+      const idx0 = originalIndex(visuals[0]);
+      const idx1 = originalIndex(visuals[1]);
+      const idx2 = originalIndex(visuals[2]);
+      const idx3 = originalIndex(visuals[3]);
+
+      // 2x2 grid
+      let topH = Math.round(HALF_W * Math.max(aspect(idx0), aspect(idx1)));
+      let bottomH = Math.round(HALF_W * Math.max(aspect(idx2), aspect(idx3)));
+      [topH, bottomH] = clampTotalHeight([topH, bottomH], MULTI_MAX_TOTAL_H);
+      topH = Math.max(topH, MIN_CELL);
+      bottomH = Math.max(bottomH, MIN_CELL);
+
+      return (
+        <View style={[styles.gridContainer, { width: CONTAINER_MAX_W }]}>
+          <View style={[styles.column, { gap: GAP }]}>
+            <View style={[styles.row, { gap: GAP }]}>
+              {renderMediaCell(visuals[0], idx0, HALF_W, topH, 'cover', getCornerRadii('topLeft'))}
+              {renderMediaCell(visuals[1], idx1, HALF_W, topH, 'cover', getCornerRadii('topRight'))}
+            </View>
+            <View style={[styles.row, { gap: GAP }]}>
+              {renderMediaCell(visuals[2], idx2, HALF_W, bottomH, 'cover', getCornerRadii('bottomLeft'))}
+              {renderMediaCell(visuals[3], idx3, HALF_W, bottomH, 'cover', getCornerRadii('bottomRight'))}
+            </View>
+          </View>
+        </View>
+      );
+    }
+
+    // ---- 5+ VISUALS ---- Top row: first image large, right: 2 stacked, bottom: remaining in row with +N
+    if (vCount >= 5) {
+      const maxVisible = 6;
+      const visible = visuals.slice(0, maxVisible);
+      const remaining = vCount > maxVisible ? vCount - maxVisible : 0;
+      const lastVisibleIdx = visible.length - 1;
+
+      // Layout: top big image + 2 right, bottom row of remaining
+      const idx0 = originalIndex(visible[0]);
+      const idx1 = originalIndex(visible[1]);
+      const idx2 = originalIndex(visible[2]);
+
+      const topBigW = Math.floor(CONTAINER_MAX_W * 0.6);
+      const topSmallW = CONTAINER_MAX_W - topBigW - GAP;
+      let topSmallH1 = Math.round(topSmallW * Math.min(aspect(idx1), 1.2));
+      let topSmallH2 = Math.round(topSmallW * Math.min(aspect(idx2), 1.2));
+      let topH = topSmallH1 + GAP + topSmallH2;
+      const maxTopH = Math.round(CONTAINER_MAX_W * 0.9);
+      if (topH > maxTopH) {
+        const scale = maxTopH / topH;
+        topSmallH1 = Math.round(topSmallH1 * scale);
+        topSmallH2 = Math.round(topSmallH2 * scale);
+        topH = topSmallH1 + GAP + topSmallH2;
+      }
+      topSmallH1 = Math.max(topSmallH1, MIN_CELL);
+      topSmallH2 = Math.max(topSmallH2, MIN_CELL);
+      topH = topSmallH1 + GAP + topSmallH2;
+
+      const bottomFiles = visible.slice(3);
+      const bottomCount = bottomFiles.length;
+      const bottomCellW =
+        bottomCount > 0
+          ? Math.floor((CONTAINER_MAX_W - GAP * (bottomCount - 1)) / bottomCount)
+          : 0;
+      const bottomH = bottomCount > 0 ? Math.max(Math.round(bottomCellW * 0.9), MIN_CELL) : 0;
+
+      return (
+        <View style={[styles.gridContainer, { width: CONTAINER_MAX_W }]}>
+          <View style={[styles.column, { gap: GAP }]}>
+            {/* Top section */}
+            <View style={[styles.row, { gap: GAP, height: topH }]}>
+              {renderMediaCell(visible[0], idx0, topBigW, topH, 'cover', getCornerRadii('topLeft'))}
+              <View style={[styles.column, { gap: GAP, width: topSmallW }]}>
+                {renderMediaCell(visible[1], idx1, topSmallW, topSmallH1, 'cover', getCornerRadii('topRight'))}
+                {renderMediaCell(visible[2], idx2, topSmallW, topSmallH2, 'cover')}
+              </View>
+            </View>
+            {/* Bottom row */}
+            {bottomCount > 0 && (
+              <View style={[styles.row, { gap: GAP }]}>
+                {bottomFiles.map((file, i) => {
+                  const oIdx = originalIndex(file);
+                  const isLast = i === bottomCount - 1;
+                  const corners =
+                    i === 0 && isLast
+                      ? getCornerRadii('bottom')
+                      : i === 0
+                      ? getCornerRadii('bottomLeft')
+                      : isLast
+                      ? getCornerRadii('bottomRight')
+                      : getCornerRadii('middle');
+
+                  if (isLast && remaining > 0) {
+                    return renderPlusOverlay(file, oIdx, bottomCellW, bottomH, remaining, corners);
+                  }
+                  return renderMediaCell(file, oIdx, bottomCellW, bottomH, 'cover', corners);
+                })}
+              </View>
+            )}
+          </View>
+        </View>
+      );
+    }
+
+    return null;
+  }, [
+    loading,
+    error,
+    mediaFiles,
+    dims,
+    isOwnMessage,
+    getDim,
+    isPortrait,
+    aspect,
+    getFileType,
+    getCornerRadii,
+    renderMediaCell,
+    renderPlusOverlay,
+    onMediaPress,
+  ]);
+
+  // ==================== RENDER ====================
+
+  if (loading) {
+    return (
+      <View style={[styles.loadingContainer, { width: CONTAINER_MAX_W, height: 160 }]}>
+        <ShimmerPlaceholder width={CONTAINER_MAX_W} height={160} />
+      </View>
+    );
+  }
+
+  if (error) {
+    return (
+      <TouchableOpacity
+        style={[styles.errorContainer, { width: CONTAINER_MAX_W }]}
+        onPress={() => {
+          mediaCache.delete(mediaFilesId);
+          setError(false);
+          setLoading(true);
+        }}
+        activeOpacity={0.7}
+      >
+        <Ionicons name="reload-circle" size={32} color="#9ca3af" />
+        <Text style={styles.errorText}>Tap to retry</Text>
+      </TouchableOpacity>
+    );
+  }
+
+  if (mediaFiles.length === 0) {
+    return (
+      <View style={[styles.emptyContainer, { width: CONTAINER_MAX_W }]}>
+        <Ionicons name="image-outline" size={28} color="#9ca3af" />
+        <Text style={styles.emptyText}>No media</Text>
+      </View>
+    );
+  }
+
+  return <View style={styles.outerContainer}>{renderLayout}</View>;
 };
 
+// ==================== STYLES ====================
+
 const styles = StyleSheet.create({
-  placeholder: {
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#f3f4f6',
+  outerContainer: {
+    overflow: 'hidden',
     borderRadius: BORDER_RADIUS,
-    marginVertical: 4,
+    width: '100%',
   },
-  emptyPlaceholder: {
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-    borderStyle: 'dashed',
+  gridContainer: {
+    overflow: 'hidden',
+    borderRadius: BORDER_RADIUS,
+    width: '100%',
   },
-  placeholderText: { marginTop: 8, fontSize: 12, color: '#6b7280' },
-  wrapper: { marginVertical: 4 },
-  singleWrapper: { marginVertical: 4, width: '100%' },
+  row: {
+    flexDirection: 'row',
+    gap: GAP,
+  },
+  column: {
+    flexDirection: 'column',
+  },
   cell: {
     overflow: 'hidden',
-    backgroundColor: '#f3f4f6',
+    backgroundColor: '#e8e8e8',
   },
-  audioCell: {
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#e5e7eb',
+
+  // Video
+  videoGradient: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 28,
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    paddingHorizontal: 6,
+    paddingBottom: 4,
   },
-  audioIcon: {
-    width: 60,
-    height: 60,
-    backgroundColor: '#8b5cf6',
-    borderRadius: 30,
-    justifyContent: 'center',
+  videoDurationRow: {
+    flexDirection: 'row',
     alignItems: 'center',
+    gap: 3,
+  },
+  videoDurationText: {
+    fontSize: 11,
+    color: 'white',
+    fontWeight: '600',
   },
   playOverlay: {
     ...StyleSheet.absoluteFillObject,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.3)',
   },
-  playButton: {
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    borderRadius: 25,
-    width: 50,
-    height: 50,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  plusOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    justifyContent: 'center',
-    alignItems: 'center',
+  playCircle: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.8)',
+  },
+
+  // Audio
+  audioCell: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#e5e7eb',
+  },
+  audioIconCircle: {
+    width: 56,
+    height: 56,
+    backgroundColor: '#8b5cf6',
+    borderRadius: 28,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  audioDuration: {
+    marginTop: 6,
+    fontSize: 12,
+    color: '#6b7280',
+    fontWeight: '500',
+  },
+
+  // Document
+  documentCell: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f8f9fa',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  documentIconContainer: {
+    marginRight: 12,
+  },
+  documentIconCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  documentInfo: {
+    flex: 1,
+  },
+  documentName: {
+    fontSize: 14,
+    color: '#1f2937',
+    fontWeight: '500',
+  },
+  documentMeta: {
+    fontSize: 12,
+    color: '#9ca3af',
+    marginTop: 2,
+  },
+
+  // GIF
+  gifBadge: {
+    position: 'absolute',
+    bottom: 6,
+    left: 6,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  gifBadgeText: {
+    fontSize: 11,
+    color: 'white',
+    fontWeight: 'bold',
+  },
+
+  // +N overlay
+  plusOverlay: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    overflow: 'hidden',
+  },
+  plusText: {
+    color: 'white',
+    fontSize: 28,
+    fontWeight: 'bold',
+    textShadowColor: 'rgba(0,0,0,0.3)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
+  },
+
+  // States
+  loadingContainer: {
+    overflow: 'hidden',
     borderRadius: BORDER_RADIUS,
   },
-  plusText: { color: 'white', fontSize: 24, fontWeight: 'bold' },
+  errorContainer: {
+    height: 100,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#f9fafb',
+    borderRadius: BORDER_RADIUS,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderStyle: 'dashed',
+  },
+  errorText: {
+    marginTop: 6,
+    fontSize: 12,
+    color: '#9ca3af',
+  },
+  emptyContainer: {
+    height: 80,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#f9fafb',
+    borderRadius: BORDER_RADIUS,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderStyle: 'dashed',
+  },
+  emptyText: {
+    marginTop: 4,
+    fontSize: 12,
+    color: '#9ca3af',
+  },
 });
 
-export default MediaGrid;
+export default React.memo(MediaGrid);

@@ -1,6 +1,6 @@
 // api/apiClient.ts
 import axios, { AxiosRequestConfig, AxiosResponse } from "axios";
-import { Alert, Platform } from "react-native";
+import { Alert, Platform, AppState, AppStateStatus } from "react-native";
 import { API_URL } from "@/constants/api";
 import { AuthStorage } from "@/utils/authStorage";
 import { router } from "expo-router";
@@ -39,18 +39,29 @@ function isTokenExpired(token: string): boolean {
     const parts = token.split(".");
     if (parts.length !== 3) return true;
     const payload = JSON.parse(decodeBase64Url(parts[1]));
-    if (!payload.exp) return false; // no expiry claim → trust the server
+    if (!payload.exp) return false;
     return payload.exp < Math.floor(Date.now() / 1000);
   } catch {
     return true;
   }
 }
 
-// ==================== CONNECTIVITY CHECK ====================
+// ==================== CONNECTIVITY CHECK (FIXED) ====================
 
 let lastConnectivityCheck = 0;
 let lastConnectivityResult = true;
 const CONNECTIVITY_CACHE_MS = 5000;
+
+// KEY FIX #1: Invalidate cache when app returns from background
+if (Platform.OS !== "web") {
+  AppState.addEventListener("change", (nextState: AppStateStatus) => {
+    if (nextState === "active") {
+      // Invalidate the cached connectivity result immediately
+      lastConnectivityCheck = 0;
+      lastConnectivityResult = true; // Assume connected until proven otherwise
+    }
+  });
+}
 
 async function checkInternetConnectivity(): Promise<boolean> {
   if (Platform.OS === "web") return true;
@@ -60,19 +71,43 @@ async function checkInternetConnectivity(): Promise<boolean> {
     return lastConnectivityResult;
   }
 
+  // KEY FIX #2: Ping YOUR OWN server, not Google
+  // Use a lightweight health endpoint on your backend
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 4000);
-    const response = await fetch("https://www.google.com", {
+    const timeout = setTimeout(() => controller.abort(), 5000);
+
+    const response = await fetch(`${API_URL}/api/health`, {
       method: "HEAD",
       signal: controller.signal,
+      cache: "no-store", // Prevent cached responses
     });
+
     clearTimeout(timeout);
     lastConnectivityResult = response.ok;
   } catch {
-    lastConnectivityResult = false;
+    // KEY FIX #3: On failure, retry once after a short delay
+    // Network sockets often need a moment to reconnect after app resume
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 5000);
+
+      const response = await fetch(`${API_URL}/api/health`, {
+        method: "HEAD",
+        signal: controller.signal,
+        cache: "no-store",
+      });
+
+      clearTimeout(timeout);
+      lastConnectivityResult = response.ok;
+    } catch {
+      lastConnectivityResult = false;
+    }
   }
-  lastConnectivityCheck = now;
+
+  lastConnectivityCheck = Date.now();
   return lastConnectivityResult;
 }
 
@@ -98,17 +133,7 @@ async function handleSessionExpired() {
 async function authenticatedRequest<T = any>(
   config: AxiosRequestConfig
 ): Promise<AxiosResponse<T>> {
-  // 1. Check internet
-  const connected = await checkInternetConnectivity();
-  if (!connected) {
-    Alert.alert(
-      "No Internet",
-      "Please check your network connection and try again."
-    );
-    throw new Error("NO_INTERNET");
-  }
-
-  // 2. Check token validity
+  // 1. Check token validity FIRST (no network needed)
   const token = await AuthStorage.getToken();
   if (!token) {
     await handleSessionExpired();
@@ -120,18 +145,41 @@ async function authenticatedRequest<T = any>(
     throw new Error("TOKEN_EXPIRED");
   }
 
-  // 3. Set auth header and make request
+  // 2. Set auth header
   config.headers = {
     ...config.headers,
     Authorization: `Bearer ${token}`,
   };
 
+  // KEY FIX #4: Don't pre-check connectivity — just make the request.
+  // If it fails due to network, THEN check connectivity to show the right error.
   try {
     return await axios(config);
   } catch (error: any) {
     if (error?.response?.status === 401) {
       await handleSessionExpired();
+      throw error;
     }
+
+    // Network error (no response received) — NOW check connectivity
+    if (!error?.response) {
+      const connected = await checkInternetConnectivity();
+      if (!connected) {
+        // Alert.alert(
+        //   "No Internet",
+        //   "Please check your network connection and try again."
+        // );
+        throw new Error("NO_INTERNET");
+      }
+
+      // Connected but request failed — server issue
+      Alert.alert(
+        "Server Error",
+        "Unable to reach the server. Please try again later."
+      );
+      throw new Error("SERVER_UNREACHABLE");
+    }
+
     throw error;
   }
 }
@@ -139,62 +187,50 @@ async function authenticatedRequest<T = any>(
 async function publicRequest<T = any>(
   config: AxiosRequestConfig
 ): Promise<AxiosResponse<T>> {
-  const connected = await checkInternetConnectivity();
-  if (!connected) {
-    throw new Error("NO_INTERNET");
+  // KEY FIX #5: Same pattern — try first, check connectivity on failure
+  try {
+    return await axios(config);
+  } catch (error: any) {
+    if (!error?.response) {
+      const connected = await checkInternetConnectivity();
+      if (!connected) {
+        throw new Error("NO_INTERNET");
+      }
+      throw new Error("SERVER_UNREACHABLE");
+    }
+    throw error;
   }
-  return axios(config);
 }
 
 // ==================== EXPORTED API OBJECTS ====================
 
-/**
- * Authenticated API client.
- * Every call validates the JWT token and checks internet connectivity first.
- * If the token is expired → redirects to login.
- * If no internet → shows an alert.
- */
 export const api = {
   get<T = any>(url: string, config?: AxiosRequestConfig) {
     return authenticatedRequest<T>({ method: "GET", url, ...config });
   },
-
   post<T = any>(url: string, data?: any, config?: AxiosRequestConfig) {
     return authenticatedRequest<T>({ method: "POST", url, data, ...config });
   },
-
   put<T = any>(url: string, data?: any, config?: AxiosRequestConfig) {
     return authenticatedRequest<T>({ method: "PUT", url, data, ...config });
   },
-
   delete<T = any>(url: string, config?: AxiosRequestConfig) {
     return authenticatedRequest<T>({ method: "DELETE", url, ...config });
   },
-
   patch<T = any>(url: string, data?: any, config?: AxiosRequestConfig) {
     return authenticatedRequest<T>({ method: "PATCH", url, data, ...config });
   },
 };
 
-/**
- * Public API client — no token check.
- * Only checks internet connectivity.
- * Use for login, registration, check-mobile, etc.
- */
 export const publicApi = {
   get<T = any>(url: string, config?: AxiosRequestConfig) {
     return publicRequest<T>({ method: "GET", url, ...config });
   },
-
   post<T = any>(url: string, data?: any, config?: AxiosRequestConfig) {
     return publicRequest<T>({ method: "POST", url, data, ...config });
   },
 };
 
-/**
- * Build full API URL from a relative path.
- * Example: apiUrl("/api/chat/rooms") → "http://host:port/api/chat/rooms"
- */
 export function apiUrl(path: string): string {
   return `${API_URL}${path}`;
 }

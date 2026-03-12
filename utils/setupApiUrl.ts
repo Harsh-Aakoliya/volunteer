@@ -2,7 +2,9 @@
 import { Platform, Alert } from "react-native";
 import { setApiUrl } from "@/constants/api";
 
-
+const DEV_IP = "http://10.165.20.242:8080";
+const EXTERNAL_IP = "http://103.47.172.58:50160";
+const INTERNAL_IP = "http://192.168.2.134:3000";
 
 export const getDevModeStatus = () => true;
 export const getDefaultDevIP = () => DEV_IP;

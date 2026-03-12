@@ -51,7 +51,7 @@ import ChatMessageOptions from "@/components/chat/ChatMessageOptions";
 import EditMessageModal from "@/components/chat/EditMessageModal";
 import MessageInput from "@/components/chat/MessageInput";
 import AudioRecorder from "@/components/chat/AudioRecorder";
-import MediaGrid from "@/components/chat/MediaGrid";
+import MediaGrid, { MEDIA_CONTAINER_MAX_WIDTH } from "@/components/chat/MediaGrid";
 import { clearRoomNotifications } from "@/utils/chatNotificationHandler";
 import { getScheduledMessages } from "@/api/chat";
 import { logout } from '@/api/auth';
@@ -82,6 +82,21 @@ type ChatListItem =
   | (Message & { itemType: 'message' })
   | { itemType: 'dateSeparator'; date: string; id: string };
 import { Path, Svg } from 'react-native-svg';
+
+// ==================== MESSAGE ITEM ====================
+const SENDER_COLORS = [
+  '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4',
+  '#FFEAA7', '#DDA0DD', '#98D8C8', '#F7DC6F',
+  '#BB8FCE', '#85C1E9', '#F0B27A', '#82E0AA',
+  '#F1948A', '#AED6F1', '#A3E4D7', '#FAD7A0',
+];
+function getSenderColor(senderId: string): string {
+  let hash = 0;
+  for (let i = 0; i < senderId.length; i++) {
+    hash = senderId.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return SENDER_COLORS[Math.abs(hash) % SENDER_COLORS.length];
+}
 
 const MessageItem = React.memo(({
   message,
@@ -162,17 +177,35 @@ const MessageItem = React.memo(({
     messageStatus = "sending";
   }
 
-  const BUBBLE_COLOR_OWN = '#E7FFDB';
+  const BUBBLE_COLOR_OWN = '#DCF8C6';
   const BUBBLE_COLOR_OTHER = '#FFFFFF';
-  const SELECTION_COLOR = 'rgba(0, 168, 132, 0.25)'; 
+  const SELECTION_COLOR = 'rgba(0, 168, 132, 0.18)';
+  const isMediaMsg = message.messageType === "media";
+  const hasCaption = isMediaMsg && !!message.messageText?.trim();
+
+  // Sender color for group chats
+  const senderColor = useMemo(() => {
+    if (isOwnMessage) return '#128C7E';
+    return getSenderColor(message.senderId?.toString() || 'unknown');
+  }, [isOwnMessage, message.senderId]);
 
   const bubbleBorderRadius = useMemo(() => {
-    const defaultRadius = 8;
+    const defaultRadius = 12;
     if (hasTail) {
       if (isOwnMessage) {
-        return { borderRadius: defaultRadius, borderTopRightRadius: 0 };
+        return {
+          borderTopLeftRadius: defaultRadius,
+          borderTopRightRadius: 4,
+          borderBottomLeftRadius: defaultRadius,
+          borderBottomRightRadius: defaultRadius,
+        };
       } else {
-        return { borderRadius: defaultRadius, borderTopLeftRadius: 0 };
+        return {
+          borderTopLeftRadius: 4,
+          borderTopRightRadius: defaultRadius,
+          borderBottomLeftRadius: defaultRadius,
+          borderBottomRightRadius: defaultRadius,
+        };
       }
     }
     return { borderRadius: defaultRadius };
@@ -180,24 +213,55 @@ const MessageItem = React.memo(({
 
   const senderInitial = message.senderName ? message.senderName.charAt(0).toUpperCase() : 'U';
 
+  // Reply preview accent color
+  const replyAccentColor = isOwnMessage ? '#128C7E' : senderColor;
+
   return (
     <Animated.View
       style={{
         width: "100%",
-        paddingVertical: hasTail ? 3 : 2,
+        paddingVertical: hasTail ? 3 : 1,
         backgroundColor: isHighlighted
-          ? "rgba(0,0,0,0.15)"
+          ? "rgba(0, 168, 132, 0.12)"
           : isSelected
             ? SELECTION_COLOR
             : "transparent",
       }}
     >
+      {/* Swipe reply indicator */}
       <Animated.View
-        className="absolute top-0 bottom-0 right-4 justify-center z-0"
-        style={{ opacity: messageAnimation.interpolate({ inputRange: [-80, -30, 0], outputRange: [1, 0.5, 0], extrapolate: 'clamp' }) }}
+        style={{
+          position: 'absolute',
+          top: 0,
+          bottom: 0,
+          right: 16,
+          justifyContent: 'center',
+          zIndex: 0,
+          opacity: messageAnimation.interpolate({
+            inputRange: [-80, -30, 0],
+            outputRange: [1, 0.5, 0],
+            extrapolate: 'clamp',
+          }),
+          transform: [{
+            scale: messageAnimation.interpolate({
+              inputRange: [-80, -40, 0],
+              outputRange: [1, 0.7, 0.3],
+              extrapolate: 'clamp',
+            }),
+          }],
+        }}
       >
-        <View className="bg-[#0088CC] rounded-full p-2">
-          <Ionicons name="arrow-undo" size={20} color="white" />
+        <View style={{
+          backgroundColor: '#0088CC',
+          borderRadius: 20,
+          padding: 8,
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 1 },
+          shadowOpacity: 0.2,
+          shadowRadius: 2,
+          elevation: 3,
+        }}>
+          <Ionicons name="arrow-undo" size={18} color="white" />
         </View>
       </Animated.View>
 
@@ -234,96 +298,140 @@ const MessageItem = React.memo(({
                       width: "100%",
                     }}
                   >
+                    {/* Avatar for incoming messages */}
                     {!isOwnMessage && (
-                      <View style={{ width: 32, marginRight: 6, alignItems: 'center' }}>
+                      <View style={{ width: 30, marginRight: 4, alignItems: 'center' }}>
                         {hasTail ? (
                           <View style={{
-                            width: 30, height: 30, borderRadius: 15,
-                            backgroundColor: '#A6BCE1',
-                            justifyContent: 'center', alignItems: 'center',
-                            marginTop: 0
+                            width: 28,
+                            height: 28,
+                            borderRadius: 14,
+                            backgroundColor: senderColor,
+                            justifyContent: 'center',
+                            alignItems: 'center',
                           }}>
-                            <Text style={{ color: 'white', fontWeight: 'bold', fontSize: 14 }}>{senderInitial}</Text>
+                            <Text style={{ color: 'white', fontWeight: 'bold', fontSize: 12 }}>
+                              {senderInitial}
+                            </Text>
                           </View>
                         ) : null}
                       </View>
                     )}
 
+                    {/* Message bubble */}
                     <View
                       style={[
                         {
                           backgroundColor: isOwnMessage ? BUBBLE_COLOR_OWN : BUBBLE_COLOR_OTHER,
-                          maxWidth: isOwnMessage ? '85%' : '78%',
-                          paddingHorizontal: 8,
-                          paddingTop: 6,
-                          paddingBottom: 8, // Set specifically to 8 for perfect timestamp clearance
+                          ...(isMediaMsg
+                            ? {
+                              width: MEDIA_CONTAINER_MAX_WIDTH + 8, // 4 left + 4 right padding around grid
+                              maxWidth: MEDIA_CONTAINER_MAX_WIDTH + 8,
+                            }
+                            : {
+                              maxWidth: isOwnMessage ? '82%' : '76%',
+                            }),
+                          overflow: 'hidden',
                           shadowColor: '#000',
-                          shadowOffset: { width: 0, height: 1 },
-                          shadowOpacity: 0.15,
+                          shadowOffset: { width: 0, height: 0.5 },
+                          shadowOpacity: 0.08,
                           shadowRadius: 1,
                           elevation: 1,
                         },
-                        bubbleBorderRadius
+                        bubbleBorderRadius,
+                        isMediaMsg
+                          ? { paddingHorizontal: 0, paddingTop: 0, paddingBottom: 0 }
+                          : { paddingHorizontal: 8, paddingTop: 6, paddingBottom: 6 },
                       ]}
                     >
+                      {/* Tail SVG */}
                       {hasTail && isOwnMessage && (
-                        <Svg width={8} height={12} viewBox="0 0 8 12" style={{ position: 'absolute', top: 0, right: -7 }}>
-                          <Path d="M0 0 L8 0 L0 12 Z" fill={BUBBLE_COLOR_OWN} />
+                        <Svg width={8} height={14} viewBox="0 0 8 14" style={{ position: 'absolute', top: 0, right: -7, zIndex: 1 }}>
+                          <Path d="M0 0 C4 0 8 4 8 4 L0 14 Z" fill={BUBBLE_COLOR_OWN} />
                         </Svg>
                       )}
                       {hasTail && !isOwnMessage && (
-                        <Svg width={8} height={12} viewBox="0 0 8 12" style={{ position: 'absolute', top: 0, left: -7 }}>
-                          <Path d="M8 0 L0 0 L8 12 Z" fill={BUBBLE_COLOR_OTHER} />
+                        <Svg width={8} height={14} viewBox="0 0 8 14" style={{ position: 'absolute', top: 0, left: -7, zIndex: 1 }}>
+                          <Path d="M8 0 C4 0 0 4 0 4 L8 14 Z" fill={BUBBLE_COLOR_OTHER} />
                         </Svg>
                       )}
 
-                      {showSenderName && (
-                        <Text style={{ fontSize: 13, fontWeight: 'bold', color: '#EA4335', marginBottom: 2 }}>
-                          {message.senderName || "Unknown"}
-                        </Text>
-                      )}
+                      {/* === MEDIA MESSAGE LAYOUT === */}
+                      {isMediaMsg && (
+                        <View>
+                          {/* Sender name + reply above the media grid, with padding */}
+                          {(showSenderName || !!message.replyMessageId) && (
+                            <View style={{ paddingHorizontal: 8, paddingTop: 6, paddingBottom: 4 }}>
+                              {showSenderName && (
+                                <Text style={{
+                                  fontSize: 13,
+                                  fontWeight: '700',
+                                  color: senderColor,
+                                  marginBottom: message.replyMessageId ? 4 : 0,
+                                }}>
+                                  {message.senderName || "Unknown"}
+                                </Text>
+                              )}
+                              {message.replyMessageId && (
+                                <TouchableOpacity
+                                  activeOpacity={0.7}
+                                  onPress={() => onReplyPreviewClick(message.replyMessageId!)}
+                                  style={{
+                                    backgroundColor: isOwnMessage ? 'rgba(18,140,126,0.08)' : 'rgba(0,0,0,0.04)',
+                                    borderLeftWidth: 3,
+                                    borderLeftColor: replyAccentColor,
+                                    borderRadius: 6,
+                                    paddingHorizontal: 8,
+                                    paddingVertical: 6,
+                                  }}
+                                >
+                                  <Text style={{
+                                    fontSize: 12,
+                                    fontWeight: '600',
+                                    color: replyAccentColor,
+                                    marginBottom: 2,
+                                  }}>
+                                    {message.replySenderName}
+                                  </Text>
+                                  <Text
+                                    style={{ fontSize: 12, color: '#667781' }}
+                                    numberOfLines={2}
+                                    ellipsizeMode="tail"
+                                  >
+                                    {getReplyPreviewText({
+                                      messageType: message.replyMessageType,
+                                      messageText: message.replyMessageText,
+                                    } as Message)}
+                                  </Text>
+                                </TouchableOpacity>
+                              )}
+                            </View>
+                          )}
 
-                      {message.replyMessageId && (
-                        <TouchableOpacity
-                          activeOpacity={0.7}
-                          onPress={() => onReplyPreviewClick(message.replyMessageId!)}
-                          style={{
-                            backgroundColor: 'rgba(0,0,0,0.05)',
-                            borderLeftWidth: 4,
-                            borderLeftColor: isOwnMessage ? '#128C7E' : '#0088CC',
-                            borderRadius: 4,
-                            padding: 6,
-                            marginBottom: 4,
-                            marginTop: showSenderName ? 2 : 0
-                          }}
-                        >
-                          <Text style={{ fontSize: 13, fontWeight: 'bold', color: isOwnMessage ? '#128C7E' : '#0088CC', marginBottom: 2 }}>
-                            {message.replySenderName}
-                          </Text>
-                          <Text style={{ fontSize: 13, color: '#667781' }} numberOfLines={3} ellipsizeMode="tail">
-                            {getReplyPreviewText({
-                              messageType: message.replyMessageType,
-                              messageText: message.replyMessageText,
-                            } as Message)}
-                          </Text>
-                        </TouchableOpacity>
-                      )}
+                          {/* Media grid: with padding inside bubble */}
+                          <View style={{
+                            alignSelf: 'stretch',
+                            paddingHorizontal: 4,
+                            paddingTop: (showSenderName || !!message.replyMessageId) ? 0 : 4,
+                            paddingBottom: hasCaption ? 2 : 4,
+                          }}>
+                            <MediaGrid
+                              messageId={message.id}
+                              onMediaPress={handleMediaGridPress}
+                              mediaFilesId={message.mediaFilesId || 0}
+                              isOwnMessage={isOwnMessage}
+                            />
+                          </View>
 
-                      {message.messageType === "text" && (
-                        <ExpandableTextMessage
-                          content={message.messageText}
-                          isOwnMessage={isOwnMessage}
-                          timeString={formatTime(message.createdAt || "")}
-                          status={messageStatus}
-                          isEdited={message.isEdited}
-                        />
-                      )}
-                      
-                      <View>
-                        {message.messageType === "media" && (
-                          <View>
-                            <MediaGrid messageId={message.id} onMediaPress={handleMediaGridPress} mediaFilesId={message.mediaFilesId || 0} isOwnMessage={isOwnMessage} />
-                            {(
+                          {/* Caption below media */}
+                          {hasCaption ? (
+                            <View
+                              style={{
+                                paddingHorizontal: 8,
+                                paddingTop: 4,
+                                paddingBottom: 6,
+                              }}
+                            >
                               <ExpandableTextMessage
                                 content={message.messageText}
                                 isOwnMessage={isOwnMessage}
@@ -331,36 +439,186 @@ const MessageItem = React.memo(({
                                 status={messageStatus}
                                 isEdited={message.isEdited}
                               />
-                            )}
-                          </View>
-                        )}
-                        {message.messageType === "poll" && (
-                          <View>
-                            {typeof message.pollId === "number" && (
-                              <PollMessage
-                                pollId={message.pollId}
-                                currentUserId={currentUser?.userId || ""}
-                                onViewResults={(pollId) => {
-                                  router.push({
-                                    pathname: "/chat/poll-votes",
-                                    params: {
-                                      pollId: String(pollId),
-                                      totalMembers: String(totalMembers),
-                                      currentUserId: String(currentUser?.userId || ""),
-                                    },
-                                  });
-                                }}
-                              />
-                            )}
-                            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', marginTop: 4 }}>
-                              {message.isEdited && <Text style={{ fontSize: 11, color: '#8E8E93', fontStyle: 'italic', marginRight: 4 }}>edited</Text>}
-                              <Text style={{ fontSize: 11, color: '#8E8E93' }}>{formatTime(message.createdAt || "")}</Text>
-                              {isOwnMessage && <View style={{ marginLeft: 4 }}><MessageStatus status={messageStatus} /></View>}
                             </View>
-                          </View>
-                        )}
-                      </View>
+                          ) : (
+                            /* No caption: floating time stamp on bottom-right of media */
+                            <View style={{
+                              position: 'absolute',
+                              bottom: 8,
+                              right: 10,
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              backgroundColor: 'rgba(0,0,0,0.45)',
+                              borderRadius: 10,
+                              paddingHorizontal: 6,
+                              paddingVertical: 2,
+                            }}>
+                              {message.isEdited && (
+                                <Text style={{ fontSize: 10, color: 'rgba(255,255,255,0.85)', fontStyle: 'italic', marginRight: 3 }}>
+                                  edited
+                                </Text>
+                              )}
+                              <Text style={{ fontSize: 10, color: 'rgba(255,255,255,0.9)', fontWeight: '500' }}>
+                                {formatTime(message.createdAt || "")}
+                              </Text>
+                              {isOwnMessage && (
+                                <View style={{ marginLeft: 3 }}>
+                                  <MessageStatus status={messageStatus} />
+                                </View>
+                              )}
+                            </View>
+                          )}
+                        </View>
+                      )}
 
+                      {/* === TEXT MESSAGE LAYOUT === */}
+                      {message.messageType === "text" && (
+                        <>
+                          {showSenderName && (
+                            <Text style={{
+                              fontSize: 13,
+                              fontWeight: '700',
+                              color: senderColor,
+                              marginBottom: 2,
+                            }}>
+                              {message.senderName || "Unknown"}
+                            </Text>
+                          )}
+
+                          {message.replyMessageId && (
+                            <TouchableOpacity
+                              activeOpacity={0.7}
+                              onPress={() => onReplyPreviewClick(message.replyMessageId!)}
+                              style={{
+                                backgroundColor: isOwnMessage ? 'rgba(18,140,126,0.08)' : 'rgba(0,0,0,0.04)',
+                                borderLeftWidth: 3,
+                                borderLeftColor: replyAccentColor,
+                                borderRadius: 6,
+                                paddingHorizontal: 8,
+                                paddingVertical: 6,
+                                marginBottom: 4,
+                                marginTop: showSenderName ? 2 : 0,
+                              }}
+                            >
+                              <Text style={{
+                                fontSize: 12,
+                                fontWeight: '600',
+                                color: replyAccentColor,
+                                marginBottom: 2,
+                              }}>
+                                {message.replySenderName}
+                              </Text>
+                              <Text
+                                style={{ fontSize: 12, color: '#667781' }}
+                                numberOfLines={2}
+                                ellipsizeMode="tail"
+                              >
+                                {getReplyPreviewText({
+                                  messageType: message.replyMessageType,
+                                  messageText: message.replyMessageText,
+                                } as Message)}
+                              </Text>
+                            </TouchableOpacity>
+                          )}
+
+                          <ExpandableTextMessage
+                            content={message.messageText}
+                            isOwnMessage={isOwnMessage}
+                            timeString={formatTime(message.createdAt || "")}
+                            status={messageStatus}
+                            isEdited={message.isEdited}
+                          />
+                        </>
+                      )}
+
+                      {/* === POLL MESSAGE LAYOUT === */}
+                      {message.messageType === "poll" && (
+                        <View style={{ paddingHorizontal: 8, paddingTop: 6, paddingBottom: 6 }}>
+                          {showSenderName && (
+                            <Text style={{
+                              fontSize: 13,
+                              fontWeight: '700',
+                              color: senderColor,
+                              marginBottom: 4,
+                            }}>
+                              {message.senderName || "Unknown"}
+                            </Text>
+                          )}
+
+                          {message.replyMessageId && (
+                            <TouchableOpacity
+                              activeOpacity={0.7}
+                              onPress={() => onReplyPreviewClick(message.replyMessageId!)}
+                              style={{
+                                backgroundColor: isOwnMessage ? 'rgba(18,140,126,0.08)' : 'rgba(0,0,0,0.04)',
+                                borderLeftWidth: 3,
+                                borderLeftColor: replyAccentColor,
+                                borderRadius: 6,
+                                paddingHorizontal: 8,
+                                paddingVertical: 6,
+                                marginBottom: 4,
+                              }}
+                            >
+                              <Text style={{
+                                fontSize: 12,
+                                fontWeight: '600',
+                                color: replyAccentColor,
+                                marginBottom: 2,
+                              }}>
+                                {message.replySenderName}
+                              </Text>
+                              <Text
+                                style={{ fontSize: 12, color: '#667781' }}
+                                numberOfLines={2}
+                                ellipsizeMode="tail"
+                              >
+                                {getReplyPreviewText({
+                                  messageType: message.replyMessageType,
+                                  messageText: message.replyMessageText,
+                                } as Message)}
+                              </Text>
+                            </TouchableOpacity>
+                          )}
+
+                          {typeof message.pollId === "number" && (
+                            <PollMessage
+                              pollId={message.pollId}
+                              currentUserId={currentUser?.userId || ""}
+                              onViewResults={(pollId) => {
+                                router.push({
+                                  pathname: "/chat/poll-votes",
+                                  params: {
+                                    pollId: String(pollId),
+                                    totalMembers: String(totalMembers),
+                                    currentUserId: String(currentUser?.userId || ""),
+                                  },
+                                });
+                              }}
+                            />
+                          )}
+
+                          <View style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            justifyContent: 'flex-end',
+                            marginTop: 4,
+                          }}>
+                            {message.isEdited && (
+                              <Text style={{ fontSize: 11, color: '#8E8E93', fontStyle: 'italic', marginRight: 4 }}>
+                                edited
+                              </Text>
+                            )}
+                            <Text style={{ fontSize: 11, color: '#8E8E93' }}>
+                              {formatTime(message.createdAt || "")}
+                            </Text>
+                            {isOwnMessage && (
+                              <View style={{ marginLeft: 4 }}>
+                                <MessageStatus status={messageStatus} />
+                              </View>
+                            )}
+                          </View>
+                        </View>
+                      )}
                     </View>
                   </View>
                 </Animated.View>

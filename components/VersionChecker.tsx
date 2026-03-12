@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef } from "react";
 import {
   View,
   Text,
-  Modal,
   TouchableOpacity,
   ActivityIndicator,
   Platform,
@@ -146,13 +145,7 @@ export function VersionChecker({ onUpdateCheckComplete }: VersionCheckerProps) {
   const updaterKey = `updater-${downloadTriggerRef.current}-${serverVersion ?? ""}-${hasPendingInstall}`;
 
   return (
-    <Modal
-      visible={updateRequired}
-      animationType="fade"
-      transparent={false}
-      statusBarTranslucent
-      onRequestClose={() => {}}
-    >
+    <View style={styles.fullscreenOverlay} pointerEvents="box-none">
       <View style={styles.modalRoot}>
         <View style={styles.content}>
           <Text style={styles.title}>
@@ -179,7 +172,10 @@ export function VersionChecker({ onUpdateCheckComplete }: VersionCheckerProps) {
               <Text style={styles.downloadingTitle}>Downloading Update...</Text>
               <View style={styles.progressBarBg}>
                 <View
-                  style={[styles.progressBarFill, { width: `${downloadProgress * 100}%` }]}
+                  style={[
+                    styles.progressBarFill,
+                    { width: `${downloadProgress * 100}%` },
+                  ]}
                 />
               </View>
               <Text style={styles.progressText}>
@@ -216,16 +212,24 @@ export function VersionChecker({ onUpdateCheckComplete }: VersionCheckerProps) {
           </View>
         )}
       </View>
-    </Modal>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  fullscreenOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 9999,
+    backgroundColor: "#fff",
+  },
   modalRoot: {
     flex: 1,
     width: "100%",
     height: "100%",
-    backgroundColor: "#fff",
     justifyContent: "center",
     alignItems: "center",
     padding: 24,
