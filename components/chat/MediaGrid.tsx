@@ -241,19 +241,6 @@ const VideoCell: React.FC<{
         useNativeControls={false}
         onReadyForDisplay={handleReady}
       />
-      {/* Gradient overlay at bottom for duration */}
-      <LinearGradient
-        colors={['transparent', 'rgba(0,0,0,0.5)']}
-        style={styles.videoGradient}
-      >
-        <View style={styles.videoDurationRow}>
-          <Ionicons name="videocam" size={12} color="white" />
-          {file.duration != null && file.duration > 0 && (
-            <Text style={styles.videoDurationText}>{formatDuration(file.duration)}</Text>
-          )}
-        </View>
-      </LinearGradient>
-      {/* Centered play */}
       <View style={styles.playOverlay}>
         <View style={styles.playCircle}>
           <Ionicons name="play" size={22} color="white" style={{ marginLeft: 2 }} />

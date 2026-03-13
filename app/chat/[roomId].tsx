@@ -331,7 +331,8 @@ const MessageItem = React.memo(({
                             : {
                               maxWidth: isOwnMessage ? '82%' : '76%',
                             }),
-                          overflow: 'hidden',
+                          // Allow tail triangles to extend outside bubble bounds.
+                          overflow: 'visible',
                           shadowColor: '#000',
                           shadowOffset: { width: 0, height: 0.5 },
                           shadowOpacity: 0.08,
@@ -344,15 +345,25 @@ const MessageItem = React.memo(({
                           : { paddingHorizontal: 8, paddingTop: 6, paddingBottom: 6 },
                       ]}
                     >
-                      {/* Tail SVG */}
+                      {/* Tail SVG (WhatsApp-style triangle) */}
                       {hasTail && isOwnMessage && (
-                        <Svg width={8} height={14} viewBox="0 0 8 14" style={{ position: 'absolute', top: 0, right: -7, zIndex: 1 }}>
-                          <Path d="M0 0 C4 0 8 4 8 4 L0 14 Z" fill={BUBBLE_COLOR_OWN} />
+                        <Svg
+                          width={8}
+                          height={12}
+                          viewBox="0 0 8 12"
+                          style={{ position: "absolute", top: 0, right: -7, zIndex: 1 }}
+                        >
+                          <Path d="M0 0 L8 0 L0 12 Z" fill={BUBBLE_COLOR_OWN} />
                         </Svg>
                       )}
                       {hasTail && !isOwnMessage && (
-                        <Svg width={8} height={14} viewBox="0 0 8 14" style={{ position: 'absolute', top: 0, left: -7, zIndex: 1 }}>
-                          <Path d="M8 0 C4 0 0 4 0 4 L8 14 Z" fill={BUBBLE_COLOR_OTHER} />
+                        <Svg
+                          width={8}
+                          height={12}
+                          viewBox="0 0 8 12"
+                          style={{ position: "absolute", top: 0, left: -7, zIndex: 1 }}
+                        >
+                          <Path d="M8 0 L0 0 L8 12 Z" fill={BUBBLE_COLOR_OTHER} />
                         </Svg>
                       )}
 
@@ -441,28 +452,34 @@ const MessageItem = React.memo(({
                               />
                             </View>
                           ) : (
-                            /* No caption: floating time stamp on bottom-right of media */
-                            <View style={{
-                              position: 'absolute',
-                              bottom: 8,
-                              right: 10,
-                              flexDirection: 'row',
-                              alignItems: 'center',
-                              backgroundColor: 'rgba(0,0,0,0.45)',
-                              borderRadius: 10,
-                              paddingHorizontal: 6,
-                              paddingVertical: 2,
-                            }}>
+                            // No caption: show time + status row like text/poll messages (no overlay)
+                            <View
+                              style={{
+                                flexDirection: "row",
+                                alignItems: "center",
+                                justifyContent: "flex-end",
+                                paddingHorizontal: 8,
+                                paddingBottom: 6,
+                                paddingTop: 2,
+                              }}
+                            >
                               {message.isEdited && (
-                                <Text style={{ fontSize: 10, color: 'rgba(255,255,255,0.85)', fontStyle: 'italic', marginRight: 3 }}>
+                                <Text
+                                  style={{
+                                    fontSize: 11,
+                                    color: "#8E8E93",
+                                    fontStyle: "italic",
+                                    marginRight: 4,
+                                  }}
+                                >
                                   edited
                                 </Text>
                               )}
-                              <Text style={{ fontSize: 10, color: 'rgba(255,255,255,0.9)', fontWeight: '500' }}>
+                              <Text style={{ fontSize: 11, color: "#8E8E93" }}>
                                 {formatTime(message.createdAt || "")}
                               </Text>
                               {isOwnMessage && (
-                                <View style={{ marginLeft: 3 }}>
+                                <View style={{ marginLeft: 4 }}>
                                   <MessageStatus status={messageStatus} />
                                 </View>
                               )}

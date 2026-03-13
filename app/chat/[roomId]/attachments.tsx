@@ -401,35 +401,41 @@ const SelectedMediaCarouselModal = React.memo(({
       animationType="slide"
       transparent={false}
       onRequestClose={onClose}
+      statusBarTranslucent
     >
       <SafeAreaView className="flex-1 bg-black">
         {/* Header */}
         <View
-          className="flex-row items-center justify-between px-4 bg-black/90"
-          style={{ height: PREVIEW_HEADER_HEIGHT }}
-        >
-          <TouchableOpacity onPress={onClose} className="w-11 h-11 items-center justify-center">
-            <Ionicons name="close" size={28} color="#fff" />
-          </TouchableOpacity>
-          <View className="flex-1 items-center">
-            <Text className="text-white text-lg font-semibold">
-              {safeIndex + 1} / {selectedMedia.length}
-            </Text>
-          </View>
-          <TouchableOpacity
-            onPress={() => {
-              if (currentMedia) {
-                onRemove(currentMedia.id);
-                if (selectedMedia.length <= 1) {
-                  onClose();
-                }
-              }
-            }}
-            className="w-11 h-11 items-center justify-center"
-          >
-            <Ionicons name="trash-outline" size={24} color="#ef4444" />
-          </TouchableOpacity>
-        </View>
+  className="flex-row items-center justify-between px-4 pt-10 pb-3 bg-white border-b border-neutral-200"
+>
+  {/* Close */}
+  <TouchableOpacity
+    onPress={onClose}
+    className="w-10 h-10 items-center justify-center"
+  >
+    <Ionicons name="close" size={28} color="black" />
+  </TouchableOpacity>
+
+  {/* Index */}
+  <Text className="text-black text-lg font-semibold">
+    {safeIndex + 1} / {selectedMedia.length}
+  </Text>
+
+  {/* Delete */}
+  <TouchableOpacity
+    onPress={() => {
+      if (currentMedia) {
+        onRemove(currentMedia.id);
+        if (selectedMedia.length <= 1) {
+          onClose();
+        }
+      }
+    }}
+    className="w-10 h-10 items-center justify-center"
+  >
+    <Ionicons name="trash-outline" size={24} color="#ef4444" />
+  </TouchableOpacity>
+</View>
 
         {/* Carousel - opens at initialScrollIndex (e.g. 4th photo = index 3) */}
         <FlatList

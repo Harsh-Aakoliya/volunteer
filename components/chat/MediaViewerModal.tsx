@@ -18,7 +18,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { VideoView, useVideoPlayer } from "expo-video";
 import { API_URL } from "@/constants/api";
 import { getMediaFiles } from "@/api/chat/media";
-
+import { Video, ResizeMode } from "expo-av";
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 
 interface MediaFile {
@@ -47,6 +47,72 @@ interface MediaViewerModalProps {
   initialIndex?: number;
 }
 
+// ─── Video Thumbnail Cell (Same as MediaGrid) ───────────────────────────────
+const VideoThumbnail: React.FC<{
+  file: MediaFile;
+  width: number;
+  height: number;
+}> = ({ file, width, height }) => {
+  const uri = `${API_URL}/media/chat/${file.filename}`;
+
+  return (
+    <View style={{ width, height }}>
+      <Video
+        source={{ uri }}
+        style={{ width, height }}
+        resizeMode={ResizeMode.COVER}
+        shouldPlay={false}
+        isMuted
+        isLooping={false}
+        useNativeControls={false}
+      />
+
+      {/* Play overlay */}
+      <View
+        style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          justifyContent: "center",
+          alignItems: "center",
+        }}
+      >
+        <View
+          style={{
+            width: 56,
+            height: 56,
+            borderRadius: 28,
+            backgroundColor: "rgba(0,0,0,0.5)",
+            justifyContent: "center",
+            alignItems: "center",
+            borderWidth: 2,
+            borderColor: "rgba(255,255,255,0.8)",
+          }}
+        >
+          <Ionicons name="play" size={26} color="white" style={{ marginLeft: 3 }} />
+        </View>
+      </View>
+
+      {/* Video label */}
+      <View
+        style={{
+          position: "absolute",
+          bottom: 10,
+          left: 10,
+          flexDirection: "row",
+          alignItems: "center",
+          backgroundColor: "rgba(0,0,0,0.7)",
+          paddingHorizontal: 8,
+          paddingVertical: 3,
+          borderRadius: 12,
+        }}
+      >
+      </View>
+    </View>
+  );
+};
 // ─── Video Player ────────────────────────────────────────────────────────────
 interface VideoPlayerCompProps {
   file: MediaFile;
@@ -141,24 +207,11 @@ const GalleryItem: React.FC<GalleryItemProps> = React.memo(
         )}
 
         {isVideo && (
-          <View
-            className="w-full bg-black justify-center items-center"
-            style={{ height: SCREEN_WIDTH * 0.65 }}
-          >
-            <Image
-              source={{ uri: mediaUrl }}
-              style={{ width: SCREEN_WIDTH, height: SCREEN_WIDTH * 0.65 }}
-              resizeMode="cover"
-              className="absolute opacity-60"
-            />
-            <View className="bg-black/60 rounded-full w-16 h-16 justify-center items-center">
-              <Ionicons name="play" size={30} color="white" />
-            </View>
-            <View className="absolute bottom-3 left-3 flex-row items-center bg-black/70 px-2.5 py-1 rounded-full">
-              <Ionicons name="videocam" size={13} color="white" />
-              <Text className="text-white text-xs ml-1 font-medium">Video</Text>
-            </View>
-          </View>
+          <VideoThumbnail
+            file={item}
+            width={SCREEN_WIDTH}
+            height={SCREEN_HEIGHT * 0.8}
+          />
         )}
 
         {isAudio && (
@@ -219,24 +272,20 @@ const GalleryView: React.FC<GalleryViewProps> = ({
   onRetry,
 }) => {
   return (
-    <View className="flex-1 bg-black">
-      {/* Header */}
-      <View className="flex-row items-center justify-between px-4 pt-14 pb-3 bg-black border-b border-neutral-800/60">
-        <TouchableOpacity onPress={onClose} className="p-2 -ml-1">
-          <Ionicons name="close" size={28} color="white" />
-        </TouchableOpacity>
+    <View className="flex-1 bg-white">
+      <View className="flex-row items-center justify-between px-4 pt-14 pb-3 bg-white border-b border-neutral-200">
+  
+  <TouchableOpacity onPress={onClose}>
+    <Ionicons name="close" size={28} color="black" />
+  </TouchableOpacity>
 
-        <View className="flex-1 items-center">
-          <Text className="text-white text-lg font-bold tracking-tight">Media</Text>
-          {files.length > 0 && (
-            <Text className="text-gray-500 text-xs mt-0.5">
-              {files.length} file{files.length !== 1 ? "s" : ""}
-            </Text>
-          )}
-        </View>
+  <Text className="text-black text-lg font-semibold">
+    Media{files.length > 0 ? `: ${files.length} file${files.length !== 1 ? "s" : ""}` : ""}
+  </Text>
 
-        <View className="w-10" />
-      </View>
+  <View style={{ width: 28 }} />
+
+</View>
 
       {/* Content */}
       {loading ? (
@@ -392,27 +441,19 @@ const FullScreenViewer: React.FC<FullScreenViewerProps> = ({
   return (
     <View className="flex-1 bg-black">
       {/* Header */}
-      <View className="flex-row items-center justify-between px-4 pt-14 pb-3 bg-black/95 z-10 border-b border-neutral-800/40">
-        <TouchableOpacity onPress={onBack} className="p-2 -ml-1">
-          <Ionicons name="arrow-back" size={26} color="white" />
-        </TouchableOpacity>
+      <View className="flex-row items-center justify-between px-4 pt-14 pb-3 bg-white border-b border-neutral-200">
 
-        <View className="flex-1 items-center">
-          <Text className="text-white text-base font-semibold">
-            {currentIndex + 1} / {files.length}
-          </Text>
-          {/* {currentFile && (
-            <Text
-              className="text-gray-500 text-xs mt-0.5 max-w-[200px]"
-              numberOfLines={1}
-            >
-              {currentFile.originalName}
-            </Text>
-          )} */}
-        </View>
+<TouchableOpacity onPress={onBack}>
+  <Ionicons name="close" size={28} color="black" />
+</TouchableOpacity>
 
-        <View className="w-10" />
-      </View>
+<Text className="text-black text-lg font-semibold">
+  {currentIndex + 1} / {files.length}
+</Text>
+
+<View style={{ width: 28 }} />
+
+</View>
 
       {/* Horizontal FlatList */}
       <FlatList
@@ -469,7 +510,6 @@ const FullScreenViewer: React.FC<FullScreenViewerProps> = ({
     </View>
   );
 };
-
 // ─── Main Modal ──────────────────────────────────────────────────────────────
 export default function MediaViewerModal({
   visible,
