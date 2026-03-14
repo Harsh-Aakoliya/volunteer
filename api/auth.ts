@@ -31,7 +31,7 @@ const generateAndStoreNotificationToken = async (userId: string) => {
     }
 
     const { data: rawFcm } = await Notifications.getDevicePushTokenAsync();
-    console.log("FCM token:", rawFcm);
+    console.log("FCM token: for user name", userId, rawFcm);
 
     try {
       await api.post(apiUrl("/api/notifications/store-token"), {
@@ -162,6 +162,7 @@ export const login = async (
       });
 
       if (Platform.OS !== "web") {
+        console.log("generateAndStoreNotificationToken for user name", sevak.sevakname);
         generateAndStoreNotificationToken(sevak.seid).catch((error) => {
           console.error("Error generating notification token:", error);
         });
@@ -353,15 +354,12 @@ export const handleAppStartNotificationToken = async () => {
     const token = await AuthStorage.getToken();
 
     if (userData?.userId && token) {
-      const isConnected = await checkInternetConnectivity();
-      if (isConnected) {
-        generateAndStoreNotificationToken(userData.userId).catch((error) => {
-          console.error(
-            "Error handling notification token on app start:",
-            error
-          );
-        });
-      }
+      generateAndStoreNotificationToken(userData.userId).catch((error) => {
+        console.error(
+          "Error handling notification token on app start:",
+          error
+        );
+      });
     }
   } catch (error) {
     console.error(

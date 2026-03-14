@@ -24,7 +24,7 @@ function AppContent() {
   const isConnected = useNetworkStatus() || isWeb;
   const [isReady, setIsReady] = useState(true);
 
-  // Bootstrap: notifications etc.
+  // Bootstrap: set API URL first so all requests (e.g. notification token) use the correct base URL, then notifications.
   useEffect(() => {
     if (Platform.OS === "web") {
       setIsReady(true);
@@ -32,6 +32,7 @@ function AppContent() {
     }
     const bootstrap = async () => {
       try {
+        await setupApiUrl(isConnected);
         await initializeNotifications();
         await requestChatNotificationPermissions();
         setupChatNotificationListeners();
@@ -55,15 +56,6 @@ function AppContent() {
     });
     return () => subscription.remove();
   }, []);
-
-  // Background: set API URL when ready. Does not block navigation (index decides route from token).
-  useEffect(() => {
-    if (!isReady) return;
-    const t = setTimeout(() => {
-      setupApiUrl(isConnected);
-    }, 300);
-    return () => clearTimeout(t);
-  }, [isReady, isConnected]);
 
   return (
     <>

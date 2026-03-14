@@ -38,8 +38,9 @@ const { DEV_IP, INTERNAL_IP, EXTERNAL_IP } = Constants?.expoConfig?.extra as {
 };
 
 // ==================== DEBUG FLAG ====================
-// Set to true during development to allow manual mobile entry when SIM fetch fails
-const IS_DEBUG =false;
+// Set to true during development to allow manual mobile entry
+// Set to false for production (SIM-based authentication)
+const IS_DEBUG = true;
 
 interface SimCard {
   phoneNumber: string;
@@ -53,10 +54,8 @@ export default function LoginForm() {
   // ==================== STATE MANAGEMENT ====================
 
   const [currentStep, setCurrentStep] = useState<LoginStep>("password");
-  const [mobileNumber, setMobileNumber] = useState(
-    IS_DEBUG ? "5551234567" : ""
-  );
-  const [password, setPassword] = useState(IS_DEBUG ? "1111" : "");
+  const [mobileNumber, setMobileNumber] = useState("");
+  const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isCheckingMobile, setIsCheckingMobile] = useState(false);
@@ -76,9 +75,10 @@ export default function LoginForm() {
   const [fadeAnim] = useState(new Animated.Value(1));
   const [clickCount, setClickCount] = useState(0);
 
-  // Debug mode: allows manual mobile entry when SIM fetch fails
-  const [isManualEntry, setIsManualEntry] = useState(false);
+  // Manual entry mode - always true in debug mode
+  const [isManualEntry, setIsManualEntry] = useState(IS_DEBUG);
 
+  // Only use SIM cards hook if NOT in debug mode
   const { fetchSimCards, isLoading: isFetchingSim } = useSimCards();
 
   const [showPassword, setShowPassword] = useState(false);
@@ -90,6 +90,7 @@ export default function LoginForm() {
   });
 
   const lastCheckedNumberRef = useRef<string>("");
+  const mobileInputRef = useRef<TextInput>(null);
 
   // ==================== AUTH CHECK ON MOUNT ====================
 
@@ -109,10 +110,25 @@ export default function LoginForm() {
       }
 
       setIsCheckingAuth(false);
+
+      // In debug mode, skip SIM fetch and go straight to manual entry
+      if (IS_DEBUG) {
+        console.log("🔧 DEBUG MODE: Manual entry enabled, skipping SIM fetch");
+        setIsManualEntry(true);
+        return;
+      }
+
+      // Production mode: fetch SIM cards
       handleFetchMobileNumbers();
     } catch (error) {
       console.error("Error checking auth status:", error);
       setIsCheckingAuth(false);
+
+      if (IS_DEBUG) {
+        setIsManualEntry(true);
+        return;
+      }
+
       handleFetchMobileNumbers();
     }
   };
@@ -159,9 +175,16 @@ export default function LoginForm() {
     });
   }, []);
 
-  // ==================== SIM CARD FUNCTIONS ====================
+  // ==================== SIM CARD FUNCTIONS (Production Only) ====================
 
   const handleFetchMobileNumbers = useCallback(async () => {
+    // Skip SIM fetch in debug mode
+    if (IS_DEBUG) {
+      console.log("🔧 DEBUG MODE: SIM fetch skipped");
+      setIsManualEntry(true);
+      return;
+    }
+
     Keyboard.dismiss();
 
     // Reset all states for fresh verification
@@ -175,22 +198,6 @@ export default function LoginForm() {
       const simCards = await fetchSimCards();
 
       if (simCards.length === 0) {
-        if (IS_DEBUG) {
-          // Debug mode: allow manual entry instead of closing app
-          console.log(
-            "🔧 DEBUG: SIM fetch returned 0 cards — enabling manual entry"
-          );
-          setIsManualEntry(true);
-          setMobileNumber("5551234567");
-          setPassword("1111");
-          Alert.alert(
-            "Debug Mode",
-            "SIM card fetch not supported on this device.\nManual entry enabled for debugging.",
-            [{ text: "OK" }]
-          );
-          return;
-        }
-
         Alert.alert(
           "Not Supported",
           "Automatic mobile number fetch is not supported on this device.",
@@ -214,23 +221,6 @@ export default function LoginForm() {
         setShowSimPickerModal(true);
       }
     } catch (error) {
-      if (IS_DEBUG) {
-        // Debug mode: allow manual entry on error
-        console.log(
-          "🔧 DEBUG: SIM fetch failed — enabling manual entry",
-          error
-        );
-        setIsManualEntry(true);
-        setMobileNumber("5551234567");
-        setPassword("1111");
-        Alert.alert(
-          "Debug Mode",
-          "SIM card fetch failed.\nManual entry enabled for debugging.",
-          [{ text: "OK" }]
-        );
-        return;
-      }
-
       Alert.alert(
         "Not Supported",
         "Automatic mobile number fetch is not supported on this device.",
@@ -247,7 +237,6 @@ export default function LoginForm() {
   }, [fetchSimCards, resetVerificationState, resetFormState]);
 
   const handleSelectSimCard = (simCard: SimCard) => {
-    // Reset verification state when selecting a new SIM
     resetVerificationState();
     resetFormState();
     setMobileNumber(simCard.phoneNumber);
@@ -255,7 +244,7 @@ export default function LoginForm() {
     setIsManualEntry(false);
   };
 
-  // ==================== MOBILE NUMBER CHANGE HANDLER (manual entry) ====================
+  // ==================== MOBILE NUMBER CHANGE HANDLER ====================
 
   const handleMobileNumberChange = useCallback(
     (text: string) => {
@@ -263,12 +252,12 @@ export default function LoginForm() {
       const cleaned = text.replace(/[^0-9]/g, "");
       setMobileNumber(cleaned);
 
-      // Reset verification when number changes in manual mode
-      if (isManualEntry) {
+      // Reset verification when number changes
+      if (cleaned.length < 10 || lastCheckedNumberRef.current !== cleaned) {
         resetVerificationState();
       }
     },
-    [isManualEntry, resetVerificationState]
+    [resetVerificationState]
   );
 
   // ==================== MOBILE VERIFICATION ====================
@@ -338,8 +327,9 @@ export default function LoginForm() {
 
   const apiUrlReady = useApiStore((s) => s.apiUrlReady);
 
+  // Auto-verify when mobile number reaches 10 digits
   useEffect(() => {
-    if (!mobileNumber) return;
+    if (!mobileNumber || mobileNumber.length < 10) return;
     if (!apiUrlReady) return;
     verifyMobileNumber(mobileNumber);
   }, [mobileNumber, verifyMobileNumber, apiUrlReady]);
@@ -382,9 +372,20 @@ export default function LoginForm() {
 
   const handleLogin = async () => {
     Keyboard.dismiss();
-    setTouched((prev) => ({ ...prev, password: true }));
+    setTouched((prev) => ({ ...prev, mobile: true, password: true }));
+
+    // Validate mobile number
+    const cleanedNumber = mobileNumber.replace(/[^0-9]/g, "");
+    if (cleanedNumber.length < 10) {
+      Alert.alert("Error", "Please enter a valid 10-digit mobile number");
+      return;
+    }
 
     if (!isMobileAllowed) {
+      // If not verified yet, trigger verification
+      if (!hasMobileCheckResult) {
+        await verifyMobileNumber(cleanedNumber);
+      }
       return;
     }
 
@@ -396,7 +397,6 @@ export default function LoginForm() {
     try {
       setIsLoading(true);
 
-      const cleanedNumber = mobileNumber.replace(/[^0-9]/g, "");
       const response = await login(cleanedNumber, password);
 
       console.log("Login response:", response);
@@ -508,6 +508,8 @@ export default function LoginForm() {
     }
   };
 
+  // ==================== DEVELOPER MODE HANDLERS ====================
+
   const handleLongPressButton = () => {
     Keyboard.dismiss();
     Alert.alert(
@@ -537,7 +539,7 @@ export default function LoginForm() {
               ? isMobileAllowed
                 ? "Enter your password to sign in"
                 : ""
-              : isManualEntry
+              : IS_DEBUG
                 ? "Enter your mobile number and password"
                 : "Please wait...",
           icon: "lock-closed" as const,
@@ -555,7 +557,13 @@ export default function LoginForm() {
 
   // ==================== HELPER: Check if form is disabled ====================
 
-  const isFormDisabled = !isMobileAllowed || isCheckingMobile || isFetchingSim;
+  const isFormDisabled = () => {
+    if (IS_DEBUG) {
+      // In debug mode, only disable if checking mobile or mobile not allowed after check
+      return isCheckingMobile || (hasMobileCheckResult && !isMobileAllowed);
+    }
+    return !isMobileAllowed || isCheckingMobile || isFetchingSim;
+  };
 
   // ==================== RENDER LOADING ====================
 
@@ -576,56 +584,67 @@ export default function LoginForm() {
         label=""
         placeholder="Enter 10-digit mobile number"
         value={mobileNumber}
-        onChangeText={
-          isManualEntry ? handleMobileNumberChange : setMobileNumber
-        }
-        editable={isManualEntry}
+        onChangeText={handleMobileNumberChange}
+        editable={IS_DEBUG || isManualEntry}
         keyboardType="phone-pad"
         maxLength={10}
+        autoFocus={IS_DEBUG && !mobileNumber}
         leftIcon={
           <Ionicons name="call-outline" size={20} color="#6B7280" />
         }
         rightIcon={
           <View className="flex-row items-center">
-            {/* Debug badge shown when manual entry is active */}
-            {isManualEntry && IS_DEBUG && (
+            {/* Debug badge */}
+            {IS_DEBUG && (
               <View className="bg-amber-100 border border-amber-300 rounded-md px-2 py-0.5 mr-2">
                 <Text className="text-amber-700 text-[10px] font-JakartaBold">
                   DEBUG
                 </Text>
               </View>
             )}
-            <Pressable
-              onPress={handleFetchMobileNumbers}
-              disabled={isFetchingSim || isCheckingMobile}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              className={`p-2 rounded-lg ${
-                isFetchingSim || isCheckingMobile
-                  ? "bg-gray-100"
-                  : "bg-blue-100"
-              }`}
-            >
-              {isFetchingSim ? (
+            {/* Verify button - shown when mobile is 10 digits and not yet verified */}
+            {mobileNumber.length === 10 && !hasMobileCheckResult && !isCheckingMobile && (
+              <Pressable
+                onPress={() => verifyMobileNumber(mobileNumber)}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                className="p-2 rounded-lg bg-blue-100"
+              >
+                <Ionicons name="checkmark-circle-outline" size={20} color="#3B82F6" />
+              </Pressable>
+            )}
+            {/* Loading indicator while checking */}
+            {isCheckingMobile && (
+              <View className="p-2">
                 <ActivityIndicator size="small" color="#3B82F6" />
-              ) : (
-                <Ionicons
-                  name="phone-portrait-outline"
-                  size={20}
-                  color={isCheckingMobile ? "#9CA3AF" : "#3B82F6"}
-                />
-              )}
-            </Pressable>
+              </View>
+            )}
+            {/* Success indicator */}
+            {isMobileAllowed && hasMobileCheckResult && !isCheckingMobile && (
+              <View className="p-2">
+                <Ionicons name="checkmark-circle" size={20} color="#22C55E" />
+              </View>
+            )}
+            {/* Error indicator */}
+            {!isMobileAllowed && hasMobileCheckResult && !isCheckingMobile && (
+              <View className="p-2">
+                <Ionicons name="close-circle" size={20} color="#EF4444" />
+              </View>
+            )}
           </View>
         }
         error={
-          !mobileNumber && touched.mobile ? "Mobile number is required" : ""
+          touched.mobile && mobileNumber.length > 0 && mobileNumber.length < 10
+            ? "Enter a valid 10-digit mobile number"
+            : !mobileNumber && touched.mobile
+              ? "Mobile number is required"
+              : ""
         }
         touched={touched.mobile}
         onBlur={() => setTouched((prev) => ({ ...prev, mobile: true }))}
       />
 
-      {/* Manual entry hint in debug mode */}
-      {isManualEntry && IS_DEBUG && !isCheckingMobile && !hasMobileCheckResult && (
+      {/* Debug mode hint */}
+      {IS_DEBUG && !isCheckingMobile && !hasMobileCheckResult && mobileNumber.length < 10 && (
         <View className="flex-row items-center mt-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
           <Ionicons
             name="bug-outline"
@@ -634,8 +653,7 @@ export default function LoginForm() {
             style={{ marginTop: 1 }}
           />
           <Text className="ml-2 text-xs text-amber-700 flex-1">
-            Debug mode: Enter any registered mobile number manually.
-            {"\n"}SIM auto-detect is not available on this device.
+            Debug mode: Enter any registered mobile number to test login.
           </Text>
         </View>
       )}
@@ -690,24 +708,24 @@ export default function LoginForm() {
           value={password}
           onChangeText={setPassword}
           secureTextEntry={!showPassword}
-          editable={isMobileAllowed && !isCheckingMobile && !isFetchingSim}
+          editable={!isCheckingMobile && (IS_DEBUG || isMobileAllowed)}
           leftIcon={
             <Ionicons
               name="lock-closed-outline"
               size={20}
-              color={isFormDisabled ? "#D1D5DB" : "#6B7280"}
+              color={isFormDisabled() ? "#D1D5DB" : "#6B7280"}
             />
           }
           rightIcon={
             <Pressable
               onPress={() => setShowPassword(!showPassword)}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              disabled={isFormDisabled}
+              disabled={isFormDisabled()}
             >
               <Ionicons
                 name={showPassword ? "eye-outline" : "eye-off-outline"}
                 size={20}
-                color={isFormDisabled ? "#D1D5DB" : "#6B7280"}
+                color={isFormDisabled() ? "#D1D5DB" : "#6B7280"}
               />
             </Pressable>
           }
@@ -717,12 +735,12 @@ export default function LoginForm() {
         />
         <Pressable
           onPress={handleGoToSetPassword}
-          disabled={isFormDisabled}
+          disabled={!isMobileAllowed || isCheckingMobile}
           className="mt-2"
         >
           <Text
             className={`text-right text-sm font-JakartaMedium ${
-              isFormDisabled ? "text-gray-400" : "text-blue-500"
+              !isMobileAllowed || isCheckingMobile ? "text-gray-400" : "text-blue-500"
             }`}
           >
             Forgot password?
@@ -734,18 +752,23 @@ export default function LoginForm() {
         onPress={handleLogin}
         onLongPress={handleLongPressButton}
         delayLongPress={3000}
-        disabled={isLoading || isFormDisabled}
+        disabled={isLoading || isCheckingMobile}
       >
         {({ pressed }) => (
           <View
             pointerEvents="none"
             style={{
-              opacity:
-                isLoading || isFormDisabled ? 0.5 : pressed ? 0.8 : 1,
+              opacity: isLoading || isCheckingMobile ? 0.5 : pressed ? 0.8 : 1,
             }}
           >
             <CustomButton
-              title="Sign In"
+              title={
+                mobileNumber.length < 10
+                  ? "Enter Mobile Number"
+                  : !hasMobileCheckResult
+                    ? "Verify & Sign In"
+                    : "Sign In"
+              }
               onPress={() => {}}
               loading={isLoading}
               IconRight={() => (
@@ -769,24 +792,24 @@ export default function LoginForm() {
           value={password}
           onChangeText={setPassword}
           secureTextEntry={!showPassword}
-          editable={isMobileAllowed && !isCheckingMobile && !isFetchingSim}
+          editable={isMobileAllowed && !isCheckingMobile}
           leftIcon={
             <Ionicons
               name="lock-closed-outline"
               size={20}
-              color={isFormDisabled ? "#D1D5DB" : "#6B7280"}
+              color={!isMobileAllowed || isCheckingMobile ? "#D1D5DB" : "#6B7280"}
             />
           }
           rightIcon={
             <Pressable
               onPress={() => setShowPassword(!showPassword)}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              disabled={isFormDisabled}
+              disabled={!isMobileAllowed || isCheckingMobile}
             >
               <Ionicons
                 name={showPassword ? "eye-outline" : "eye-off-outline"}
                 size={20}
-                color={isFormDisabled ? "#D1D5DB" : "#6B7280"}
+                color={!isMobileAllowed || isCheckingMobile ? "#D1D5DB" : "#6B7280"}
               />
             </Pressable>
           }
@@ -803,26 +826,24 @@ export default function LoginForm() {
           value={confirmPassword}
           onChangeText={setConfirmPassword}
           secureTextEntry={!showConfirmPassword}
-          editable={isMobileAllowed && !isCheckingMobile && !isFetchingSim}
+          editable={isMobileAllowed && !isCheckingMobile}
           leftIcon={
             <Ionicons
               name="lock-closed-outline"
               size={20}
-              color={isFormDisabled ? "#D1D5DB" : "#6B7280"}
+              color={!isMobileAllowed || isCheckingMobile ? "#D1D5DB" : "#6B7280"}
             />
           }
           rightIcon={
             <Pressable
               onPress={() => setShowConfirmPassword(!showConfirmPassword)}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              disabled={isFormDisabled}
+              disabled={!isMobileAllowed || isCheckingMobile}
             >
               <Ionicons
-                name={
-                  showConfirmPassword ? "eye-outline" : "eye-off-outline"
-                }
+                name={showConfirmPassword ? "eye-outline" : "eye-off-outline"}
                 size={20}
-                color={isFormDisabled ? "#D1D5DB" : "#6B7280"}
+                color={!isMobileAllowed || isCheckingMobile ? "#D1D5DB" : "#6B7280"}
               />
             </Pressable>
           }
@@ -893,14 +914,14 @@ export default function LoginForm() {
         onPress={handleSetPassword}
         onLongPress={handleLongPressButton}
         delayLongPress={3000}
-        disabled={isSettingPassword || isFormDisabled}
+        disabled={isSettingPassword || !isMobileAllowed || isCheckingMobile}
       >
         {({ pressed }) => (
           <View
             pointerEvents="none"
             style={{
               opacity:
-                isSettingPassword || isFormDisabled
+                isSettingPassword || !isMobileAllowed || isCheckingMobile
                   ? 0.5
                   : pressed
                     ? 0.8
@@ -952,7 +973,7 @@ export default function LoginForm() {
         >
           <View className="flex-1 px-[10%] pt-8">
             {/* Debug mode banner at top */}
-            {IS_DEBUG && isManualEntry && (
+            {IS_DEBUG && (
               <View className="bg-amber-500 rounded-xl px-4 py-2 mb-4 flex-row items-center justify-center">
                 <Ionicons name="bug" size={16} color="#FFFFFF" />
                 <Text className="text-white text-xs font-JakartaBold ml-2">
@@ -965,15 +986,16 @@ export default function LoginForm() {
               <View
                 className={`w-20 h-20 rounded-2xl items-center justify-center mb-5 ${headerConfig.iconBgColor}`}
               >
-                <Ionicons
-                  name={headerConfig.icon}
-                  size={40}
-                  color="white"
-                />
+                <Ionicons name={headerConfig.icon} size={40} color="white" />
               </View>
               <Text className="text-2xl font-JakartaBold text-gray-800 mb-2">
                 {headerConfig.title}
               </Text>
+              {headerConfig.subtitle && (
+                <Text className="text-sm text-gray-500 text-center px-4">
+                  {headerConfig.subtitle}
+                </Text>
+              )}
             </View>
 
             <Animated.View style={{ opacity: fadeAnim }}>
@@ -983,83 +1005,55 @@ export default function LoginForm() {
         </Pressable>
       </ScrollView>
 
-      {/* SIM Card Picker Modal */}
-      <Modal
-        visible={showSimPickerModal}
-        transparent={true}
-        animationType="slide"
-        onRequestClose={() => setShowSimPickerModal(false)}
-      >
-        <Pressable
-          onPress={() => setShowSimPickerModal(false)}
-          className="flex-1 bg-black/50 justify-end"
+      {/* SIM Card Picker Modal - Only shown in production mode */}
+      {!IS_DEBUG && (
+        <Modal
+          visible={showSimPickerModal}
+          transparent={true}
+          animationType="slide"
+          onRequestClose={() => setShowSimPickerModal(false)}
         >
           <Pressable
-            onPress={() => {}}
-            className="bg-white rounded-t-3xl pt-6 pb-8 px-5"
+            onPress={() => setShowSimPickerModal(false)}
+            className="flex-1 bg-black/50 justify-end"
           >
-            <View className="w-10 h-1 bg-gray-300 rounded-full self-center mb-4" />
-
-            <Text className="text-xl font-JakartaBold text-gray-800 mb-2">
-              Choose Your Number
-            </Text>
-            <Text className="text-sm text-gray-500 mb-5">
-              Multiple SIM cards detected. Please select which number to use.
-            </Text>
-
-            {availableSimCards.map((sim, index) => (
-              <Pressable
-                key={index}
-                onPress={() => handleSelectSimCard(sim)}
-                className="bg-gray-50 border border-gray-200 rounded-xl p-4 mb-3 flex-row items-center active:bg-gray-100"
-              >
-                <View className="bg-blue-500 p-3 rounded-xl mr-4">
-                  <Ionicons
-                    name="phone-portrait"
-                    size={24}
-                    color="white"
-                  />
-                </View>
-                <View className="flex-1">
-                  <Text className="text-sm text-gray-500">
-                    SIM {sim.slotIndex + 1} • {sim.carrierName}
-                  </Text>
-                  <Text className="text-lg font-JakartaBold text-gray-800">
-                    {sim.phoneNumber}
-                  </Text>
-                </View>
-                <Ionicons
-                  name="chevron-forward"
-                  size={24}
-                  color="#6B7280"
-                />
-              </Pressable>
-            ))}
-
             <Pressable
-              onPress={() => {
-                setShowSimPickerModal(false);
-                setMobileNumber("");
-                resetVerificationState();
-
-                if (IS_DEBUG) {
-                  setIsManualEntry(true);
-                }
-              }}
-              className="mt-2 py-3 flex-row items-center justify-center"
+              onPress={() => {}}
+              className="bg-white rounded-t-3xl pt-6 pb-8 px-5"
             >
-              <Ionicons
-                name="keypad-outline"
-                size={18}
-                color="#6B7280"
-              />
-              <Text className="text-gray-500 ml-2">
-                Enter number manually
+              <View className="w-10 h-1 bg-gray-300 rounded-full self-center mb-4" />
+
+              <Text className="text-xl font-JakartaBold text-gray-800 mb-2">
+                Choose Your Number
               </Text>
+              <Text className="text-sm text-gray-500 mb-5">
+                Multiple SIM cards detected. Please select which number to use.
+              </Text>
+
+              {availableSimCards.map((sim, index) => (
+                <Pressable
+                  key={index}
+                  onPress={() => handleSelectSimCard(sim)}
+                  className="bg-gray-50 border border-gray-200 rounded-xl p-4 mb-3 flex-row items-center active:bg-gray-100"
+                >
+                  <View className="bg-blue-500 p-3 rounded-xl mr-4">
+                    <Ionicons name="phone-portrait" size={24} color="white" />
+                  </View>
+                  <View className="flex-1">
+                    <Text className="text-sm text-gray-500">
+                      SIM {sim.slotIndex + 1} • {sim.carrierName}
+                    </Text>
+                    <Text className="text-lg font-JakartaBold text-gray-800">
+                      {sim.phoneNumber}
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={24} color="#6B7280" />
+                </Pressable>
+              ))}
             </Pressable>
           </Pressable>
-        </Pressable>
-      </Modal>
+        </Modal>
+      )}
 
       {/* IP Modal - Developer Mode */}
       <Modal

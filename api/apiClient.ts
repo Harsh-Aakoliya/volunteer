@@ -1,6 +1,7 @@
 // api/apiClient.ts
 import axios, { AxiosRequestConfig, AxiosResponse } from "axios";
 import { Alert, Platform, AppState, AppStateStatus } from "react-native";
+import NetInfo from "@react-native-community/netinfo";
 import { API_URL } from "@/constants/api";
 import { AuthStorage } from "@/utils/authStorage";
 import { router } from "expo-router";
@@ -46,19 +47,18 @@ function isTokenExpired(token: string): boolean {
   }
 }
 
-// ==================== CONNECTIVITY CHECK (FIXED) ====================
+// ==================== CONNECTIVITY CHECK WITH NETINFO ====================
 
 let lastConnectivityCheck = 0;
 let lastConnectivityResult = true;
-const CONNECTIVITY_CACHE_MS = 5000;
+const CONNECTIVITY_CACHE_MS = 3000; // Reduced cache time for better responsiveness
 
-// KEY FIX #1: Invalidate cache when app returns from background
+// Invalidate cache when app returns from background
 if (Platform.OS !== "web") {
   AppState.addEventListener("change", (nextState: AppStateStatus) => {
     if (nextState === "active") {
-      // Invalidate the cached connectivity result immediately
       lastConnectivityCheck = 0;
-      lastConnectivityResult = true; // Assume connected until proven otherwise
+      lastConnectivityResult = true;
     }
   });
 }
@@ -71,44 +71,30 @@ async function checkInternetConnectivity(): Promise<boolean> {
     return lastConnectivityResult;
   }
 
-  // KEY FIX #2: Ping YOUR OWN server, not Google
-  // Use a lightweight health endpoint on your backend
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 5000);
-
-    const response = await fetch(`${API_URL}/api/health`, {
-      method: "HEAD",
-      signal: controller.signal,
-      cache: "no-store", // Prevent cached responses
-    });
-
-    clearTimeout(timeout);
-    lastConnectivityResult = response.ok;
-  } catch {
-    // KEY FIX #3: On failure, retry once after a short delay
-    // Network sockets often need a moment to reconnect after app resume
-    try {
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 5000);
-
-      const response = await fetch(`${API_URL}/api/health`, {
-        method: "HEAD",
-        signal: controller.signal,
-        cache: "no-store",
-      });
-
-      clearTimeout(timeout);
-      lastConnectivityResult = response.ok;
-    } catch {
-      lastConnectivityResult = false;
-    }
+    const state = await NetInfo.fetch();
+    
+    // Check both connection status and internet reachability
+    // isConnected: device has active network interface
+    // isInternetReachable: device can actually reach the internet
+    lastConnectivityResult = 
+      state.isConnected === true && 
+      state.isInternetReachable !== false;
+    
+    lastConnectivityCheck = Date.now();
+    return lastConnectivityResult;
+  } catch (error) {
+    console.error("NetInfo connectivity check error:", error);
+    // On error, assume no connection to be safe
+    lastConnectivityResult = false;
+    lastConnectivityCheck = Date.now();
+    return false;
   }
+}
 
-  lastConnectivityCheck = Date.now();
-  return lastConnectivityResult;
+// Optional: Invalidate cache manually (useful for retry buttons)
+export function invalidateConnectivityCache() {
+  lastConnectivityCheck = 0;
 }
 
 // ==================== SESSION EXPIRED REDIRECT ====================
@@ -151,20 +137,22 @@ async function authenticatedRequest<T = any>(
     Authorization: `Bearer ${token}`,
   };
 
-  // KEY FIX #4: Don't pre-check connectivity — just make the request.
-  // If it fails due to network, THEN check connectivity to show the right error.
+  // 3. Make the request - check connectivity only on failure
   try {
     return await axios(config);
   } catch (error: any) {
+    console.log("error in authenticatedRequest", error);
+    // Handle 401 Unauthorized
     if (error?.response?.status === 401) {
       await handleSessionExpired();
       throw error;
     }
 
-    // Network error (no response received) — NOW check connectivity
+    // Network error (no response received) — check connectivity
     if (!error?.response) {
       const connected = await checkInternetConnectivity();
       if (!connected) {
+        // Uncomment if you want to show alert
         // Alert.alert(
         //   "No Internet",
         //   "Please check your network connection and try again."
@@ -187,10 +175,10 @@ async function authenticatedRequest<T = any>(
 async function publicRequest<T = any>(
   config: AxiosRequestConfig
 ): Promise<AxiosResponse<T>> {
-  // KEY FIX #5: Same pattern — try first, check connectivity on failure
   try {
     return await axios(config);
   } catch (error: any) {
+    // Network error (no response received) — check connectivity
     if (!error?.response) {
       const connected = await checkInternetConnectivity();
       if (!connected) {

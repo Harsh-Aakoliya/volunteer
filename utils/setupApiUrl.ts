@@ -2,11 +2,9 @@
 import { Platform, Alert } from "react-native";
 import { setApiUrl } from "@/constants/api";
 
-const DEV_IP = "http://10.165.20.242:8080";
-const EXTERNAL_IP = "http://103.47.172.58:50160";
-const INTERNAL_IP = "http://192.168.2.134:3000";
 
-export const getDevModeStatus = () => true;
+
+export const getDevModeStatus = () => false;
 export const getDefaultDevIP = () => DEV_IP;
 
 const isWeb = Platform.OS === ("web" as any);
@@ -59,25 +57,23 @@ export async function setupApiUrl(isConnected: boolean): Promise<void> {
     setApiUrl("http://localhost:8080" as any);
     return;
   }
+
+  const isDevMode = getDevModeStatus();
+  if (isDevMode) {
+    console.log("⚙️ [setupApiUrl] Dev mode – set API URL immediately (no connectivity check)");
+    setApiUrl(DEV_IP);
+    return;
+  }
+
   console.log("🔍 [Background] Server connectivity check...");
-  // If the hook says \"offline\", double-check with a real internet ping before alerting.
   if (!isConnected) {
     const hasInternet = await checkInternet();
     if (!hasInternet) {
-      console.log("❌ No internet connection available (verified)");
-      Alert.alert(
-        "No Internet Connection",
-        "Please connect to the internet via WiFi or mobile data and try again."
-      );
+      console.log("❌ No internet (verified); setting URL so app can retry when online.");
+      setApiUrl(INTERNAL_IP);
       return;
     }
     console.log("✅ Hook reported offline but internet ping succeeded; continuing setup.");
-  }
-  const isDevMode = getDevModeStatus();
-  if (isDevMode) {
-    console.log("⚙️ Dev mode - using default dev IP");
-    setApiUrl(DEV_IP);
-    return;
   }
   console.log("🏠 [Background] Checking internal network...");
   setApiUrl(INTERNAL_IP);
