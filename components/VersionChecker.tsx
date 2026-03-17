@@ -8,8 +8,7 @@ import {
   StyleSheet,
 } from "react-native";
 import * as Application from "expo-application";
-import { getApiUrl } from "@/constants/api";
-import { useApiStore } from "@/stores/apiStore";
+import { useApiStore, getApiUrl } from "@/stores/apiStore";
 import { Updater } from "./Updater";
 import {
   clearLeftoverApk,

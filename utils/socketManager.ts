@@ -2,7 +2,7 @@
 // Clean, robust Socket Manager for real-time chat functionality
 
 import { io, Socket } from "socket.io-client";
-import { getApiUrl } from "@/constants/api";
+import { getApiUrl } from "@/stores/apiStore";
 import { AppState, AppStateStatus, Platform } from "react-native";
 
 // ==================== TYPES ====================

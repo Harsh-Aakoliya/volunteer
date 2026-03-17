@@ -14,17 +14,12 @@ import {
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SocketProvider } from "@/contexts/SocketContext";
 import { VideoCallProvider } from "@/contexts/VideoCallContext";
-import useNetworkStatus from "@/hooks/userNetworkStatus";
-import { setupApiUrl } from "@/utils/setupApiUrl";
+import { resolveApiUrl } from "@/stores/apiStore";
 import { VersionChecker } from "@/components/VersionChecker";
 
-const isWeb = Platform.OS === ("web" as any);
-
 function AppContent() {
-  const isConnected = useNetworkStatus() || isWeb;
   const [isReady, setIsReady] = useState(true);
 
-  // Bootstrap: set API URL first so all requests (e.g. notification token) use the correct base URL, then notifications.
   useEffect(() => {
     if (Platform.OS === "web") {
       setIsReady(true);
@@ -32,7 +27,7 @@ function AppContent() {
     }
     const bootstrap = async () => {
       try {
-        await setupApiUrl(isConnected);
+        await resolveApiUrl();
         await initializeNotifications();
         await requestChatNotificationPermissions();
         setupChatNotificationListeners();

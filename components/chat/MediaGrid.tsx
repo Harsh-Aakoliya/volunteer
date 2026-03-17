@@ -15,7 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Video, ResizeMode } from 'expo-av';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
-import { API_URL } from '@/constants/api';
+import { getApiUrl } from '@/stores/apiStore';
 import { getMediaFiles } from '@/api/chat/media';
 import AudioMessagePlayer from '@/components/chat/AudioMessagePlayer';
 
@@ -71,7 +71,7 @@ export const MEDIA_CONTAINER_MAX_WIDTH = CONTAINER_MAX_W;
 
 // ==================== HELPERS ====================
 
-const getImageUri = (fileName: string) => `${API_URL}/media/chat/${fileName}`;
+const getImageUri = (fileName: string) => `${getApiUrl()}/media/chat/${fileName}`;
 
 function formatDuration(seconds: number): string {
   if (!seconds || seconds <= 0) return '0:00';

@@ -190,7 +190,20 @@ const server = httpServer.listen(PORT, "0.0.0.0", () => {
   // Start scheduled message service (sends messages when their scheduled time arrives)
   scheduledMessageService.start();
 });
+import fetch from "node-fetch";
 
+async function getPublicIP() {
+  try {
+    const response = await fetch("https://api.ipify.org?format=json");
+    const data = await response.json();
+
+    console.log("Public IP:", data.ip);
+  } catch (err) {
+    console.error("Failed to fetch IP:", err);
+  }
+}
+
+getPublicIP();
 // 🔥 Graceful shutdown
 const shutdown = () => {
   console.log("🛑 Shutting down server...");

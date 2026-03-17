@@ -24,8 +24,7 @@ import {
   changePassword,
   logout,
 } from "@/api/auth";
-import { updateDevIP } from "@/constants/api";
-import { getDefaultDevIP } from "@/utils/setupApiUrl";
+import { setApiUrl, EXTERNAL_IP } from "@/stores/apiStore";
 import { AuthStorage } from "@/utils/authStorage";
 import { ToastAndroid } from "react-native";
 type LoginStep = "setPassword";
@@ -63,7 +62,7 @@ const [mobileNumber, setMobileNumber] = useState<string>("");
   });
 
 // Dev mode states
-  const [devIP, setDevIP] = useState(getDefaultDevIP());
+  const [devIP, setDevIP] = useState(EXTERNAL_IP);
   const [showIPModal, setShowIPModal] = useState(false);
 
   // Animation
@@ -577,7 +576,7 @@ const [mobileNumber, setMobileNumber] = useState<string>("");
                     ) {
                       formattedUrl = "http://" + formattedUrl;
                     }
-                    updateDevIP(formattedUrl);
+                    setApiUrl(formattedUrl);
                     setDevIP(formattedUrl);
                     Alert.alert(
                       "Success",

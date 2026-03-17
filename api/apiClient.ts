@@ -2,7 +2,7 @@
 import axios, { AxiosRequestConfig, AxiosResponse } from "axios";
 import { Alert, Platform, AppState, AppStateStatus } from "react-native";
 import NetInfo from "@react-native-community/netinfo";
-import { API_URL } from "@/constants/api";
+import { getApiUrl, apiUrl } from "@/stores/apiStore";
 import { AuthStorage } from "@/utils/authStorage";
 import { router } from "expo-router";
 
@@ -219,8 +219,4 @@ export const publicApi = {
   },
 };
 
-export function apiUrl(path: string): string {
-  return `${API_URL}${path}`;
-}
-
-export { checkInternetConnectivity, isTokenExpired };
+export { apiUrl, checkInternetConnectivity, isTokenExpired };

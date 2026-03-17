@@ -2,7 +2,7 @@ import React, { useEffect, useRef } from "react";
 import { View, Platform, Alert } from "react-native";
 import * as FileSystem from "expo-file-system";
 import { startActivityAsync } from "expo-intent-launcher";
-import { getApiUrl } from "@/constants/api";
+import { getApiUrl } from "@/stores/apiStore";
 import {
   startApkDownloadTask,
   getPendingInstallPath,

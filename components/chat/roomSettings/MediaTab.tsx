@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
-import { API_URL } from '@/constants/api';
+import { getApiUrl } from '@/stores/apiStore';
 import { getMediaFiles as fetchMediaFilesApi } from "@/api/chat/media";
 import MediaViewerModal from '@/components/chat/MediaViewerModal';
 
@@ -63,7 +63,7 @@ const MediaGridCell = React.memo(function MediaGridCell({
   const { file } = item;
   const isImage = file.mimeType.startsWith('image');
   const isVideo = file.mimeType.startsWith('video');
-  const uri = `${API_URL}/media/chat/${file.fileName}`;
+  const uri = `${getApiUrl()}/media/chat/${file.fileName}`;
 
   return (
     <TouchableOpacity

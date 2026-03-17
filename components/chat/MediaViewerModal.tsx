@@ -16,7 +16,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { VideoView, useVideoPlayer } from "expo-video";
-import { API_URL } from "@/constants/api";
+import { getApiUrl } from "@/stores/apiStore";
 import { getMediaFiles } from "@/api/chat/media";
 import { Video, ResizeMode } from "expo-av";
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
@@ -53,7 +53,7 @@ const VideoThumbnail: React.FC<{
   width: number;
   height: number;
 }> = ({ file, width, height }) => {
-  const uri = `${API_URL}/media/chat/${file.filename}`;
+  const uri = `${getApiUrl()}/media/chat/${file.filename}`;
 
   return (
     <View style={{ width, height }}>
@@ -120,7 +120,7 @@ interface VideoPlayerCompProps {
 }
 
 const VideoPlayerComp: React.FC<VideoPlayerCompProps> = ({ file, isActive }) => {
-  const videoUrl = `${API_URL}/media/chat/${file.url}`;
+  const videoUrl = `${getApiUrl()}/media/chat/${file.url}`;
 
   const videoPlayer = useVideoPlayer(videoUrl, (player) => {
     if (player) {
@@ -159,7 +159,7 @@ const GalleryItem: React.FC<GalleryItemProps> = React.memo(
     const isImage = item.mimeType?.startsWith("image/");
     const isVideo = item.mimeType?.startsWith("video/");
     const isAudio = item.mimeType?.startsWith("audio/");
-    const mediaUrl = `${API_URL}/media/chat/${item.url}`;
+    const mediaUrl = `${getApiUrl()}/media/chat/${item.url}`;
 
     const [imageHeight, setImageHeight] = useState<number | null>(null);
 
@@ -388,7 +388,7 @@ const FullScreenViewer: React.FC<FullScreenViewerProps> = ({
       const isImage = item.mimeType?.startsWith("image/");
       const isVideo = item.mimeType?.startsWith("video/");
       const isAudio = item.mimeType?.startsWith("audio/");
-      const mediaUrl = `${API_URL}/media/chat/${item.url}`;
+      const mediaUrl = `${getApiUrl()}/media/chat/${item.url}`;
 
       return (
         <View
