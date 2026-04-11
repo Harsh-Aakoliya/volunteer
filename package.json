@@ -87,6 +87,7 @@
     "react-native-video": "^6.16.1",
     "react-native-web": "~0.19.13",
     "react-native-webview": "13.12.5",
+    "react-native-zoom-reanimated": "^1.5.3",
     "socket.io-client": "^4.8.1",
     "zustand": "^5.0.11"
   },
