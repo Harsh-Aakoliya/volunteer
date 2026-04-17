@@ -1,0 +1,38 @@
+harsh@Harshs-MacBook-Air ota-server % node cli/ota-cli.js configure -s http://10.75.56.242:3000
+✅ Saved to /Users/harsh/.otaconfig.json
+harsh@Harshs-MacBook-Air ota-server % node cli/ota-cli.js register \
+  -u developer \
+  -e dev@example.com \
+  -p mypassword123
+✔ Registered!
+  API Key: ota_d29b1f5ce7dbe32ecd7558f5a0195417d414fda07ee9610133ea3d027341a7c4
+  Token:   eyJhbGciOiJIUzI1NiIsInR5cCI6Ik...
+  API Key saved to config automatically.
+harsh@Harshs-MacBook-Air ota-server % node cli/ota-cli.js app:create "react-native-ota-client" -s react-native-ota-client
+
+✔ App created!
+  App Key:  28b9e73e718da17240a1
+  Name:     react-native-ota-client
+
+  ⚡ Use this app_key in your app.config.js and when pushing updates!
+
+harsh@Harshs-MacBook-Air ota-server % 
+
+node cli/ota-cli.js release \
+  -a ota_d29b1f5ce7dbe32ecd7558f5a0195417d414fda07ee9610133ea3d027341a7c4 \
+  -p android \
+  -r 1.0.0 \
+  -d production \
+  --description "Updated welcome screen"
+
+
+
+----------
+  cd OTA/react-native-ota-client
+
+node ../ota-server/cli/ota-cli.js release \
+  -a ota_d29b1f5ce7dbe32ecd7558f5a0195417d414fda07ee9610133ea3d027341a7c4 \
+  -p android \
+  -r 1.0.0 \
+  -d production \
+  --description "Updated welcome screen"

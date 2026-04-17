@@ -12,6 +12,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { getApiUrl } from '@/stores/apiStore';
 import { getMediaFiles as fetchMediaFilesApi } from "@/api/chat/media";
 import MediaViewerModal from '@/components/chat/MediaViewerModal';
+import {
+  scanFile,
+  resolveMediaUri,
+  useMediaStore,
+  startDownload,
+  cancelDownload,
+} from '@/utils/mediaFileManager';
+import DownloadOverlay from '@/components/chat/DownloadOverlay';
 
 const NUM_COLUMNS = 3;
 const ITEM_MARGIN = 2;
@@ -51,6 +59,12 @@ async function fetchMediaFiles(
 }
 
 // Memoized cell to avoid re-renders and reduce scroll lag
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 const MediaGridCell = React.memo(function MediaGridCell({
   item,
   itemSize,
@@ -63,12 +77,26 @@ const MediaGridCell = React.memo(function MediaGridCell({
   const { file } = item;
   const isImage = file.mimeType.startsWith('image');
   const isVideo = file.mimeType.startsWith('video');
-  const uri = `${getApiUrl()}/media/chat/${file.fileName}`;
+  const dlState = useMediaStore((s) => s.files[file.fileName]);
+  const isDone = dlState?.state === 'done';
+  const uri = resolveMediaUri(file.fileName);
+
+  useEffect(() => {
+    scanFile(file.fileName);
+  }, [file.fileName]);
+
+  const handleDownloadPress = useCallback(() => {
+    if (dlState?.state === 'downloading') {
+      cancelDownload(file.fileName);
+    } else {
+      startDownload(file.fileName);
+    }
+  }, [file.fileName, dlState?.state]);
 
   return (
     <TouchableOpacity
       activeOpacity={0.85}
-      onPress={onPress}
+      onPress={isDone ? onPress : handleDownloadPress}
       style={{
         width: itemSize,
         height: itemSize,
@@ -122,6 +150,15 @@ const MediaGridCell = React.memo(function MediaGridCell({
         >
           <Ionicons name="document-outline" size={28} color="#6b7280" />
         </View>
+      )}
+      {!isDone && (
+        <DownloadOverlay
+          state={dlState?.state ?? 'idle'}
+          progress={dlState?.progress ?? 0}
+          onPress={handleDownloadPress}
+          size={36}
+          fileSize={file.size ? formatFileSize(file.size) : undefined}
+        />
       )}
     </TouchableOpacity>
   );

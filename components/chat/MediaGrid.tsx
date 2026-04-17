@@ -13,11 +13,18 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Video, ResizeMode } from 'expo-av';
-import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
-import { getApiUrl } from '@/stores/apiStore';
 import { getMediaFiles } from '@/api/chat/media';
 import AudioMessagePlayer from '@/components/chat/AudioMessagePlayer';
+import {
+  scanFile,
+  startBatchDownload,
+  cancelBatchDownload,
+  useMediaStore,
+  getRemoteMediaUrl,
+  resolveMediaUri,
+} from '@/utils/mediaFileManager';
+import DownloadOverlay from '@/components/chat/DownloadOverlay';
 
 // ==================== TYPES ====================
 
@@ -71,7 +78,8 @@ export const MEDIA_CONTAINER_MAX_WIDTH = CONTAINER_MAX_W;
 
 // ==================== HELPERS ====================
 
-const getImageUri = (fileName: string) => `${getApiUrl()}/media/chat/${fileName}`;
+const getImageUri = (fileName: string) => resolveMediaUri(fileName);
+const getRemoteUri = (fileName: string) => getRemoteMediaUrl(fileName);
 
 function formatDuration(seconds: number): string {
   if (!seconds || seconds <= 0) return '0:00';
@@ -216,7 +224,7 @@ const VideoCell: React.FC<{
   onPress: () => void;
   onDimensions?: (w: number, h: number) => void;
 }> = React.memo(({ file, width, height, resizeMode = 'cover', onPress, onDimensions }) => {
-  const uri = getImageUri(file.fileName);
+  const uri = resolveMediaUri(file.fileName);
 
   const handleReady = useCallback(
     (e: any) => {
@@ -320,24 +328,95 @@ const GifCell: React.FC<{
   onPress: () => void;
   onDimensions?: (w: number, h: number) => void;
 }> = React.memo(({ file, width, height, onPress, onDimensions }) => {
-  const uri = getImageUri(file.fileName);
-
   return (
     <TouchableOpacity onPress={onPress} activeOpacity={0.85} style={[styles.cell, { width, height }]}>
       <ProgressiveImage
-        uri={uri}
+        uri={resolveMediaUri(file.fileName)}
         width={width}
         height={height}
         resizeMode="cover"
         onDimensions={onDimensions}
       />
-      {/* GIF badge */}
       <View style={styles.gifBadge}>
         <Text style={styles.gifBadgeText}>GIF</Text>
       </View>
     </TouchableOpacity>
   );
 });
+
+// ==================== GRID-LEVEL DOWNLOAD OVERLAY ====================
+
+const MediaGridWithOverlay: React.FC<{
+  mediaFiles: MediaFile[];
+  onMediaPress: (mediaFiles: MediaFile[], selectedIndex: number) => void;
+  children: React.ReactNode;
+}> = ({ mediaFiles, onMediaPress, children }) => {
+  const downloadableFiles = useMemo(
+    () => mediaFiles.filter((f) => f.mimeType.startsWith('image') || f.mimeType.startsWith('video')),
+    [mediaFiles]
+  );
+
+  const fileNames = useMemo(() => downloadableFiles.map((f) => f.fileName), [downloadableFiles]);
+  const fileNamesKey = fileNames.join('|');
+
+  // Derive stable scalars from the store to avoid new-object-per-render
+  const doneCount = useMediaStore(
+    useCallback((s) => fileNames.filter((fn) => s.files[fn]?.state === 'done').length, [fileNamesKey])
+  );
+  const downloadingCount = useMediaStore(
+    useCallback((s) => fileNames.filter((fn) => s.files[fn]?.state === 'downloading').length, [fileNamesKey])
+  );
+  const errorCount = useMediaStore(
+    useCallback((s) => fileNames.filter((fn) => s.files[fn]?.state === 'error').length, [fileNamesKey])
+  );
+  const aggregateProgress = useMediaStore(
+    useCallback((s) => {
+      if (fileNames.length === 0) return 1;
+      let total = 0;
+      for (const fn of fileNames) {
+        total += s.files[fn]?.progress ?? 0;
+      }
+      return total / fileNames.length;
+    }, [fileNamesKey])
+  );
+
+  const allDone = fileNames.length === 0 || doneCount === fileNames.length;
+  const anyDownloading = downloadingCount > 0;
+  const anyError = !anyDownloading && errorCount > 0;
+
+  const totalSize = useMemo(
+    () => downloadableFiles.reduce((sum, f) => sum + (f.size || 0), 0),
+    [downloadableFiles]
+  );
+
+  const overlayState = allDone ? 'done' : anyDownloading ? 'downloading' : anyError ? 'error' : 'idle';
+
+  const handleOverlayPress = useCallback(() => {
+    const store = useMediaStore.getState();
+    if (anyDownloading) {
+      const downloading = fileNames.filter((fn) => store.files[fn]?.state === 'downloading');
+      cancelBatchDownload(downloading);
+    } else {
+      const pending = fileNames.filter((fn) => store.files[fn]?.state !== 'done');
+      startBatchDownload(pending);
+    }
+  }, [fileNamesKey, anyDownloading]);
+
+  return (
+    <View style={styles.outerContainer}>
+      {children}
+      {!allDone && (
+        <DownloadOverlay
+          state={overlayState as any}
+          progress={aggregateProgress}
+          onPress={handleOverlayPress}
+          size={48}
+          fileSize={totalSize > 0 ? formatFileSize(totalSize) : undefined}
+        />
+      )}
+    </View>
+  );
+};
 
 // ==================== MEDIA GRID COMPONENT ====================
 
@@ -410,11 +489,14 @@ const MediaGrid: React.FC<MediaGridProps> = ({
       });
   }, [mediaFilesId]);
 
-  // ---- Prefetch image dimensions ----
+  // ---- Scan files for local cache + prefetch image dimensions ----
   const prefetchDimensions = useCallback((files: MediaFile[]) => {
     files.forEach((file, idx) => {
+      // Scan each file to check if it exists locally
+      scanFile(file.fileName);
+
       if (file.mimeType.startsWith('image')) {
-        const uri = getImageUri(file.fileName);
+        const uri = getRemoteUri(file.fileName);
         const cached = dimensionsCache.get(uri);
         if (cached) {
           setDims((prev) => ({ ...prev, [idx]: cached }));
@@ -522,7 +604,7 @@ const MediaGrid: React.FC<MediaGridProps> = ({
               style={[styles.cell, { width, height }, cellStyle]}
             >
               <ProgressiveImage
-                uri={getImageUri(file.fileName)}
+                uri={resolveMediaUri(file.fileName)}
                 width={width}
                 height={height}
                 resizeMode={resizeMode}
@@ -1008,7 +1090,14 @@ const MediaGrid: React.FC<MediaGridProps> = ({
     );
   }
 
-  return <View style={styles.outerContainer}>{renderLayout}</View>;
+  return (
+    <MediaGridWithOverlay
+      mediaFiles={mediaFiles}
+      onMediaPress={onMediaPress}
+    >
+      {renderLayout}
+    </MediaGridWithOverlay>
+  );
 };
 
 // ==================== STYLES ====================
