@@ -16,6 +16,7 @@ import {
   getPendingInstallVersion,
   installPendingApkAndClear,
 } from "@/utils/apkUpdateBackgroundService";
+import { useOTAUpdates, OTAStatus } from "@/hooks/useOTAUpdates";
 
 interface VersionCheckerProps {
   onUpdateCheckComplete?: (updateRequired: boolean) => void;
@@ -32,8 +33,12 @@ export function VersionChecker({ onUpdateCheckComplete }: VersionCheckerProps) {
   const [isCheckingVersion, setIsCheckingVersion] = useState(true);
   const [hasPendingInstall, setHasPendingInstall] = useState(false);
   const currentVersionRef = useRef<string | null>(null);
-  /** Incremented when user taps Update Now so Updater remounts and starts download */
   const downloadTriggerRef = useRef(0);
+
+  // OTA state
+  const [otaUpdateAvailable, setOtaUpdateAvailable] = useState(false);
+  const [otaApplying, setOtaApplying] = useState(false);
+  const ota = useOTAUpdates();
 
   useEffect(() => {
     if (!apiUrlReady) {
@@ -105,15 +110,27 @@ export function VersionChecker({ onUpdateCheckComplete }: VersionCheckerProps) {
       const latest = versionData.versiontopublish;
 
       if (latest && latest !== currentVersionRef.current) {
+        // APK version mismatch — need full APK update
         setServerVersion(latest);
         setVersionDescription(
           versionData.Description?.[latest] || "New version available"
         );
         setUpdateRequired(true);
+        setIsCheckingVersion(false);
+        onUpdateCheckComplete?.(true);
+        return;
+      }
+
+      // APK is up to date — now check for OTA updates
+      const hasOta = await ota.checkForUpdate();
+      if (hasOta) {
+        setOtaUpdateAvailable(true);
+        setUpdateRequired(true);
+        setVersionDescription(ota.otaDescription || "A small update is available");
       }
 
       setIsCheckingVersion(false);
-      onUpdateCheckComplete?.(latest !== currentVersionRef.current);
+      onUpdateCheckComplete?.(hasOta);
     } catch (error) {
       console.error("Error checking for updates:", error);
       setIsCheckingVersion(false);
@@ -131,6 +148,11 @@ export function VersionChecker({ onUpdateCheckComplete }: VersionCheckerProps) {
   };
 
   const startUpdate = () => {
+    if (otaUpdateAvailable) {
+      setOtaApplying(true);
+      ota.downloadAndApply().finally(() => setOtaApplying(false));
+      return;
+    }
     if (!hasPendingInstall && !serverVersion) return;
     downloadTriggerRef.current += 1;
     setIsDownloading(true);
@@ -140,7 +162,8 @@ export function VersionChecker({ onUpdateCheckComplete }: VersionCheckerProps) {
   if (isCheckingVersion) return null;
   if (!updateRequired) return null;
 
-  const showUpdater = isDownloading || hasPendingInstall;
+  const isOtaMode = otaUpdateAvailable && !serverVersion;
+  const showUpdater = (isDownloading || hasPendingInstall) && !isOtaMode;
   const updaterKey = `updater-${downloadTriggerRef.current}-${serverVersion ?? ""}-${hasPendingInstall}`;
 
   return (
@@ -148,10 +171,14 @@ export function VersionChecker({ onUpdateCheckComplete }: VersionCheckerProps) {
       <View style={styles.modalRoot}>
         <View style={styles.content}>
           <Text style={styles.title}>
-            {hasPendingInstall ? "Update Ready" : "Update Required"}
+            {hasPendingInstall
+              ? "Update Ready"
+              : isOtaMode
+              ? "Quick Update"
+              : "Update Required"}
           </Text>
 
-          {!hasPendingInstall && (
+          {!hasPendingInstall && !isOtaMode && (
             <>
               <Text style={styles.versionText}>
                 Current Version: {currentVersion}
@@ -162,11 +189,29 @@ export function VersionChecker({ onUpdateCheckComplete }: VersionCheckerProps) {
             </>
           )}
 
+          {isOtaMode && (
+            <Text style={styles.versionText}>
+              OTA Update #{ota.latestOtaVersion} for v{currentVersion}
+            </Text>
+          )}
+
           <View style={styles.descriptionBox}>
             <Text style={styles.descriptionText}>{versionDescription}</Text>
           </View>
 
-          {isDownloading ? (
+          {otaApplying ? (
+            <View style={styles.downloadingBox}>
+              <Text style={styles.downloadingTitle}>
+                {ota.status === "restarting"
+                  ? "Restarting..."
+                  : "Applying Update..."}
+              </Text>
+              <ActivityIndicator size="large" color="#3B82F6" />
+              <Text style={styles.progressText}>
+                This will only take a moment
+              </Text>
+            </View>
+          ) : isDownloading ? (
             <View style={styles.downloadingBox}>
               <Text style={styles.downloadingTitle}>Downloading Update...</Text>
               <View style={styles.progressBarBg}>
@@ -189,13 +234,19 @@ export function VersionChecker({ onUpdateCheckComplete }: VersionCheckerProps) {
               activeOpacity={0.8}
             >
               <Text style={styles.buttonText}>
-                {hasPendingInstall ? "Install Now" : "Update Now"}
+                {hasPendingInstall
+                  ? "Install Now"
+                  : isOtaMode
+                  ? "Apply Update"
+                  : "Update Now"}
               </Text>
             </TouchableOpacity>
           )}
 
           <Text style={styles.footer}>
-            This update is required to continue using the app
+            {isOtaMode
+              ? "No download needed — just a quick restart"
+              : "This update is required to continue using the app"}
           </Text>
         </View>
 

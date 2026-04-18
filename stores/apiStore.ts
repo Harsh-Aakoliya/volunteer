@@ -1,6 +1,8 @@
 import { create } from "zustand";
 import { Platform } from "react-native";
 
+const EXTERNAL_IP = "http://10.112.176.242:8080";
+const INTERNAL_IP = "http://192.168.2.134:3000";
 
 interface ApiState {
   apiUrl: string;

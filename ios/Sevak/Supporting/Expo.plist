@@ -3,10 +3,14 @@
 <plist version="1.0">
   <dict>
     <key>EXUpdatesCheckOnLaunch</key>
-    <string>ALWAYS</string>
+    <string>ERROR_RECOVERY_ONLY</string>
     <key>EXUpdatesEnabled</key>
-    <false/>
+    <true/>
     <key>EXUpdatesLaunchWaitMs</key>
-    <integer>0</integer>
+    <integer>5000</integer>
+    <key>EXUpdatesRuntimeVersion</key>
+    <string>1.0.18</string>
+    <key>EXUpdatesURL</key>
+    <string>http://10.112.176.242:8080/api/ota/manifest?apkVersion=1.0.18</string>
   </dict>
 </plist>

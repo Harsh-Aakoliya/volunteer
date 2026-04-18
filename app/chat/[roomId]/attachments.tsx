@@ -777,61 +777,65 @@ export default function AttachmentsScreen() {
   }, [hasPermission]);
 
 
-  const requestPermissionAndLoadMedia = async () => {
-    try {
-      const { status } = await MediaLibrary.requestPermissionsAsync();
-      setHasPermission(status === "granted");
-      if (status === "granted") {
-        loadMedia();
-      }
-    } catch (error) {
-      console.error("Permission error:", error);
+const requestPermissionAndLoadMedia = async () => {
+  try {
+    // Request full access (not limited) for better coverage
+    const { status } = await MediaLibrary.requestPermissionsAsync(false);
+    
+    if (status === "granted") {
+      setHasPermission(true);
+      loadMedia();
+    } else if (status === "limited") {
+      // iOS limited access - still show what we can
+      setHasPermission(true);
+      loadMedia();
+    } else {
       setHasPermission(false);
     }
-  };
+  } catch (error) {
+    console.error("Permission error:", error);
+    setHasPermission(false);
+  }
+};
 
-  const loadMedia = async (cursor?: string) => {
-    if (isLoading) return;
-    setIsLoading(true);
-    try {
-      if (Platform.OS === "android" && !cursor) {
-        const albums = await MediaLibrary.getAlbumsAsync({ includeSmartAlbums: true });
-        const perAlbumLimit = 80;
-        const allAssets: MediaLibrary.Asset[] = [];
-        const seenIds = new Set<string>();
-
-        const albumPromises = albums.map(async (album) => {
-          try {
-            const result = await MediaLibrary.getAssetsAsync({
-              first: perAlbumLimit,
-              album,
-              mediaType: ["photo", "video"],
-              sortBy: ["creationTime"],
-            });
-            return result.assets;
-          } catch {
-            return [];
-          }
+const loadMedia = async (cursor?: string) => {
+  if (isLoading) return;
+  setIsLoading(true);
+  
+  try {
+    if (Platform.OS === "android") {
+      if (cursor) {
+        // Pagination for android
+        const result = await MediaLibrary.getAssetsAsync({
+          first: 20,
+          after: cursor,
+          mediaType: ["photo", "video"],
+          sortBy: ["creationTime"],
+        });
+        setMediaAssets(prev => [...prev, ...result.assets]);
+        setEndCursor(result.endCursor);
+        setHasMore(result.hasNextPage);
+      } else {
+        // Initial load - fetch everything at once from root
+        // This covers ALL locations including Downloads
+        const result = await MediaLibrary.getAssetsAsync({
+          first: 20,
+          mediaType: ["photo", "video"],
+          sortBy: ["creationTime"],
         });
 
-        const albumResults = await Promise.all(albumPromises);
-        for (const assets of albumResults) {
-          for (const asset of assets) {
-            if (!seenIds.has(asset.id)) {
-              seenIds.add(asset.id);
-              allAssets.push(asset);
-            }
-          }
-        }
+        setMediaAssets(result.assets);
+        setEndCursor(result.endCursor);
+        setHasMore(result.hasNextPage);
 
-        allAssets.sort((a, b) => (b.creationTime || 0) - (a.creationTime || 0));
-
-        setMediaAssets(allAssets);
-        setEndCursor(undefined);
-        setHasMore(false);
-      } else if (cursor) {
+        // Background: fetch Downloads album specifically (often missed)
+        fetchDownloadsInBackground(result.assets);
+      }
+    } else {
+      // iOS pagination
+      if (cursor) {
         const result = await MediaLibrary.getAssetsAsync({
-          first: 30,
+          first: 60,
           after: cursor,
           mediaType: ["photo", "video"],
           sortBy: ["creationTime"],
@@ -841,7 +845,7 @@ export default function AttachmentsScreen() {
         setHasMore(result.hasNextPage);
       } else {
         const result = await MediaLibrary.getAssetsAsync({
-          first: 30,
+          first: 60,
           mediaType: ["photo", "video"],
           sortBy: ["creationTime"],
         });
@@ -849,18 +853,87 @@ export default function AttachmentsScreen() {
         setEndCursor(result.endCursor);
         setHasMore(result.hasNextPage);
       }
-    } catch (error) {
-      console.error("Error loading media:", error);
-    } finally {
-      setIsLoading(false);
     }
-  };
+  } catch (error) {
+    console.error("Error loading media:", error);
+  } finally {
+    setIsLoading(false);
+  }
+};
 
-  const loadMoreMedia = useCallback(() => {
-    if (hasMore && !isLoading && endCursor) {
-      loadMedia(endCursor);
+const fetchDownloadsInBackground = async (existingAssets: MediaLibrary.Asset[]) => {
+  try {
+    const seenIds = new Set(existingAssets.map(a => a.id));
+    const newAssets: MediaLibrary.Asset[] = [];
+
+    // Fetch all albums including Downloads
+    const albums = await MediaLibrary.getAlbumsAsync({ 
+      includeSmartAlbums: true 
+    });
+
+    // Target folders that are commonly missed
+    const targetAlbumNames = [
+      "Download", 
+      "Downloads", 
+      // "DCIM",
+      // "Pictures",
+      // "Movies",
+      // "WhatsApp Images",
+      // "WhatsApp Video",
+      // "Telegram",
+      // "Screenshots",
+    ];
+
+    const targetAlbums = albums.filter(album =>
+      targetAlbumNames.some(name => 
+        album.title?.toLowerCase().includes(name.toLowerCase())
+      )
+    );
+
+    // Fetch from each target album
+    const albumPromises = targetAlbums.map(async (album) => {
+      try {
+        const result = await MediaLibrary.getAssetsAsync({
+          first: 200,
+          album,
+          mediaType: ["photo", "video"],
+          sortBy: ["creationTime"],
+        });
+        return result.assets;
+      } catch {
+        return [];
+      }
+    });
+
+    const results = await Promise.all(albumPromises);
+
+    for (const assets of results) {
+      for (const asset of assets) {
+        if (!seenIds.has(asset.id)) {
+          seenIds.add(asset.id);
+          newAssets.push(asset);
+        }
+      }
     }
-  }, [hasMore, isLoading, endCursor]);
+
+    if (newAssets.length > 0) {
+      setMediaAssets(prev => {
+        const combined = [...prev, ...newAssets];
+        // Re-sort by creation time
+        combined.sort((a, b) => (b.creationTime || 0) - (a.creationTime || 0));
+        return combined;
+      });
+    }
+  } catch (error) {
+    console.error("Background fetch error:", error);
+  }
+};
+
+const loadMoreMedia = useCallback(() => {
+  if (hasMore && !isLoading && endCursor) {
+    loadMedia(endCursor);
+  }
+}, [hasMore, isLoading, endCursor]);
 
   const handleSelectMedia = useCallback((asset: MediaLibrary.Asset) => {
     if (isUploading) return;
@@ -1238,24 +1311,58 @@ export default function AttachmentsScreen() {
   const renderScene = useCallback(({ route }: { route: { key: string } }) => {
     switch (route.key) {
       case 'gallery':
+      // Show skeleton grid immediately while loading first batch
+      if (isLoading && mediaAssets.length === 0) {
         return (
-          <FlatList
-            data={galleryData}
-            renderItem={renderGalleryItem}
-            keyExtractor={keyExtractor}
-            numColumns={NUM_COLUMNS}
-            contentContainerStyle={{ paddingHorizontal: ITEM_MARGIN }}
-            onEndReached={loadMoreMedia}
-            onEndReachedThreshold={0.5}
-            ListFooterComponent={
-              isLoading ? (
-                <View className="py-5 items-center">
-                  <ActivityIndicator size="small" color="#2AABEE" />
-                </View>
-              ) : null
-            }
-          />
+          <View className="flex-1">
+            <View style={{ 
+              flexDirection: 'row', 
+              flexWrap: 'wrap', 
+              paddingHorizontal: ITEM_MARGIN 
+            }}>
+              {Array.from({ length: 8 }).map((_, i) => (
+                <View
+                  key={i}
+                  style={{
+                    width: ITEM_SIZE,
+                    height: ITEM_SIZE,
+                    margin: ITEM_MARGIN / 2,
+                    backgroundColor: '#e5e7eb',
+                    borderRadius: 4,
+                  }}
+                />
+              ))}
+            </View>
+            <View className="items-center mt-4">
+              <ActivityIndicator size="small" color="#3b82f6" />
+              <Text className="text-gray-400 text-sm mt-2">Loading media...</Text>
+            </View>
+          </View>
         );
+      }
+
+      return (
+        <FlatList
+          data={galleryData}
+          renderItem={renderGalleryItem}
+          keyExtractor={keyExtractor}
+          numColumns={NUM_COLUMNS}
+          contentContainerStyle={{ paddingHorizontal: ITEM_MARGIN }}
+          onEndReached={loadMoreMedia}
+          onEndReachedThreshold={0.5}
+          initialNumToRender={18}        // ← Add this
+          maxToRenderPerBatch={18}       // ← Add this
+          windowSize={10}                // ← Add this
+          removeClippedSubviews={true}   // ← Add this
+          ListFooterComponent={
+            isLoading ? (
+              <View className="py-5 items-center">
+                <ActivityIndicator size="small" color="#2AABEE" />
+              </View>
+            ) : null
+          }
+        />
+      );
       case 'poll':
         return (
           <PollContent

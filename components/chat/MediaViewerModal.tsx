@@ -18,16 +18,6 @@ import { VideoView, useVideoPlayer } from "expo-video";
 import { getApiUrl } from "@/stores/apiStore";
 import { getMediaFiles } from "@/api/chat/media";
 import { Video, ResizeMode } from "expo-av";
-import {
-  resolveMediaUri,
-  useMediaStore,
-  startDownload,
-  cancelDownload,
-  scanFile,
-  getLocalPath,
-  getRemoteMediaUrl,
-} from "@/utils/mediaFileManager";
-import DownloadOverlay from "@/components/chat/DownloadOverlay";
 import { Gesture, GestureDetector, GestureHandlerRootView } from "react-native-gesture-handler";
 import Animated, {
   useSharedValue,
@@ -39,14 +29,8 @@ import Animated, {
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 
-function formatFileSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
 const SPRING_CONFIG = { damping: 20, stiffness: 200, mass: 0.4 };
-const ZOOM_SPRING = { damping: 15, stiffness: 150 };
+const ZOOM_SPRING = { damping: 35, stiffness: 300, mass: 0.5 };
 const SWIPE_DISTANCE_THRESHOLD = SCREEN_WIDTH * 0.28;
 const SWIPE_VELOCITY_THRESHOLD = 600;
 const MAX_ZOOM = 5;
@@ -84,8 +68,7 @@ const VideoThumbnail: React.FC<{
   width: number;
   height: number;
 }> = ({ file, width, height }) => {
-  const fName = file.url || file.filename;
-  const uri = resolveMediaUri(fName);
+  const uri = `${getApiUrl()}/media/chat/${file.filename}`;
   return (
     <View style={{ width, height }}>
       <Video
@@ -127,8 +110,7 @@ interface VideoPlayerCompProps {
 }
 
 const VideoPlayerComp: React.FC<VideoPlayerCompProps> = ({ file, isActive }) => {
-  const fName = file.url || file.filename;
-  const videoUrl = resolveMediaUri(fName);
+  const videoUrl = `${getApiUrl()}/media/chat/${file.url}`;
   const videoPlayer = useVideoPlayer(videoUrl, (player) => {
     if (player) {
       player.loop = false;
@@ -449,21 +431,13 @@ const GalleryItem: React.FC<GalleryItemProps> = React.memo(
     const isImage = item.mimeType?.startsWith("image/");
     const isVideo = item.mimeType?.startsWith("video/");
     const isAudio = item.mimeType?.startsWith("audio/");
-    const fileName = item.url || item.filename;
-    const dlState = useMediaStore((s) => s.files[fileName]);
-    const isDone = dlState?.state === "done";
-    const mediaUrl = isDone ? getLocalPath(fileName) : getRemoteMediaUrl(fileName);
+    const mediaUrl = `${getApiUrl()}/media/chat/${item.url}`;
     const [imageHeight, setImageHeight] = useState<number | null>(null);
 
     useEffect(() => {
-      scanFile(fileName);
-    }, [fileName]);
-
-    useEffect(() => {
       if (isImage) {
-        const sizeUrl = getRemoteMediaUrl(fileName);
         Image.getSize(
-          sizeUrl,
+          mediaUrl,
           (w, h) => {
             const aspectRatio = h / w;
             const calculated = SCREEN_WIDTH * aspectRatio;
@@ -472,26 +446,12 @@ const GalleryItem: React.FC<GalleryItemProps> = React.memo(
           () => setImageHeight(SCREEN_WIDTH * 0.6),
         );
       }
-    }, [fileName, isImage]);
-
-    const handleDownloadPress = useCallback(() => {
-      if (dlState?.state === "downloading") {
-        cancelDownload(fileName);
-      } else {
-        startDownload(fileName);
-      }
-    }, [fileName, dlState?.state]);
-
-    const handlePress = useCallback(() => {
-      if (isDone) {
-        onPress(index);
-      }
-    }, [isDone, onPress, index]);
+    }, [mediaUrl, isImage]);
 
     return (
       <TouchableOpacity
         activeOpacity={0.9}
-        onPress={handlePress}
+        onPress={() => onPress(index)}
         style={{ width: SCREEN_WIDTH }}
         className="bg-neutral-950"
       >
@@ -505,50 +465,22 @@ const GalleryItem: React.FC<GalleryItemProps> = React.memo(
                 <ActivityIndicator size="small" color="#555" />
               </View>
             ) : (
-              <View style={{ width: SCREEN_WIDTH, height: imageHeight }}>
-                <Image
-                  source={{ uri: mediaUrl }}
-                  style={{ width: SCREEN_WIDTH, height: imageHeight }}
-                  resizeMode="contain"
-                  className="bg-neutral-950"
-                />
-                {!isDone && (
-                  <DownloadOverlay
-                    state={dlState?.state ?? "idle"}
-                    progress={dlState?.progress ?? 0}
-                    onPress={handleDownloadPress}
-                    size={56}
-                    fileSize={item.size ? formatFileSize(item.size) : undefined}
-                  />
-                )}
-              </View>
+              <Image
+                source={{ uri: mediaUrl }}
+                style={{ width: SCREEN_WIDTH, height: imageHeight }}
+                resizeMode="contain"
+                className="bg-neutral-950"
+              />
             )}
           </View>
         )}
 
         {isVideo && (
-          <View style={{ width: SCREEN_WIDTH, height: SCREEN_HEIGHT * 0.8 }}>
-            {isDone ? (
-              <VideoThumbnail
-                file={item}
-                width={SCREEN_WIDTH}
-                height={SCREEN_HEIGHT * 0.8}
-              />
-            ) : (
-              <View style={{ width: SCREEN_WIDTH, height: SCREEN_HEIGHT * 0.8, backgroundColor: '#1a1a2e', justifyContent: 'center', alignItems: 'center' }}>
-                <Ionicons name="videocam" size={56} color="rgba(255,255,255,0.25)" />
-              </View>
-            )}
-            {!isDone && (
-              <DownloadOverlay
-                state={dlState?.state ?? "idle"}
-                progress={dlState?.progress ?? 0}
-                onPress={handleDownloadPress}
-                size={56}
-                fileSize={item.size ? formatFileSize(item.size) : undefined}
-              />
-            )}
-          </View>
+          <VideoThumbnail
+            file={item}
+            width={SCREEN_WIDTH}
+            height={SCREEN_HEIGHT * 0.8}
+          />
         )}
 
         {isAudio && (
@@ -565,13 +497,7 @@ const GalleryItem: React.FC<GalleryItemProps> = React.memo(
               </Text>
               <Text className="text-gray-500 text-xs mt-0.5">Audio</Text>
             </View>
-            {isDone ? (
-              <Ionicons name="play-circle" size={34} color="#a78bfa" />
-            ) : (
-              <TouchableOpacity onPress={handleDownloadPress}>
-                <Ionicons name="arrow-down-circle" size={34} color="#a78bfa" />
-              </TouchableOpacity>
-            )}
+            <Ionicons name="play-circle" size={34} color="#a78bfa" />
           </View>
         )}
 
@@ -589,11 +515,6 @@ const GalleryItem: React.FC<GalleryItemProps> = React.memo(
               </Text>
               <Text className="text-gray-600 text-xs mt-0.5">{item.mimeType}</Text>
             </View>
-            {!isDone && (
-              <TouchableOpacity onPress={handleDownloadPress}>
-                <Ionicons name="arrow-down-circle" size={28} color="#a78bfa" />
-              </TouchableOpacity>
-            )}
           </View>
         )}
       </TouchableOpacity>
@@ -715,18 +636,21 @@ const FullScreenViewer: React.FC<FullScreenViewerProps> = ({
   return (
     <View style={{ flex: 1, backgroundColor: "#000" }}>
       {/* ── Header ── */}
+      
       <View
-        style={{
-          flexDirection: "row",
-          alignItems: "center",
-          justifyContent: "space-between",
-          paddingHorizontal: 16,
-          paddingTop: 56,
-          paddingBottom: 12,
-          backgroundColor: "#fff",
-          borderBottomWidth: 1,
-          borderBottomColor: "#e5e5e5",
-        }}
+        // style={{
+        //   flexDirection: "row",
+        //   alignItems: "center",
+        //   justifyContent: "space-between",
+        //   paddingHorizontal: 16,
+        //   paddingTop: 50,
+        //   paddingBottom: 12,
+        //   backgroundColor: "#fff",
+        //   borderBottomWidth: 1,
+        //   borderBottomColor: "#e5e5e5",
+        // }}
+        
+        className="flex-row items-center justify-between px-4 pt-14 pb-3 bg-white border-b border-neutral-200"
       >
         <TouchableOpacity onPress={onBack}>
           <Ionicons name="close" size={28} color="black" />
@@ -759,8 +683,7 @@ const FullScreenViewer: React.FC<FullScreenViewerProps> = ({
             const isImage = file.mimeType?.startsWith("image/");
             const isVideo = file.mimeType?.startsWith("video/");
             const isAudio = file.mimeType?.startsWith("audio/");
-            const fName = file.url || file.filename;
-            const mediaUrl = resolveMediaUri(fName);
+            const mediaUrl = `${getApiUrl()}/media/chat/${file.url}`;
             const isActive = idx === currentIndex;
 
             // ── Image slide ──
@@ -954,12 +877,6 @@ export default function MediaViewerModal({
       setMediaData(data);
       setError(null);
       setLoading(false);
-
-      // Scan all files to check local cache
-      files.forEach((f) => {
-        const fName = f.url || f.filename;
-        if (fName) scanFile(fName);
-      });
 
       if (files.length === 1) {
         setViewMode("fullscreen");

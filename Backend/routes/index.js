@@ -8,6 +8,7 @@ import pollRoutes from './pollRoutes.js';
 import vmMediaRoutes from './vmMediaRoutes.js';
 import versionRoutes from './versionRoutes.js';
 import notificationRoutes from './notificationRoutes.js';
+import otaRoutes from './otaRoutes.js';
 const router = express.Router();
 
 
@@ -28,4 +29,5 @@ router.use('/users', userRoutes);
 router.use('/poll', pollRoutes);
 router.use('/vm-media', vmMediaRoutes);
 router.use('/notifications', notificationRoutes);
+router.use('/ota', otaRoutes);
 export default router; 
