@@ -118,6 +118,19 @@ export interface ChatRoom {
   isAdmin?: boolean;
   canSendMessage?: boolean;
   isAvailableForForwarding?: boolean;
+  /**
+   * Community the room belongs to as a string id. "-1" (or undefined) means
+   * the room is standalone and should be rendered directly on the main list.
+   */
+  communityId?: string;
+}
+
+// A community is a logical grouping of chat rooms. Clients only read this
+// data; creation/update/deletion happens manually server-side.
+export interface Community {
+  communityId: string;
+  communityName: string;
+  communityDescription?: string | null;
 }
 
 export interface ChatUser {

@@ -517,9 +517,10 @@ const setupSocketIO = (io, app) => {
       try {
         const pool = await import("./config/database.js").then((m) => m.default);
         
-        // Get user's rooms with all metadata in one query
+        // Get user's rooms with all metadata (including communityId) in one query
         const result = await pool.query(
           `SELECT cr."roomId", cr."roomName", cr."isactive",
+                  COALESCE(cr."communityId", -1) AS "communityId",
                   cru."canSendMessage", cru."isAdmin"
            FROM chatrooms cr
            JOIN chatroomusers cru ON cr."roomId" = cru."roomId"
@@ -563,6 +564,7 @@ const setupSocketIO = (io, app) => {
             };
           }
           
+          const communityIdNum = Number.isFinite(room.communityId) ? room.communityId : -1;
           return {
             roomId: roomIdStr,
             roomName: room.roomName,
@@ -570,11 +572,38 @@ const setupSocketIO = (io, app) => {
             canSendMessage: room.canSendMessage === true || room.canSendMessage === 1,
             lastMessage: lastMessageData,
             unreadCount: userUnread,
+            // -1 means "no community" (standalone room)
+            communityId: communityIdNum.toString(),
           };
         }));
 
-        // Single unified event with all room data
-        socket.emit("roomsData", { rooms });
+        // Fetch communities referenced by the user's rooms (exclude -1)
+        const communityIds = Array.from(
+          new Set(
+            rooms
+              .map((r) => parseInt(r.communityId, 10))
+              .filter((cid) => Number.isFinite(cid) && cid !== -1)
+          )
+        );
+
+        let communities = [];
+        if (communityIds.length > 0) {
+          const commResult = await pool.query(
+            `SELECT "communityId", "communityName", "communityDescription", "isactive"
+             FROM community
+             WHERE "communityId" = ANY($1::int[])
+               AND ("isactive" IS NULL OR "isactive" = 1)`,
+            [communityIds]
+          );
+          communities = commResult.rows.map((c) => ({
+            communityId: c.communityId.toString(),
+            communityName: c.communityName,
+            communityDescription: c.communityDescription || null,
+          }));
+        }
+
+        // Single unified event with all room + community data
+        socket.emit("roomsData", { rooms, communities });
         
       } catch (error) {
         console.error("❌ [Socket] Room data error:", error);

@@ -94,6 +94,25 @@ export interface RoomData {
       replySenderName:string;
   } | null;
   unreadCount: number;
+  /**
+   * Community the room belongs to as a string id. "-1" (or undefined) means
+   * the room is standalone and should be rendered directly on the main list.
+   */
+  communityId?: string;
+}
+
+// A community is a logical grouping of chat rooms.
+// Clients only read this data (no create/update/delete APIs exist).
+export interface CommunityData {
+  communityId: string;
+  communityName: string;
+  communityDescription?: string | null;
+}
+
+// Payload emitted by the server on the "roomsData" event.
+export interface RoomsDataPayload {
+  rooms: RoomData[];
+  communities: CommunityData[];
 }
 
 export interface MessageEditedEvent {
@@ -342,9 +361,13 @@ class SocketManager {
       this.emit("roomMetadata", data.rooms);
     });
 
-    // Unified rooms data (all room info in one event)
-    this.socket.on("roomsData", (data: { rooms: RoomData[] }) => {
-      this.emit("roomsData", data.rooms);
+    // Unified rooms + communities data (all in one event)
+    this.socket.on("roomsData", (data: { rooms: RoomData[]; communities?: CommunityData[] }) => {
+      const payload: RoomsDataPayload = {
+        rooms: data.rooms || [],
+        communities: data.communities || [],
+      };
+      this.emit("roomsData", payload);
     });
 
     // Room update (new message, unread change)

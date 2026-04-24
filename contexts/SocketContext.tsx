@@ -22,6 +22,8 @@ import socketManager, {
   MessagesDeletedEvent,
   RoomMetadata,
   RoomData,
+  CommunityData,
+  RoomsDataPayload,
 } from "@/utils/socketManager";
 import { ChatRoomStorage } from "@/utils/chatRoomsStorage";
 import { AuthStorage } from "@/utils/authStorage";
@@ -32,7 +34,8 @@ interface SocketState {
   isConnected: boolean;
   isInitialized: boolean;
   user: SocketUser | null;
-  rooms: RoomData[];  // Unified rooms data
+  rooms: RoomData[];  // Unified rooms data (each room carries its communityId)
+  communities: CommunityData[];  // Communities the user has access to
   lastMessages: Record<string, LastMessage>;  // Keep for real-time updates
   unreadCounts: Record<string, number>;  // Keep for real-time updates
   roomMetadata: Record<string, RoomMetadata>;  // Keep for real-time updates
@@ -78,6 +81,7 @@ export function SocketProvider({ children }: SocketProviderProps) {
     isInitialized: false,
     user: null,
     rooms: [],
+    communities: [],
     lastMessages: {},
     unreadCounts: {},
     roomMetadata: {},
@@ -194,14 +198,22 @@ export function SocketProvider({ children }: SocketProviderProps) {
     );
     subscriptionIds.current.push(metadataSub);
 
-    // Unified rooms data - single event with all room info
-    const roomsDataSub = socketManager.on<RoomData[]>(
+    // Unified rooms data - single event with all room info + communities
+    const roomsDataSub = socketManager.on<RoomsDataPayload>(
       "roomsData",
-      (rooms) => {
-        console.log("📦 [SocketContext] Received rooms data:", rooms.length);
+      (payload) => {
+        const rooms = payload?.rooms || [];
+        const communities = payload?.communities || [];
+        console.log(
+          "📦 [SocketContext] Received rooms data:",
+          rooms.length,
+          "communities:",
+          communities.length
+        );
         setState((prev) => ({
           ...prev,
           rooms,
+          communities,
         }));
         // Save to cache
         const cacheRooms = rooms.map((r) => ({
@@ -209,6 +221,9 @@ export function SocketProvider({ children }: SocketProviderProps) {
           roomName: r.roomName,
           isAdmin: r.isAdmin,
           canSendMessage: r.canSendMessage,
+          // Preserve community linkage so cache reads can still render the
+          // "community bucket" UI on cold start.
+          communityId: r.communityId || "-1",
           lastMessage: r.lastMessage ? {
             id: r.lastMessage.id,
             messageText: r.lastMessage.text,
@@ -227,6 +242,7 @@ export function SocketProvider({ children }: SocketProviderProps) {
           unreadCount: r.unreadCount,
         }));
         ChatRoomStorage.saveChatRooms(cacheRooms as any);
+        ChatRoomStorage.saveCommunities(communities);
       }
     );
     subscriptionIds.current.push(roomsDataSub);
@@ -277,6 +293,7 @@ export function SocketProvider({ children }: SocketProviderProps) {
             roomName: r.roomName,
             isAdmin: r.isAdmin,
             canSendMessage: r.canSendMessage,
+            communityId: r.communityId || "-1",
             lastMessage: r.lastMessage ? {
               id: r.lastMessage.id,
               messageText: r.lastMessage.text,
@@ -349,6 +366,7 @@ export function SocketProvider({ children }: SocketProviderProps) {
             roomName: r.roomName,
             isAdmin: r.isAdmin,
             canSendMessage: r.canSendMessage,
+            communityId: r.communityId || "-1",
             lastMessage: r.lastMessage ? {
               id: r.lastMessage.id,
               messageText: r.lastMessage.text,
@@ -396,6 +414,7 @@ export function SocketProvider({ children }: SocketProviderProps) {
             roomName: r.roomName,
             isAdmin: r.isAdmin,
             canSendMessage: r.canSendMessage,
+            communityId: r.communityId || "-1",
             lastMessage: r.lastMessage ? {
               id: r.lastMessage.id,
               messageText: r.lastMessage.text,
@@ -437,6 +456,7 @@ export function SocketProvider({ children }: SocketProviderProps) {
       isInitialized: false,
       user: null,
       rooms: [],
+      communities: [],
       lastMessages: {},
       unreadCounts: {},
       roomMetadata: {},

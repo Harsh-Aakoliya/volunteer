@@ -31,7 +31,7 @@ import { useApiStore } from "@/stores/apiStore";
 import { useSimCards } from "@/hooks/useSimCards";
 
 // ==================== DEBUG FLAG ====================
-const IS_DEBUG = true;
+const IS_DEBUG = false;
 
 interface SimCard {
   phoneNumber: string;

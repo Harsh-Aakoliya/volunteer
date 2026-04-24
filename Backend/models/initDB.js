@@ -30,6 +30,9 @@ const initDB = async () => {
       "SevakMaster.sql",
       "DepartmentMaster.sql",
 
+      // Community (parent of chatrooms via communityId -> -1 when unassigned)
+      "community.sql",
+
       // Core chat tables
       "chatrooms.sql",
       "chatroomusers.sql",

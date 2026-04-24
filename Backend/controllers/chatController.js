@@ -99,6 +99,7 @@ const chatController = {
 
             const result = await pool.query(
                 `SELECT cr."roomId" as id, cr."roomName", cr."isactive", cr."createdby", cr."createdon",
+                        COALESCE(cr."communityId", -1) AS "communityId",
                         cru."isAdmin", cru."canSendMessage"
                  FROM chatrooms cr
                           JOIN chatroomusers cru ON cr."roomId" = cru."roomId"
@@ -161,6 +162,7 @@ const chatController = {
                         });
                     }
 
+                    const communityIdNum = Number.isFinite(room.communityId) ? room.communityId : -1;
                     return {
                         ...room,
                         // Normalize canSendMessage to boolean
@@ -168,6 +170,8 @@ const chatController = {
                         isAdmin: room.isAdmin === true || room.isAdmin === 1,
                         lastMessage,
                         unreadCount: parseInt(unreadResult.rows[0]?.count || '0', 10),
+                        // -1 means the room is not part of any community (standalone)
+                        communityId: communityIdNum.toString(),
                     };
                 })
             );
@@ -175,6 +179,37 @@ const chatController = {
             res.json(roomsWithDetails);
         } catch (error) {
             console.error('Error fetching chat rooms:', error);
+            res.status(500).json({ message: "Server error", error: error.message });
+        }
+    },
+
+    // Returns communities referenced by rooms the authenticated user belongs to.
+    // No CRUD endpoints for community are exposed — creation/deletion happens manually.
+    async getCommunities(req, res) {
+        try {
+            const userId = Number(req.user.userId) || 0;
+
+            const result = await pool.query(
+                `SELECT DISTINCT c."communityId", c."communityName", c."communityDescription", c."isactive"
+                 FROM community c
+                          JOIN chatrooms cr ON cr."communityId" = c."communityId"
+                          JOIN chatroomusers cru ON cru."roomId" = cr."roomId"
+                 WHERE cru."userId" = $1::integer
+                   AND cr."isactive" = 1
+                   AND (c."isactive" IS NULL OR c."isactive" = 1)
+                 ORDER BY c."communityName" ASC`,
+                [userId]
+            );
+
+            const communities = result.rows.map((c) => ({
+                communityId: c.communityId.toString(),
+                communityName: c.communityName,
+                communityDescription: c.communityDescription || null,
+            }));
+
+            res.json(communities);
+        } catch (error) {
+            console.error('Error fetching communities:', error);
             res.status(500).json({ message: "Server error", error: error.message });
         }
     },

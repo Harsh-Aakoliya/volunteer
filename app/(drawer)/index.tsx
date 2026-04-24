@@ -95,26 +95,49 @@ const stripHtmlTags = (html: string): string => {
 
 // ==================== TYPES ====================
 
+// Shape of the "lastMessage" field used for both rooms and the aggregated
+// community preview (rendered on the main list).
+interface ListLastMessage {
+  id: number;
+  text: string;
+  messageType: string;
+  senderName: string;
+  senderId: string;
+  timestamp: string;
+  replyMessageId?: number;
+  replyMessageType?: string;
+  replyMessageText?: string;
+  replySenderName?: string;
+}
+
 // Simplified RoomListItem using unified RoomData
 interface RoomListItem {
   roomId: string;
   roomName: string;
   isAdmin: boolean;
   canSendMessage: boolean;
-  lastMessage: {
-    id: number;
-    text: string;
-    messageType: string;
-    senderName: string;
-    senderId: string;
-    timestamp: string;
-    replyMessageId?: number;
-    replyMessageType?: string;
-    replyMessageText?: string;
-    replySenderName?: string;
-  } | null;
+  lastMessage: ListLastMessage | null;
   unreadCount: number;
+  // "-1" (or undefined) means the room is standalone and shown directly
+  // on the main list. Otherwise the room is rolled up into a community bucket.
+  communityId?: string;
 }
+
+// Aggregated representation of a community on the main list.
+// Unread count = sum of unread across its rooms.
+// Last message = most recent lastMessage among its rooms.
+interface CommunityListItem {
+  communityId: string;
+  communityName: string;
+  lastMessage: ListLastMessage | null;
+  unreadCount: number;
+  roomCount: number;
+}
+
+// Discriminated union rendered by the FlatList on the main page.
+type MainListItem =
+  | { kind: "room"; data: RoomListItem }
+  | { kind: "community"; data: CommunityListItem };
 
 // ==================== AVATAR COMPONENT ====================
 
@@ -124,14 +147,20 @@ interface AvatarProps {
   isEmoji?: boolean;
   size?: number;
   isOnline?: boolean;
+  // When true the avatar is drawn as a rounded square (community badge)
+  // instead of a circle, and uses a "grid" glyph instead of the people icon.
+  isCommunity?: boolean;
 }
 
-const Avatar = memo(({ name, isGroup, isEmoji, size = 56, isOnline = false }: AvatarProps) => {
+const Avatar = memo(({ name, isGroup, isEmoji, size = 56, isOnline = false, isCommunity = false }: AvatarProps) => {
   const colors = getAvatarColor(name);
   const initials = getInitials(name);
 
   // Show group icon if isGroup is true OR isEmoji is true
-  const showGroupIcon = isGroup || isEmoji;
+  const showGroupIcon = isGroup || isEmoji || isCommunity;
+
+  // Communities get a rounded-square tile; everything else stays circular.
+  const borderRadius = isCommunity ? Math.round(size * 0.22) : size / 2;
 
   return (
     <View style={{ position: "relative" }}>
@@ -142,13 +171,17 @@ const Avatar = memo(({ name, isGroup, isEmoji, size = 56, isOnline = false }: Av
         style={{
           width: size,
           height: size,
-          borderRadius: size / 2,
+          borderRadius,
           justifyContent: "center",
           alignItems: "center",
         }}
       >
         {showGroupIcon ? (
-          <Ionicons name="people" size={size * 0.45} color="#fff" />
+          <Ionicons
+            name={isCommunity ? "grid" : "people"}
+            size={size * 0.45}
+            color="#fff"
+          />
         ) : (
           <Text
             style={{
@@ -183,95 +216,115 @@ const Avatar = memo(({ name, isGroup, isEmoji, size = 56, isOnline = false }: Av
   );
 });
 
-// ==================== ROOM ITEM COMPONENT ====================
+// ==================== SHARED ROW RENDERING ====================
 
-interface RoomItemProps {
-  room: RoomListItem;
-  currentUserId: string | undefined;
-  onPress: (roomId: string) => void;
-  onLongPress?: (room: RoomListItem) => void;
-}
 import RenderHtml from 'react-native-render-html';
 
-const RoomItem = memo(({ room, currentUserId, onPress, onLongPress }: RoomItemProps) => {
-  const hasUnread = room.unreadCount > 0;
+// Helper function to format reply preview for last message (shared)
+const getReplyPreviewTextForLastMessage = (reply: { messageType: string; messageText: string }): string => {
+  switch (reply.messageType) {
+    case 'media':
+      return reply.messageText && reply.messageText.trim() !== ''
+        ? stripHtmlTags(reply.messageText)
+        : '📷 Media';
+    case 'poll':
+      return reply.messageText && reply.messageText.trim() !== ''
+        ? stripHtmlTags(reply.messageText)
+        : '📊 Poll';
+    case 'table':
+      return '📋 Table';
+    case 'announcement':
+      return '📢 Announcement';
+    case 'text':
+    default:
+      return reply.messageText ? stripHtmlTags(reply.messageText) : 'Message';
+  }
+};
+
+// Format a single lastMessage into {preview, prefix} used by the row UI.
+const formatLastMessagePreview = (
+  lastMessage: ListLastMessage | null,
+  currentUserId: string | undefined,
+  isCommunity: boolean
+): { messagePreview: string; previewPrefix: string; senderFirstName: string | null } => {
+  if (!lastMessage) {
+    return { messagePreview: "No messages yet", previewPrefix: "", senderFirstName: null };
+  }
+  const isOwn = lastMessage.senderId === currentUserId;
+  // For community rollups we don't show "You: " (the message may belong to any
+  // room within the community), we just show "SenderName: ...".
+  const previewPrefix = !isCommunity && isOwn ? "You: " : "";
+
+  let messagePreview: string;
+  if (lastMessage.replyMessageId && lastMessage.replyMessageType) {
+    const replyPreview = getReplyPreviewTextForLastMessage({
+      messageType: lastMessage.replyMessageType,
+      messageText: lastMessage.replyMessageText || '',
+    });
+    messagePreview = `↩️ ${replyPreview}`;
+  } else {
+    messagePreview = stripHtmlTags(lastMessage.text);
+  }
+
+  const senderFirstName = previewPrefix
+    ? null
+    : lastMessage.senderName?.split(" ")[0] || null;
+
+  return { messagePreview, previewPrefix, senderFirstName };
+};
+
+// Format timestamp in Telegram-style (today -> time, yesterday, weekday, or date).
+const formatRowTimestamp = (timestamp: string | undefined | null): string => {
+  if (!timestamp) return "";
+  try {
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diffDays = Math.floor(
+      (now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24)
+    );
+    if (diffDays === 0) {
+      return date.toLocaleTimeString("en-US", {
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+      });
+    }
+    if (diffDays === 1) return "Yesterday";
+    if (diffDays < 7) return date.toLocaleDateString("en-US", { weekday: "short" });
+    return date.toLocaleDateString("en-US", { day: "numeric", month: "short" });
+  } catch {
+    return "";
+  }
+};
+
+interface ListRowProps {
+  name: string;
+  lastMessage: ListLastMessage | null;
+  unreadCount: number;
+  isCommunity: boolean;
+  currentUserId: string | undefined;
+  onPress: () => void;
+  onLongPress?: () => void;
+}
+
+// Generic row used for both rooms and communities on the main list.
+const ListRow = memo(({
+  name,
+  lastMessage,
+  unreadCount,
+  isCommunity,
+  currentUserId,
+  onPress,
+  onLongPress,
+}: ListRowProps) => {
+  const hasUnread = unreadCount > 0;
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const timeColor = hasUnread ? "#2196F3" : "#8E8E93";
-  const previewColor = "#8E8E93"; // sender + last message text color (same for read/unread)
+  const previewColor = "#8E8E93";
 
-  // Helper function to format reply preview for last message
-  const getReplyPreviewTextForLastMessage = (reply: { messageType: string; messageText: string }): string => {
-    switch (reply.messageType) {
-      case 'media':
-        return reply.messageText && reply.messageText.trim() !== ''
-          ? stripHtmlTags(reply.messageText)
-          : '📷 Media';
-      case 'poll':
-        return reply.messageText && reply.messageText.trim() !== ''
-          ? stripHtmlTags(reply.messageText)
-          : '📊 Poll';
-      case 'table':
-        return '📋 Table';
-      case 'announcement':
-        return '📢 Announcement';
-      case 'text':
-      default:
-        return reply.messageText ? stripHtmlTags(reply.messageText) : 'Message';
-    }
-  };
-
-  // Format message preview using unified lastMessage structure
-  let messagePreview = "No messages yet";
-  let previewPrefix = "";
-  let isMediaMessage = false;
-
-  if (room.lastMessage) {
-    const isOwn = room.lastMessage.senderId === currentUserId;
-    previewPrefix = isOwn ? "You: " : "";
-
-    // Handle reply messages - show reply preview if exists
-    if (room.lastMessage.replyMessageId && room.lastMessage.replyMessageType) {
-      const replyPreview = getReplyPreviewTextForLastMessage({
-        messageType: room.lastMessage.replyMessageType,
-        messageText: room.lastMessage.replyMessageText || '',
-      });
-      messagePreview = `↩️ ${replyPreview}`;
-    } else {
-      // Strip HTML tags from message text for clean preview
-      messagePreview = stripHtmlTags(room.lastMessage.text);
-    }
-
-    isMediaMessage = room.lastMessage.messageType !== 'text';
-  }
-
-  // Format time - Telegram style
-  let timeText = "";
-  if (room.lastMessage?.timestamp) {
-    try {
-      const date = new Date(room.lastMessage.timestamp);
-      const now = new Date();
-      const diffDays = Math.floor(
-        (now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24)
-      );
-
-      if (diffDays === 0) {
-        timeText = date.toLocaleTimeString("en-US", {
-          hour: "numeric",
-          minute: "2-digit",
-          hour12: true,
-        });
-      } else if (diffDays === 1) {
-        timeText = "Yesterday";
-      } else if (diffDays < 7) {
-        timeText = date.toLocaleDateString("en-US", { weekday: "short" });
-      } else {
-        timeText = date.toLocaleDateString("en-US", {
-          day: "numeric",
-          month: "short",
-        });
-      }
-    } catch { }
-  }
+  const { messagePreview, previewPrefix, senderFirstName } =
+    formatLastMessagePreview(lastMessage, currentUserId, isCommunity);
+  const timeText = formatRowTimestamp(lastMessage?.timestamp);
 
   const handlePressIn = () => {
     Animated.spring(scaleAnim, {
@@ -297,17 +350,18 @@ const RoomItem = memo(({ room, currentUserId, onPress, onLongPress }: RoomItemPr
           backgroundColor: hasUnread ? "#E3F2FD" : "#F5F5F5",
         }}
         activeOpacity={0.7}
-        onPress={() => room.roomId && onPress(room.roomId)}
-        onLongPress={() => onLongPress?.(room)}
+        onPress={onPress}
+        onLongPress={onLongPress}
         onPressIn={handlePressIn}
         onPressOut={handlePressOut}
       >
         <View style={{ flexDirection: "row", alignItems: "center" }}>
-          {/* Avatar */}
+          {/* Avatar (square for community, circle for room) */}
           <Avatar
-            name={room.roomName || "Chat"}
-            isGroup={true}
-            isEmoji={true}
+            name={name || "Chat"}
+            isGroup={!isCommunity}
+            isEmoji={!isCommunity}
+            isCommunity={isCommunity}
             size={56}
           />
 
@@ -333,7 +387,7 @@ const RoomItem = memo(({ room, currentUserId, onPress, onLongPress }: RoomItemPr
                   }}
                   numberOfLines={1}
                 >
-                  {room.roomName}
+                  {name}
                 </Text>
               </View>
 
@@ -370,9 +424,9 @@ const RoomItem = memo(({ room, currentUserId, onPress, onLongPress }: RoomItemPr
                 numberOfLines={1}
                 ellipsizeMode="tail"
               >
-                {room.lastMessage && !previewPrefix && (
+                {lastMessage && senderFirstName && (
                   <Text style={{ fontWeight: "600" }}>
-                    {room.lastMessage.senderName?.split(" ")[0]}:{" "}
+                    {senderFirstName}:{" "}
                   </Text>
                 )}
                 {previewPrefix && (
@@ -403,7 +457,7 @@ const RoomItem = memo(({ room, currentUserId, onPress, onLongPress }: RoomItemPr
                       fontWeight: "700",
                     }}
                   >
-                    {room.unreadCount > 999 ? "999+" : room.unreadCount}
+                    {unreadCount > 999 ? "999+" : unreadCount}
                   </Text>
                 </View>
               )}
@@ -636,6 +690,7 @@ export default function ChatRoomsList() {
     isInitialized,
     user,
     rooms: socketRooms,
+    communities: socketCommunities,
     initialize,
     refreshRoomData,
     markRoomAsRead,
@@ -643,6 +698,7 @@ export default function ChatRoomsList() {
 
   // Local state - rooms from cache, updated by socket
   const [rooms, setRooms] = useState<RoomListItem[]>([]);
+  const [communities, setCommunities] = useState<{ communityId: string; communityName: string }[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [isSearchMode, setIsSearchMode] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -661,7 +717,11 @@ export default function ChatRoomsList() {
     if (!isMountedRef.current) return;
 
     try {
-      const cached = await ChatRoomStorage.getChatRooms();
+      const [cached, cachedCommunities] = await Promise.all([
+        ChatRoomStorage.getChatRooms(),
+        ChatRoomStorage.getCommunities(),
+      ]);
+
       if (cached?.rooms?.length) {
         console.log("📦 [Rooms] Loaded from cache:", cached.rooms.length);
         // Convert cached data to RoomListItem format
@@ -683,8 +743,18 @@ export default function ChatRoomsList() {
             replySenderName: r.lastMessage.replySenderName,
           } : null,
           unreadCount: r.unreadCount || 0,
+          // -1 means standalone (no community)
+          communityId: r.communityId ? String(r.communityId) : "-1",
         }));
         setRooms(cachedRooms);
+        if (cachedCommunities?.communities?.length) {
+          setCommunities(
+            cachedCommunities.communities.map((c) => ({
+              communityId: String(c.communityId),
+              communityName: c.communityName,
+            }))
+          );
+        }
         setIsLoading(false);
         setIsSyncing(false);
         setIsRefreshing(false);
@@ -718,7 +788,30 @@ export default function ChatRoomsList() {
     // This ensures real-time updates (roomUpdate, newMessage, etc.) are reflected
     if (socketRooms.length > 0) {
       console.log("🔄 [Rooms] Syncing from context:", socketRooms.length);
-      setRooms(socketRooms);
+      setRooms(
+        socketRooms.map((r) => ({
+          roomId: r.roomId,
+          roomName: r.roomName,
+          isAdmin: r.isAdmin,
+          canSendMessage: r.canSendMessage,
+          lastMessage: r.lastMessage
+            ? {
+                id: r.lastMessage.id,
+                text: r.lastMessage.text,
+                messageType: r.lastMessage.messageType,
+                senderName: r.lastMessage.senderName,
+                senderId: r.lastMessage.senderId,
+                timestamp: r.lastMessage.timestamp,
+                replyMessageId: r.lastMessage.replyMessageId,
+                replyMessageType: r.lastMessage.replyMessageType,
+                replyMessageText: r.lastMessage.replyMessageText,
+                replySenderName: r.lastMessage.replySenderName,
+              }
+            : null,
+          unreadCount: r.unreadCount,
+          communityId: r.communityId || "-1",
+        }))
+      );
       setIsLoading(false);
       setIsSyncing(false);
       setIsRefreshing(false);
@@ -740,25 +833,105 @@ export default function ChatRoomsList() {
     }
   }, [socketRooms, rooms.length]);
 
-  // Sort rooms by last message timestamp
-  const sortedRooms = React.useMemo(() => {
-    return [...rooms].sort((a, b) => {
-      const aTime = a.lastMessage?.timestamp
-        ? new Date(a.lastMessage.timestamp).getTime()
+  // Sync communities whenever the socket delivers fresh data.
+  useEffect(() => {
+    setCommunities(
+      socketCommunities.map((c) => ({
+        communityId: c.communityId,
+        communityName: c.communityName,
+      }))
+    );
+  }, [socketCommunities]);
+
+  // ==================== LIST COMPOSITION ====================
+
+  // Combine rooms + communities into a single display list. Rooms that
+  // belong to a known community are rolled up into the community entry
+  // (last message = most recent across its rooms, unread = sum). Rooms
+  // whose community no longer exists (e.g. community deleted while the
+  // chatroom.communityId still points at an old id) fall back to the
+  // standalone section so they are never hidden.
+  const displayItems = React.useMemo<MainListItem[]>(() => {
+    const communityById = new Map(communities.map((c) => [c.communityId, c]));
+    const roomsByCommunity = new Map<string, RoomListItem[]>();
+    const standaloneRooms: RoomListItem[] = [];
+
+    for (const room of rooms) {
+      const cid = room.communityId || "-1";
+      if (cid === "-1" || !communityById.has(cid)) {
+        standaloneRooms.push(room);
+      } else {
+        const bucket = roomsByCommunity.get(cid) || [];
+        bucket.push(room);
+        roomsByCommunity.set(cid, bucket);
+      }
+    }
+
+    const communityItems: MainListItem[] = [];
+    for (const community of communities) {
+      const bucket = roomsByCommunity.get(community.communityId) || [];
+      if (bucket.length === 0) continue; // no rooms -> skip (nothing to click into)
+
+      // Aggregate: pick the newest lastMessage across the community's rooms
+      // and sum unread counts. Unread already honours per-user state because
+      // it's sourced from the same room data the main list uses.
+      let latest: ListLastMessage | null = null;
+      let latestTime = 0;
+      let unreadSum = 0;
+      for (const room of bucket) {
+        unreadSum += room.unreadCount || 0;
+        if (room.lastMessage?.timestamp) {
+          const t = new Date(room.lastMessage.timestamp).getTime();
+          if (!Number.isNaN(t) && t > latestTime) {
+            latestTime = t;
+            latest = room.lastMessage;
+          }
+        }
+      }
+
+      communityItems.push({
+        kind: "community",
+        data: {
+          communityId: community.communityId,
+          communityName: community.communityName,
+          lastMessage: latest,
+          unreadCount: unreadSum,
+          roomCount: bucket.length,
+        },
+      });
+    }
+
+    const roomItems: MainListItem[] = standaloneRooms.map((r) => ({
+      kind: "room",
+      data: r,
+    }));
+
+    const merged = [...communityItems, ...roomItems];
+
+    // Sort by last-message timestamp descending (same rule as before).
+    merged.sort((a, b) => {
+      const aTime = a.data.lastMessage?.timestamp
+        ? new Date(a.data.lastMessage.timestamp).getTime()
         : 0;
-      const bTime = b.lastMessage?.timestamp
-        ? new Date(b.lastMessage.timestamp).getTime()
+      const bTime = b.data.lastMessage?.timestamp
+        ? new Date(b.data.lastMessage.timestamp).getTime()
         : 0;
       return bTime - aTime;
     });
-  }, [rooms]);
 
-  // Filter rooms by search query
-  const filteredRooms = React.useMemo(() => {
-    if (!searchQuery.trim()) return sortedRooms;
+    return merged;
+  }, [rooms, communities]);
+
+  // Filter the composed list by search query (matches name of room OR community).
+  const filteredItems = React.useMemo<MainListItem[]>(() => {
+    if (!searchQuery.trim()) return displayItems;
     const query = searchQuery.toLowerCase();
-    return sortedRooms.filter((r) => r.roomName?.toLowerCase().includes(query));
-  }, [sortedRooms, searchQuery]);
+    return displayItems.filter((item) => {
+      const name =
+        item.kind === "room" ? item.data.roomName : item.data.communityName;
+      return name?.toLowerCase().includes(query);
+    });
+  }, [displayItems, searchQuery]);
 
   // Socket subscriptions are now handled in SocketContext
   // Real-time updates flow: socket -> context -> rooms state via useEffect
@@ -883,6 +1056,20 @@ export default function ChatRoomsList() {
     [markRoomAsRead, isSearchMode]
   );
 
+  const handleCommunityPress = useCallback(
+    (communityId: string, communityName: string) => {
+      if (isSearchMode) {
+        setIsSearchMode(false);
+        setSearchQuery("");
+      }
+      router.push({
+        pathname: "/community/[communityId]",
+        params: { communityId, communityName },
+      });
+    },
+    [isSearchMode]
+  );
+
   const handleSearchPress = useCallback(() => {
     setIsSearchMode(true);
   }, []);
@@ -935,18 +1122,43 @@ export default function ChatRoomsList() {
         onMenuPress={handleMenuPress}
       />
 
-      {/* Room List */}
+      {/* Room + Community List */}
       <FlatList
         ref={listRef}
-        data={filteredRooms}
-        keyExtractor={(item) => item.roomId || String(Math.random())}
-        renderItem={({ item }) => (
-          <RoomItem
-            room={item}
-            currentUserId={user?.id}
-            onPress={(roomId) => handleRoomPress(roomId, item.roomName, Boolean(item.canSendMessage))}
-          />
-        )}
+        data={filteredItems}
+        keyExtractor={(item) =>
+          item.kind === "room"
+            ? `room-${item.data.roomId || Math.random()}`
+            : `community-${item.data.communityId}`
+        }
+        renderItem={({ item }) => {
+          if (item.kind === "community") {
+            const c = item.data;
+            return (
+              <ListRow
+                name={c.communityName}
+                lastMessage={c.lastMessage}
+                unreadCount={c.unreadCount}
+                isCommunity
+                currentUserId={user?.id}
+                onPress={() => handleCommunityPress(c.communityId, c.communityName)}
+              />
+            );
+          }
+          const r = item.data;
+          return (
+            <ListRow
+              name={r.roomName}
+              lastMessage={r.lastMessage}
+              unreadCount={r.unreadCount}
+              isCommunity={false}
+              currentUserId={user?.id}
+              onPress={() =>
+                r.roomId && handleRoomPress(r.roomId, r.roomName, Boolean(r.canSendMessage))
+              }
+            />
+          );
+        }}
         refreshControl={
           <RefreshControl
             refreshing={isRefreshing}
@@ -963,7 +1175,7 @@ export default function ChatRoomsList() {
           )
         }
         contentContainerStyle={
-          filteredRooms.length === 0 ? { flex: 1 } : undefined
+          filteredItems.length === 0 ? { flex: 1 } : undefined
         }
         removeClippedSubviews
         maxToRenderPerBatch={15}

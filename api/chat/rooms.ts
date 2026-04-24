@@ -1,6 +1,6 @@
 // api/chat/rooms.ts
 import { api, apiUrl } from "@/api/apiClient";
-import { ChatRoom, ChatUser } from "@/types/type";
+import { ChatRoom, ChatUser, Community } from "@/types/type";
 
 export const fetchChatUsers = async (): Promise<ChatUser[]> => {
   const response = await api.get(apiUrl("/api/chat/users"));
@@ -47,6 +47,22 @@ export const fetchChatRooms = async (): Promise<ChatRoom[]> => {
     canSendMessage: room.canSendMessage || false,
     lastMessage: room.lastMessage || null,
     unreadCount: room.unreadCount || 0,
+    // "-1" (or unset) means the room is not part of any community
+    communityId:
+      room.communityId !== undefined && room.communityId !== null
+        ? String(room.communityId)
+        : "-1",
+  }));
+};
+
+// Fetch communities the authenticated user can see (derived from their rooms).
+// There are no create/update/delete endpoints — those are done manually.
+export const fetchCommunities = async (): Promise<Community[]> => {
+  const response = await api.get(apiUrl("/api/chat/communities"));
+  return response.data.map((c: any) => ({
+    communityId: String(c.communityId),
+    communityName: c.communityName,
+    communityDescription: c.communityDescription ?? null,
   }));
 };
 

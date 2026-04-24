@@ -13,6 +13,9 @@ router.get('/users', chatController.getChatUsers);//${API_URL}/api/chat/users ap
 router.get('/rooms', chatController.getChatRooms);//${API_URL}/api/chat/rooms api/chat/rooms.ts -> fetchChatRooms
 router.post('/rooms', chatController.createChatRoom);// api/chat/rooms.ts -> createChatRoom
 
+// Communities (read-only: creation/update/deletion are done manually in DB)
+router.get('/communities', chatController.getCommunities);//${API_URL}/api/chat/communities api/chat/rooms.ts -> fetchCommunities
+
 // Room details
 router.get('/rooms/:roomId', chatController.getChatRoomDetails);//${API_URL}/api/chat/rooms/${roomId} app/chat/[roomId].tsx -> loadRoomDetails,// app/chat/room-info.tsx ->loadRoomInfo
 router.delete('/rooms/:roomId', chatController.deleteChatRoom);//${API_URL}/api/chat/rooms/${roomId} room info will needed

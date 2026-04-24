@@ -215,6 +215,7 @@ export const publicApi = {
     return publicRequest<T>({ method: "GET", url, ...config });
   },
   post<T = any>(url: string, data?: any, config?: AxiosRequestConfig) {
+    console.log("POST request to:", url);
     return publicRequest<T>({ method: "POST", url, data, ...config });
   },
 };

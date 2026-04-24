@@ -1,9 +1,10 @@
 // utils/chatRoomStorage.ts
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { ChatRoom } from '@/types/type';
+import { ChatRoom, Community } from '@/types/type';
 
 const CHAT_ROOMS_KEY = 'chat_rooms_cache';
 const LAST_MESSAGES_KEY = 'last_messages_cache';
+const COMMUNITIES_KEY = 'communities_cache';
 
 interface CachedChatRooms {
   rooms: ChatRoom[];
@@ -12,6 +13,11 @@ interface CachedChatRooms {
 
 interface CachedLastMessages {
   messages: { [key: string]: any };
+  timestamp: number;
+}
+
+interface CachedCommunities {
+  communities: Community[];
   timestamp: number;
 }
 
@@ -114,10 +120,38 @@ updateRoomUnreadCount: async (roomId: string, unreadCount: number): Promise<void
   }
 },
 
+  // Save communities to cache
+  saveCommunities: async (communities: Community[]): Promise<void> => {
+    try {
+      const cacheData: CachedCommunities = {
+        communities,
+        timestamp: Date.now(),
+      };
+      await AsyncStorage.setItem(COMMUNITIES_KEY, JSON.stringify(cacheData));
+      console.log('💾 Communities saved to cache');
+    } catch (error) {
+      console.error('❌ Error saving communities to cache:', error);
+    }
+  },
+
+  // Get cached communities
+  getCommunities: async (): Promise<CachedCommunities | null> => {
+    try {
+      const data = await AsyncStorage.getItem(COMMUNITIES_KEY);
+      if (data) {
+        return JSON.parse(data);
+      }
+      return null;
+    } catch (error) {
+      console.error('❌ Error getting communities from cache:', error);
+      return null;
+    }
+  },
+
   // Clear all cache
   clearCache: async (): Promise<void> => {
     try {
-      await AsyncStorage.multiRemove([CHAT_ROOMS_KEY, LAST_MESSAGES_KEY]);
+      await AsyncStorage.multiRemove([CHAT_ROOMS_KEY, LAST_MESSAGES_KEY, COMMUNITIES_KEY]);
       console.log('🗑️ Chat room cache cleared');
     } catch (error) {
       console.error('❌ Error clearing chat rooms cache:', error);
