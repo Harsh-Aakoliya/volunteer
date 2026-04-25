@@ -31,7 +31,7 @@
     <meta-data android:name="expo.modules.updates.EXPO_RUNTIME_VERSION" android:value="@string/expo_runtime_version"/>
     <meta-data android:name="expo.modules.updates.EXPO_UPDATES_CHECK_ON_LAUNCH" android:value="ERROR_RECOVERY_ONLY"/>
     <meta-data android:name="expo.modules.updates.EXPO_UPDATES_LAUNCH_WAIT_MS" android:value="5000"/>
-    <meta-data android:name="expo.modules.updates.EXPO_UPDATE_URL" android:value="http://10.112.176.242:8080/api/ota/manifest?apkVersion=1.0.18"/>
+    <meta-data android:name="expo.modules.updates.EXPO_UPDATE_URL" android:value="http://103.47.172.58:50160/api/ota/manifest?apkVersion=1.0.19"/>
     <activity android:name=".MainActivity" android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|uiMode" android:launchMode="singleTask" android:windowSoftInputMode="adjustResize" android:theme="@style/Theme.App.SplashScreen" android:exported="true">
       <intent-filter>
         <action android:name="android.intent.action.MAIN"/>

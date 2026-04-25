@@ -9,8 +9,8 @@
     <key>EXUpdatesLaunchWaitMs</key>
     <integer>5000</integer>
     <key>EXUpdatesRuntimeVersion</key>
-    <string>1.0.18</string>
+    <string>1.0.19</string>
     <key>EXUpdatesURL</key>
-    <string>http://10.112.176.242:8080/api/ota/manifest?apkVersion=1.0.18</string>
+    <string>http://103.47.172.58:50160/api/ota/manifest?apkVersion=1.0.19</string>
   </dict>
 </plist>

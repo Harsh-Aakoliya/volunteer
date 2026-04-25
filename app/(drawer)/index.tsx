@@ -624,7 +624,7 @@ const Header = memo(
               letterSpacing: 0.5,
             }}
           >
-            Sevak App
+            Sevak Application
           </Text>
           {/* {isSyncing && (
             <ActivityIndicator

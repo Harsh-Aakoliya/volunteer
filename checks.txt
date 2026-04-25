@@ -12,3 +12,6 @@
 11) change isDev to false in backend/config/database.js file
 12) push to github
 13) and then run eas build command
+
+
+14) check OTA server url 

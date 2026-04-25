@@ -1,7 +1,6 @@
-const APP_VERSION = "1.0.18";
+const APP_VERSION = "1.0.19";
 
 // This must match your production server URL (the one in apiStore EXTERNAL_IP)
-const OTA_SERVER_URL = "http://10.112.176.242:8080";
 
 export default {
   expo: {

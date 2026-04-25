@@ -75,12 +75,12 @@ export const CustomDrawer = (props: DrawerContentComponentProps) => {
   const menuItems = [
     {
       icon: "person-outline" as const,
-      label: "Profile",
+      label: "Check Your Profile",
       onPress: () => setShowProfileSheet(true),
     },
     {
       icon: "lock-closed-outline" as const,
-      label: "Change Password",
+      label: "Change Your Password",
       onPress: () => setShowChangePasswordSheet(true),
     },
   ];
