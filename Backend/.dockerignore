@@ -1,0 +1,9 @@
+node_modules
+npm-debug.log
+.env
+*.log
+media/*
+uploads/*
+ota-bundles/*
+serviceAccountKey.json
+.git

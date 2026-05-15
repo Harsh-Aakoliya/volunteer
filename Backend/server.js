@@ -16,6 +16,7 @@ import os from "os";
 import path from "path";
 import fs from "fs";
 import multer from "multer";
+import { connectRedis } from "./config/redis.js";
 
 //visit http://localhost:8080/#/ for socket.io admin ui
 dotenv.config();
@@ -130,6 +131,9 @@ app.get('/files', (req, res) => {
 // Initialize Firebase for FCM notifications
 initializeFirebase();
 
+// Connect Redis (best-effort — app works without it)
+connectRedis().catch(() => {});
+
 // Initialize scheduled announcement publisher
 console.log('🚀 Starting scheduled announcement publisher...');
 
@@ -161,17 +165,22 @@ setupSocketIO(io, app);
 // API routes
 app.use('/api', apiRoutes);
 
-// Version endpoint
-app.get("/api/version", (req, res) => {
-  console.log("version checking req got");
+// Version endpoint (cached in Redis for 30s to reduce disk reads)
+app.get("/api/version", async (req, res) => {
   try {
-    const versionPath = path.join(process.cwd(), 'version.json');
-    if (fs.existsSync(versionPath)) {
-      const versionData = JSON.parse(fs.readFileSync(versionPath, 'utf8'));
-      res.json(versionData);
-    } else {
-      res.status(404).json({ error: 'Version file not found' });
+    const { cacheGet } = await import("./config/redis.js");
+    const versionData = await cacheGet("app:version", () => {
+      const versionPath = path.join(process.cwd(), 'version.json');
+      if (fs.existsSync(versionPath)) {
+        return JSON.parse(fs.readFileSync(versionPath, 'utf8'));
+      }
+      return null;
+    }, 30);
+
+    if (!versionData) {
+      return res.status(404).json({ error: 'Version file not found' });
     }
+    res.json(versionData);
   } catch (error) {
     console.error('Error reading version file:', error);
     res.status(500).json({ error: 'Unable to read version file' });
